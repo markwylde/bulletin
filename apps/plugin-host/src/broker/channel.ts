@@ -45,12 +45,15 @@ export interface BrokerChannelOptions {
   readonly maxPendingRequests?: number;
   /** In-flight plus queued decoded payload bytes per connection. */
   readonly maxQueuedBytes?: number;
+  /** Unwritten response bytes queued for a slow reader. */
+  readonly maxOutboundBytes?: number;
 }
 
 const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}$/;
 const DEFAULT_MAX_CONNECTIONS = 4;
 const DEFAULT_MAX_PENDING_REQUESTS = 8;
 const DEFAULT_MAX_QUEUED_BYTES = 2 * 1024 * 1024;
+const DEFAULT_MAX_OUTBOUND_BYTES = 2 * 1024 * 1024;
 
 function positiveInteger(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) {
@@ -61,7 +64,7 @@ function positiveInteger(value: number, name: string): number {
 }
 
 interface BrokerSocket {
-  write(data: Uint8Array): void;
+  write(data: Uint8Array): number;
   end(): void;
 }
 
@@ -71,6 +74,10 @@ interface Connection {
   queue: Promise<void>;
   pending: number;
   queuedBytes: number;
+  readonly outbound: Uint8Array[];
+  outboundOffset: number;
+  outboundBytes: number;
+  flushing: boolean;
 }
 
 function parseHello(params: unknown): PluginHello | undefined {
@@ -105,6 +112,7 @@ export class BrokerChannel {
   readonly #maxConnections: number;
   readonly #maxPendingRequests: number;
   readonly #maxQueuedBytes: number;
+  readonly #maxOutboundBytes: number;
   #listener: { stop(closeActiveConnections?: boolean): void } | undefined;
   readonly #connections = new WeakMap<BrokerSocket, Connection>();
   readonly #sockets = new Set<BrokerSocket>();
@@ -132,6 +140,10 @@ export class BrokerChannel {
     this.#maxQueuedBytes = positiveInteger(
       options.maxQueuedBytes ?? DEFAULT_MAX_QUEUED_BYTES,
       "maxQueuedBytes",
+    );
+    this.#maxOutboundBytes = positiveInteger(
+      options.maxOutboundBytes ?? DEFAULT_MAX_OUTBOUND_BYTES,
+      "maxOutboundBytes",
     );
   }
 
@@ -167,6 +179,10 @@ export class BrokerChannel {
             queue: Promise.resolve(),
             pending: 0,
             queuedBytes: 0,
+            outbound: [],
+            outboundOffset: 0,
+            outboundBytes: 0,
+            flushing: false,
           });
         },
         data: (socket, data) => {
@@ -174,12 +190,25 @@ export class BrokerChannel {
         },
         close: (socket) => {
           this.#sockets.delete(socket);
-          this.#connections.delete(socket);
+          const connection = this.#connections.get(socket);
+
+          if (connection !== undefined) {
+            connection.outbound.length = 0;
+            connection.outboundBytes = 0;
+            this.#connections.delete(socket);
+          }
 
           if (this.#hello !== undefined) {
             clearTimeout(this.#hello.timer);
             this.#hello.reject(new Error("Sandbox disconnected before the broker handshake"));
             this.#hello = undefined;
+          }
+        },
+        drain: (socket) => {
+          const connection = this.#connections.get(socket);
+
+          if (connection !== undefined) {
+            this.#flushOutbound(socket, connection);
           }
         },
         error: (_socket, error) => {
@@ -255,7 +284,7 @@ export class BrokerChannel {
 
     for (const frame of frames) {
       if (frame.kind === "invalid_json") {
-        this.#send(socket, failure(null, JSON_RPC_ERRORS.parse, frame.message));
+        this.#send(socket, connection, failure(null, JSON_RPC_ERRORS.parse, frame.message));
         continue;
       }
 
@@ -264,6 +293,7 @@ export class BrokerChannel {
       if (message === undefined) {
         this.#send(
           socket,
+          connection,
           failure(null, JSON_RPC_ERRORS.invalidRequest, "Invalid JSON-RPC request"),
         );
         continue;
@@ -273,7 +303,7 @@ export class BrokerChannel {
         connection.pending >= this.#maxPendingRequests ||
         connection.queuedBytes + frame.bytes > this.#maxQueuedBytes
       ) {
-        this.#rejectBusy(socket, message);
+        this.#rejectBusy(socket, connection, message);
         continue;
       }
 
@@ -297,12 +327,17 @@ export class BrokerChannel {
     }
   }
 
-  #rejectBusy(socket: BrokerSocket, message: JsonRpcRequest | JsonRpcNotification): void {
+  #rejectBusy(
+    socket: BrokerSocket,
+    connection: Connection,
+    message: JsonRpcRequest | JsonRpcNotification,
+  ): void {
     this.#logger.warn("broker.request_rejected", { reason: "busy" });
 
     if (isRequest(message)) {
       this.#send(
         socket,
+        connection,
         failure(message.id, JSON_RPC_ERRORS.denied, "Broker is busy", { reason: "busy" }),
       );
     }
@@ -322,6 +357,7 @@ export class BrokerChannel {
       if (isRequest(message)) {
         this.#send(
           socket,
+          connection,
           failure(message.id, JSON_RPC_ERRORS.invalidRequest, "Send hello before any request"),
         );
       }
@@ -332,6 +368,7 @@ export class BrokerChannel {
       if (isRequest(message)) {
         this.#send(
           socket,
+          connection,
           failure(message.id, JSON_RPC_ERRORS.methodNotFound, `Unknown method: ${message.method}`),
         );
       }
@@ -346,7 +383,7 @@ export class BrokerChannel {
       });
 
       if (isRequest(message)) {
-        this.#send(socket, success(message.id, result));
+        this.#send(socket, connection, success(message.id, result));
       }
     } catch (error) {
       const rpcError =
@@ -359,7 +396,11 @@ export class BrokerChannel {
       }
 
       if (isRequest(message)) {
-        this.#send(socket, failure(message.id, rpcError.code, rpcError.message, rpcError.data));
+        this.#send(
+          socket,
+          connection,
+          failure(message.id, rpcError.code, rpcError.message, rpcError.data),
+        );
       }
     }
   }
@@ -372,7 +413,11 @@ export class BrokerChannel {
   ): void {
     if (connection.pluginId !== null) {
       if (id !== null) {
-        this.#send(socket, failure(id, JSON_RPC_ERRORS.invalidRequest, "Hello already sent"));
+        this.#send(
+          socket,
+          connection,
+          failure(id, JSON_RPC_ERRORS.invalidRequest, "Hello already sent"),
+        );
       }
       return;
     }
@@ -381,7 +426,7 @@ export class BrokerChannel {
 
     if (hello === undefined) {
       if (id !== null) {
-        this.#send(socket, failure(id, JSON_RPC_ERRORS.invalidParams, "Invalid hello"));
+        this.#send(socket, connection, failure(id, JSON_RPC_ERRORS.invalidParams, "Invalid hello"));
       }
       this.#fail(new Error("Sandbox sent an invalid broker handshake"));
       return;
@@ -390,7 +435,7 @@ export class BrokerChannel {
     connection.pluginId = hello.pluginId;
 
     if (id !== null) {
-      this.#send(socket, success(id, null));
+      this.#send(socket, connection, success(id, null));
     }
 
     if (this.#hello === undefined) {
@@ -405,12 +450,72 @@ export class BrokerChannel {
     pending.resolve(hello);
   }
 
-  #send(socket: BrokerSocket, message: unknown): void {
+  #send(socket: BrokerSocket, connection: Connection, message: unknown): void {
+    let frame: Uint8Array;
+
     try {
-      socket.write(encodeFrame(message, this.#maxFrameBytes));
+      frame = encodeFrame(message, this.#maxFrameBytes);
     } catch (error) {
       this.#logger.error("broker.write_failed", { error });
       socket.end();
+      return;
+    }
+
+    if (connection.outboundBytes + frame.byteLength > this.#maxOutboundBytes) {
+      this.#logger.warn("broker.output_overflow", {
+        bytes: connection.outboundBytes + frame.byteLength,
+      });
+      socket.end();
+      return;
+    }
+
+    connection.outbound.push(frame);
+    connection.outboundBytes += frame.byteLength;
+    this.#flushOutbound(socket, connection);
+  }
+
+  #flushOutbound(socket: BrokerSocket, connection: Connection): void {
+    if (connection.flushing) {
+      return;
+    }
+
+    connection.flushing = true;
+
+    try {
+      while (connection.outbound.length > 0) {
+        const head = connection.outbound[0];
+
+        if (head === undefined) {
+          break;
+        }
+
+        const written = socket.write(head.subarray(connection.outboundOffset));
+
+        if (written < 0) {
+          this.#logger.error("broker.write_failed", { bytes: head.byteLength });
+          socket.end();
+          return;
+        }
+
+        if (written === 0) {
+          break;
+        }
+
+        connection.outboundBytes -= written;
+        connection.outboundOffset += written;
+
+        if (connection.outboundOffset < head.byteLength) {
+          break;
+        }
+
+        connection.outbound.shift();
+        connection.outboundOffset = 0;
+      }
+    } catch (error) {
+      this.#logger.error("broker.write_failed", { error });
+      socket.end();
+    } finally {
+      connection.flushing = false;
     }
   }
 

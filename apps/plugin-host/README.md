@@ -70,10 +70,13 @@ The broker opens the runtime pool with `max: 2`, matching the role limit.
 - data-modifying CTEs are rejected: PostgreSQL only allows them at the top level, and the
   result-row wrapper would move them into a subquery.
 
-`SELECT`s are wrapped in `SELECT * FROM (…) LIMIT 1001`; DML with `RETURNING` is wrapped in a
-CTE with the same limit. More than 1000 rows or a serialised result over 512 KiB returns an
-RPC error rather than flooding the broker. Database failures return a generic error to the plugin; details go to the broker log,
-without the SQL text or parameters.
+Postgres wraps `SELECT`s and DML with `RETURNING` in one query that measures `pg_column_size`
+and returns either a small JSON envelope of the rows or a `broker_too_large` marker. The
+server-side budget is 1000 rows / 256 KiB binary; the broker also refuses a serialised result
+over 512 KiB. A single huge value (`repeat('x', 100 MB)`) therefore never reaches plugin-host.
+Rows are JSON-encoded at this boundary, so big integers arrive as JSON numbers; a typed cursor
+for exact bigint fidelity is a `plugin-platform` follow-up. Database failures return a generic
+error to the plugin; details go to the broker log, without the SQL text or parameters.
 
 ### Egress (task 2.2)
 

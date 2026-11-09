@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyResultLimit, assertAllowedSql, type SqlPolicy } from "./sql.ts";
+import { assertAllowedSql, buildBoundedQuery, type SqlPolicy } from "./sql.ts";
 
 const policy: SqlPolicy = {
   schema: "plugin_sandbox_demo",
@@ -131,33 +131,40 @@ describe("runtime SQL allowlist", () => {
   });
 });
 
-describe("result-row limiting", () => {
-  test("wraps a SELECT with an outer LIMIT", () => {
-    expect(
-      applyResultLimit(
-        "SELECT * FROM notes ORDER BY id DESC;",
-        { command: "select", hasReturning: false },
-        1000,
-      ),
-    ).toBe('SELECT * FROM (SELECT * FROM notes ORDER BY id DESC) AS "broker_result" LIMIT 1001');
+describe("result budget wrapper", () => {
+  test("wraps a SELECT with a row and byte budget enforced by Postgres", () => {
+    const wrapped = buildBoundedQuery(
+      "SELECT * FROM notes ORDER BY id DESC;",
+      { command: "select", hasReturning: false },
+      1000,
+      262_144,
+    );
+
+    expect(wrapped).toContain("WITH result_rows AS (SELECT * FROM notes ORDER BY id DESC)");
+    expect(wrapped).toContain("LIMIT 1001");
+    expect(wrapped).toContain("pg_column_size(raw)");
+    expect(wrapped).toContain("broker_too_large");
+    expect(wrapped).toContain("broker_rows");
+    expect(wrapped).toContain("jsonb_agg(to_jsonb(broker_row)");
+    expect(wrapped).toContain("broker_bytes > 262144");
   });
 
   test("wraps DML only when it returns rows", () => {
     expect(
-      applyResultLimit(
+      buildBoundedQuery(
         "INSERT INTO notes (body) VALUES ('x') RETURNING id",
         { command: "insert", hasReturning: true },
         10,
+        1024,
       ),
-    ).toBe(
-      'WITH "broker_result" AS (INSERT INTO notes (body) VALUES (\'x\') RETURNING id) SELECT * FROM "broker_result" LIMIT 11',
-    );
+    ).toContain("WITH result_rows AS (INSERT INTO notes (body) VALUES ('x') RETURNING id)");
 
     expect(
-      applyResultLimit(
+      buildBoundedQuery(
         "UPDATE notes SET body = 'x'",
         { command: "update", hasReturning: false },
         10,
+        1024,
       ),
     ).toBe("UPDATE notes SET body = 'x'");
   });

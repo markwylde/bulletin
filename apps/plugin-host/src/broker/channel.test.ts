@@ -14,7 +14,7 @@ async function createChannel(
   handler?: BrokerHandler,
   options: Pick<
     BrokerChannelOptions,
-    "maxConnections" | "maxPendingRequests" | "maxQueuedBytes"
+    "maxConnections" | "maxPendingRequests" | "maxQueuedBytes" | "maxOutboundBytes"
   > = {},
 ): Promise<BrokerChannel> {
   const directory = await mkdtemp(join(tmpdir(), "bulletin-broker-"));
@@ -36,6 +36,8 @@ interface Client {
   write(value: unknown): void;
   writeRaw(frame: Uint8Array): void;
   next(): Promise<unknown>;
+  pause(): void;
+  resume(): void;
 }
 
 async function connect(socketPath: string): Promise<Client> {
@@ -70,6 +72,12 @@ async function connect(socketPath: string): Promise<Client> {
     },
     writeRaw(frame) {
       socket.write(frame);
+    },
+    pause() {
+      socket.pause();
+    },
+    resume() {
+      socket.resume();
     },
     async next() {
       const deadline = Date.now() + 2_000;
@@ -415,6 +423,59 @@ describe("broker channel", () => {
     expect(calls).toBe(0);
     client.socket.end();
   });
+
+  test("resumes a partially written large response before the next frame", async () => {
+    const body = "x".repeat(700_000);
+    const channel = await createChannel({
+      async handle() {
+        return { body };
+      },
+    });
+    const hello = channel.waitForHello(2_000);
+    const client = await connect(channel.socketPath);
+
+    client.write(helloNotification());
+    await hello;
+
+    client.pause();
+    client.write({ jsonrpc: "2.0", id: 1, method: "log", params: { level: "info" } });
+    await Bun.sleep(100);
+    client.resume();
+
+    const first = (await client.next()) as { id: number; result: { body: string } };
+    expect(first.id).toBe(1);
+    expect(first.result.body).toBe(body);
+
+    client.write({ jsonrpc: "2.0", id: 2, method: "log", params: { level: "info" } });
+    const second = (await client.next()) as { id: number; result: { body: string } };
+    expect(second.id).toBe(2);
+    expect(second.result.body).toBe(body);
+    client.socket.end();
+  }, 10_000);
+
+  test("closes a connection when a slow reader exceeds the output queue", async () => {
+    const channel = await createChannel(
+      {
+        async handle() {
+          return { body: "x".repeat(700_000) };
+        },
+      },
+      { maxOutboundBytes: 128 * 1024 },
+    );
+    const hello = channel.waitForHello(2_000);
+    const client = await connect(channel.socketPath);
+
+    client.write(helloNotification());
+    await hello;
+    client.write({ jsonrpc: "2.0", id: 3, method: "log", params: { level: "info" } });
+
+    await Promise.race([
+      client.closed,
+      Bun.sleep(1_000).then(() => {
+        throw new Error("slow reader was not disconnected");
+      }),
+    ]);
+  }, 10_000);
 
   test("rejects connections above the limit", async () => {
     let calls = 0;

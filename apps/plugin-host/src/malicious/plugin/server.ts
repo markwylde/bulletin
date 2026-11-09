@@ -83,6 +83,31 @@ async function runCase(): Promise<Result> {
       };
     }
 
+    case "large-result": {
+      let denied = "";
+
+      try {
+        await client.call("db.query", {
+          sql: "SELECT repeat('x', 4194304) AS body",
+        });
+      } catch (error) {
+        denied = errorMessage(error);
+      }
+
+      let recovered = false;
+
+      try {
+        const result = await client.call<{ rows: unknown[] }>("db.query", {
+          sql: "SELECT 1 AS ok",
+        });
+        recovered = result.rows.length === 1;
+      } catch {
+        recovered = false;
+      }
+
+      return { ok: denied !== "" && recovered, detail: denied, recovered };
+    }
+
     case "listen": {
       const result = await denial("LISTEN malicious");
       return {

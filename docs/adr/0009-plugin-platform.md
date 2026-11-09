@@ -263,6 +263,8 @@ socket is a shared 0666 socket in the spike; per-plugin sockets and broker token
 - Installer credentials (`plugin_migrator`) instead of the local administrator, per-install
   role credentials, per-plugin sockets/tokens, the supervisor pool/restart/backoff, and
   cluster-wide vs per-database role settings.
+- A typed result cursor to replace the JSON envelope used by the server-side result budget,
+  so bigint IDs keep their exact representation.
 - Iframe bridge escape is not covered here because client apps are a non-goal of this spike;
   it belongs to `plugin-platform` tasks 2.4/3.10.
 - At the pids limit, Bun 1.4.0 `Bun.spawn` can block instead of throwing. The cgroup contains

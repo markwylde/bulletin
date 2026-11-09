@@ -180,7 +180,17 @@ integrationDescribe("plugin database roles", () => {
 
         const count = await assertAllowedSql("SELECT note_count()", policy);
         expect(await plugin.query("SELECT note_count()", [], count)).toMatchObject({
-          rows: [{ note_count: "1" }],
+          rows: [{ note_count: 1 }],
+        });
+
+        const huge = await assertAllowedSql("SELECT repeat('x', 4194304) AS body", policy);
+        await expect(plugin.query("SELECT repeat('x', 4194304) AS body", [], huge)).rejects.toThrow(
+          "too large",
+        );
+
+        const recovered = await assertAllowedSql("SELECT 1 AS ok", policy);
+        expect(await plugin.query("SELECT 1 AS ok", [], recovered)).toMatchObject({
+          rows: [{ ok: 1 }],
         });
 
         // The role has CONNECTION LIMIT 2, so run the denial checks on the admin pool with

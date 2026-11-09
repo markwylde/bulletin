@@ -1,10 +1,12 @@
 import type { Logger } from "@bulletin/config";
 import { SQL } from "bun";
 import type { PluginMigration } from "./manifest.ts";
-import { type AllowedStatement, applyResultLimit } from "./sql.ts";
+import { type AllowedStatement, buildBoundedQuery } from "./sql.ts";
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}$/;
 const DEFAULT_MAX_ROWS = 1_000;
+/** Binary row-size budget enforced by Postgres before rows reach plugin-host. */
+const DEFAULT_MAX_RESULT_BYTES = 256 * 1024;
 
 export interface PluginIdentifiers {
   readonly pluginId: string;
@@ -29,8 +31,8 @@ export interface QueryResult {
 }
 
 export class QueryLimitError extends Error {
-  constructor(maxRows: number) {
-    super(`Query returned more than ${maxRows} rows`);
+  constructor() {
+    super("Query result is too large");
     this.name = "QueryLimitError";
   }
 }
@@ -71,6 +73,7 @@ export class PluginDatabase {
   readonly identifiers: PluginIdentifiers;
   readonly #sql: SQL;
   readonly #maxRows: number;
+  readonly #maxBytes: number;
   readonly #functions: ReadonlySet<string>;
 
   private constructor(
@@ -78,11 +81,13 @@ export class PluginDatabase {
     sql: SQL,
     functions: ReadonlySet<string>,
     maxRows: number,
+    maxBytes: number,
   ) {
     this.identifiers = identifiers;
     this.#sql = sql;
     this.#functions = functions;
     this.#maxRows = maxRows;
+    this.#maxBytes = maxBytes;
   }
 
   get schema(): string {
@@ -210,6 +215,7 @@ export class PluginDatabase {
         runtime,
         functions,
         options.maxRows ?? DEFAULT_MAX_ROWS,
+        DEFAULT_MAX_RESULT_BYTES,
       );
     } catch (error) {
       await runtime?.close().catch(() => undefined);
@@ -219,26 +225,37 @@ export class PluginDatabase {
     }
   }
 
-  /** Runs a validated statement with the result-row cap applied. */
+  /** Runs a validated statement with a Postgres-enforced result budget. */
   async query(
     sql: string,
     params: readonly unknown[],
     statement: AllowedStatement,
   ): Promise<QueryResult> {
-    const text = applyResultLimit(sql, statement, this.#maxRows);
-    const result = await this.#sql.unsafe(text, params as unknown[]);
-    const rows = Array.from(result as unknown[]);
+    const trimmed = sql.trim().replace(/;\s*$/, "");
 
-    if (rows.length > this.#maxRows) {
-      throw new QueryLimitError(this.#maxRows);
+    if (statement.command !== "select" && !statement.hasReturning) {
+      const result = await this.#sql.unsafe(trimmed, params as unknown[]);
+      const meta = result as { count?: number };
+      return {
+        rows: [],
+        rowCount: typeof meta.count === "number" ? meta.count : 0,
+        command: statement.command,
+      };
     }
 
-    const meta = result as { count?: number; command?: string };
-    return {
-      rows,
-      rowCount: typeof meta.count === "number" ? meta.count : rows.length,
-      command: statement.command,
-    };
+    const text = buildBoundedQuery(trimmed, statement, this.#maxRows, this.#maxBytes);
+    const result = (await this.#sql.unsafe(text, params as unknown[])) as Array<{
+      broker_too_large?: boolean;
+      broker_rows?: unknown;
+    }>;
+    const row = result[0];
+
+    if (row?.broker_too_large === true) {
+      throw new QueryLimitError();
+    }
+
+    const rows = Array.isArray(row?.broker_rows) ? row.broker_rows : [];
+    return { rows, rowCount: rows.length, command: statement.command };
   }
 
   async close(): Promise<void> {

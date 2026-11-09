@@ -384,6 +384,14 @@ sandboxDescribe("malicious plugin cases", () => {
     });
   }, 30_000);
 
+  test("denies an oversized SQL result and keeps serving", async () => {
+    await withCase("large-result", {}, async ({ result }) => {
+      expect(result?.ok).toBe(true);
+      expect(result?.recovered).toBe(true);
+      expect(String(result?.detail)).toContain("too large");
+    });
+  }, 30_000);
+
   test("denies LISTEN before it reaches Postgres", async () => {
     await withCase("listen", {}, async ({ result }) => {
       expect(result?.ok).toBe(true);
