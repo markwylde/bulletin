@@ -7,6 +7,14 @@
   "auth.resume": "Reanudar",
   "auth.signedIn": "Sesión iniciada",
   "auth.signingIn": "Te estamos iniciando sesión…",
+  "displayName.changeLimit": "Podrás cambiar tu nombre de nuevo el {date}.",
+  "displayName.help": "De 3 a 32 caracteres. Los nombres son únicos y visibles para todos.",
+  "displayName.invalid": "El nombre debe tener entre 3 y 32 caracteres.",
+  "displayName.label": "Nombre visible",
+  "displayName.required": "Elige un nombre visible antes de continuar.",
+  "displayName.save": "Guardar nombre",
+  "displayName.taken": "Ese nombre ya está en uso.",
+  "displayName.title": "Elige un nombre visible",
   "user.placeholder.body": "La comunidad de Bulletin se está preparando.",
   "user.placeholder.title": "Bulletin"
 }

@@ -7,6 +7,14 @@
   "auth.resume": "Resume",
   "auth.signedIn": "Signed in",
   "auth.signingIn": "Signing you in…",
+  "displayName.changeLimit": "You can change your name again on {date}.",
+  "displayName.help": "3–32 characters. Names are unique and visible to everyone.",
+  "displayName.invalid": "Display names must be 3–32 characters.",
+  "displayName.label": "Display name",
+  "displayName.required": "Choose a display name before continuing.",
+  "displayName.save": "Save display name",
+  "displayName.taken": "That name is already taken.",
+  "displayName.title": "Choose a display name",
   "user.placeholder.body": "The Bulletin community is being prepared.",
   "user.placeholder.title": "Bulletin"
 }

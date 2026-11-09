@@ -34,5 +34,5 @@
 
 ## 6. Strings and seed
 
-- [ ] 6.1 Add en/es/fr strings for login, logout, display name and errors; verify completeness
-- [ ] 6.2 Seed members for every darkauth-mock profile (matching subjects), including name history for one member, and verify each profile logs in after `docker compose up --watch`
+- [x] 6.1 Add en/es/fr strings for login, logout, display name and errors; verify completeness
+- [x] 6.2 Seed members for every darkauth-mock profile (matching subjects), including name history for one member, and verify each profile logs in after `docker compose up --watch`

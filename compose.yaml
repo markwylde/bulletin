@@ -667,6 +667,7 @@ services:
       PORT: "3003"
       DATABASE_URL: postgres://workers@postgres:5432/bulletin
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
+      BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
       PG_BOSS_DATABASE_URL: postgres://workers@postgres:5432/bulletin
     healthcheck: *service-healthcheck
     restart: unless-stopped

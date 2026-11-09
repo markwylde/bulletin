@@ -8,6 +8,14 @@
   "auth.signedIn": "Connecté",
   "auth.signingIn": "Connexion en cours…",
   "common.siteName": "Bulletin",
+  "displayName.changeLimit": "Vous pourrez changer votre nom à nouveau le {date}.",
+  "displayName.help": "De 3 à 32 caractères. Les noms sont uniques et visibles par tous.",
+  "displayName.invalid": "Le nom doit contenir entre 3 et 32 caractères.",
+  "displayName.label": "Nom d'affichage",
+  "displayName.required": "Choisissez un nom d'affichage avant de continuer.",
+  "displayName.save": "Enregistrer le nom",
+  "displayName.taken": "Ce nom est déjà pris.",
+  "displayName.title": "Choisissez un nom d'affichage",
   "user.placeholder.body": "La communauté Bulletin est en préparation.",
   "user.placeholder.title": "Bulletin"
 }
