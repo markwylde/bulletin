@@ -5,7 +5,8 @@
   "description": "Framework-free business rules: permissions, posting, moderation and URL conventions.",
   "exports": {
     ".": "./src/index.ts",
-    "./net": "./src/net/index.ts"
+    "./net": "./src/net/index.ts",
+    "./urls": "./src/urls/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

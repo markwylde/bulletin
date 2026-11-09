@@ -4,9 +4,17 @@
   "type": "module",
   "description": "SQL migrations, the migration runner and typed query helpers.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./migrate": "./src/migrations/runner.ts",
+    "./seed": "./src/seed/index.ts",
+    "./events": "./src/events/index.ts",
+    "./jobs": "./src/jobs/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bulletin/config": "workspace:*",
+    "pg-boss": "12.38.1"
   }
 }

@@ -4,7 +4,6 @@ x-app-environment: &app-environment
   NODE_ENV: development
   LOG_LEVEL: info
   # Local-only defaults (ADR 0002). packages/config rejects them in production.
-  DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
   SESSION_SECRET: bulletin-development-only-session-secret
   SEED: "42"
   SEED_SIZE: default
@@ -42,6 +41,8 @@ services:
       POSTGRES_DB: bulletin
       POSTGRES_USER: bulletin
       POSTGRES_PASSWORD: bulletin
+      # Local development only: role logins have no passwords. Never use this in production.
+      POSTGRES_HOST_AUTH_METHOD: trust
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -369,6 +370,7 @@ services:
     environment:
       <<: *app-environment
       PORT: "4321"
+      DATABASE_URL: postgres://user_app@postgres:5432/bulletin
     healthcheck: *bun-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -408,6 +410,8 @@ services:
     environment:
       <<: *app-environment
       PORT: "3001"
+      DATABASE_URL: postgres://user_api@postgres:5432/bulletin
+      MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
     healthcheck: *bun-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -422,6 +426,9 @@ services:
           ignore:
             - "**/node_modules/**"
             - "**/dist/**"
+        - action: sync+restart
+          path: ./packages/db/migrations
+          target: /app/packages/db/migrations
         - action: sync+restart
           path: ./apps/user-api/tsconfig.json
           target: /app/apps/user-api/tsconfig.json
@@ -486,6 +493,8 @@ services:
     environment:
       <<: *app-environment
       PORT: "3002"
+      DATABASE_URL: postgres://staff_api@postgres:5432/bulletin
+      MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
     healthcheck: *bun-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -500,6 +509,9 @@ services:
           ignore:
             - "**/node_modules/**"
             - "**/dist/**"
+        - action: sync+restart
+          path: ./packages/db/migrations
+          target: /app/packages/db/migrations
         - action: sync+restart
           path: ./apps/staff-api/tsconfig.json
           target: /app/apps/staff-api/tsconfig.json
@@ -522,6 +534,9 @@ services:
     environment:
       <<: *app-environment
       PORT: "3003"
+      DATABASE_URL: postgres://workers@postgres:5432/bulletin
+      MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
+      PG_BOSS_DATABASE_URL: postgres://workers@postgres:5432/bulletin
     healthcheck: *bun-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -536,6 +551,9 @@ services:
           ignore:
             - "**/node_modules/**"
             - "**/dist/**"
+        - action: sync+restart
+          path: ./packages/db/migrations
+          target: /app/packages/db/migrations
         - action: sync+restart
           path: ./apps/workers/tsconfig.json
           target: /app/apps/workers/tsconfig.json

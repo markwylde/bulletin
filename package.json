@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
+    "@bulletin/db": "workspace:*",
     "@types/bun": "1.4.4",
     "jose": "6.2.16",
     "typescript": "5.9.3"
