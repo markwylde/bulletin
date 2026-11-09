@@ -54,6 +54,14 @@ http://bulletin.localhost:8080 {
 		redir * /_mocks/cdn/__ui 308
 	}
 
+	handle_path /_mocks/marketplace/* {
+		reverse_proxy marketplace:4007
+	}
+
+	handle /_mocks/marketplace {
+		redir * /_mocks/marketplace/ 308
+	}
+
 	handle /api/* {
 		reverse_proxy user-api:3001
 	}

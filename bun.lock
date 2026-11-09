@@ -57,6 +57,13 @@
         "@bulletin/mock-ui": "workspace:*",
       },
     },
+    "mocks/marketplace": {
+      "name": "@bulletin/mock-marketplace",
+      "dependencies": {
+        "@bulletin/mock-ui": "workspace:*",
+        "jose": "6.2.16",
+      },
+    },
     "mocks/oembed": {
       "name": "@bulletin/mock-oembed",
       "dependencies": {
@@ -237,6 +244,8 @@
     "@bulletin/mock-cdn": ["@bulletin/mock-cdn@workspace:mocks/cdn"],
 
     "@bulletin/mock-mail": ["@bulletin/mock-mail@workspace:mocks/mail"],
+
+    "@bulletin/mock-marketplace": ["@bulletin/mock-marketplace@workspace:mocks/marketplace"],
 
     "@bulletin/mock-oembed": ["@bulletin/mock-oembed@workspace:mocks/oembed"],
 

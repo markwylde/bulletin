@@ -292,6 +292,30 @@ services:
           path: ./mocks/Dockerfile
     restart: unless-stopped
 
+  marketplace:
+    build:
+      <<: *mock-build
+      args:
+        MOCK_NAME: marketplace
+    environment:
+      PORT: "4007"
+    healthcheck: *bun-healthcheck
+    develop:
+      watch:
+        - action: sync
+          path: ./mocks/marketplace/src
+          target: /app/mocks/marketplace/src
+        - action: sync
+          path: ./mocks/shared/src
+          target: /app/mocks/shared/src
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./mocks/marketplace/package.json
+        - action: rebuild
+          path: ./mocks/Dockerfile
+    restart: unless-stopped
+
   proxy:
     image: caddy:2.11.9-alpine
     ports:
@@ -322,6 +346,8 @@ services:
       oembed:
         condition: service_healthy
       cdn:
+        condition: service_healthy
+      marketplace:
         condition: service_healthy
     healthcheck:
       test:
