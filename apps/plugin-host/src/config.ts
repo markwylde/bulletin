@@ -7,8 +7,6 @@ export interface PluginHostConfig {
   readonly nsjailPath: string;
   /** Minimal root filesystem the jail chroots into. */
   readonly rootfsPath: string;
-  /** Id of the demo plugin spawned at startup. */
-  readonly pluginId: string;
   /** Host path of the read-only demo bundle spawned at startup. */
   readonly bundlePath: string;
   /** Writable cgroup v2 hierarchy used for per-sandbox limits. */
@@ -132,7 +130,6 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
   return {
     nsjailPath: read(env, "PLUGIN_HOST_NSJAIL") ?? "/usr/bin/nsjail",
     rootfsPath: read(env, "PLUGIN_HOST_ROOTFS") ?? "/opt/plugin-rootfs",
-    pluginId: read(env, "PLUGIN_HOST_PLUGIN_ID") ?? "sandbox-demo",
     bundlePath:
       read(env, "PLUGIN_HOST_BUNDLE") ?? fileURLToPath(new URL("./spike/plugin", import.meta.url)),
     cgroupV2Mount: read(env, "PLUGIN_HOST_CGROUP_ROOT") ?? "/sys/fs/cgroup",

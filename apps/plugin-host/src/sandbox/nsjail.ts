@@ -21,7 +21,7 @@ export interface NsjailSandbox {
   readonly command: readonly string[];
 }
 
-const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}$/;
 
 function positiveInteger(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) {

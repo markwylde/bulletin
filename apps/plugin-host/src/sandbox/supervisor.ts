@@ -1,5 +1,5 @@
 import type { Logger } from "@bulletin/config";
-import type { BrokerChannel, PluginHello } from "./channel.ts";
+import type { BrokerChannel, PluginHello } from "../broker/channel.ts";
 import { buildNsjailArgs, JAIL_BUNDLE_PATH, NSJAIL_ENVIRONMENT, sandboxUid } from "./nsjail.ts";
 import { findChildPid, readProcessTreeRssBytes, readSandboxCgroup } from "./procfs.ts";
 import type { SandboxLimits, SandboxState, SandboxStatus } from "./types.ts";

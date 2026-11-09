@@ -3,5 +3,7 @@
   "name": "Sandbox demo plugin",
   "version": "0.0.0",
   "sdkVersion": "0.0.0",
-  "entry": "server.ts"
+  "entry": "server.ts",
+  "egressHosts": ["example.com"],
+  "migrations": ["migrations/0001_notes.sql"]
 }

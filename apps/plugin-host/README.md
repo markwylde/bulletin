@@ -25,6 +25,62 @@ primitives on Docker and rootless Podman and to measure their cost.
 `GET /sandbox` returns the live status and the sandbox's cgroup values. Readiness includes
 the sandbox, so `/health/ready` fails when nsjail cannot start.
 
+## Broker protocol and database (task 2.1)
+
+The broker listens on the bind-mounted Unix socket and speaks **length-prefixed JSON-RPC 2.0**:
+a 4-byte big-endian length followed by UTF-8 JSON, capped at 1 MiB per frame. The first message
+is a `hello` notification; requests on one connection are handled in order. The spike
+implements `db.query` and `log` (`http.fetch` is task 2.2).
+
+```json
+{"jsonrpc":"2.0","method":"hello","params":{"pluginId":"sandbox-demo","sdkVersion":"0.0.0"}}
+{"jsonrpc":"2.0","id":1,"method":"db.query","params":{"sql":"SELECT body FROM notes","params":[]}}
+```
+
+### Database roles
+
+At startup the broker provisions the ADR 0009 pair for the manifest id
+(`sandbox-demo` → schema/role `plugin_sandbox_demo`, owner `plugin_sandbox_demo_owner`):
+
+- `plugin_<id>_owner` is `NOLOGIN` and owns the schema, tables and functions. The plugin's
+  `migrations` from `plugin.json` run in one transaction as this role, with `search_path` set
+  to the plugin schema.
+- `plugin_<id>` is `LOGIN`, `CONNECTION LIMIT 2`, `NOINHERIT`, with
+  `statement_timeout=2s`, `idle_in_transaction_session_timeout=5s`, `work_mem=8MB` and
+  `temp_file_limit=64MB`. It has `USAGE` on its schema and `SELECT/INSERT/UPDATE/DELETE` on
+  its tables, `USAGE/SELECT` on its sequences and `EXECUTE` on its functions. It has no
+  `CREATE`, no ownership and no privileges on `core`, `pii` or `public`.
+- Default privileges for objects later created by the owner are granted to the runtime role.
+
+The broker opens the runtime pool with `max: 2`, matching the role limit.
+
+### Statement allowlist
+
+`libpg-query` parses every `db.query` statement before it reaches Postgres:
+
+- exactly one statement, and only `SELECT`, `INSERT`, `UPDATE` or `DELETE`;
+- no DDL, `LISTEN`/`NOTIFY`, `SET`/`RESET`/`SET ROLE`, `COPY` (including `PROGRAM`), `DO`,
+  `CALL`, `EXPLAIN`, `VACUUM`, `LOCK`, `MERGE`, `SELECT INTO` or row locking;
+- table references are unqualified (resolved through the plugin's `search_path`) or use the
+  plugin's own schema; `core`, `pii`, `public`, other plugins and cross-database names are
+  rejected;
+- function calls must be in a curated pure-builtin allowlist or defined in the plugin schema;
+  `pg_sleep`, `set_config`, `pg_notify`, advisory locks, file/admin functions and `dblink`
+  are rejected.
+
+`SELECT`s are wrapped in `SELECT * FROM (…) LIMIT 1001`; DML with `RETURNING` is wrapped in a
+CTE with the same limit. More than 1000 rows returns an RPC error rather than flooding the
+broker. Database failures return a generic error to the plugin; details go to the broker log,
+without the SQL text or parameters.
+
+The demo plugin inserts into `plugin_sandbox_demo.notes`, reads it back and sends a `log`
+request. `GET /broker` reports the schema and request/denial counters.
+
+Caveats for `plugin-platform`: provisioning uses the local Postgres administrator (the real
+installer uses `plugin_migrator`), role names/settings are cluster-wide, and statement
+deadlines rely on the role's `statement_timeout` rather than cancellation from a control
+connection.
+
 ## Running it locally
 
 `docker compose up --watch` is still the only setup step. `apps/plugin-host/Dockerfile`
@@ -46,9 +102,13 @@ filter still applies. `label=disable` is for SELinux hosts (Podman on Fedora).
 Check it:
 
 ```bash
-docker compose logs plugin-host                 # "sandbox.ready" with startupMs and memory
+docker compose logs plugin-host                 # sandbox.ready, plugin.database_ready, plugin.log
 docker compose exec -T plugin-host bun -e \
   'console.log(await (await fetch("http://127.0.0.1:3004/sandbox")).text())'
+docker compose exec -T plugin-host bun -e \
+  'console.log(await (await fetch("http://127.0.0.1:3004/broker")).text())'
+docker compose exec -T postgres psql -U bulletin -d bulletin \
+  -c "select id, body from plugin_sandbox_demo.notes order by id desc limit 5"
 ```
 
 ## Measurement (task 1.2)

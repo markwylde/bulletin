@@ -7,7 +7,7 @@
 
 ## 2. Broker
 
-- [ ] 2.1 Prototype the broker JSON-RPC (`db.query`, `http.fetch`, `log`) with the `plugin_x` and `plugin_x_owner` roles, role limits and the statement allowlist
+- [x] 2.1 Prototype the broker JSON-RPC (`db.query`, `http.fetch`, `log`) with the `plugin_x` and `plugin_x_owner` roles, role limits and the statement allowlist
 - [ ] 2.2 Prototype the egress proxy with a host allowlist and SSRF rules (private ranges, metadata IPs, redirects to disallowed hosts)
 
 ## 3. Malicious cases

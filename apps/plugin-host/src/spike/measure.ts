@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import { createLogger } from "@bulletin/config";
+import { BrokerChannel } from "../broker/channel.ts";
+import { loadPluginManifest } from "../broker/manifest.ts";
 import { loadPluginHostConfig } from "../config.ts";
 import { resolveSandboxCgroupRoot } from "../sandbox/cgroup.ts";
-import { BrokerChannel } from "../sandbox/channel.ts";
 import { readProcessTreeRssBytes, readProcFile, readSandboxCgroup } from "../sandbox/procfs.ts";
 import { buildSeccompPolicy, sandboxArch } from "../sandbox/seccomp.ts";
 import { SandboxSupervisor } from "../sandbox/supervisor.ts";
@@ -94,6 +95,7 @@ const logger = createLogger({ service: "plugin-host-measure", level: "error" });
 const iterations = parseIterations();
 const engine = await detectEngine();
 const cgroupRoot = await resolveSandboxCgroupRoot(config.cgroupV2Mount);
+const manifest = await loadPluginManifest(config.bundlePath);
 const channel = new BrokerChannel({
   socketPath: join(config.stateDir, "measure-broker.sock"),
   logger,
@@ -101,7 +103,7 @@ const channel = new BrokerChannel({
 
 function createSupervisor(): SandboxSupervisor {
   return new SandboxSupervisor({
-    pluginId: config.pluginId,
+    pluginId: manifest.id,
     bundlePath: config.bundlePath,
     socketPath: channel.socketPath,
     nsjailPath: config.nsjailPath,

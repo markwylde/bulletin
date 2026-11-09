@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLogger } from "@bulletin/config";
-import { BrokerChannel } from "./channel.ts";
+import { BrokerChannel } from "../broker/channel.ts";
+import { encodeFrame } from "../broker/protocol.ts";
 import { NSJAIL_ENVIRONMENT } from "./nsjail.ts";
 import { type SandboxProcess, SandboxSupervisor, type SpawnSandbox } from "./supervisor.ts";
 import { DEFAULT_SANDBOX_LIMITS } from "./types.ts";
@@ -51,7 +52,7 @@ function createFakeSandbox(hello: string | null, delayMs = 5): FakeSandbox {
           },
         });
         sockets.push(socket);
-        socket.write(hello);
+        socket.write(encodeFrame(JSON.parse(hello)));
       })();
     }
 
@@ -118,7 +119,7 @@ afterEach(async () => {
 describe("sandbox supervisor", () => {
   test("spawns nsjail and becomes ready on the broker handshake", async () => {
     const fake = createFakeSandbox(
-      `${JSON.stringify({ type: "hello", pluginId: "sandbox-demo", sdkVersion: "0.0.0" })}\n`,
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
     );
     const { channel, supervisor } = await createSupervisor(fake.spawn);
 
@@ -139,10 +140,12 @@ describe("sandbox supervisor", () => {
   });
 
   test("fails when the plugin sends an invalid handshake", async () => {
-    const fake = createFakeSandbox("nope\n");
+    const fake = createFakeSandbox(
+      JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "" } }),
+    );
     const { channel, supervisor } = await createSupervisor(fake.spawn);
 
-    await expect(supervisor.start()).rejects.toThrow("invalid broker message");
+    await expect(supervisor.start()).rejects.toThrow("invalid broker handshake");
     expect(supervisor.status().state).toBe("failed");
 
     await channel.close();
@@ -166,7 +169,7 @@ describe("sandbox supervisor", () => {
 
   test("reports an unexpected exit after becoming ready", async () => {
     const fake = createFakeSandbox(
-      `${JSON.stringify({ type: "hello", pluginId: "sandbox-demo", sdkVersion: "0.0.0" })}\n`,
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
     );
     const { channel, supervisor } = await createSupervisor(fake.spawn);
 
@@ -182,7 +185,7 @@ describe("sandbox supervisor", () => {
 
   test("does not spawn twice when already ready", async () => {
     const fake = createFakeSandbox(
-      `${JSON.stringify({ type: "hello", pluginId: "sandbox-demo", sdkVersion: "0.0.0" })}\n`,
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
     );
     const { channel, supervisor } = await createSupervisor(fake.spawn);
 
