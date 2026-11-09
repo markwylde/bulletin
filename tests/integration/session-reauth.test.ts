@@ -103,6 +103,7 @@ async function signToken(options: {
   readonly email?: string;
   readonly name?: string;
   readonly clientId?: string;
+  readonly authTime?: number;
 }): Promise<string> {
   const payload: Record<string, unknown> = { nonce: options.nonce };
 
@@ -112,6 +113,10 @@ async function signToken(options: {
 
   if (options.name !== undefined) {
     payload.name = options.name;
+  }
+
+  if (options.authTime !== undefined) {
+    payload.auth_time = options.authTime;
   }
 
   return new SignJWT(payload)
@@ -544,6 +549,123 @@ integrationDescribe("silent re-auth and background grace", () => {
           cookie: `bl_staff=${targetCookie}`,
         });
         expect(((await after.json()) as SessionView).authenticated).toBe(false);
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("requires and completes a staff step-up with a fresh auth_time", async () => {
+    await withDb("auth_step_up", async (database) => {
+      const { service, sql } = await staffServiceFor(database);
+
+      try {
+        const adminCookie = await login(service, "admin", "staff");
+        await database.sql`
+          UPDATE core.sessions SET last_auth_at = now() - interval '20 minutes'
+          WHERE member_id = (SELECT member_id FROM pii.identities WHERE sub = 'admin')
+        `;
+
+        const refused = await call(service, "/api/test/sensitive", {
+          cookie: `bl_staff=${adminCookie}`,
+        });
+        expect(refused.status).toBe(401);
+        expect(await refused.json()).toEqual({ code: "step_up_required" });
+
+        const challengeResponse = await call(service, "/api/auth/challenge", {
+          body: { maxAge: 0, returnTo: "/" },
+          cookie: `bl_staff=${adminCookie}`,
+          origin: STAFF_ORIGIN,
+        });
+        expect(challengeResponse.status).toBe(200);
+        const challenge = (await challengeResponse.json()) as ChallengeView;
+        expect(challenge.maxAge).toBe(0);
+        const challengeCookie = cookieValue(challengeResponse, "bl_login");
+
+        const stepUp = await call(service, "/api/auth/session", {
+          body: {
+            idToken: await signToken({
+              sub: "admin",
+              nonce: challenge.nonce,
+              clientId: STAFF_CLIENT,
+              authTime: Math.floor(Date.now() / 1_000),
+            }),
+          },
+          cookie: `bl_staff=${adminCookie}; bl_login=${challengeCookie ?? ""}`,
+          origin: STAFF_ORIGIN,
+        });
+        expect(stepUp.status).toBe(200);
+        expect(cookieValue(stepUp, "bl_staff")).toBeUndefined();
+
+        const [session] = (await database.sql`
+          SELECT now() - last_auth_at < interval '1 minute' AS fresh
+          FROM core.sessions s
+          JOIN pii.identities i ON i.member_id = s.member_id
+          WHERE i.sub = 'admin'
+        `) as Array<{ fresh: boolean }>;
+        expect(session?.fresh).toBe(true);
+
+        const allowed = await call(service, "/api/test/sensitive", {
+          cookie: `bl_staff=${adminCookie}`,
+        });
+        expect(allowed.status).toBe(200);
+        expect(await allowed.json()).toEqual({ ok: true });
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("refuses a step-up with an old IdP auth_time", async () => {
+    await withDb("auth_step_up_old", async (database) => {
+      const { service, sql } = await staffServiceFor(database);
+
+      try {
+        const adminCookie = await login(service, "admin", "staff");
+        await database.sql`
+          UPDATE core.sessions SET last_auth_at = now() - interval '20 minutes'
+          WHERE member_id = (SELECT member_id FROM pii.identities WHERE sub = 'admin')
+        `;
+
+        const challengeResponse = await call(service, "/api/auth/challenge", {
+          body: { maxAge: 0, returnTo: "/" },
+          cookie: `bl_staff=${adminCookie}`,
+          origin: STAFF_ORIGIN,
+        });
+        expect(challengeResponse.status).toBe(200);
+        const challenge = (await challengeResponse.json()) as ChallengeView;
+        const challengeCookie = cookieValue(challengeResponse, "bl_login");
+
+        const stepUp = await call(service, "/api/auth/session", {
+          body: {
+            idToken: await signToken({
+              sub: "admin",
+              nonce: challenge.nonce,
+              clientId: STAFF_CLIENT,
+              authTime: Math.floor(Date.now() / 1_000) - 2 * 60 * 60,
+            }),
+          },
+          cookie: `bl_staff=${adminCookie}; bl_login=${challengeCookie ?? ""}`,
+          origin: STAFF_ORIGIN,
+        });
+        expect(stepUp.status).toBe(401);
+        expect(await stepUp.json()).toEqual({ code: "step_up_required" });
+
+        const [session] = (await database.sql`
+          SELECT now() - last_auth_at > interval '15 minutes' AS stale
+          FROM core.sessions s
+          JOIN pii.identities i ON i.member_id = s.member_id
+          WHERE i.sub = 'admin'
+        `) as Array<{ stale: boolean }>;
+        expect(session?.stale).toBe(true);
+
+        const refused = await call(service, "/api/test/sensitive", {
+          cookie: `bl_staff=${adminCookie}`,
+        });
+        expect(refused.status).toBe(401);
+        expect(await refused.json()).toEqual({ code: "step_up_required" });
       } finally {
         await service.close();
         await sql.close();

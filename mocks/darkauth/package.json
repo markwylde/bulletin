@@ -1,0 +1,17 @@
+{
+  "name": "@bulletin/mock-darkauth",
+  "private": true,
+  "type": "module",
+  "description": "Local OIDC identity provider mock for Bulletin development and E2E.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "jose": "6.2.16"
+  }
+}

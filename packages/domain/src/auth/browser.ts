@@ -23,6 +23,7 @@ export interface BrowserChallenge {
   readonly clientId: string;
   readonly redirectUri: string;
   readonly returnTo: string | null;
+  readonly maxAge: number | null;
 }
 
 export interface BrowserSessionView {
@@ -80,31 +81,25 @@ function loadConfig(): { issuer: string; clientId: string; redirectUri: string }
   return JSON.parse(stored) as { issuer: string; clientId: string; redirectUri: string };
 }
 
-/**
- * Starts a server-bound login (ADR 0018): the API issues the single-use challenge and
- * nonce, the browser generates the PKCE verifier and redirects to DarkAuth. The
- * `@darkauth/client` keys are used so its callback handler can complete the exchange.
- *
- * `initiateLogin()` is not used because the client generates its own state and sends no
- * nonce; the server-bound challenge must own both. Its callback handler still performs the
- * PKCE exchange and returns the ID token for `/api/auth/session`.
- */
-export async function beginLogin(
-  options: { readonly challengeUrl?: string; readonly returnTo?: string } = {},
-): Promise<void> {
-  const returnTo = options.returnTo ?? `${browser.location.pathname}${browser.location.search}`;
-  const response = await fetch(options.challengeUrl ?? "/api/auth/challenge", {
+async function requestChallenge(
+  body: Record<string, unknown>,
+  challengeUrl: string,
+): Promise<BrowserChallenge> {
+  const response = await fetch(challengeUrl, {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ returnTo }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     throw new Error("Could not start the login challenge");
   }
 
-  const challenge = (await response.json()) as BrowserChallenge;
+  return (await response.json()) as BrowserChallenge;
+}
+
+async function startAuthorization(challenge: BrowserChallenge): Promise<void> {
   const verifier = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
   const codeChallenge = bytesToBase64Url(await sha256(new TextEncoder().encode(verifier)));
 
@@ -122,7 +117,50 @@ export async function beginLogin(
   authorizeUrl.searchParams.set("nonce", challenge.nonce);
   authorizeUrl.searchParams.set("code_challenge", codeChallenge);
   authorizeUrl.searchParams.set("code_challenge_method", "S256");
+
+  if (challenge.maxAge !== null) {
+    authorizeUrl.searchParams.set("max_age", String(challenge.maxAge));
+  }
+
   browser.location.assign(authorizeUrl.toString());
+}
+
+async function startLogin(options: {
+  readonly challengeUrl?: string;
+  readonly returnTo?: string;
+  readonly maxAge?: 0;
+}): Promise<void> {
+  const returnTo = options.returnTo ?? `${browser.location.pathname}${browser.location.search}`;
+  const body: Record<string, unknown> = { returnTo };
+
+  if (options.maxAge !== undefined) {
+    body.maxAge = options.maxAge;
+  }
+
+  const challenge = await requestChallenge(body, options.challengeUrl ?? "/api/auth/challenge");
+  await startAuthorization(challenge);
+}
+
+/**
+ * Starts a server-bound login (ADR 0018): the API issues the single-use challenge and
+ * nonce, the browser generates the PKCE verifier and redirects to DarkAuth. The
+ * `@darkauth/client` keys are used so its callback handler can complete the exchange.
+ *
+ * `initiateLogin()` is not used because the client generates its own state and sends no
+ * nonce; the server-bound challenge must own both. Its callback handler still performs the
+ * PKCE exchange and returns the ID token for `/api/auth/session`.
+ */
+export async function beginLogin(
+  options: { readonly challengeUrl?: string; readonly returnTo?: string } = {},
+): Promise<void> {
+  await startLogin(options);
+}
+
+/** Starts a step-up challenge with `max_age=0` for a sensitive staff action. */
+export async function beginStepUp(
+  options: { readonly challengeUrl?: string; readonly returnTo?: string } = {},
+): Promise<void> {
+  await startLogin({ ...options, maxAge: 0 });
 }
 
 /** Completes the code exchange through `@darkauth/client` and yields the ID token. */

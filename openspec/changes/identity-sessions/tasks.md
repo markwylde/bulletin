@@ -18,7 +18,7 @@
 - [x] 3.2 Implement top-level silent re-auth (user-app redirect to user-api `/api/auth/refresh` and `/api/auth/callback` with a server-held PKCE verifier, `prompt=none`, `return_to` validation) and the 2 h background grace with `reauth_required`, plus the client fetch wrapper that keeps unsent request bodies; tests against the test-only protected endpoint for the successful, disabled-account, within-grace and after-grace scenarios
 - [x] 3.3 Implement rotation on login and on group change (`rotate_pending`, new token on the next user-api response, 60 s overlap), with integration tests including old-token expiry
 - [x] 3.4 Implement logout and the "revoke all sessions" staff endpoint (permission-checked), with tests including a permission-denial case
-- [ ] 3.5 Implement staff step-up (`max_age=0` challenge, `auth_time` within 60 s, `last_auth_at` update, SPA flow) against the test-only sensitive endpoint, with integration tests including the old-IdP-session scenario and an E2E test; add `max_age` and `auth_time` support to darkauth-mock
+- [x] 3.5 Implement staff step-up (`max_age=0` challenge, `auth_time` within 60 s, `last_auth_at` update, SPA flow) against the test-only sensitive endpoint, with integration tests including the old-IdP-session scenario and an E2E test; add `max_age` and `auth_time` support to darkauth-mock
 - [ ] 3.6 Track `last_active_at` and roll it into `previous_visit_at` after 30 minutes of inactivity (used by search's "new since last visit"), with an integration test
 
 ## 4. CSRF and headers

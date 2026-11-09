@@ -84,6 +84,12 @@
         "@bulletin/mock-ui": "workspace:*",
       },
     },
+    "mocks/darkauth": {
+      "name": "@bulletin/mock-darkauth",
+      "dependencies": {
+        "jose": "6.2.16",
+      },
+    },
     "mocks/mail": {
       "name": "@bulletin/mock-mail",
       "dependencies": {
@@ -301,6 +307,8 @@
     "@bulletin/i18n": ["@bulletin/i18n@workspace:packages/i18n"],
 
     "@bulletin/mock-cdn": ["@bulletin/mock-cdn@workspace:mocks/cdn"],
+
+    "@bulletin/mock-darkauth": ["@bulletin/mock-darkauth@workspace:mocks/darkauth"],
 
     "@bulletin/mock-mail": ["@bulletin/mock-mail@workspace:mocks/mail"],
 

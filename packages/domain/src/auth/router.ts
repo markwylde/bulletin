@@ -11,6 +11,7 @@ import {
   resolveMember,
 } from "./store.ts";
 import {
+  AUTH_TIME_SKEW_MS,
   type AuthNodeEnv,
   CHALLENGE_MAX_AGE_SECONDS,
   challengeCookieName,
@@ -54,6 +55,7 @@ export interface ChallengeView {
   readonly clientId: string;
   readonly redirectUri: string;
   readonly returnTo: string | null;
+  readonly maxAge: number | null;
 }
 
 export interface SessionView {
@@ -151,6 +153,52 @@ export function createAuthRouter(
     }
 
     const returnTo = typeof body.returnTo === "string" ? safeReturnTo(body.returnTo) : null;
+    const maxAgeValue = body.maxAge;
+    let maxAge: number | null = null;
+
+    if (maxAgeValue !== undefined) {
+      if (maxAgeValue !== 0 || options.kind !== "staff") {
+        return json({ code: "invalid_request" }, 400);
+      }
+
+      maxAge = 0;
+    }
+
+    if (maxAge !== null) {
+      const token = parseCookieHeader(request.headers.get("cookie"))[sessionCookie];
+      const session = token === undefined ? null : await sessions.find(options.kind, token);
+
+      if (session === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      const created = await createChallenge(options.sql, options.kind, {
+        returnTo,
+        sessionId: session.id,
+        maxAge,
+      });
+
+      return json(
+        {
+          state: created.state,
+          nonce: created.nonce,
+          issuer: options.issuer,
+          clientId: options.clientId,
+          redirectUri: `${options.origin}/auth/callback`,
+          returnTo,
+          maxAge,
+        } satisfies ChallengeView,
+        200,
+        [
+          serializeCookie(challengeCookie, created.id, {
+            maxAge: CHALLENGE_MAX_AGE_SECONDS,
+            secure,
+            httpOnly: true,
+          }),
+        ],
+      );
+    }
+
     const created = await createChallenge(options.sql, options.kind, { returnTo });
     const view: ChallengeView = {
       state: created.state,
@@ -159,6 +207,7 @@ export function createAuthRouter(
       clientId: options.clientId,
       redirectUri: `${options.origin}/auth/callback`,
       returnTo,
+      maxAge: null,
     };
 
     return json(view, 200, [
@@ -207,6 +256,54 @@ export function createAuthRouter(
 
     if (identity === null) {
       return json({ code: "invalid_token" }, 401);
+    }
+
+    if (stored.maxAge === null && stored.codeVerifier !== null) {
+      return json({ code: "invalid_challenge" }, 401);
+    }
+
+    if (stored.maxAge !== null) {
+      const sessionToken = parseCookieHeader(request.headers.get("cookie"))[sessionCookie];
+      const session =
+        sessionToken === undefined ? null : await sessions.find(options.kind, sessionToken);
+      const authTime = identity.authTime?.getTime();
+
+      if (
+        session === null ||
+        stored.sessionId === null ||
+        session.id !== stored.sessionId ||
+        authTime === undefined ||
+        Math.abs(authTime - stored.createdAt.getTime()) > AUTH_TIME_SKEW_MS
+      ) {
+        return json({ code: "step_up_required" }, 401);
+      }
+
+      const consumed = await options.sql.begin(async (tx) => {
+        if (!(await consumeChallenge(tx, options.kind, challengeId))) {
+          return false;
+        }
+
+        await tx`
+          UPDATE core.sessions SET last_auth_at = ${new Date(authTime)}
+          WHERE id = ${session.id}
+        `;
+        return true;
+      });
+
+      if (!consumed) {
+        return json({ code: "invalid_challenge" }, 401);
+      }
+
+      sessions.invalidate?.();
+      const updated = await sessions.find(options.kind, sessionToken ?? "");
+
+      if (updated === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      return json(sessionView(options, updated), 200, [
+        serializeCookie(challengeCookie, "", { maxAge: 0, secure, httpOnly: true }),
+      ]);
     }
 
     const result = await options.sql.begin(async (tx) => {
