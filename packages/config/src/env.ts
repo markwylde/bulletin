@@ -215,18 +215,21 @@ function parseBootstrapAdmins(env: Env, issues: string[]): readonly BootstrapAdm
 
   const admins: BootstrapAdmin[] = [];
 
-  for (const entry of raw.split(",")) {
-    const trimmed = entry.trim();
+  for (const rawEntry of raw.split(",")) {
+    // Whitespace before an entry is list formatting. Within an entry, issuer and subject
+    // are opaque identifiers: keep them exact and reject padded values instead of
+    // trimming them into a different DarkAuth account.
+    const entry = rawEntry.trimStart();
 
-    if (trimmed === "") {
+    if (entry.trim() === "") {
       continue;
     }
 
-    const separator = trimmed.indexOf("|");
-    const issuer = trimmed.slice(0, separator).trim().replace(/\/+$/, "");
-    const sub = trimmed.slice(separator + 1).trim();
+    const separator = entry.indexOf("|");
+    const issuer = separator > 0 ? entry.slice(0, separator) : "";
+    const sub = separator > 0 ? entry.slice(separator + 1) : "";
 
-    if (separator <= 0 || issuer === "" || sub === "") {
+    if (issuer === "" || sub === "" || issuer !== issuer.trim() || sub !== sub.trim()) {
       issues.push("BULLETIN_BOOTSTRAP_ADMINS entries must be issuer|sub pairs");
       continue;
     }

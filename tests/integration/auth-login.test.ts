@@ -560,6 +560,31 @@ integrationDescribe("login flow", () => {
     });
   }, 20_000);
 
+  test("does not grant bootstrap access to a whitespace-distinct subject", async () => {
+    await withDb("auth_member_bootstrap_exact", async (database) => {
+      const sql = new SQL(roleUrl(database.url, "user_api"));
+      const router = routerFor(sql, "user", {
+        bootstrapAdmins: [{ issuer: ISSUER, sub: "admin" }],
+      });
+
+      try {
+        const padded = await loginMember(database, router, " admin ");
+        const exact = await loginMember(database, router, "admin");
+
+        expect(padded.memberId).not.toBe(exact.memberId);
+        expect(await groupsFor(database, " admin ")).toEqual([
+          { key: "members", is_primary: true },
+        ]);
+        expect(await groupsFor(database, "admin")).toEqual([
+          { key: "administrators", is_primary: true },
+          { key: "members", is_primary: false },
+        ]);
+      } finally {
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
   test("expires user sessions after 30 days idle or 90 days absolute", async () => {
     await withDb("auth_lifetime_user", async (database) => {
       const sql = new SQL(roleUrl(database.url, "user_api"));

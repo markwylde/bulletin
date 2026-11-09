@@ -88,6 +88,29 @@ describe("loadConfig", () => {
     expect(error.message).toContain("BULLETIN_BOOTSTRAP_ADMINS");
   });
 
+  test("preserves bootstrap issuer and subject exactly", () => {
+    const config = loadConfig({
+      BULLETIN_BOOTSTRAP_ADMINS:
+        "https://auth.example.test/|owner, https://auth.example.test|admin",
+    });
+
+    expect(config.bootstrapAdmins).toEqual([
+      { issuer: "https://auth.example.test/", sub: "owner" },
+      { issuer: "https://auth.example.test", sub: "admin" },
+    ]);
+  });
+
+  test("rejects whitespace-padded bootstrap issuers and subjects instead of trimming them", () => {
+    const error = configError({
+      BULLETIN_BOOTSTRAP_ADMINS:
+        "https://auth.example.test| admin, https://auth.example.test |owner",
+    });
+
+    expect(
+      error.issues.filter((issue) => issue.includes("BULLETIN_BOOTSTRAP_ADMINS")),
+    ).toHaveLength(2);
+  });
+
   test("rejects the development database URL in production", () => {
     const error = configError({
       NODE_ENV: "production",

@@ -101,15 +101,17 @@ SECURITY DEFINER
 SET search_path = pii, pg_temp
 AS $$
 DECLARE
-  v_issuer text := nullif(btrim(p_issuer), '');
-  v_sub text := nullif(btrim(p_sub), '');
+  -- Issuer and subject are opaque identifiers: preserve them exactly. Trimming them
+  -- would merge distinct DarkAuth accounts such as 'admin' and ' admin '.
+  v_issuer text := p_issuer;
+  v_sub text := p_sub;
   v_email text := nullif(btrim(p_email), '');
   v_name text := nullif(btrim(p_name), '');
   v_member_id bigint;
   v_stored_email text;
   v_stored_name text;
 BEGIN
-  IF v_issuer IS NULL OR v_sub IS NULL THEN
+  IF v_issuer IS NULL OR btrim(v_issuer) = '' OR v_sub IS NULL OR btrim(v_sub) = '' THEN
     RAISE EXCEPTION 'issuer and subject are required' USING ERRCODE = '22023';
   END IF;
 

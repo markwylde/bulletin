@@ -257,6 +257,50 @@ integrationDescribe("restricted identity data", () => {
     });
   }, 15_000);
 
+  test("keeps whitespace-distinct issuers and subjects on separate members", async () => {
+    await withDb("pii_resolve_exact", async (database) => {
+      let plain = "";
+      let paddedSubject = "";
+      let paddedIssuer = "";
+
+      await withRole(database, "user_api", async (sql) => {
+        const [first] = (await sql`
+          SELECT pii.resolve_identity('https://auth.test', 'admin', null, null) AS member_id
+        `) as Array<{ member_id: string }>;
+        plain = first?.member_id ?? "";
+
+        const [second] = (await sql`
+          SELECT pii.resolve_identity('https://auth.test', ' admin ', null, null) AS member_id
+        `) as Array<{ member_id: string }>;
+        paddedSubject = second?.member_id ?? "";
+
+        const [third] = (await sql`
+          SELECT pii.resolve_identity(' https://auth.test ', 'admin', null, null) AS member_id
+        `) as Array<{ member_id: string }>;
+        paddedIssuer = third?.member_id ?? "";
+
+        await expectQueryError(
+          sql`SELECT pii.resolve_identity('https://auth.test', '   ', null, null)`,
+          /issuer and subject are required/,
+        );
+      });
+
+      expect(new Set([plain, paddedSubject, paddedIssuer]).size).toBe(3);
+
+      const identities = (await database.sql`
+        SELECT issuer, sub
+        FROM pii.identities
+        ORDER BY issuer, sub
+      `) as Array<{ issuer: string; sub: string }>;
+
+      expect(identities).toEqual([
+        { issuer: " https://auth.test ", sub: "admin" },
+        { issuer: "https://auth.test", sub: " admin " },
+        { issuer: "https://auth.test", sub: "admin" },
+      ]);
+    });
+  }, 15_000);
+
   test("session metadata and login IPs are write-only for the app roles", async () => {
     await withDb("pii_write", async (database) => {
       const memberId = await createMember(database, "writer");
