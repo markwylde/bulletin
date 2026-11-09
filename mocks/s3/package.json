@@ -4,7 +4,9 @@
   "type": "module",
   "description": "Local S3-compatible object storage mock backed by Postgres.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./app": "./src/app.ts",
+    "./memory": "./src/memory.ts"
   },
   "scripts": {
     "dev": "bun --watch src/index.ts",

@@ -117,6 +117,9 @@
     },
     "packages/storage": {
       "name": "@bulletin/storage",
+      "devDependencies": {
+        "@bulletin/mock-s3": "workspace:*",
+      },
     },
     "packages/templates": {
       "name": "@bulletin/templates",

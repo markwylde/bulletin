@@ -8,5 +8,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@bulletin/mock-s3": "workspace:*"
   }
 }
