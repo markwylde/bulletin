@@ -21,6 +21,17 @@ Plugins SHALL add declared fields to a route's view model, computed with a 100 m
 - **WHEN** an enricher takes longer than 100 ms
 - **THEN** the page renders without that field
 
+### Requirement: Plugin cache invalidation
+Plugins SHALL invalidate cached output that depends on their own data by bumping tags in their own namespace through the SDK. They SHALL NOT be able to invalidate core or other plugins' tags.
+
+#### Scenario: Plugin data changes
+- **WHEN** a plugin job updates its leaderboard table and invalidates its `leaderboard` tag
+- **THEN** pages showing that plugin's enricher output reflect the new data on the next request
+
+#### Scenario: Foreign tag
+- **WHEN** a plugin tries to invalidate the core tag `forum:3`
+- **THEN** the broker scopes it to `plugin:<id>:forum:3`, and no core cache entry is affected
+
 ### Requirement: Write filters
 Plugins SHALL transform content on save (in priority order) through filter hooks, within a total 300 ms budget per write. Filters that fail or time out SHALL be skipped.
 

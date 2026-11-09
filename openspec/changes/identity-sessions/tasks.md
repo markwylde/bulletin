@@ -3,7 +3,7 @@
 ## 1. Schema and PII functions
 
 - [ ] 1.1 Migrations for `core.members` (no identity columns), `core.groups` (seeded built-ins), `core.member_groups`, `core.member_name_history`, `core.sessions`, `core.session_grants`, `core.login_challenges`; verify with integration tests
-- [ ] 1.2 Migrations for `pii.identities` and `pii.session_meta` with RLS forced, plus `pii.resolve_identity` as a definer function; verify role-denial tests (app roles cannot SELECT `pii` tables directly)
+- [ ] 1.2 Migrations for `pii.identities`, `pii.session_meta`, `pii.ip_log` and `pii.access_log` with RLS forced, plus the system-purpose definer functions `pii.resolve_identity`, `pii.record_session_meta` and `pii.record_login_ip` granted per ADR 0012; verify role-denial tests (no app role can SELECT `pii` tables, and each function is executable only by its listed roles)
 
 ## 2. Login flow
 
@@ -13,7 +13,8 @@
 
 ## 3. Sessions
 
-- [ ] 3.1 Implement session lookup, cache and revocation NOTIFY, lifetimes, `reauth_at` and silent re-auth, with integration tests for the expiry and disabled-account scenarios
+- [ ] 3.1 Implement session lookup, cache and revocation NOTIFY, and lifetimes, with integration tests for the expiry scenarios
+- [ ] 3.5 Implement top-level silent re-auth (`/auth/refresh`, `prompt=none`, `return_to` validation) and the 2 h background grace with `reauth_required`, plus the client fetch wrapper that preserves editor content; tests for the successful, disabled-account, within-grace and after-grace scenarios, and an E2E for the after-grace reply
 - [ ] 3.2 Implement rotation on login and on group change, with an integration test
 - [ ] 3.3 Implement logout and the "revoke all sessions" staff endpoint (permission-checked), with tests including a permission-denial case
 - [ ] 3.4 Implement staff step-up (`last_auth_at` check and SPA re-auth flow) with an integration test and an E2E test

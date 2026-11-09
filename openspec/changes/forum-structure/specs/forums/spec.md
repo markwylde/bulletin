@@ -51,7 +51,7 @@ Admins SHALL define topic prefixes (label and colour, translatable) and enable a
 - **THEN** the list shows only topics with that prefix
 
 ### Requirement: Slugged URLs
-Categories and forums SHALL have stable numeric IDs plus slugs in their URLs. Requests with an outdated slug SHALL permanently redirect to the current one.
+Categories and forums SHALL have URLs of the form `/forum/<id>-<slug>`, resolved by numeric ID only. Requests with a missing or outdated slug SHALL permanently redirect to the current one.
 
 #### Scenario: Renamed forum
 - **WHEN** a forum is renamed and an old URL is requested

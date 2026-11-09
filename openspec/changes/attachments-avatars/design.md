@@ -26,8 +26,12 @@ themes, plugins and exports later.
   `response-content-type`, `response-content-disposition`, and the CSP/nosniff headers set by
   the files-origin proxy (Caddy adds headers for that host).
 - **Inline images in posts**: the HTML references `/attachments/:id/…`, so every view
-  re-authorises. Image redirects are cacheable only when the post is guest-visible (ADR 0006
-  window).
+  re-authorises.
+- **CDN rule** (ADR 0019): only the **302 on the forum origin** is CDN-cacheable, and only for
+  session-less requests to guest-visible attachments: `s-maxage=15, stale-while-revalidate=15`,
+  always inside the 60 s presign. Every other redirect is `private, no-store`. The files origin
+  is never CDN-cached for attachments. Avatars, theme and plugin assets are the only
+  CDN-cached objects there.
 - **Avatars**: stored as `av/<member>/<sha256>.webp` in 3 sizes. Public avatar delivery goes
   through the files origin with `Cache-Control: public, max-age=31536000, immutable`.
   Initials avatars are rendered as inline SVG by the template (no request).

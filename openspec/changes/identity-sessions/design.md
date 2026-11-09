@@ -28,8 +28,15 @@ Guests, Members, Administrators, Banned). The full group system arrives in
   flow. Updating email is a write and is audited.
 - **Confusables**: a precomputed Unicode confusables skeleton (UTS #39) is stored as
   `core.members.name_skeleton`, with a unique index.
-- **Silent re-auth**: on a navigation after `reauth_at`, the server responds with a redirect
-  to `/auth/refresh`, which runs `prompt=none`. On error it logs the member out.
+- **Silent re-auth** (ADR 0018): Astro middleware detects `now() > reauth_at` on top-level
+  HTML navigations only (`Sec-Fetch-Mode: navigate`) and redirects to
+  `/auth/refresh?return_to=…`. That creates a login challenge and redirects to DarkAuth with
+  `prompt=none`. The callback extends `reauth_at`; `login_required` revokes the session and
+  returns to `return_to` as a guest. The user-api middleware allows non-navigation requests
+  until `reauth_at + 2h`, then returns `401 {code:"reauth_required"}`. A shared client fetch
+  wrapper handles that code: it stashes editor content (ADR 0014 local draft store) and shows
+  the continue prompt.
+- **`return_to` validation**: only same-origin relative paths are accepted (no open redirect).
 - **Staff step-up**: `core.sessions.last_auth_at`. Sensitive endpoints check it is within
   15 minutes; if not, they return 401 `step_up_required`, and the SPA starts the flow.
 

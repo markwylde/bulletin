@@ -4,7 +4,9 @@
 
 - [ ] 1.1 Implement `packages/content` parse → extensions → sanitise with profiles (post, signature, profile field, rules), producing `body_html`, `body_text` and versions; unit tests and an XSS corpus per profile
 - [ ] 1.2 Implement the mention, emoticon, spoiler and code-highlight extensions, with unit tests for each scenario
-- [ ] 1.3 Implement quote placeholders, the author-can-read check on save, and quote exclusion from `body_text`; unit and integration tests for both quote scenarios
+- [ ] 1.3 Implement quote placeholders and snapshots, the author-can-read check, source-context rules (no PM quotes in forum posts, same-conversation only), and quote exclusion from `body_text`; unit and integration tests for the quote, PM-quoted-into-forum and cross-conversation scenarios
+- [ ] 1.5 Implement snapshot redaction (`redacted_at`, `post:{id}:snapshots` tag, redaction notice rendering) exposed for the moderator edit form in `topics-posts`; tests for the redacted and redaction-off scenarios
+- [ ] 1.6 Implement the render-time replace-word transform hook (list supplied later by `moderation`), folded into `render_version` with on-read application for stale rows; unit test that `body_md` is never modified
 - [ ] 1.4 Implement the `beforeSave` stage registry (empty stages for bad words, link limits and spam) with unit tests for ordering
 
 ## 2. Versioning

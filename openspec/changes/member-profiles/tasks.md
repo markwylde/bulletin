@@ -20,7 +20,7 @@
 ## 4. Directory
 
 - [ ] 4.1 Member list (search, filters, sort, opt-out exclusion, `members.view_list`), with tests including permission denial; E2E at 360 (card layout)
-- [ ] 4.2 Presence tracking, the who's-online summary and full list with permission-filtered locations, with tests for the hidden-location scenario
+- [ ] 4.2 Presence tracking via the overlay and guest beacon, the who's-online summary and full list with permission-filtered locations, with tests for the hidden-location scenario and that CDN-served guests are counted
 - [ ] 4.3 Board statistics and record online, with integration tests
 - [ ] 4.4 Leaderboards job and page (guest-visible content only), plus today's top poster; tests for the private-content exclusion
 

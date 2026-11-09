@@ -29,6 +29,8 @@ rootless Podman with acceptable capabilities, the spike must produce a supersedi
     and the viewer context)
   - `http.fetch` (egress proxy)
   - `jobs.*`, `kv.*` (convenience over its schema)
+  - `cache.invalidate(tags)` (namespaced `plugin:<id>:<tag>`, bumped by the broker's own core
+    connection, coalesced at 50/s)
   - `log`
 - **DB roles**: the installer creates `plugin_<id>_owner` and `plugin_<id>`. The broker
   connects as `plugin_<id>` using credentials it alone holds. Role settings:

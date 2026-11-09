@@ -9,7 +9,7 @@
 ## 2. Push
 
 - [ ] 2.1 Push subscription storage via `pii` definer functions and the device list UI; tests including role denial on direct table access
-- [ ] 2.2 Push channel in notification preferences, and the sender worker (send-time `can()` check, content-free payload, VAPID, 410 cleanup); tests against `mocks/push` for each scenario
+- [ ] 2.2 Push channel in notification preferences, and the sender worker (send-time `can()` check, subscriptions only via `pii.delivery_target`, content-free payload, VAPID, 410 cleanup); tests against `mocks/push` for each scenario
 - [ ] 2.3 Service worker push display and click handling (preview fetch, login fallback), with an E2E test via the mock
 
 ## 3. Real-device checklist

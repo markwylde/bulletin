@@ -40,6 +40,19 @@ as several apps that share types, DB access and domain logic.
   `liquidjs` (ADR 0008), `@darkauth/client`, `jose` (JWT/JWKS), `sharp` (ADR 0019),
   the markdown/HAST toolchain (`unified`, `remark-*`, `rehype-*`, `rehype-sanitize`).
   Infrastructure images: Postgres, Caddy, nsjail (in plugin-host).
+- **user-app ↔ user-api boundary**: user-app (Astro SSR) builds page view models
+  **in-process** from `packages/domain`. It talks to Postgres directly with its own login role
+  `user_app`, which has read-mostly grants: reads of core content plus writes only to
+  presence and view buffers. It holds its own query pool and one LISTEN connection. It owns
+  the rendered-fragment LRU (ADR 0006) and invalidates it from NOTIFY like every other process.
+  user-api serves JSON: mutations, overlay, SSE, auth, uploads and `/api/v1`. All writes go
+  through user-api; user-app never calls user-api over HTTP to render a page.
+- **IDs and URLs**: all primary keys are `bigint GENERATED ALWAYS AS IDENTITY`. Public URLs
+  are `/<kind>/<id>-<slug>`: `/forum/12-general-discussion`, `/topic/345-welcome`,
+  `/profile/77-jane`. Routes resolve **by numeric ID only**. A missing or outdated slug
+  301-redirects to the current canonical URL. Paged topics use `/topic/345-welcome/page/2`,
+  and posts `/topic/345-welcome/post/9876` (redirects to the right page and anchor). Cache
+  keys and moved-topic stubs use IDs, never slugs.
 - Migrations are plain, forward-only `.sql` files in `packages/db/migrations`, applied by our
   own small runner on container start. No ORM; typed helpers over `Bun.sql`.
 - Biome for lint + format. One root `bun run check` runs typecheck, lint, tests.

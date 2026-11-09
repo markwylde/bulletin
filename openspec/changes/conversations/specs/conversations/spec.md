@@ -29,6 +29,13 @@ Only current participants SHALL read a conversation. Staff SHALL NOT browse conv
 - **WHEN** an administrator requests a conversation they are not part of and that has no report
 - **THEN** the response is 404
 
+### Requirement: Conversations are never shared-cached
+Conversation pages and responses SHALL be marked private and not storable, and SHALL never be served from any shared cache.
+
+#### Scenario: Response headers
+- **WHEN** a participant loads a conversation
+- **THEN** the response has `Cache-Control: private, no-store`
+
 ### Requirement: Replies and participants
 Participants SHALL reply. The starter SHALL invite more participants (within the limit) and remove participants. Any participant SHALL leave. A participant who left SHALL NOT see later messages, and SHALL NOT be re-invited if they chose "block re-invites".
 

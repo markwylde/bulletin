@@ -27,13 +27,13 @@
 
 ## 5. Filters
 
-- [ ] 5.1 Bad-word filter (replace/block, whole-word, all content types) as a write-pipeline stage, with unit tests and a staff manager
+- [ ] 5.1 Bad-word filter: block as a write-pipeline stage, and replace as the render-time transform list (never mutating source text; list changes bump the filter version and enqueue re-render), across all content types, with a staff manager; tests for the replace, block and new-word-added-later scenarios
 - [ ] 5.2 Link limits and anti-spam rules (duplicate, rate, domain blocklist) with group exemptions, as pipeline stages holding content; integration tests for each scenario
 
 ## 6. Bans and IPs
 
 - [ ] 6.1 Member bans (Banned group, timed restore job, ban notice), with integration tests
-- [ ] 6.2 IP capture via write-only definer functions, and IP/CIDR bans with expiry and middleware checks; tests for the CIDR and expiry scenarios
+- [ ] 6.2 IP capture via the write-only definer function `pii.record_post_ip` (ADR 0012 table), and IP/CIDR bans in `core.ip_bans` checked in the app without reading `pii` with expiry and middleware checks; tests for the CIDR and expiry scenarios
 - [ ] 6.3 Audited IP lookups (two-transaction grant, step-up, view-IPs power, retention-expired message), with tests proving the audit row commits before data is returned, and a denial test
 
 ## 7. Moderation log

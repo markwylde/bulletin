@@ -17,6 +17,7 @@
 - [ ] 3.1 Implement `packages/plugin-sdk` (manifest schema, hook registration, core APIs, jobs, kv, i18n, GDPR hooks) with semver and shim scaffolding; unit tests
 - [ ] 3.2 Template fragments and overrides merged at compile time per `pluginsGeneration`, with a test for the hide-post-count scenario and a cache variant test for plugin toggles
 - [ ] 3.3 View-model enrichers with deadlines, dependency declarations and the viewer-intersection principal; tests for the timeout and privileged-plugin-guest-viewer scenarios
+- [ ] 3.8 Broker `cache.invalidate(tags[])` scoped to `plugin:<id>:*` (transactional when inside a broker DB transaction, rate-limited and coalesced), with enrichers and plugin fragments declaring these tags; tests for the plugin-data-changes and foreign-tag scenarios
 - [ ] 3.4 Write filters and veto filters with the 300 ms budget and fail-open/closed modes; tests for each scenario
 - [ ] 3.5 Plugin event subscribers via per-plugin queues, plus content extensions with core sanitisation; tests
 - [ ] 3.6 Plugin routes (themed pages and API), jobs, and registry entries (settings, forum actions, flags); test for the plugin forum action in the matrix

@@ -47,14 +47,18 @@ When moving a topic, the system SHALL let the moderator choose to leave a redire
 - **THEN** they are redirected to the topic in its new forum
 
 ### Requirement: View counts
-Each topic view SHALL increase the view count, counted at most once per viewer per topic per 30 minutes.
+Each topic view, by members or guests (including views served from the CDN), SHALL increase the view count, counted at most once per viewer per topic per 30 minutes. View counts MAY lag by up to 2 minutes.
 
 #### Scenario: Repeat view
 - **WHEN** the same member reloads a topic 5 times within 10 minutes
 - **THEN** the view count increases by 1
 
+#### Scenario: Guest view counted
+- **WHEN** a guest opens a topic served from the CDN cache
+- **THEN** the view count increases by 1 within 2 minutes
+
 ### Requirement: Topic URLs
-Topics SHALL have URLs with a numeric ID and a slug from the title. Outdated slugs SHALL permanently redirect.
+Topics SHALL have URLs of the form `/topic/<id>-<slug>`, with pages at `/topic/<id>-<slug>/page/<n>` and posts at `/topic/<id>-<slug>/post/<postId>`. They SHALL be resolved by ID only, and missing or outdated slugs SHALL permanently redirect.
 
 #### Scenario: Retitled topic
 - **WHEN** a topic is retitled and its old URL is requested

@@ -39,6 +39,10 @@ wake-up only.
   - The event `id` is a composite cursor `n:<notifId>|t:<postId>`. The replay limit is
     200 events or 1 h; beyond that it sends `resync`.
 - **Unsubscribe links**: an HMAC-signed token of `(member, type, expires)`.
+- **Recipient addresses**: workers never read `pii` tables. The email job calls
+  `pii.delivery_target(notification_id, 'email')` (ADR 0012), which returns that recipient's
+  address only if the notification is undelivered and email is still enabled for it, and
+  writes the audit row in the same transaction as the delivery record.
 - **Email**: SMTP via a small client (Bun TCP). Templates use the same i18n catalogs, with
   plain text and HTML parts.
 

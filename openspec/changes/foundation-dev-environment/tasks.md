@@ -24,7 +24,8 @@
 ## 4. Database lifecycle
 
 - [ ] 4.1 Implement the migration runner (ordering, checksums, advisory lock, per-file transaction) with integration tests for the concurrent-start and edited-migration scenarios
-- [ ] 4.2 Create migration `0001` with schemas `core`, `pii` and owner/app roles per ADR 0012 (no tables yet beyond `schema_migrations`, `seed_runs`, `cache_tags`) and verify role privileges with tests
+- [ ] 4.2 Create migration `0001` with schemas `core` and `pii`, owner roles (`bulletin_owner`, `pii_owner`) and login roles (`user_app`, `user_api`, `staff_api`, `workers`) per ADRs 0001 and 0012 (no tables yet beyond `schema_migrations`, `seed_runs`, `cache_tags`); verify role privileges with tests
+- [ ] 4.4 Implement the ID and URL convention helpers (`/<kind>/<id>-<slug>`, ID-only resolution, canonical 301) in `packages/domain`, with unit tests for missing, outdated and correct slugs
 - [ ] 4.3 Implement the seed framework (module registry, seeded RNG, `SEED_SIZE`, run-once guard) and verify the reproducibility scenario with a test comparing two seeded databases
 
 ## 5. Health and lifecycle

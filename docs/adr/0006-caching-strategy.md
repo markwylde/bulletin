@@ -80,6 +80,23 @@ drafts, PM count, mod-queue counts) is **never** in shared HTML. `GET /api/me/ov
 returns private JSON, and a tiny island applies it after paint. Ignored members' posts are
 collapsed client-side.
 
+### Read-path writes (views, presence, read markers)
+Cached and CDN-served pages never reach a code path that records a visit, so visits are
+reported separately and never bump content cache tags:
+- **Members**: the overlay request (`/api/me/overlay?ctx=topic:345&page=2`) records the topic
+  view, presence (location = the context forum), and the read marker (last post position on
+  that page) as a side effect.
+- **Guests**: a tiny beacon, `POST /api/beacon` (sent via `navigator.sendBeacon`, with body
+  `{ctx}`), records the view and presence keyed by a random guest cookie ID. It is not cached,
+  sets no session, and is rate-limited per IP. Pages work without it; counts just become approximate.
+- Views and presence go to UNLOGGED buffer tables (ADR 0003). A worker flushes view counts to
+  `core.topics.view_count` every minute **without bumping `topic:{id}` tags**. View counts
+  are rendered from a separate small fragment, tagged `topic:{id}:views` with a 60 s TTL, so
+  content fragments stay cached.
+- Read markers are written directly by user-api (a member-scoped upsert): per topic
+  `last_read_position`, plus per-forum and board `marked_read_at` watermarks, so "mark forum
+  read" is a single row write.
+
 ### Rules
 - Cache code lives only in `packages/cache`. Other code declares `{ key, tags, ttl }`.
 - Required tests: for every cached route, a permission change, password unlock, member mod

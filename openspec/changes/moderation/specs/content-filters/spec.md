@@ -11,7 +11,14 @@ Admins SHALL define filtered words or patterns, each either replaced (with chose
 
 #### Scenario: Replace
 - **WHEN** a member posts a word configured to be replaced with "****"
-- **THEN** the published post shows "****" instead
+- **THEN** the published post shows "****" instead, and the author's edit form still shows their original text
+
+### Requirement: Replacements apply to existing content
+Replacement SHALL happen when content is displayed, not by changing what the author wrote. Adding or changing a replace word SHALL apply to all existing content.
+
+#### Scenario: New word added later
+- **WHEN** an admin adds a replace word that already appears in old posts
+- **THEN** those posts show the replacement on their next view, and the stored source text is unchanged
 
 #### Scenario: Block
 - **WHEN** a member submits a blocked word in a topic title

@@ -21,6 +21,15 @@ Plugins add extensions in change 19.
     that skips quote nodes.
   - Quote placeholders are emitted as `<bl-quote data-source="…" data-snapshot="…"></bl-quote>`.
     They are resolved at fragment build by the view-model layer (topic view in change 10).
+- **Quote snapshots**: `quote_snapshots(id, source_post_id, body_html, created_at,
+  redacted_at)`. The quote extension validates the source context (forum post → forum post;
+  message → same conversation) and `can(read)` for the author. A moderator edit with redaction
+  sets `redacted_at` on all snapshots of the post and bumps `post:{id}:snapshots`, which every
+  quoting fragment declares as a tag.
+- **Replace-word transform**: a rehype plugin applies the current replace list to text nodes
+  (and the text walker for `body_text`). It never touches `body_md`. The filter list version
+  is folded into `render_version`, so changes trigger the re-render job, and stale rows are
+  transformed on read until re-rendered.
 - **Versions**: `render_version` (pipeline) and `sanitiser_version` (rules), stored per row. A
   constant in code marks the current values. Reads check the row's `sanitiser_version` and,
   if it is stale, run `rehype-sanitize` on the stored HTML before caching (cheap: no markdown parse).

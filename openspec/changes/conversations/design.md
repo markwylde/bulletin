@@ -23,7 +23,11 @@ event pipeline.
 - **Access**: every query joins `conversation_participants` with `state = 'active'`. Messages
   are filtered by `created_at <= left_at` for past participants (who lose access entirely in
   the UI). Unknown and unauthorised IDs both return 404.
-- **No shared caching**: conversation routes are `private`; templates still come from the theme.
+- **No shared caching**: conversation routes and APIs are `Cache-Control: private, no-store`,
+  bypass the shared fragment LRU entirely, and are never CDN-eligible. Templates still come
+  from the theme.
+- **Quotes**: messages may quote only messages from the same conversation, and forum posts can
+  never quote messages (enforced by the content pipeline, ADR 0007).
 - **Report access**: the moderation change adds a narrow `report_access` check (report ID →
   message IDs plus context window), not a general staff bypass.
 - **Search**: Postgres FTS over messages, restricted by the participant join (ADR 0017 config).

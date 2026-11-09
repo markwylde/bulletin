@@ -34,6 +34,13 @@ Authors SHALL edit their own posts within their group's edit window. Moderators 
 - **WHEN** an author with a 60-minute window edits a 2-hour-old post
 - **THEN** the edit is rejected
 
+### Requirement: Moderator edits redact quotes by default
+When a moderator edits another member's post, the edit form SHALL offer "Redact earlier versions in quotes", checked by default, and SHALL apply content redaction to existing quotes when checked.
+
+#### Scenario: Default redaction
+- **WHEN** a moderator saves an edit to another member's post without changing the option
+- **THEN** existing quotes of that post show the redaction notice
+
 ### Requirement: Edit history
 Every edit SHALL keep the previous version. Moderators with the view-history power SHALL view and diff all versions. A board setting SHALL make history visible to everyone who can read the post.
 

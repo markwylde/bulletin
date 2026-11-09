@@ -35,6 +35,10 @@ grant). The write pipeline stages were reserved in `content-pipeline`.
   overlays (`posts_require_approval`, `cannot_post`).
 - **Filters**:
   - Bad words are compiled into one regex per mode, cached under tag `filters`.
+  - *Block* runs as a `beforeSave` stage. *Replace* supplies the list to the content
+    pipeline's render-time transform (ADR 0007). Changing the replace list bumps the filter
+    version (part of `render_version`), which enqueues the re-render job. Stale rows are
+    transformed on read until reached.
   - The link counter runs on the HAST, so it is accurate.
   - Duplicate detection uses a SHA-256 of normalised `body_text` per author in a 10-minute
     window (UNLOGGED table).

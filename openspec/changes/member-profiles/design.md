@@ -23,7 +23,8 @@ content pipeline (signatures, about) and caching (profile variants, overlay).
   member (`member:{id}:sig`). "Hide signatures" and ignore are applied client-side via the
   overlay.
 - **Online tracking**: `presence(member_or_guest_key, location_forum_id, last_seen)` UNLOGGED,
-  upserted at most once per minute per viewer. Counts are a cached query with 60 s TTL
+  upserted at most once per minute per viewer. It is recorded by the member overlay request
+  and the guest beacon (ADR 0006), since cached and CDN pages never reach the server on render. Counts are a cached query with 60 s TTL
   (allowed to be eventual). Locations are filtered by the viewer's `read` bits in the full list.
 - **Leaderboards**: a nightly plus hourly job materialises `leaderboard_entries(period,
   metric, member_id, value)` counting only posts in forums readable by Guests (computed via

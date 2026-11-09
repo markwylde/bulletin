@@ -50,6 +50,10 @@ Every attachment download SHALL check the viewer's current `download` permission
 - **WHEN** a member's access is revoked after they obtained a download link
 - **THEN** the link stops working within 60 seconds
 
+#### Scenario: Guest redirect caching
+- **WHEN** a guest-visible attachment is requested without a session
+- **THEN** only the redirect is publicly cacheable, for no more than 30 seconds including staleness, and the attachment bytes are not cached by the CDN
+
 ### Requirement: Safe delivery
 Attachments SHALL be served with their verified content type, `nosniff`, and a sandboxing Content Security Policy. Everything except allowlisted raster images SHALL be served as a download, not displayed inline.
 

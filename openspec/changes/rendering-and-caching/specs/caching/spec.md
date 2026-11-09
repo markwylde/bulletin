@@ -72,6 +72,17 @@ ETags SHALL be derived from the variant and its content versions, so a 304 respo
 - **WHEN** a member whose access was just revoked revalidates with a previous ETag
 - **THEN** they receive a denial, not 304
 
+### Requirement: Visits recorded outside cached pages
+Topic views, presence and read markers SHALL be recorded by the member's overlay request or, for guests, by a lightweight beacon. Recording a visit SHALL NOT invalidate cached page content.
+
+#### Scenario: Guest view on CDN page
+- **WHEN** a guest receives a topic page from the CDN cache
+- **THEN** the beacon records the view, and the topic's view count reflects it within 2 minutes
+
+#### Scenario: Views do not invalidate
+- **WHEN** a topic receives 100 views in a minute
+- **THEN** its cached post fragments are not rebuilt
+
 ### Requirement: Performance targets
 On the seeded dataset with warm caches, the p95 time to first byte SHALL be under 30 ms for cached guest pages, under 80 ms for member pages, and under 200 ms for cold renders.
 

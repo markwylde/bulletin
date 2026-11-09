@@ -22,7 +22,8 @@ channel model (change 12).
   page on logout, account switch, or the SSE `session_revoked` event, and on a 401.
 - **Manifest**: generated per theme (`/manifest.webmanifest?theme=<id>@<ver>`), cached with the theme tag.
 - **Push**: VAPID keys from config (dev defaults). Subscriptions are stored via
-  `pii.save_push_subscription` (definer). The sender worker uses `web-push`-compatible
+  `pii.save_push_subscription` (definer, user_api only). The sender reads them only via
+  `pii.delivery_target(notification_id, 'push')` (workers only, audited). The sender worker uses `web-push`-compatible
   encryption (the `@block65/webcrypto-web-push` library or a small internal implementation on
   Bun's WebCrypto). Payload: `{ n: notificationId, t: titleKey }`. The service worker fetches
   `/api/notifications/:id/preview` with credentials to show details.

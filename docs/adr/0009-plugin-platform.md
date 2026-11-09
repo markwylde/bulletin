@@ -129,6 +129,16 @@ member, or take the board down.
 - **Events**: each subscribing plugin gets its own delivery record and queue (ADR 0011). One
   plugin cannot ack another plugin's events.
 
+### Plugin cache invalidation
+- Plugins cannot write `core.cache_tags` or `NOTIFY`. The broker exposes
+  `cache.invalidate(tags[])`, which bumps tags in the plugin's own namespace only
+  (`plugin:<id>:<tag>`) and sends the NOTIFY on the plugin's behalf.
+- Enrichers and plugin route fragments declare dependencies on these namespaced tags. The core
+  adds them to the fragment's tag set alongside the core tags.
+- When called inside a broker DB transaction, the bump commits with that transaction.
+  Otherwise it is immediate. Calls are rate-limited per plugin (default 50/s), and excess
+  calls collapse into one bump.
+
 ### Disable and uninstall semantics
 - **Disable** takes effect on the next request:
   - it bumps `pluginsGeneration`, so templates recompile without the plugin's fragments and

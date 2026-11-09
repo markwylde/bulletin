@@ -64,6 +64,28 @@ A quote SHALL reference a source post the author could read when posting, or the
 - **WHEN** a member submits a quote referencing a post they cannot read
 - **THEN** the save is rejected
 
+### Requirement: Quote sources by context
+Forum posts SHALL quote only forum posts. Conversation messages SHALL quote only messages from the same conversation. Any other quote source SHALL be rejected at save.
+
+#### Scenario: PM quoted into forum
+- **WHEN** a member submits a forum reply containing a quote of a private message
+- **THEN** the save is rejected
+
+#### Scenario: Cross-conversation quote
+- **WHEN** a member quotes a message from conversation A inside conversation B
+- **THEN** the save is rejected
+
+### Requirement: Moderator redaction of quotes
+When a moderator edits another member's post with redaction enabled (the default for moderator edits), all existing quotes of that post SHALL stop showing the earlier text. They SHALL show "This quote was edited by a moderator" with a link to the current post.
+
+#### Scenario: Redacted quote
+- **WHEN** a moderator removes abusive text from a post that was quoted in three other posts, with redaction on
+- **THEN** all three quotes show the redaction notice instead of the abusive text
+
+#### Scenario: Redaction off
+- **WHEN** a moderator fixes a typo with redaction turned off
+- **THEN** existing quotes continue to show their original snapshot
+
 ### Requirement: Quotes excluded from derived text
 Plain text derived from content (used for search, previews, notifications, emails, push, webhooks and feeds) SHALL exclude quoted text.
 

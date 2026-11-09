@@ -32,12 +32,21 @@ delete/restore/lock/pin/move (change 16).
   - The page fragment is tagged with `topic:{id}:pages`.
   - Reply mutation tags: `topic:{id}`, `topic:{id}:pages`, `forum:{forum}` and ancestors, the
     board index, and `member:{author}`.
-- **View counts**: buffered in an UNLOGGED table `topic_view_buffer(topic_id, viewer_key,
-  bucket)` with a unique constraint for the 30-minute dedupe. A worker flushes to
-  `topics.view_count` every minute. View counts are allowed to be eventual (ADR 0006).
+- **View counts** (ADR 0006 read-path writes): recorded by the member overlay request
+  (`ctx=topic:<id>`) and by the guest beacon (`POST /api/beacon`). Both insert into an UNLOGGED
+  table `topic_view_buffer(topic_id, viewer_key, bucket)` with a unique constraint for the
+  30-minute dedupe. A worker flushes to `topics.view_count` every minute **without bumping
+  `topic:{id}`**. The count is rendered in a separate fragment tagged `topic:{id}:views` with
+  a 60 s TTL.
 - **Read markers**: `topic_reads(member_id, topic_id, last_read_post_position)` and
-  `forum_reads(member_id, forum_id, marked_at)`, plus `members.board_marked_at`. The overlay
-  computes unread state for the topic IDs on the current page in one query.
+  `forum_reads(member_id, forum_id, marked_at)`, plus `members.board_marked_at`. "Mark forum
+  read" is a single upsert into `forum_reads`. The overlay request for a topic page advances
+  `last_read_post_position` to the last post on that page, and computes unread state for the
+  topic IDs on list pages in one query.
+- **URLs**: `/topic/<id>-<slug>[/page/<n>|/post/<postId>]` per ADR 0001. Post permalinks use
+  `position` to compute the page.
+- **Moderator edit redaction**: the edit form passes `redact` (default true when the editor
+  is not the author and is acting as moderator) to the content pipeline's snapshot redaction.
 - **Polls**: `polls`, `poll_questions`, `poll_choices` and `poll_votes(member_id, poll_id)`
   unique per poll. Results are a separate fragment, so voting doesn't invalidate the whole page.
 

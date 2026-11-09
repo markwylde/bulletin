@@ -23,6 +23,8 @@ Non-negotiables (details in the ADRs):
   carry IDs only. (0011, 0012)
 - Separate origins: user, staff, files, plugins. Host-only cookies, CSRF token plus Origin check. (0018)
 - Attachments are private and authorised on every download. (0019)
+- user-app renders in-process from `packages/domain` with its own read role; all writes go through user-api. IDs are bigint; URLs are `/<kind>/<id>-<slug>` resolved by ID. (0001)
+- Visits (views, presence, read markers) are recorded via the overlay or guest beacon, never by invalidating content caches. (0006)
 - Prefer Bun built-ins. E2E uses `Bun.WebView`, not Playwright. (0001, 0015)
 - Mobile-first at 360 px; en/es/fr; no hard-coded strings. (0013, 0014)
 - Every feature ships with tests, including permission-denial and cache-variant tests. (0015)

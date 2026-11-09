@@ -47,9 +47,21 @@ be explicit.
 ### Sessions
 - `core.sessions(id = 256-bit random, stored as hash; member_id; kind user|staff; created_at;
   last_seen_at; reauth_at; revoked_at)`. IP and user agent go in `pii.session_meta`.
-- User sessions: 30-day idle timeout, 90-day absolute, and `reauth_at` = 24 h. After that,
-  the next navigation does a silent DarkAuth re-auth (`prompt=none`), and failure logs the
-  member out. This is how a disabled DarkAuth account is noticed.
+- User sessions: 30-day idle timeout, 90-day absolute, and `reauth_at` = 24 h. This is how a
+  disabled DarkAuth account is noticed.
+- **Silent re-auth is a top-level redirect, never an iframe**, because third-party cookies
+  are blocked and DarkAuth may be cross-site.
+  - The first **top-level page navigation** after `reauth_at` redirects to `/auth/refresh`.
+    That creates a login challenge and redirects to DarkAuth with `prompt=none` and a `return_to`.
+  - On success, the session's `reauth_at` is extended and the browser returns to the original URL.
+  - On `login_required` (or any denial), the session is revoked and the member lands on the
+    original URL as a guest, with a "please log in again" notice.
+- **Background requests** (overlay, SSE, draft autosave, mutations) are never redirected:
+  - Within a **grace window of 2 hours** after `reauth_at`, they continue to work normally.
+  - After the grace window, they return `401 { code: "reauth_required" }`. The client keeps
+    unsaved editor content in local storage (ADR 0014), shows a "continue" prompt that does a
+    top-level navigation to `/auth/refresh?return_to=<current>`, and resubmits the draft after return.
+  - SSE streams close with a `reauth_required` event at the same point.
 - Staff sessions: 2 h idle, 12 h absolute, and re-auth required for sensitive ACP actions
   (permissions, plugins, PII views) if the last auth was more than 15 minutes ago.
 - **Rotation**: the session ID rotates on login and on any group change affecting the member.

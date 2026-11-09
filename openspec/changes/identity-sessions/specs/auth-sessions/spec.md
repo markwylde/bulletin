@@ -40,8 +40,26 @@ User and staff sessions SHALL be separate, host-only cookies on their own origin
 User sessions SHALL expire after 30 days idle or 90 days absolute, and SHALL require a silent DarkAuth re-auth every 24 hours. Staff sessions SHALL expire after 2 hours idle or 12 hours absolute.
 
 #### Scenario: Silent re-auth fails
-- **WHEN** a user session passes its 24-hour re-auth point and the DarkAuth account has been disabled
-- **THEN** the silent re-auth fails and the member is logged out
+- **WHEN** a user session passes its 24-hour re-auth point, the member navigates to a page, and the DarkAuth account has been disabled
+- **THEN** the top-level redirect re-auth fails, and the member lands on the requested page as a guest with a "please log in again" notice
+
+### Requirement: Silent re-auth by top-level redirect
+Re-authentication after the 24-hour point SHALL happen on the next top-level page navigation, by redirecting to DarkAuth with `prompt=none` and returning to the requested URL. It SHALL NOT rely on hidden frames or third-party cookies.
+
+#### Scenario: Successful silent re-auth
+- **WHEN** a member with a still-valid DarkAuth session navigates after the re-auth point
+- **THEN** they briefly redirect through DarkAuth and land on the requested page, still logged in
+
+### Requirement: Background requests during re-auth
+Background requests (overlay, live stream, draft autosave, mutations) SHALL keep working for 2 hours after the re-auth point. After that they SHALL return 401 with code `reauth_required`, and the client SHALL preserve unsaved editor content and offer to continue.
+
+#### Scenario: Within grace
+- **WHEN** a member's draft autosave runs 30 minutes after the re-auth point without any navigation
+- **THEN** the draft is saved normally
+
+#### Scenario: After grace
+- **WHEN** a member submits a reply 3 hours after the re-auth point without any navigation
+- **THEN** the API returns `reauth_required`, the reply text is kept locally, and after the member continues through re-auth the reply is offered for submission
 
 #### Scenario: Staff idle timeout
 - **WHEN** a staff session is idle for more than 2 hours

@@ -42,8 +42,14 @@
   - `X-Content-Type-Options: nosniff`
   - `Content-Security-Policy: sandbox; default-src 'none'`
 - Revocation is therefore bounded to 60 s for already-issued links.
-- **Guest-visible** attachments may be CDN-cached under the same 30 s revocation contract as
-  guest pages (ADR 0006). Others are `private, no-store`.
+- **CDN caching applies to the redirect, not the bytes.** For guest-visible attachments
+  requested without a session, the CDN may cache the **302 response on the forum origin**
+  with `s-maxage=15, stale-while-revalidate=15`. That is within the 30 s guest revocation
+  contract (ADR 0006), and always shorter than the 60 s presigned URL it points to.
+  Everything else gets `private, no-store` on the redirect.
+- The **files origin is not CDN-cached** for attachments. Presigned query strings make each
+  URL unique, and the bytes are served directly from storage. Only avatars, theme assets and
+  plugin assets (public, content-hashed, immutable) are CDN-cached on the files and plugins origins.
 - **Avatars** are public by design. They are served from the files origin via stable,
   content-hashed URLs, with long cache lifetimes. Changing an avatar creates a new key.
 

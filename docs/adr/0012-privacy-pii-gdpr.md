@@ -22,7 +22,7 @@ and an access permission.
 ### Database roles and privileges
 - `bulletin_owner` (NOLOGIN) owns `core`. `pii_owner` (NOLOGIN) owns `pii` and its functions.
 - Login roles have **no table privileges on `pii`** at all:
-  - `user_api`, `staff_api`, `workers`: their own `core` grants only
+  - `user_app`, `user_api`, `staff_api`, `workers`: their own `core` grants only
   - `plugin_<id>` (ADR 0009)
 - `pii` tables have RLS **enabled and forced**, with policies that allow only `pii_owner`.
   This is defence in depth if a grant is ever added by mistake.
@@ -46,6 +46,30 @@ and an access permission.
 
   No PII can leave the database without an already-committed audit record, regardless of how
   the caller batches statements.
+- **System-purpose functions**: flows that have no interactive session use narrow definer
+  functions. Each takes only the identifiers it needs, returns the minimum, and is granted to
+  exactly one role.
+
+  | Function | Granted to | Returns | Audit |
+  |---|---|---|---|
+  | `pii.resolve_identity(issuer, sub, email, name)` | user_api, staff_api | member_id | `access_log` row (purpose `login`) on create or email change |
+  | `pii.record_session_meta(session_id, ip, ua)` | user_api, staff_api | void | write-only, no read |
+  | `pii.record_post_ip(post_id, ip)` | user_api | void | write-only |
+  | `pii.record_login_ip(member_id, ip)` | user_api, staff_api | void | write-only |
+  | `pii.save_push_subscription(session_token, sub)` / `pii.delete_push_subscription(...)` | user_api | void | write-only |
+  | `pii.delivery_target(notification_id, channel)` | workers | email address or push subscriptions for that notification's recipient only | one `access_log` row per call (purpose `delivery`), in the same transaction as the job's delivery record |
+  | `pii.export_member(request_id)` / `pii.erase_member(request_id)` | workers | export data / void | logged against the data request |
+  | `pii.purge_expired()` | workers | counts | summary row per run |
+
+  - IP **ban checks** never read `pii`: bans live in `core.ip_bans`, and the request IP is
+    compared in the app.
+  - `pii.delivery_target` checks that the notification exists, is undelivered on that
+    channel, and that the recipient still has that channel enabled. It cannot be used to look
+    up arbitrary members.
+  - Delivery reads use the single-transaction model rather than the two-transaction grant,
+    because the data goes to the recipient themselves, not to a staff viewer. The audit row
+    commits atomically with the delivery record, and a rolled-back delivery is retried and
+    logged again.
 - Migrations run as owners; app roles cannot run DDL.
 - CI tests prove each app role is denied direct `SELECT`/`INSERT` on every `pii` table and on
   every function it has no grant for.

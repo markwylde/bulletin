@@ -15,9 +15,12 @@ the index and forum pages.
 
 ## Decisions
 
+- **Process boundary** (ADR 0001): user-app connects to Postgres as `user_app`. It builds view
+  models in-process from `packages/domain`, and runs its own LISTEN connection and LRU.
+  user-api handles all writes and JSON endpoints, and never renders HTML.
 - **Request pipeline (user-app)**:
-  1. Astro middleware resolves the session (via user-api), locale, theme and scheme, and the
-     capability snapshot.
+  1. Astro middleware resolves the session (direct DB lookup, cached per ADR 0006), locale,
+     theme and scheme, and the capability snapshot.
   2. The route's `buildViewModel(ctx)` declares `deps` and `tags`.
   3. `cache.getOrRender(variantKey, tags, () => engine.render(template, vm))`.
   4. Astro wraps the result in the shell with the asset manifest, CSP nonce and the overlay

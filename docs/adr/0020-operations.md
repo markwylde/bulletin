@@ -27,6 +27,7 @@
 ### Connection budget (defaults, per replica)
 | Service | Pool | LISTEN | pg-boss |
 |---|---|---|---|
+| user-app | 10 | 1 | — |
 | user-api | 10 | 1 | — |
 | staff-api | 5 | 1 | — |
 | workers | 5 | 1 | 10 |
