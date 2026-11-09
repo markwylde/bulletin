@@ -36,6 +36,14 @@ integrationDescribe("string overrides", () => {
     }
 
     await withTestDatabase({ adminUrl, prefix: "i18n_overrides" }, async ({ sql }) => {
+      const [member] = (await sql`
+        INSERT INTO core.members (display_name) VALUES ('Override Author') RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined) {
+        throw new Error("failed to create the override author");
+      }
+
       const layer = createStringOverrideLayer(createStringOverrideSource(sql), {
         shipped: SHIPPED,
       });
@@ -49,7 +57,7 @@ integrationDescribe("string overrides", () => {
           locale: "en",
           key: "topic.reply.button",
           value: "Respond",
-          updatedBy: 7n,
+          updatedBy: BigInt(member.id),
         },
         { base: BASE },
       );

@@ -187,6 +187,8 @@ integrationDescribe("database lifecycle", () => {
           has_schema_privilege('user_app', 'core', 'USAGE') AS app_core,
           has_schema_privilege('user_app', 'pii', 'USAGE') AS app_pii,
           has_schema_privilege('user_api', 'pii', 'USAGE') AS api_pii,
+          has_schema_privilege('staff_api', 'pii', 'USAGE') AS staff_pii,
+          has_table_privilege('user_api', 'pii.identities', 'SELECT') AS api_identities_select,
           has_table_privilege('user_app', 'core.cache_tags', 'SELECT') AS app_tags_select,
           has_table_privilege('user_app', 'core.cache_tags', 'INSERT') AS app_tags_insert,
           has_table_privilege('user_app', 'core.schema_migrations', 'SELECT') AS app_migrations_select,
@@ -197,8 +199,11 @@ integrationDescribe("database lifecycle", () => {
 
       expect(privileges).toMatchObject({
         app_core: true,
+        // Interactive API roles reach `pii` only to execute the definer functions.
         app_pii: false,
-        api_pii: false,
+        api_pii: true,
+        staff_pii: true,
+        api_identities_select: false,
         app_tags_select: true,
         app_tags_insert: false,
         app_migrations_select: true,
