@@ -10,7 +10,7 @@
 
 - [x] 2.1 Implement `POST /api/auth/challenge` and `POST /api/auth/session` (JWKS verification, nonce/challenge binding, single use) on user-api and staff-api, with integration tests for the success, replay and login-CSRF scenarios
 - [x] 2.2 Integrate `@darkauth/client` in the staff app and in the user app's script-only login button and `/auth/callback` transit route (no themed pages), plus `GET /api/auth/session` returning the CSRF token on user-api and staff-api; E2E login as each seeded profile at 360 and 1440, and add the `loginAs` E2E helper
-- [ ] 2.3 Implement member creation on first login and bootstrap admins, with integration tests for the first, returning and bootstrap scenarios
+- [x] 2.3 Implement member creation on first login and bootstrap admins, with integration tests for the first, returning and bootstrap scenarios
 
 ## 3. Sessions
 

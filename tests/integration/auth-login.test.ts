@@ -43,7 +43,13 @@ function roleUrl(databaseUrl: string, role: string): string {
   return url.toString();
 }
 
-function routerFor(sql: SQL, kind: "user" | "staff") {
+function routerFor(
+  sql: SQL,
+  kind: "user" | "staff",
+  options: {
+    readonly bootstrapAdmins?: readonly { readonly issuer: string; readonly sub: string }[];
+  } = {},
+) {
   return createAuthRouter({
     sql,
     kind,
@@ -53,6 +59,7 @@ function routerFor(sql: SQL, kind: "user" | "staff") {
     origin: kind === "user" ? USER_ORIGIN : STAFF_ORIGIN,
     sessionSecret: SESSION_SECRET,
     nodeEnv: "test",
+    ...(options.bootstrapAdmins === undefined ? {} : { bootstrapAdmins: options.bootstrapAdmins }),
   });
 }
 
@@ -156,6 +163,44 @@ async function challenge(
   return { view, cookie: `bl_login=${id}` };
 }
 
+async function groupsFor(
+  database: TestDatabase,
+  sub: string,
+): Promise<Array<{ key: string; is_primary: boolean }>> {
+  return (await database.sql`
+    SELECT g.key, mg.is_primary
+    FROM core.member_groups mg
+    JOIN core.groups g ON g.id = mg.group_id
+    JOIN pii.identities i ON i.member_id = mg.member_id
+    WHERE i.sub = ${sub}
+    ORDER BY g.key
+  `) as Array<{ key: string; is_primary: boolean }>;
+}
+
+async function loginMember(
+  database: TestDatabase,
+  router: (request: Request) => Promise<Response | null>,
+  sub: string,
+): Promise<{ readonly memberId: string }> {
+  const started = await challenge(router);
+  const idToken = await signToken({ sub, nonce: started.view.nonce });
+  const response = await call(router, "/api/auth/session", {
+    body: { idToken },
+    cookie: started.cookie,
+  });
+  expect(response.status).toBe(200);
+
+  const [row] = (await database.sql`
+    SELECT member_id FROM core.sessions ORDER BY id DESC LIMIT 1
+  `) as Array<{ member_id: string }>;
+
+  if (row === undefined) {
+    throw new Error("session row missing");
+  }
+
+  return { memberId: row.member_id };
+}
+
 integrationDescribe("login flow", () => {
   beforeAll(async () => {
     const pair = await generateKeyPair("EdDSA", { crv: "Ed25519", extractable: true });
@@ -245,9 +290,7 @@ integrationDescribe("login flow", () => {
           displayName: null,
           displayNameRequired: true,
         });
-        expect(readView.csrfToken).toBe(
-          createCsrfToken(sessions[0]?.id ?? "", SESSION_SECRET),
-        );
+        expect(readView.csrfToken).toBe(createCsrfToken(sessions[0]?.id ?? "", SESSION_SECRET));
 
         const identities = (await database.sql`
           SELECT issuer, sub, email, idp_name FROM pii.identities
@@ -453,6 +496,60 @@ integrationDescribe("login flow", () => {
           cookie: started.cookie,
         });
         expect(response.status).toBe(401);
+      } finally {
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("creates the member in Members on first login and reuses it on return", async () => {
+    await withDb("auth_member_first", async (database) => {
+      const sql = new SQL(roleUrl(database.url, "user_api"));
+      const router = routerFor(sql, "user");
+
+      try {
+        const first = await loginMember(database, router, "regular-first");
+        const firstGroups = await groupsFor(database, "regular-first");
+        expect(firstGroups).toEqual([{ key: "members", is_primary: true }]);
+
+        const second = await loginMember(database, router, "regular-first");
+        expect(second.memberId).toBe(first.memberId);
+        expect(await groupsFor(database, "regular-first")).toEqual(firstGroups);
+
+        const [members] = (await database.sql`
+          SELECT count(*)::int AS count FROM core.members
+        `) as Array<{ count: number }>;
+        expect(members?.count).toBe(1);
+
+        const [sessions] = (await database.sql`
+          SELECT count(*)::int AS count FROM core.sessions
+        `) as Array<{ count: number }>;
+        expect(sessions?.count).toBe(2);
+      } finally {
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("places configured bootstrap admins in Administrators and Members", async () => {
+    await withDb("auth_member_bootstrap", async (database) => {
+      const sql = new SQL(roleUrl(database.url, "user_api"));
+      const router = routerFor(sql, "user", {
+        bootstrapAdmins: [{ issuer: ISSUER, sub: "admin" }],
+      });
+
+      try {
+        const admin = await loginMember(database, router, "admin");
+        expect(admin.memberId).toBeString();
+        expect(await groupsFor(database, "admin")).toEqual([
+          { key: "administrators", is_primary: true },
+          { key: "members", is_primary: false },
+        ]);
+
+        await loginMember(database, router, "not-an-admin");
+        expect(await groupsFor(database, "not-an-admin")).toEqual([
+          { key: "members", is_primary: true },
+        ]);
       } finally {
         await sql.close();
       }

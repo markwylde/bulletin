@@ -29,6 +29,7 @@ const auth = createAuthRouter({
   origin: config.staffOrigin,
   sessionSecret: config.sessionSecret,
   nodeEnv: config.nodeEnv,
+  bootstrapAdmins: config.bootstrapAdmins,
 });
 
 await startService({

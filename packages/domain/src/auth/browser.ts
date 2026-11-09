@@ -74,6 +74,10 @@ function loadConfig(): { issuer: string; clientId: string; redirectUri: string }
  * Starts a server-bound login (ADR 0018): the API issues the single-use challenge and
  * nonce, the browser generates the PKCE verifier and redirects to DarkAuth. The
  * `@darkauth/client` keys are used so its callback handler can complete the exchange.
+ *
+ * `initiateLogin()` is not used because the client generates its own state and sends no
+ * nonce; the server-bound challenge must own both. Its callback handler still performs the
+ * PKCE exchange and returns the ID token for `/api/auth/session`.
  */
 export async function beginLogin(
   options: { readonly challengeUrl?: string; readonly returnTo?: string } = {},

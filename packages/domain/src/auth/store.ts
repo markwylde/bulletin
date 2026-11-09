@@ -31,8 +31,6 @@ export interface ActiveSession {
   readonly displayName: string | null;
 }
 
-const CHALLENGE_TTL_MS = 10 * 60 * 1_000;
-
 function newChallengeSecret(): string {
   return createToken();
 }
@@ -123,6 +121,33 @@ export async function resolveMember(tx: SQL, identity: IdTokenClaims): Promise<R
   };
 }
 
+/**
+ * A first login joins the default Members group; a configured bootstrap admin additionally
+ * joins Administrators as the primary group. Later logins never reset groups.
+ */
+export async function assignDefaultGroups(
+  tx: SQL,
+  memberId: string,
+  bootstrapAdmin: boolean,
+): Promise<void> {
+  const [existing] = (await tx`
+    SELECT 1 AS present FROM core.member_groups WHERE member_id = ${memberId} LIMIT 1
+  `) as Array<{ present: number }>;
+
+  if (existing !== undefined) {
+    return;
+  }
+
+  const primaryKey = bootstrapAdmin ? "administrators" : "members";
+  await tx`
+    INSERT INTO core.member_groups (member_id, group_id, is_primary)
+    SELECT ${memberId}, g.id, g.key = ${primaryKey}
+    FROM core.groups g
+    WHERE g.key IN ('members', ${primaryKey})
+    ON CONFLICT DO NOTHING
+  `;
+}
+
 export async function issueSession(
   tx: SQL,
   options: {
@@ -200,5 +225,3 @@ export async function findSession(
     displayName: row.display_name,
   };
 }
-
-export const CHALLENGE_COOKIE_MAX_AGE = Math.trunc(CHALLENGE_TTL_MS / 1_000);

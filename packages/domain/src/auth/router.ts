@@ -1,6 +1,7 @@
 import type { SQL } from "bun";
 import { createJwks, verifyIdToken } from "./jwt.ts";
 import {
+  assignDefaultGroups,
   consumeChallenge,
   createChallenge,
   findChallenge,
@@ -10,6 +11,7 @@ import {
 } from "./store.ts";
 import {
   type AuthNodeEnv,
+  CHALLENGE_MAX_AGE_SECONDS,
   challengeCookieName,
   clientIp,
   createCsrfToken,
@@ -31,6 +33,12 @@ export interface AuthRouterOptions {
   readonly origin: string;
   readonly sessionSecret: string;
   readonly nodeEnv: AuthNodeEnv;
+  readonly bootstrapAdmins?: readonly AuthBootstrapAdmin[];
+}
+
+export interface AuthBootstrapAdmin {
+  readonly issuer: string;
+  readonly sub: string;
 }
 
 export interface ChallengeView {
@@ -148,7 +156,7 @@ export function createAuthRouter(
 
     return json(view, 200, [
       serializeCookie(challengeCookie, created.id, {
-        maxAge: 10 * 60,
+        maxAge: CHALLENGE_MAX_AGE_SECONDS,
         secure,
         httpOnly: true,
       }),
@@ -200,6 +208,13 @@ export function createAuthRouter(
       }
 
       const member = await resolveMember(tx, identity);
+      await assignDefaultGroups(
+        tx,
+        member.id,
+        (options.bootstrapAdmins ?? []).some(
+          (admin) => admin.issuer === identity.issuer && admin.sub === identity.sub,
+        ),
+      );
       const session = await issueSession(tx, {
         kind: options.kind,
         memberId: member.id,

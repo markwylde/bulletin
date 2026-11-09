@@ -8,6 +8,9 @@ export type AuthNodeEnv = "development" | "test" | "production";
 
 const TOKEN_BYTES = 32;
 
+/** Matches `core.login_challenges.expires_at` (10 minutes). */
+export const CHALLENGE_MAX_AGE_SECONDS = 10 * 60;
+
 /** A 256-bit secret, base64url encoded, as the browser sees it in a cookie. */
 export function createToken(): string {
   return randomBytes(TOKEN_BYTES).toString("base64url");
