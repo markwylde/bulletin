@@ -4,6 +4,8 @@ import {
   type ChallengeView,
   createAuthRouter,
   createCsrfToken,
+  createSessionStore,
+  hashToken,
   type SessionView,
 } from "@bulletin/domain/auth";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -551,6 +553,157 @@ integrationDescribe("login flow", () => {
           { key: "members", is_primary: true },
         ]);
       } finally {
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("expires user sessions after 30 days idle or 90 days absolute", async () => {
+    await withDb("auth_lifetime_user", async (database) => {
+      const sql = new SQL(roleUrl(database.url, "user_api"));
+      const router = routerFor(sql, "user");
+
+      async function loginCookie(sub: string): Promise<string> {
+        const started = await challenge(router);
+        const idToken = await signToken({ sub, nonce: started.view.nonce });
+        const response = await call(router, "/api/auth/session", {
+          body: { idToken },
+          cookie: started.cookie,
+        });
+        expect(response.status).toBe(200);
+        const cookie = cookieValue(response, "bl_session");
+
+        if (cookie === undefined) {
+          throw new Error("session cookie missing");
+        }
+
+        return cookie;
+      }
+
+      try {
+        const idleCookie = await loginCookie("idle-user");
+        await database.sql`
+          UPDATE core.sessions SET last_seen_at = now() - interval '31 days'
+          WHERE token_hash = ${hashToken(idleCookie)}
+        `;
+        const idle = await call(router, "/api/auth/session", {
+          cookie: `bl_session=${idleCookie}`,
+        });
+        expect(((await idle.json()) as SessionView).authenticated).toBe(false);
+
+        const absoluteCookie = await loginCookie("absolute-user");
+        await database.sql`
+          UPDATE core.sessions
+          SET created_at = now() - interval '91 days', last_seen_at = now()
+          WHERE token_hash = ${hashToken(absoluteCookie)}
+        `;
+        const absolute = await call(router, "/api/auth/session", {
+          cookie: `bl_session=${absoluteCookie}`,
+        });
+        expect(((await absolute.json()) as SessionView).authenticated).toBe(false);
+      } finally {
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("expires staff sessions after 2 hours idle or 12 hours absolute", async () => {
+    await withDb("auth_lifetime_staff", async (database) => {
+      const sql = new SQL(roleUrl(database.url, "staff_api"));
+      const router = routerFor(sql, "staff");
+
+      async function loginCookie(sub: string): Promise<string> {
+        const started = await challenge(router, STAFF_ORIGIN);
+        const idToken = await signToken({
+          sub,
+          nonce: started.view.nonce,
+          clientId: STAFF_CLIENT,
+        });
+        const response = await call(router, "/api/auth/session", {
+          body: { idToken },
+          cookie: started.cookie,
+          origin: STAFF_ORIGIN,
+        });
+        expect(response.status).toBe(200);
+        const cookie = cookieValue(response, "bl_staff");
+
+        if (cookie === undefined) {
+          throw new Error("session cookie missing");
+        }
+
+        return cookie;
+      }
+
+      try {
+        const idleCookie = await loginCookie("idle-staff");
+        await database.sql`
+          UPDATE core.sessions SET last_seen_at = now() - interval '3 hours'
+          WHERE token_hash = ${hashToken(idleCookie)}
+        `;
+        const idle = await call(router, "/api/auth/session", {
+          cookie: `bl_staff=${idleCookie}`,
+        });
+        expect(((await idle.json()) as SessionView).authenticated).toBe(false);
+
+        const absoluteCookie = await loginCookie("absolute-staff");
+        await database.sql`
+          UPDATE core.sessions
+          SET created_at = now() - interval '13 hours', last_seen_at = now()
+          WHERE token_hash = ${hashToken(absoluteCookie)}
+        `;
+        const absolute = await call(router, "/api/auth/session", {
+          cookie: `bl_staff=${absoluteCookie}`,
+        });
+        expect(((await absolute.json()) as SessionView).authenticated).toBe(false);
+      } finally {
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("caches sessions and clears them on session_revoked", async () => {
+    await withDb("auth_session_cache", async (database) => {
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name) VALUES ('Cache User') RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined) {
+        throw new Error("member missing");
+      }
+
+      const token = "cache-token";
+      const [session] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${member.id}, 'user', ${hashToken(token)}, now() + interval '24 hours')
+        RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (session === undefined) {
+        throw new Error("session missing");
+      }
+
+      const sql = new SQL(roleUrl(database.url, "user_api"));
+      const store = await createSessionStore({ sql, cacheTtlMs: 60_000 });
+
+      try {
+        expect(await store.find("user", token)).not.toBeNull();
+
+        await database.sql`
+          UPDATE core.sessions SET revoked_at = now() WHERE id = ${session.id}
+        `;
+        expect(await store.find("user", token)).not.toBeNull();
+
+        await database.sql`SELECT pg_notify('session_revoked', ${session.id})`;
+        let found = await store.find("user", token);
+
+        for (let attempt = 0; attempt < 100 && found !== null; attempt += 1) {
+          await Bun.sleep(20);
+          found = await store.find("user", token);
+        }
+
+        expect(found).toBeNull();
+      } finally {
+        await store.close();
         await sql.close();
       }
     });

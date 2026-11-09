@@ -14,7 +14,7 @@
 
 ## 3. Sessions
 
-- [ ] 3.1 Implement session lookup, cache and revocation NOTIFY, and lifetimes, with integration tests for the expiry scenarios
+- [x] 3.1 Implement session lookup, cache and revocation NOTIFY, and lifetimes, with integration tests for the expiry scenarios
 - [ ] 3.2 Implement top-level silent re-auth (user-app redirect to user-api `/api/auth/refresh` and `/api/auth/callback` with a server-held PKCE verifier, `prompt=none`, `return_to` validation) and the 2 h background grace with `reauth_required`, plus the client fetch wrapper that keeps unsent request bodies; tests against the test-only protected endpoint for the successful, disabled-account, within-grace and after-grace scenarios
 - [ ] 3.3 Implement rotation on login and on group change (`rotate_pending`, new token on the next user-api response, 60 s overlap), with integration tests including old-token expiry
 - [ ] 3.4 Implement logout and the "revoke all sessions" staff endpoint (permission-checked), with tests including a permission-denial case

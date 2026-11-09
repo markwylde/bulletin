@@ -7,7 +7,7 @@ import {
 } from "@bulletin/config/server";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
-import { createAuthRouter } from "@bulletin/domain/auth";
+import { createAuthRouter, createSessionStore } from "@bulletin/domain/auth";
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
@@ -20,6 +20,7 @@ await runBaseSeed({ databaseUrl: migrationUrl, seed: config.seed, size: config.s
 
 const sql = createServiceSql("user-api", databaseUrl);
 const listener = await createListenerCheck(sql);
+const sessions = await createSessionStore({ sql });
 const auth = createAuthRouter({
   sql,
   kind: "user",
@@ -30,6 +31,7 @@ const auth = createAuthRouter({
   sessionSecret: config.sessionSecret,
   nodeEnv: config.nodeEnv,
   bootstrapAdmins: config.bootstrapAdmins,
+  sessions,
 });
 
 await startService({
@@ -50,10 +52,12 @@ await startService({
     replicas: parseReplicas(Bun.env.BULLETIN_REPLICAS),
   },
   async onShutdown() {
+    await sessions.close();
     await listener.close();
     await sql.close();
   },
 }).catch(async (error: unknown) => {
+  await sessions.close();
   await listener.close();
   await sql.close();
   throw error;

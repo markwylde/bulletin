@@ -1,11 +1,11 @@
 import type { SQL } from "bun";
 import { createJwks, verifyIdToken } from "./jwt.ts";
+import { directSessionLookup, type SessionLookup, type SessionRecord } from "./session-store.ts";
 import {
   assignDefaultGroups,
   consumeChallenge,
   createChallenge,
   findChallenge,
-  findSession,
   issueSession,
   resolveMember,
 } from "./store.ts";
@@ -34,6 +34,7 @@ export interface AuthRouterOptions {
   readonly sessionSecret: string;
   readonly nodeEnv: AuthNodeEnv;
   readonly bootstrapAdmins?: readonly AuthBootstrapAdmin[];
+  readonly sessions?: SessionLookup;
 }
 
 export interface AuthBootstrapAdmin {
@@ -55,6 +56,7 @@ export interface SessionView {
   readonly csrfToken: string | null;
   readonly displayName: string | null;
   readonly displayNameRequired: boolean;
+  readonly reauthAt: string | null;
   readonly kind: SessionKind;
 }
 
@@ -90,15 +92,13 @@ async function readJson(request: Request): Promise<Record<string, unknown> | nul
   }
 }
 
-function sessionView(
-  options: AuthRouterOptions,
-  session: { readonly id: string; readonly displayName: string | null },
-): SessionView {
+function sessionView(options: AuthRouterOptions, session: SessionRecord): SessionView {
   return {
     authenticated: true,
     csrfToken: createCsrfToken(session.id, options.sessionSecret),
     displayName: session.displayName,
     displayNameRequired: session.displayName === null,
+    reauthAt: session.reauthAt.toISOString(),
     kind: options.kind,
   };
 }
@@ -108,6 +108,7 @@ const GUEST_VIEW: SessionView = {
   csrfToken: null,
   displayName: null,
   displayNameRequired: false,
+  reauthAt: null,
   kind: "user",
 };
 
@@ -131,6 +132,7 @@ export function createAuthRouter(
   const challengeCookie = challengeCookieName(options.nodeEnv);
   const sessionCookie = sessionCookieName(options.kind, options.nodeEnv);
   const sessionMaxAge = Math.trunc(SESSION_LIFETIMES[options.kind].absoluteMs / 1_000);
+  const sessions = options.sessions ?? directSessionLookup(options.sql);
 
   async function challenge(request: Request): Promise<Response> {
     if (!originAllowed(request, options)) {
@@ -229,21 +231,29 @@ export function createAuthRouter(
       return json({ code: "invalid_challenge" }, 401);
     }
 
-    return json(
-      sessionView(options, {
-        id: result.session.id,
-        displayName: result.member.displayName,
+    const record: SessionRecord = {
+      id: result.session.id,
+      memberId: result.member.id,
+      kind: options.kind,
+      displayName: result.member.displayName,
+      createdAt: new Date(result.session.createdAt),
+      lastSeenAt: new Date(result.session.lastSeenAt),
+      reauthAt: new Date(result.session.reauthAt),
+      lastAuthAt: new Date(result.session.lastAuthAt),
+      revokedAt: null,
+      rotatePending: false,
+      viaPreviousToken: false,
+      previousTokenExpiresAt: null,
+    };
+
+    return json(sessionView(options, record), 200, [
+      serializeCookie(sessionCookie, result.session.token, {
+        maxAge: sessionMaxAge,
+        secure,
+        httpOnly: true,
       }),
-      200,
-      [
-        serializeCookie(sessionCookie, result.session.token, {
-          maxAge: sessionMaxAge,
-          secure,
-          httpOnly: true,
-        }),
-        serializeCookie(challengeCookie, "", { maxAge: 0, secure, httpOnly: true }),
-      ],
-    );
+      serializeCookie(challengeCookie, "", { maxAge: 0, secure, httpOnly: true }),
+    ]);
   }
 
   async function readSession(request: Request): Promise<Response> {
@@ -253,9 +263,14 @@ export function createAuthRouter(
       return json(guestView(options.kind));
     }
 
-    const session = await findSession(options.sql, options.kind, token);
+    const session = await sessions.find(options.kind, token);
 
-    return json(session === null ? guestView(options.kind) : sessionView(options, session));
+    if (session === null) {
+      return json(guestView(options.kind));
+    }
+
+    await sessions.touch?.(session);
+    return json(sessionView(options, session));
   }
 
   return async (request) => {

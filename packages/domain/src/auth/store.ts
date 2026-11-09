@@ -23,12 +23,10 @@ export interface ResolvedMember {
 export interface IssuedSession {
   readonly id: string;
   readonly token: string;
-}
-
-export interface ActiveSession {
-  readonly id: string;
-  readonly memberId: string;
-  readonly displayName: string | null;
+  readonly createdAt: Date | string;
+  readonly lastSeenAt: Date | string;
+  readonly reauthAt: Date | string;
+  readonly lastAuthAt: Date | string;
 }
 
 function newChallengeSecret(): string {
@@ -166,8 +164,14 @@ export async function issueSession(
       ${options.memberId}, ${options.kind}, ${tokenHash},
       now() + make_interval(hours => ${reauthHours})
     )
-    RETURNING id
-  `) as Array<{ id: string }>;
+    RETURNING id, created_at, last_seen_at, reauth_at, last_auth_at
+  `) as Array<{
+    id: string;
+    created_at: Date | string;
+    last_seen_at: Date | string;
+    reauth_at: Date | string;
+    last_auth_at: Date | string;
+  }>;
 
   if (row === undefined) {
     throw new Error("Could not create a session");
@@ -180,48 +184,12 @@ export async function issueSession(
     await tx`SELECT pii.record_login_ip(${options.memberId}, ${options.ip})`;
   }
 
-  return { id: row.id, token };
-}
-
-function ageMs(value: Date | string): number {
-  return Date.now() - new Date(value).getTime();
-}
-
-/** Looks up a live session by its raw cookie token; the kind is part of the boundary. */
-export async function findSession(
-  sql: SQL,
-  kind: SessionKind,
-  token: string,
-): Promise<ActiveSession | null> {
-  const [row] = (await sql`
-    SELECT s.id, s.member_id, s.kind, s.created_at, s.last_seen_at, s.revoked_at,
-           m.display_name
-    FROM core.sessions s
-    JOIN core.members m ON m.id = s.member_id
-    WHERE s.token_hash = ${hashToken(token)}
-  `) as Array<{
-    id: string;
-    member_id: string;
-    kind: SessionKind;
-    created_at: Date | string;
-    last_seen_at: Date | string;
-    revoked_at: Date | string | null;
-    display_name: string | null;
-  }>;
-
-  if (row === undefined || row.kind !== kind || row.revoked_at !== null) {
-    return null;
-  }
-
-  const lifetime = SESSION_LIFETIMES[kind];
-
-  if (ageMs(row.created_at) > lifetime.absoluteMs || ageMs(row.last_seen_at) > lifetime.idleMs) {
-    return null;
-  }
-
   return {
     id: row.id,
-    memberId: row.member_id,
-    displayName: row.display_name,
+    token,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+    reauthAt: row.reauth_at,
+    lastAuthAt: row.last_auth_at,
   };
 }
