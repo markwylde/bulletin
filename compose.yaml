@@ -47,6 +47,42 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  darkauth-mock:
+    # Pinned digest of ghcr.io/puzed/darkauth-mock:latest (multi-arch index).
+    image: ghcr.io/puzed/darkauth-mock@sha256:9c40595bdd3e49bb26d9f0f0ba07c32d2fb3540d52bf70f574261cc74c0e6b3b
+    environment:
+      DARKAUTH_MOCK_CONFIG: /data/darkauth-mock.yaml
+    # The image writes its signing key into the persistent volume. The checked-in file is
+    # only a template, so restarts keep the same key without mutating the repo.
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        if [ ! -s /data/darkauth-mock.yaml ]; then
+          cp /config/darkauth-mock.yaml /data/darkauth-mock.yaml
+          chown 1000:1000 /data/darkauth-mock.yaml
+          chmod 600 /data/darkauth-mock.yaml
+        fi
+        exec docker-entrypoint node packages/darkauth-mock/src/main.ts
+    command: []
+    volumes:
+      - darkauth-mock-data:/data
+      - ./darkauth-mock.yaml:/config/darkauth-mock.yaml:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch("http://127.0.0.1:3020/.well-known/jwks.json")
+          .then((response) => process.exit(response.ok ? 0 : 1))
+          .catch(() => process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
   proxy:
     image: caddy:2.11.9-alpine
     ports:
@@ -63,6 +99,8 @@ services:
       staff-api:
         condition: service_healthy
       plugin-host:
+        condition: service_healthy
+      darkauth-mock:
         condition: service_healthy
     healthcheck:
       test:
@@ -303,3 +341,4 @@ services:
 
 volumes:
   postgres-data:
+  darkauth-mock-data:

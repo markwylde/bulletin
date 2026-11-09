@@ -1,0 +1,78 @@
+# DarkAuth Mock configuration for local Bulletin development (ADR 0004, ADR 0018).
+# The image is app-agnostic; all Bulletin identities live here. Profile subjects are the
+# stable values the seed modules use to match `pii.identities.sub` to members.
+#
+# The issuer is the browser-facing Caddy origin. Containers fetch JWKS from
+# http://darkauth-mock:3020/.well-known/jwks.json instead.
+
+server:
+  host: 0.0.0.0
+  port: 3020
+  issuer: http://auth.bulletin.localhost:8080
+  allowedOrigins:
+    - http://bulletin.localhost:8080
+    - http://staff.bulletin.localhost:8080
+    - http://auth.bulletin.localhost:8080
+
+app:
+  name: Bulletin
+
+keySeed: bulletin-darkauth-mock
+
+# Bulletin never authorises from DarkAuth roles or permissions (ADR 0004).
+permissions: []
+roles: {}
+
+clients:
+  - id: bulletin-user
+    keyDelivery: none
+    clientKeyScope: account
+    requireOrganizationSelection: false
+    scopes:
+      - openid
+      - profile
+      - email
+  - id: bulletin-staff
+    keyDelivery: none
+    clientKeyScope: account
+    requireOrganizationSelection: false
+    scopes:
+      - openid
+      - profile
+      - email
+
+# One profile per seeded role. Names are display-only; `sub` is the identity key.
+users:
+  - sub: admin
+    email: admin@bulletin.test
+    name: Admin
+  - sub: super-mod
+    email: super-mod@bulletin.test
+    name: Super Moderator
+  - sub: forum-mod
+    email: forum-mod@bulletin.test
+    name: Forum Moderator
+  - sub: member-mod
+    email: member-mod@bulletin.test
+    name: Member-Specific Moderator
+  - sub: member-1
+    email: member-1@bulletin.test
+    name: Regular Member One
+  - sub: member-2
+    email: member-2@bulletin.test
+    name: Regular Member Two
+  - sub: new-member
+    email: new-member@bulletin.test
+    name: New Member
+  - sub: banned-member
+    email: banned-member@bulletin.test
+    name: Banned Member
+  - sub: warned-member
+    email: warned-member@bulletin.test
+    name: Warned Member
+  - sub: member-es
+    email: member-es@bulletin.test
+    name: Miembro Español
+  - sub: member-fr
+    email: member-fr@bulletin.test
+    name: Membre Français
