@@ -37,7 +37,11 @@ Conversation pages and responses SHALL be marked private and not storable, and S
 - **THEN** the response has `Cache-Control: private, no-store`
 
 ### Requirement: Replies and participants
-Participants SHALL reply. The starter SHALL invite more participants (within the limit) and remove participants. Any participant SHALL leave. A participant who left SHALL NOT see later messages, and SHALL NOT be re-invited if they chose "block re-invites".
+Participants SHALL reply. The starter SHALL invite more participants (within the limit) and remove participants. Any participant SHALL leave. Leaving (or being removed) SHALL end all access to the conversation, including earlier messages; there is no separate "delete for me". A participant who left with "block re-invites" SHALL NOT be re-invited.
+
+#### Scenario: Leave removes access
+- **WHEN** a participant leaves a conversation
+- **THEN** it disappears from all their folders, and requesting it by ID returns 404
 
 #### Scenario: Leave and block
 - **WHEN** a participant leaves with "block re-invites"
@@ -55,7 +59,7 @@ Members SHALL see their conversations in Inbox, Sent and Archive, ordered by lat
 - **THEN** it moves back to the Inbox as unread
 
 ### Requirement: Quotas and rate limits
-Group settings SHALL limit how many conversations a member can keep and how many they can start per day. When over the storage quota, starting new conversations SHALL be blocked until they delete some, while receiving SHALL continue.
+Group settings SHALL limit how many conversations a member can keep and how many they can start per day. The quota counts conversations the member still participates in. At the quota, starting new conversations SHALL be blocked until they leave some, while receiving SHALL continue.
 
 #### Scenario: Over quota
 - **WHEN** a member at their conversation quota tries to start a new conversation
@@ -75,9 +79,13 @@ New conversations and replies SHALL notify participants according to their prefe
 - **WHEN** a participant has a conversation open and another participant replies
 - **THEN** the reply appears without a reload
 
-### Requirement: Deleting conversations
-Members SHALL delete conversations from their own view. A conversation SHALL be permanently removed when no participants remain.
+### Requirement: Permanent removal
+A conversation SHALL be permanently removed, with its messages and attachments, once no participants remain. Messages under an open report SHALL be kept until the report closes, then removed.
 
-#### Scenario: Last participant deletes
-- **WHEN** the last remaining participant deletes a conversation
-- **THEN** its messages and attachments are permanently deleted, unless they are under an open report
+#### Scenario: Last participant leaves
+- **WHEN** the last remaining participant leaves a conversation
+- **THEN** its messages and attachments are permanently deleted
+
+#### Scenario: Open report holds messages
+- **WHEN** the last participant leaves a conversation with an open report on one of its messages
+- **THEN** only the reported message and its report context are kept, and they are deleted when the report closes

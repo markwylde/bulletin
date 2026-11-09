@@ -8,7 +8,7 @@ posting, moderation, caching and plugins all depend on `can()` and the visibilit
 ## What Changes
 
 - Groups with a primary group and secondary groups, plus a typed group-settings registry with merge rules.
-- Permission masks and the per-forum mask × action matrix, with inheritance and the ancestor rule (forums themselves arrive in change 7; this change defines the matrix model against a forum tree interface, tested with fixtures).
+- Permission masks and the per-forum mask × action matrix, with inheritance and the ancestor rule (forums themselves arrive in change `forum-structure`; this change defines the matrix model against a forum tree interface, tested with fixtures).
 - Per-forum moderators (member or group) with granular powers, and global moderator powers.
 - `can()`, compiled permission snapshots, member and session grants, and the capability accessor with dependency tracking.
 - Auto-promotion rules evaluated by workers.
@@ -26,4 +26,4 @@ posting, moderation, caching and plugins all depend on `can()` and the visibilit
 
 ## Impact
 
-- `packages/domain/permissions`, staff-app, staff-api, workers. Replaces the interim ACP flags from change 4 with registry entries.
+- `packages/domain/permissions`, staff-app, staff-api, workers. Replaces the interim ACP flags from change `staff-console-shell` with registry entries.

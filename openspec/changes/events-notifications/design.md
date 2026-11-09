@@ -10,7 +10,7 @@ wake-up only.
 **Goals:** one event pipeline for core subscribers now, and for webhooks and plugins later
 (they register as subscribers).
 
-**Non-Goals:** push (change 22); webhooks (change 21); plugin subscribers (change 19).
+**Non-Goals:** push (change `pwa-push`); webhooks (change `public-api-webhooks`); plugin subscribers (change `plugin-platform`).
 
 ## Decisions
 
@@ -38,6 +38,13 @@ wake-up only.
     since the client's last position, filtered by `can()`).
   - The event `id` is a composite cursor `n:<notifId>|t:<postId>`. The replay limit is
     200 events or 1 h; beyond that it sends `resync`.
+  - **Control events** (fixed names, part of the client contract in `packages/domain/events/stream.ts`):
+    `resync` (replay gap too large: refetch counts and overlay), `session_revoked` (sent on
+    `NOTIFY session_revoked` or a failed 60 s revalidation, then the stream closes) and
+    `reauth_required` (the session passed its 2 h background grace, ADR 0018, then the stream
+    closes). The shared client handles each: `resync` refreshes, `session_revoked` clears local
+    state and shows the logged-out view, and `reauth_required` preserves editor content and
+    shows the continue prompt.
 - **Unsubscribe links**: an HMAC-signed token of `(member, type, expires)`.
 - **Recipient addresses**: workers never read `pii` tables. The email job calls
   `pii.delivery_target(notification_id, 'email')` (ADR 0012), which returns that recipient's
@@ -50,3 +57,18 @@ wake-up only.
 
 - [Fan-out to forums with thousands of followers] → chunked jobs per 500 recipients.
 - [Many idle SSE connections] → heartbeats every 25 s; connection count is a metric with a per-process cap.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Notifications (`core.notifications`) | Personal content | alerts | 90 days read, 1 year unread | recipient only | included | deleted |
+| Follows and notification preferences | Personal content | delivery choices | life of account | the member only | included | deleted |
+| Event rows and deliveries | Derived (IDs only) | async processing | 30 days after publish | workers | excluded | IDs only; rows age out |
+| Email address at delivery | Restricted | sending email | never stored outside `pii` | `pii.delivery_target` (workers, audited) | — | — |
+
+## Feature flags (ADR 0010)
+
+`follows`, `digests`, `realtime` (SSE). In-app notifications are core.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

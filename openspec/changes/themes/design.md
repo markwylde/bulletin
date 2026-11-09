@@ -2,7 +2,7 @@
 
 ## Context
 
-ADR 0008; the engine, validation and caching exist from change 8.
+ADR 0008; the engine, validation and caching exist from change `rendering-and-caching`.
 
 ## Goals / Non-Goals
 
@@ -25,7 +25,7 @@ ADR 0008; the engine, validation and caching exist from change 8.
   with a detached Ed25519 signature. The marketplace public key is configured, and the dev key
   is used for `mocks/marketplace`.
 - **Checks at install/save**:
-  - template validation and the required-islands check (change 8)
+  - template validation and the required-islands check (change `rendering-and-caching`)
   - CSS filter (`lightningcss` parse; reject imports and external `url()`)
   - contrast check of token pairs (computed, WCAG AA)
   - responsive smoke render at 360 px of 5 key routes via `Bun.WebView` in a worker (for
@@ -38,3 +38,9 @@ ADR 0008; the engine, validation and caching exist from change 8.
 ## Risks / Trade-offs
 
 - [WebView smoke test in a worker is heavy] → run only on install, not on every template save.
+
+## Feature flags (ADR 0010)
+
+`theme_chooser` (members picking a theme). Admin theme management is not flagged.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

@@ -27,3 +27,7 @@
 
 - [ ] 5.1 Add en/es/fr strings for key and webhook management and API errors; verify completeness
 - [ ] 5.2 Seed one integration key with a service member, one personal key and one webhook pointing at `mocks/webhooks`; verify deliveries appear in the mock after `docker compose up --watch`
+
+## 6. Feature flag
+
+- [ ] 6.1 Register `public_api`, `webhooks` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

@@ -2,8 +2,8 @@
 
 ## Context
 
-ADR 0007 fixes the pipeline shape. Attachments (change 11) plug in as an extension later.
-Plugins add extensions in change 19.
+ADR 0007 fixes the pipeline shape. Attachments (change `attachments-avatars`) plug in as an extension later.
+Plugins add extensions in change `plugin-platform`.
 
 ## Goals / Non-Goals
 
@@ -20,7 +20,7 @@ Plugins add extensions in change 19.
   - Our serializer produces `body_html`, plus a separate HAST → text walker for `body_text`
     that skips quote nodes.
   - Quote placeholders are emitted as `<bl-quote data-source="…" data-snapshot="…"></bl-quote>`.
-    They are resolved at fragment build by the view-model layer (topic view in change 10).
+    They are resolved at fragment build by the view-model layer (topic view in change `topics-posts`).
 - **Quote snapshots**: `quote_snapshots(id, source_post_id, body_html, created_at,
   redacted_at)`. The quote extension validates the source context (forum post → forum post;
   message → same conversation) and `can(read)` for the author. A moderator edit with redaction
@@ -44,13 +44,19 @@ Plugins add extensions in change 19.
 - **Unfurls**:
   - A worker resolves DNS, rejects private, link-local, loopback and CGNAT ranges (re-checked
     on each redirect, max 3), caps responses at 1 MB and 5 s, and parses OpenGraph/oEmbed.
-  - Images are fetched and stored via storage (change 11 provides the proxy; until then, cards
+  - Images are fetched and stored via storage (change `attachments-avatars` provides the proxy; until then, cards
     are text-only).
   - Results go to `core.unfurls(url_hash, data, fetched_at)`, refreshed after 7 days.
 - **Write-pipeline hook points**: `beforeSave(content, ctx)` stages are registered in order:
-  bad words, link limits, spam (filled by `moderation`), then plugin filters (change 19).
+  bad words, link limits, spam (filled by `moderation`), then plugin filters (change `plugin-platform`).
 
 ## Risks / Trade-offs
 
 - [Milkdown fidelity gaps] → the corpus test gates releases; the source mode is always available.
 - [Re-sanitise on read adds latency during an upgrade] → it applies only on cache misses, and only to stale rows.
+
+## Feature flags (ADR 0010)
+
+`unfurls` (link previews) and `mentions`. Markdown posting itself is core and not flagged.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

@@ -164,6 +164,7 @@ member, or take the board down.
 - The SDK is semver'd, with compatibility shims for one major version.
 
 ### Spike S2 (before feature work)
+Runs as change `plugin-sandbox-spike`, straight after the foundation.
 Prove the nsjail sandbox inside rootless Podman and Docker: the broker socket, DB role
 restrictions and egress proxy. Include a **malicious-plugin test suite**: read `core`/`pii`,
 `LISTEN`, open sockets, fork-bomb, exhaust memory, read sibling bundles, read env and

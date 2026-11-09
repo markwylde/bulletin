@@ -11,7 +11,7 @@ default theme skeleton, and the full caching stack.
 
 - LiquidJS-based template engine with DB-stored templates, typed view models, `{% island %}`, `{% hook %}`, `{% t %}` and autoescaping.
 - Island registry and client hydration runtime.
-- Default theme skeleton covering the board index and forum pages from change 7.
+- Default theme skeleton (layout, tokens, light/dark, header, breadcrumbs, empty states) plus a dev-only demo route that exercises every mechanism over a fixture resource tree. Real pages (`forum-structure` onward) are built on this from day one.
 - `packages/cache`: variant keys, versioned tags, in-process LRU, NOTIFY listener protocol with heartbeat and fail-closed mode, 1 s permission backstop, and mutation tag declarations.
 - Personal overlay endpoint and client applier.
 - HTTP layer: CDN eligibility, `bp` cookie keying, `Cache-Control`, `Surrogate-Key`, ETag/304, and purge on guest revocation.

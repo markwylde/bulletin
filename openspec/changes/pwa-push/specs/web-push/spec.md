@@ -14,6 +14,10 @@ Members SHALL enable push per device from their notification settings, and SHALL
 - **WHEN** a member enables push on their phone and grants browser permission
 - **THEN** the device appears in their device list
 
+#### Scenario: Remove a device
+- **WHEN** a member removes a device from their list
+- **THEN** that device receives no further pushes, and the list shows only labels and dates, never push endpoints or keys
+
 ### Requirement: Per-type push preferences
 Push SHALL be a channel in the notification preferences, selectable per notification type.
 

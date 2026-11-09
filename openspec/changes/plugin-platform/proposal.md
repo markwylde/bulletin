@@ -4,11 +4,11 @@
 
 You want a real plugin ecosystem: admins install plugins from our marketplace with one click,
 and plugins can hook into everything without being able to break the core or read what they
-shouldn't. ADR 0009 defines the model; spike S2 must prove the sandbox first.
+shouldn't. ADR 0009 defines the model, and `plugin-sandbox-spike` (spike S2) has already proven the sandbox.
 
 ## What Changes
 
-- Spike S2: nsjail sandbox under Docker and Podman, broker socket, DB role restrictions, egress proxy, and the malicious-plugin suite.
+- Hardening the spike S2 prototype from `plugin-sandbox-spike` and completing the malicious-plugin suite.
 - plugin-host supervisor and broker: per-plugin processes, capability enforcement, DB budgets, storage quota, egress allowlist and circuit breaker.
 - Plugin SDK (versioned): hooks, core data APIs, jobs, settings, i18n and GDPR hooks.
 - Lifecycle: install (signature, capability review), upgrade (quiesce, atomic migrate, activate), disable, uninstall, and failure recovery.

@@ -4,7 +4,7 @@
 
 The staff app is a Vite + React SPA on its own origin (ADR 0018), talking to staff-api.
 At this point the permission registry from `groups-permissions` does not exist yet, so ACP
-permissions start as a minimal set on the built-in groups. Change 6 migrates them into the
+permissions start as a minimal set on the built-in groups. Change `groups-permissions` migrates them into the
 registry.
 
 ## Goals / Non-Goals
@@ -31,4 +31,4 @@ registry.
 
 ## Risks / Trade-offs
 
-- [Permission bootstrap before the registry exists] → a single migration in change 6 maps the interim flags; tests guard the mapping.
+- [Permission bootstrap before the registry exists] → a single migration in change `groups-permissions` maps the interim flags; tests guard the mapping.

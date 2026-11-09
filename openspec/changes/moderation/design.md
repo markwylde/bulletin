@@ -44,7 +44,9 @@ grant). The write pipeline stages were reserved in `content-pipeline`.
     window (UNLOGGED table).
 - **IP capture**: on post create and login, insert into `pii.post_ips` and `pii.ip_log` via a
   definer function (write-only for user_api). Lookups go through `pii.open_access` →
-  `pii.read_post_ip(grant)`, per ADR 0012, from staff-api with step-up auth.
+  `pii.read_post_ip(grant)`, per ADR 0012, from staff-api with step-up auth. The "other members
+  from this IP" view uses `pii.read_members_by_ip(grant)`, a separate audited grant that only
+  returns posts in forums where the actor has `mod.view_ips` (capped at 100 rows).
 - **IP bans**: `ip_bans(cidr inet, reason, expires_at, created_by)` with a GiST index. The
   check runs in login and post middleware.
 - **Log**: `moderation_log` is append-only. The app role has INSERT and SELECT only (no UPDATE
@@ -54,3 +56,19 @@ grant). The write pipeline stages were reserved in `content-pipeline`.
 
 - [Merge/split on huge topics] → batched renumbering inside the transaction; the load test covers a 10k-post topic.
 - [False positives in anti-spam] → held, not deleted; labelled with the rule, so moderators can tune it.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Post and login IPs (`pii.post_ips`, `pii.ip_log`) | Restricted | abuse investigation | 90 days | `pii.open_access` → `pii.read_post_ip` / `pii.read_members_by_ip`; `mod.view_ips` in that forum, step-up, audited | included (own IPs) | deleted |
+| IP bans (`core.ip_bans`) | Security record | abuse prevention | until expiry (default 1 year) | `ban.manage` | excluded (legitimate interest, documented) | kept until expiry; requester told |
+| Warnings and restrictions | Security record | moderation history | 2 years after expiry | the member (member note); staff with `warn.view` | member-visible fields included | kept with documented basis; requester told |
+| Reports and report comments | Security record | moderation | 2 years after closure | moderators of the forum | reports the member filed | reporter link anonymised |
+| Moderation log | Security record | accountability | 2 years | staff with `modlog.view` | excluded | actor and target anonymised |
+
+## Feature flags (ADR 0010)
+
+`warnings`, `multimod`. Reports, the queue, filters and IP tools are core safety features and not flagged.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

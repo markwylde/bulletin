@@ -3,7 +3,7 @@
 ## Context
 
 ADR 0010; the cache variant includes `renderFlagsHash` from ADR 0006. The caching package
-arrives in change 8, so this change exposes the evaluated render flags; change 8 consumes them.
+arrives in change `rendering-and-caching`, so this change exposes the evaluated render flags; change `rendering-and-caching` consumes them.
 
 ## Goals / Non-Goals
 

@@ -4,7 +4,8 @@
 
 The board needs its structure: categories, forums, unlimited sub-forums, redirect forums,
 forum rules, topic prefixes and announcements. This activates the forum permission matrix
-from change 6.
+from change `groups-permissions`, and is the first feature built on the template and cache stack
+from `rendering-and-caching`.
 
 ## What Changes
 
@@ -13,7 +14,7 @@ from change 6.
 - Per-forum settings: description, rules box, password, show moderators, topic prefixes (required or optional), default sort, and language for search.
 - Global and per-forum announcements with date ranges and group targeting.
 - Staff screens to manage the tree (drag to reorder and reparent), forum settings and announcements.
-- Board index and forum pages rendered with a basic layout (the full template system arrives in change 8).
+- Board index and forum pages rendered through default-theme templates with view-model contracts, cache tags and the variant harness from `rendering-and-caching`.
 
 ## Capabilities
 
@@ -26,4 +27,4 @@ from change 6.
 
 ## Impact
 
-- Migrations for forums, prefixes and announcements; staff-app sections; user-app index and forum routes.
+- Migrations for forums, prefixes and announcements; staff-app sections; user-app index and forum routes, templates and view-model contracts.

@@ -14,10 +14,10 @@
 ## 3. Sessions
 
 - [ ] 3.1 Implement session lookup, cache and revocation NOTIFY, and lifetimes, with integration tests for the expiry scenarios
-- [ ] 3.5 Implement top-level silent re-auth (`/auth/refresh`, `prompt=none`, `return_to` validation) and the 2 h background grace with `reauth_required`, plus the client fetch wrapper that preserves editor content; tests for the successful, disabled-account, within-grace and after-grace scenarios, and an E2E for the after-grace reply
-- [ ] 3.2 Implement rotation on login and on group change, with an integration test
-- [ ] 3.3 Implement logout and the "revoke all sessions" staff endpoint (permission-checked), with tests including a permission-denial case
-- [ ] 3.4 Implement staff step-up (`last_auth_at` check and SPA re-auth flow) with an integration test and an E2E test
+- [ ] 3.2 Implement top-level silent re-auth (`/auth/refresh`, `prompt=none`, `return_to` validation) and the 2 h background grace with `reauth_required`, plus the client fetch wrapper that preserves editor content; tests for the successful, disabled-account, within-grace and after-grace scenarios, and an E2E for the after-grace reply
+- [ ] 3.3 Implement rotation on login and on group change, with an integration test
+- [ ] 3.4 Implement logout and the "revoke all sessions" staff endpoint (permission-checked), with tests including a permission-denial case
+- [ ] 3.5 Implement staff step-up (`last_auth_at` check and SPA re-auth flow) with an integration test and an E2E test
 
 ## 4. CSRF and headers
 

@@ -10,7 +10,7 @@
 
 - [ ] 2.1 Migrations for reputation_entries and members.reputation; give/receive rules (group permissions, min posts, daily limit, negatives, once per post), with tests for each scenario
 - [ ] 2.2 Reaction-to-reputation link with setting toggle and recount job, with integration tests
-- [ ] 2.3 Reputation display (profile, post, label scale, board toggle) in default theme templates, with tests
+- [ ] 2.3 Reputation display (profile, label scale, board toggle) in default theme templates, and the reputation label on the `member:{id}:card` fragment; tests including that a reputation change rebuilds the card but not post blocks
 - [ ] 2.4 Staff removal and recount (logged), with tests including permission denial
 
 ## 3. Notifications
@@ -21,3 +21,7 @@
 
 - [ ] 4.1 Add en/es/fr strings for reaction labels, reputation labels and UI; verify completeness
 - [ ] 4.2 Seed a default reaction set, reactions and reputation across seeded posts, and verify totals display after `docker compose up --watch`
+
+## 5. Feature flag
+
+- [ ] 5.1 Register `reactions`, `reputation` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

@@ -2,14 +2,14 @@
 
 ## Context
 
-Uses the overlay (ADR 0006) for per-viewer state and events (change 12) for notifications
+Uses the overlay (ADR 0006) for per-viewer state and events (change `events-notifications`) for notifications
 and badges.
 
 ## Goals / Non-Goals
 
 **Goals:** cheap writes; cached post blocks stay valid when reactions change.
 
-**Non-Goals:** reaction analytics beyond leaderboards (change 14).
+**Non-Goals:** reaction analytics beyond leaderboards (change `member-profiles`).
 
 ## Decisions
 
@@ -25,7 +25,23 @@ and badges.
 - **Daily allowance**: count of today's `reputation_entries` by giver, in board timezone,
   inside the transaction.
 - **Recount**: `SUM(points)` over entries per member, run by a job.
+- **Author card**: the reputation label is a field of `member:{id}:card` (`topics-posts`). Reputation
+  changes bump `member:{id}`, rebuilding the card only; post blocks are untouched. The recount
+  job bumps the tags of members whose total changed.
 
 ## Risks / Trade-offs
 
 - [Toggling "reactions affect reputation" on a big board] → the recount job runs in batches and shows progress in the staff app.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Reactions (`post_reactions`) | Personal content | feedback on posts | life of the post | who-reacted list per `can(read)` on the post | included | deleted, summaries recomputed |
+| Reputation entries (`reputation_entries`) | Personal content | member standing | life of account | givers visible to staff only; totals public | included (given and received) | entries deleted, totals recounted |
+
+## Feature flags (ADR 0010)
+
+`reactions`, `reputation`.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

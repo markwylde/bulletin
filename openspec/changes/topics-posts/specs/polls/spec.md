@@ -25,11 +25,19 @@ Members with `vote` on the forum SHALL vote once per poll, before it closes. Gue
 - **THEN** voting is disabled, and results are shown
 
 ### Requirement: Results visibility
-If results are hidden before voting, a viewer SHALL see results only after voting, when the poll is closed, or if they are a moderator of the forum.
+If results are hidden before voting, a viewer SHALL see results only after voting, when the poll is closed, or if they are a moderator of the forum. Hidden counts SHALL NOT appear in shared or cached HTML; they SHALL be fetched from a private endpoint that checks these conditions per request.
 
 #### Scenario: Hidden results
 - **WHEN** a member who has not voted views a poll with hidden results
 - **THEN** they see the choices but no counts
+
+#### Scenario: Results after voting
+- **WHEN** a member votes in a poll with hidden results
+- **THEN** the results load from the private results endpoint without a page reload, and other viewers' cached poll HTML is unchanged
+
+#### Scenario: No counts in cached HTML
+- **WHEN** a guest requests a topic whose open poll hides results
+- **THEN** the shared poll fragment contains no vote counts, and the results endpoint refuses the guest
 
 ### Requirement: Poll editing
 The starter SHALL edit poll text within their edit window. Choices that have received votes SHALL NOT be removed, except by moderators, and only after confirmation.

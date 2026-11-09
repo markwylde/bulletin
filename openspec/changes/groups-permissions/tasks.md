@@ -3,7 +3,7 @@
 ## 1. Model and registry
 
 - [ ] 1.1 Migrations for groups (display attributes, ordering), `member_groups` with primary flag, `group_settings`, `masks`, `group_masks`, `forum_permissions(forum, mask, action bits, inherits)`, and `moderators(forum, member|group, powers, this_forum_only)`; verify with integration tests
-- [ ] 1.2 Implement the settings/ACP permission registry with merge rules and migrate the interim ACP flags from change 4; unit tests for each merge rule
+- [ ] 1.2 Implement the settings/ACP permission registry with merge rules and migrate the interim ACP flags from change `staff-console-shell`; unit tests for each merge rule
 
 ## 2. Evaluation
 

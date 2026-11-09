@@ -46,3 +46,13 @@ Guests, Members, Administrators, Banned). The full group system arrives in
   re-auth failure due to a network error (rather than a denial) extends `reauth_at` by 1 h,
   up to 3 times.
 - [Confusable normalisation rejects legitimate names] → staff can override with a reason, which is logged.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| DarkAuth issuer/sub, email (`pii.identities`) | Restricted | login, account email | life of account | `pii.resolve_identity` (user_api, staff_api); no staff read path | email included | deleted |
+| Session IP and user agent (`pii.session_meta`) | Restricted | security, session list | 30 days; revoked sessions 7 days | `pii.record_session_meta` write-only; the member sees their own sessions via a definer read | included | deleted |
+| Login IPs (`pii.ip_log`) | Restricted | abuse prevention | 90 days | `pii.record_login_ip` write-only; reads in `moderation` | included | deleted |
+| Display name, name skeleton, preferences (`core.members`) | Personal content | public identity | life of account | `can()`; public | included | anonymised to "Deleted member #n" |
+| Session token hash, `last_auth_at` (`core.sessions`) | Security record | authentication | until expiry + 7 days | the member's own sessions | not exported (secret) | deleted |

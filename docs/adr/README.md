@@ -29,8 +29,10 @@ Format: `NNNN-kebab-title.md` with **Status / Context / Decision / Consequences*
 | 0020 | [Operations: backups, health, observability, capacity](0020-operations.md) |
 
 ## Spikes required before feature work
-- **S1** — runtime Liquid templates + island hydration inside Astro, adapter choice (ADR 0008)
-- **S2** — nsjail plugin sandbox + broker + malicious-plugin suite under Docker and Podman (ADR 0009)
+- **S1** — runtime Liquid templates + island hydration inside Astro, adapter choice (ADR 0008).
+  Change `rendering-and-caching`, built before `forum-structure` on a dev-only demo route.
+- **S2** — nsjail plugin sandbox + broker + malicious-plugin suite under Docker and Podman (ADR 0009).
+  Change `plugin-sandbox-spike`, straight after `foundation-dev-environment`.
 
 Record each spike's outcome in its ADR and flip its status to Accepted.
 

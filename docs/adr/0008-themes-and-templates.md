@@ -62,6 +62,7 @@ A theme is a versioned set of:
   both schemes.
 
 ### Spike S1 (before feature work)
+Runs as change `rendering-and-caching`, before any feature page, on a dev-only demo route.
 Prove the end-to-end flow: a DB-stored template places an island → SSR → hydration → theme
 switch → plugin hook fragment → cache hit. Also measure render cost. Record the adapter choice here.
 

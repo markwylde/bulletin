@@ -7,10 +7,10 @@
 
 ## 2. Conversation features
 
-- [ ] 2.1 Reply, invite, remove, leave and block re-invites, plus full history for new participants; integration tests for each scenario
+- [ ] 2.1 Reply, invite, remove, leave (ends all access, frees a quota slot) and block re-invites, plus full history for new participants; integration tests for each scenario, including 404 after leaving
 - [ ] 2.2 Inbox, Sent and Archive folders, unread tracking, archive/unarchive with auto-unarchive on reply; integration tests; E2E at 360 and 1440
 - [ ] 2.3 Search within own conversations, with a test that results never include others' conversations
-- [ ] 2.4 Deletion from own view and permanent removal when no participants remain (respecting open reports); integration tests
+- [ ] 2.4 Permanent removal job when no active participants remain (messages, attachment objects), holding messages under open reports until the report closes; integration tests for both scenarios
 
 ## 3. Integrations
 
@@ -21,3 +21,7 @@
 
 - [ ] 4.1 Add en/es/fr strings for conversations UI, errors and notifications; verify completeness
 - [ ] 4.2 Seed conversations (1:1 and group, archived, with attachments, one where a participant left) for seeded members; verify after `docker compose up --watch`
+
+## 5. Feature flag
+
+- [ ] 5.1 Register `conversations` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

@@ -2,8 +2,8 @@
 
 ## Context
 
-ADR 0012. Most restricted storage exists already (changes 3 and 16). Plugins expose
-`gdpr.export` and `gdpr.erase` (change 19).
+ADR 0012. Most restricted storage exists already (changes `identity-sessions` and `moderation`). Plugins expose
+`gdpr.export` and `gdpr.erase` (change `plugin-platform`).
 
 ## Goals / Non-Goals
 
@@ -32,3 +32,7 @@ ADR 0012. Most restricted storage exists already (changes 3 and 16). Plugins exp
 
 - [Backups retain erased data for up to 35 days] → documented in the privacy policy template and inventory.
 - [Erasure of a prolific member is heavy] → batched steps; progress visible in the queue.
+
+## Feature flags (ADR 0010)
+
+None: export and erasure are legal obligations and are always available.

@@ -28,4 +28,4 @@ mobile (ADR 0007).
 
 ## Impact
 
-- `packages/content`, `packages/ui/islands/Editor`, workers, staff-app (emoticons). Rules and announcements (change 7) switch to rendered markdown.
+- `packages/content`, `packages/ui/islands/Editor`, workers, staff-app (emoticons). Rules and announcements (change `forum-structure`) switch to rendered markdown.

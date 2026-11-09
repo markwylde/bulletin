@@ -23,9 +23,14 @@
 ## 4. Realtime
 
 - [ ] 4.1 SSE endpoint (session validation, LISTEN wake-up, durable reads, cursor IDs, replay or resync, heartbeat), with integration tests for short/long disconnect and the hidden-forum scenario
-- [ ] 4.2 Client stream handler (count updates, new-replies banner, logout on revocation), with E2E for the banner and revocation scenarios
+- [ ] 4.2 Control events `resync`, `session_revoked` and `reauth_required` with the shared client handlers, defined in one typed contract; integration tests for revocation and grace expiry, and an E2E that a revoked session's open page switches to logged out
+- [ ] 4.3 Client stream handler (count updates, new-replies banner, logout on revocation), with E2E for the banner and revocation scenarios
 
 ## 5. Strings and seed
 
 - [ ] 5.1 Add en/es/fr strings for notification texts, emails, digests, preferences and banners; verify completeness
 - [ ] 5.2 Seed follows, notifications (read and unread) and digest preferences for seeded members, and verify the bell shows counts after `docker compose up --watch`
+
+## 6. Feature flag
+
+- [ ] 6.1 Register `follows`, `digests`, `realtime` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

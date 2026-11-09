@@ -39,6 +39,10 @@ Moderators with the view-IPs power for a forum SHALL see the IP address of posts
 ### Requirement: IP data retention
 Post and login IP records SHALL be deleted after the configured retention period (default 90 days). Lookups for older content SHALL show that the data has expired.
 
+#### Scenario: Reverse lookup scoped to forums
+- **WHEN** a moderator with view-IPs in forum A only looks up other members who used a post's IP
+- **THEN** they see members who posted from that IP in forum A, and nothing from other forums, and the lookup has its own audit entry
+
 #### Scenario: Expired IP
 - **WHEN** a moderator views the IP of a 120-day-old post with 90-day retention
 - **THEN** they see "IP data expired"

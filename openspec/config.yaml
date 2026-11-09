@@ -5,9 +5,15 @@ context: |
   Product scope lives in docs/features.md. Every proposal and design must cite the ADRs it
   relies on and must not contradict them; propose a superseding ADR instead.
   Every change touching PII must include the ADR 0012 checklist.
+  Build order and dependencies live in docs/roadmap.md; refer to other changes by slug, never by number.
 
 rules:
+  design:
+    - If the change stores or processes personal data, include a "Personal data (ADR 0012 checklist)" section with a table giving class, purpose, retention, access permission, export and erasure for each item
+    - If the change is user-facing and not core reading or posting, include a "Feature flags (ADR 0010)" section naming the flag keys
+    - Every new user-app route declares a view-model contract (deps, tags, CDN eligibility, required islands) and registers with the cache variant harness from rendering-and-caching
   tasks:
+    - Include a feature flag task (defineFlag, requireFlag, template and useFlag gating, flag-off and cache-variant tests) for every flag key named in the design
     - Include test tasks per ADR 0015 (unit, integration with permission-denial cases, cache invalidation/no-leak where relevant, Bun.WebView E2E at mobile and desktop)
     - Include i18n tasks for en, es, fr strings
     - Include seed data updates so the feature is visible after docker compose up --watch

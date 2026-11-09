@@ -6,8 +6,12 @@ Bulletin is a community forum (IPB 1.x/2.x-style) built as a Bun monorepo.
 your change, plus [`docs/features.md`](docs/features.md).** ADRs are binding. If your change
 needs to contradict one, stop and propose a superseding ADR first.
 
-Spikes S1 (templates/islands) and S2 (plugin sandbox) must land before feature work that
-depends on them.
+Both spikes are early changes in [`docs/roadmap.md`](docs/roadmap.md): S2 is
+`plugin-sandbox-spike` (straight after the foundation) and S1 is `rendering-and-caching` (before
+`forum-structure`). Every user-app route renders through templates, a view-model contract and the
+cache variant harness from day one; there is no interim layout.
+Every user-facing change ships behind its named feature flag (except core reading and posting),
+and every design that touches personal data includes the ADR 0012 checklist.
 
 Non-negotiables (details in the ADRs):
 - Local dev is two steps: clone, then `docker compose up --watch`. Every external service is

@@ -26,4 +26,4 @@ request queue.
 
 ## Impact
 
-- workers (retention, export, erasure), staff-app data requests and PII access log, user-app privacy page, `pii` functions, the plugin SDK GDPR hooks (from change 19), storage (export objects).
+- workers (retention, export, erasure), staff-app data requests and PII access log, user-app privacy page, `pii` functions, the plugin SDK GDPR hooks (from change `plugin-platform`), storage (export objects).

@@ -42,3 +42,18 @@ themes, plugins and exports later.
 
 - [sharp native binary in Bun images] → pin the version; CI builds on both architectures.
 - [Redirect per inline image adds latency] → the presigned URL is cached per viewer-variant for 30 s; the browser follows the redirect quickly.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Attachments (objects and `core.attachments`) | Personal content | files in posts and PMs | life of the post; orphans 24 h | `can(download)` per request | included (files in the export zip) | follows the admin's choice for the member's posts (delete, or keep with the anonymised post) |
+| Avatars | Personal content | public identity | until replaced | public by design (ADR 0019) | included | deleted |
+| Upload quota (`member_storage`) | Derived | limits | life of account | member and staff | excluded | deleted |
+| EXIF metadata | Restricted if present | none | stripped on upload, never stored | — | — | — |
+
+## Feature flags (ADR 0010)
+
+`attachments`. Avatar upload is core (the initials fallback always works).
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

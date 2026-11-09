@@ -27,3 +27,7 @@
 
 - [ ] 5.1 Add en/es/fr strings for the theme manager and chooser; verify completeness
 - [ ] 5.2 Seed a second theme (child of default, distinct tokens and one overridden template), a VIP-only theme, and a marketplace theme package; verify after `docker compose up --watch`
+
+## 6. Feature flag
+
+- [ ] 6.1 Register `theme_chooser` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

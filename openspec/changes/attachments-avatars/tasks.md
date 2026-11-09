@@ -33,3 +33,7 @@
 - [ ] 6.1 Group settings entries for quotas, types, sizes and avatar limits, plus board settings for allowed types; tests for merge behaviour
 - [ ] 6.2 Add en/es/fr strings for upload UI, errors, attachment lists and avatar UI; verify completeness
 - [ ] 6.3 Seed avatars for a subset of members, image and file attachments in posts (including one in a staff-only forum), and verify after `docker compose up --watch`
+
+## 7. Feature flag
+
+- [ ] 7.1 Register `attachments` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

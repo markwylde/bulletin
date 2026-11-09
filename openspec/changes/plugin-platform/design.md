@@ -2,9 +2,10 @@
 
 ## Context
 
-ADR 0009 is the contract; this change starts with spike S2. If nsjail cannot run inside
-rootless Podman with acceptable capabilities, the spike must produce a superseding ADR
-(e.g. per-plugin containers) before task group 2 begins.
+ADR 0009 is the contract. Spike S2 ran earlier as `plugin-sandbox-spike` and left a
+prototype plugin-host, the first malicious cases, and findings recorded in ADR 0009. This
+change builds the production runtime on that result; if the spike produced a superseding
+ADR, follow it instead.
 
 ## Goals / Non-Goals
 
@@ -59,3 +60,9 @@ rootless Podman with acceptable capabilities, the spike must produce a supersedi
   and is network-isolated from Postgres except through the broker's connection.
 - [RPC latency on write filters] → a total 300 ms budget, and filters run only on writes.
 - [SQL parser allowlist bypass] → defence in depth: DB grants enforce the same limits even if parsing is fooled.
+
+## Feature flags (ADR 0010)
+
+`plugins` (marketplace and install). Turning it off disables all plugins.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

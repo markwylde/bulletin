@@ -3,7 +3,7 @@
 ## 1. Workspace scaffolding
 
 - [ ] 1.1 Create the Bun workspace root (`package.json` with workspaces and `packageManager` pinning Bun, `tsconfig.base.json` strict, Biome config) and verify `bun install` succeeds
-- [ ] 1.2 Create shells for `apps/{user-app,user-api,staff-app,staff-api,workers,plugin-host}` and `packages/{db,domain,cache,content,templates,plugin-sdk,i18n,flags,ui,config,test-utils}` and verify `bun run check` (typecheck + lint + tests) passes
+- [ ] 1.2 Create shells for `apps/{user-app,user-api,staff-app,staff-api,workers,plugin-host}` and `packages/{db,domain,cache,content,templates,plugin-sdk,i18n,flags,storage,ui,config,test-utils}` and verify `bun run check` (typecheck + lint + tests) passes
 - [ ] 1.3 Implement `packages/config` env parsing with dev defaults, production rejection of dev defaults, and a log redaction helper; verify with unit tests for rejection and redaction
 
 ## 2. Compose stack and proxy
@@ -25,8 +25,8 @@
 
 - [ ] 4.1 Implement the migration runner (ordering, checksums, advisory lock, per-file transaction) with integration tests for the concurrent-start and edited-migration scenarios
 - [ ] 4.2 Create migration `0001` with schemas `core` and `pii`, owner roles (`bulletin_owner`, `pii_owner`) and login roles (`user_app`, `user_api`, `staff_api`, `workers`) per ADRs 0001 and 0012 (no tables yet beyond `schema_migrations`, `seed_runs`, `cache_tags`); verify role privileges with tests
-- [ ] 4.4 Implement the ID and URL convention helpers (`/<kind>/<id>-<slug>`, ID-only resolution, canonical 301) in `packages/domain`, with unit tests for missing, outdated and correct slugs
-- [ ] 4.3 Implement the seed framework (module registry, seeded RNG, `SEED_SIZE`, run-once guard) and verify the reproducibility scenario with a test comparing two seeded databases
+- [ ] 4.3 Implement the ID and URL convention helpers (`/<kind>/<id>-<slug>`, ID-only resolution, canonical 301) in `packages/domain`, with unit tests for missing, outdated and correct slugs
+- [ ] 4.4 Implement the seed framework (module registry, seeded RNG, `SEED_SIZE`, run-once guard) and verify the reproducibility scenario with a test comparing two seeded databases
 
 ## 5. Health and lifecycle
 

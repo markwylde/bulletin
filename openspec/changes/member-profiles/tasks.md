@@ -28,9 +28,14 @@
 
 - [ ] 5.1 Ranks manager and rank display, plus custom titles with group permission and bad-word filter hook; tests
 - [ ] 5.2 Badge definitions, manual award/revoke (logged), featured badges; tests including permission denial
-- [ ] 5.3 Badge rule evaluator (event subscriber and nightly sweep, at-most-once), with tests for the auto-award scenario
+- [ ] 5.3 Add rank, pips, custom title and featured badges to the `member:{id}:card` fragment, with mutation tags (`member:{id}` for title, badge and post-count changes; `ranks` for rank edits); invalidation tests for each, and a test that post blocks are not re-rendered
+- [ ] 5.4 Badge rule evaluator (event subscriber and nightly sweep, at-most-once), with tests for the auto-award scenario
 
 ## 6. Strings and seed
 
 - [ ] 6.1 Add en/es/fr strings for profiles, fields, signatures, relationships, directory, ranks and badges; verify completeness
 - [ ] 6.2 Seed custom fields (including a staff-only field), signatures, ranks, badges (manual and automatic) and awards, ignores, friendships, presence and leaderboard data; verify after `docker compose up --watch`
+
+## 7. Feature flag
+
+- [ ] 7.1 Register `friends`, `leaderboards`, `badges` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

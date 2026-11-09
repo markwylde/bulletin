@@ -3,7 +3,7 @@
 ## Context
 
 ADR 0005 is the contract. ADR 0006 consumes the visibility key. Forums don't exist until
-change 7, so the matrix is built against a `ForumTree` interface and tested with fixture trees.
+change `forum-structure`, so the matrix is built against a `ForumTree` interface and tested with fixture trees.
 
 ## Goals / Non-Goals
 
@@ -25,7 +25,7 @@ change 7, so the matrix is built against a `ForumTree` interface and tested with
   bit)` records `(forum, bit)` in dev/test mode and throws if it is not in the view's declared
   deps. `visibilityKey(deps)` hashes only the declared bits.
 - **Registry**: `domain/permissions/registry.ts` holds group settings and ACP permissions
-  (`acp.*`). Plugins append namespaced entries at load time (change 19).
+  (`acp.*`). Plugins append namespaced entries at load time (change `plugin-platform`).
 - **Promotion**: worker job `promotion.evaluate(memberId)` runs in a transaction with `SELECT …
   FOR UPDATE` on the member, evaluates rules in order, applies the first match, and emits
   `member.promoted`.

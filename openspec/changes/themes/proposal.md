@@ -4,7 +4,7 @@
 
 Admins must fully customise the user app's look (IPB skins), install themes from the
 marketplace, and control which groups can use which themes. Members choose among allowed
-themes and light/dark/system. The engine exists (change 8); this change adds management.
+themes and light/dark/system. The engine exists (change `rendering-and-caching`); this change adds management.
 
 ## What Changes
 

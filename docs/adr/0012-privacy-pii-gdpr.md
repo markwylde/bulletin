@@ -46,6 +46,12 @@ and an access permission.
 
   No PII can leave the database without an already-committed audit record, regardless of how
   the caller batches statements.
+- **Interactive staff reads** (two-transaction grant, step-up auth, granted to `staff_api` only):
+  - `pii.read_post_ip(grant)`: the IP of one post, if the actor has `mod.view_ips` in its forum.
+  - `pii.read_members_by_ip(grant)`: the reverse lookup. The grant's resource is a post ID
+    (or an IP the actor already obtained through an audited read); it returns members who
+    posted from that IP **only in forums where the actor has `mod.view_ips`**, with post IDs,
+    capped at 100 rows. Each call is a separate audited grant.
 - **System-purpose functions**: flows that have no interactive session use narrow definer
   functions. Each takes only the identifiers it needs, returns the minimum, and is granted to
   exactly one role.
@@ -56,7 +62,9 @@ and an access permission.
   | `pii.record_session_meta(session_id, ip, ua)` | user_api, staff_api | void | write-only, no read |
   | `pii.record_post_ip(post_id, ip)` | user_api | void | write-only |
   | `pii.record_login_ip(member_id, ip)` | user_api, staff_api | void | write-only |
-  | `pii.save_push_subscription(session_token, sub)` / `pii.delete_push_subscription(...)` | user_api | void | write-only |
+  | `pii.save_push_subscription(session_token, sub)` | user_api | device ID | write-only |
+| `pii.list_push_devices(session_token)` | user_api | the session member's own devices: device ID, label, user agent family, created and last-used times (never endpoint or keys) | none (own non-secret metadata) |
+| `pii.delete_push_device(session_token, device_id)` | user_api | void | write-only; only the session member's own devices |
   | `pii.delivery_target(notification_id, channel)` | workers | email address or push subscriptions for that notification's recipient only | one `access_log` row per call (purpose `delivery`), in the same transaction as the job's delivery record |
   | `pii.export_member(request_id)` / `pii.erase_member(request_id)` | workers | export data / void | logged against the data request |
   | `pii.purge_expired()` | workers | counts | summary row per run |

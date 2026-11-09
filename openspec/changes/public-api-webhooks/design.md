@@ -2,7 +2,7 @@
 
 ## Context
 
-ADR 0016. Webhooks are subscribers in the event relay (change 12).
+ADR 0016. Webhooks are subscribers in the event relay (change `events-notifications`).
 
 ## Goals / Non-Goals
 
@@ -29,3 +29,17 @@ ADR 0016. Webhooks are subscribers in the event relay (change 12).
 ## Risks / Trade-offs
 
 - [Key leakage] → shown once, prefix visible for identification, quick revocation, and last-used for detection.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| API keys (`api_keys`) | Security record | integrations | until revoked or expired | key owner and admins; hash only | key metadata included | revoked and deleted |
+| Webhook delivery logs | Derived (IDs only) | debugging | 30 days | admins | excluded | age out |
+| Rate buckets | Derived | limits | 2 windows | none | — | — |
+
+## Feature flags (ADR 0010)
+
+`public_api`, `webhooks`.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

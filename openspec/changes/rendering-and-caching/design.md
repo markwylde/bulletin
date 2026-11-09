@@ -8,12 +8,23 @@ write a superseding ADR before continuing.
 
 ## Goals / Non-Goals
 
-**Goals:** a production-quality template engine, island runtime and cache stack, proven on
-the index and forum pages.
+**Goals:** a production-quality template engine, island runtime and cache stack, proven on a
+dev-only demo route before any feature page exists. It runs straight after `groups-permissions`,
+so `forum-structure` and every later change render through templates, view-model contracts and
+the cache variant harness from their first commit.
 
-**Non-Goals:** theme management UI (change 18); plugin hooks content (change 19).
+**Non-Goals:** theme management UI (change `themes`); plugin hooks content (change `plugin-platform`).
 
 ## Decisions
+
+- **Demo route**: `/_demo/<id>` (enabled only when `NODE_ENV != production`) renders a fixture
+  resource tree supplied through the `ForumTree` test provider from `groups-permissions`. It
+  uses one island, one `{% hook %}` point, a password-style unlock, a moderator-only control
+  and an overlay field, so every variant dimension and invalidation path is exercised. The
+  harness, benchmark and E2E tests target it until real routes take over.
+- **Route contract for later changes**: every user-app route ships a view-model contract
+  (`deps`, `tags`, CDN eligibility, required islands), default-theme templates, and a
+  registration in the variant harness. A route without these fails CI.
 
 - **Process boundary** (ADR 0001): user-app connects to Postgres as `user_app`. It builds view
   models in-process from `packages/domain`, and runs its own LISTEN connection and LRU.

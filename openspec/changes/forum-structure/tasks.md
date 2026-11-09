@@ -3,13 +3,14 @@
 ## 1. Model
 
 - [ ] 1.1 Migrations for forums (ltree path, type, settings, slug, counters), prefixes, forum_prefixes, slug_history, announcements, announcement_targets and dismissals; integration tests for moves and cycle rejection
-- [ ] 1.2 Implement the `ForumTree` provider for the permission compiler, and enable the matrix editor from change 6; integration test that the ancestor rule applies to real forums
+- [ ] 1.2 Implement the `ForumTree` provider for the permission compiler, and enable the matrix editor from change `groups-permissions`; integration test that the ancestor rule applies to real forums
 
 ## 2. User app
 
-- [ ] 2.1 Board index route (categories, forums, sub-forum links, counts, latest readable post) with permission-filtered queries; integration tests with permission-denial cases; E2E at all viewports
-- [ ] 2.2 Forum route shell (breadcrumbs, rules box with remembered collapse, prefix filter, announcements, moderators list, password prompt) with tests for each scenario
-- [ ] 2.3 Redirect forums with click counting, and slug redirects (301), with integration tests
+- [ ] 2.1 Board index route as default-theme templates plus a view-model contract (categories, forums, sub-forum links, counts, latest readable post) with permission-filtered queries; integration tests with permission-denial cases; register it with the cache variant harness and the latency benchmark; E2E at all viewports
+- [ ] 2.2 Forum route templates and view-model contract (breadcrumbs, rules box with remembered collapse, prefix filter, announcements, moderators list, password prompt) with tests for each scenario; register it with the variant harness (password unlock and member mod assignment variants)
+- [ ] 2.3 Redirect forums with click counting (an UNLOGGED buffer flushed by a worker, per ADR 0006 read-path writes, never invalidating caches), and slug redirects (301), with integration tests
+- [ ] 2.4 Mutation tag declarations for tree moves, forum settings and announcements; integration tests that each change invalidates the index and affected forum pages and nothing leaks across variants
 
 ## 3. Staff screens
 

@@ -34,7 +34,8 @@
 
 - [ ] 6.1 Member bans (Banned group, timed restore job, ban notice), with integration tests
 - [ ] 6.2 IP capture via the write-only definer function `pii.record_post_ip` (ADR 0012 table), and IP/CIDR bans in `core.ip_bans` checked in the app without reading `pii` with expiry and middleware checks; tests for the CIDR and expiry scenarios
-- [ ] 6.3 Audited IP lookups (two-transaction grant, step-up, view-IPs power, retention-expired message), with tests proving the audit row commits before data is returned, and a denial test
+- [ ] 6.3 Audited IP lookups (two-transaction grant, step-up, view-IPs power, retention-expired message) via `pii.read_post_ip`, with tests proving the audit row commits before data is returned, and a denial test
+- [ ] 6.4 Reverse IP lookup via `pii.read_members_by_ip` (own audited grant, forum-scoped to the actor's view-IPs forums, 100-row cap), with tests for the forum-scoping scenario, the audit row, and role denial for user_api and workers
 
 ## 7. Moderation log
 
@@ -44,3 +45,7 @@
 
 - [ ] 8.1 Add en/es/fr strings for all moderation UI, notifications and reasons; verify completeness
 - [ ] 8.2 Seed held posts from the new-member profile, open and resolved reports (including a PM report), warnings with thresholds reached for the warned profile, a banned member, IP bans, filter words, multi-mod actions and log entries; verify after `docker compose up --watch`
+
+## 9. Feature flag
+
+- [ ] 9.1 Register `warnings`, `multimod` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

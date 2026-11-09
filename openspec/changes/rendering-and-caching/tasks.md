@@ -10,7 +10,7 @@
 - [ ] 2.1 Implement `packages/templates` (DB template loading with parent fallback, compile cache keyed by theme version and plugin generation, `{% t %}`, `{% island %}`, `{% hook %}`, autoescape, `SafeHtml` type) with unit tests for fallback and escaping
 - [ ] 2.2 Implement save-time template validation (parse5 + theme sanitiser profile) with an XSS corpus test covering every rejected construct
 - [ ] 2.3 Implement resource limits and parent fallback on violation, with tests for the runaway-loop scenario
-- [ ] 2.4 Implement view-model contracts for the index and forum routes, with `deps`/`tags` declarations and contract tests
+- [ ] 2.4 Implement the view-model contract API (`deps`, `tags`, CDN eligibility, required islands) and the CI check that every user-app route declares one, with contract tests on the demo route
 
 ## 3. Islands
 
@@ -19,14 +19,15 @@
 
 ## 4. Default theme skeleton
 
-- [ ] 4.1 Port the index and forum pages from change 7 into default-theme templates (mobile-first, light/dark tokens), and verify existing E2E tests still pass at 360/390/1440
+- [ ] 4.1 Build the default theme skeleton (layout, header, breadcrumbs, empty and error states, mobile-first light/dark tokens) with E2E at 360/390/1440
+- [ ] 4.2 Build the dev-only `/_demo/<id>` route over the fixture `ForumTree` provider (island, hook point, unlock, mod-only control, overlay field), and a test that it returns 404 in production mode
 
 ## 5. Cache stack
 
 - [ ] 5.1 Implement `packages/cache` (byte-bounded LRU, variant keys, tag versions, `getOrRender`) with unit tests
 - [ ] 5.2 Implement the listener protocol (LISTEN-then-load, heartbeat, untrusted/BYPASS mode, reconnect) and the 1 s `perm` backstop, with integration tests that kill the listener connection
 - [ ] 5.3 Implement `runMutation` with declared tags and the lint rule against direct tag writes; integration tests for the new-reply invalidation scenario using a stub mutation
-- [ ] 5.4 Implement cache variant tests as a reusable harness (permission change, password unlock, member mod assignment, flag change and plugin generation each produce a distinct variant with no leaked content), and apply it to the index and forum routes
+- [ ] 5.4 Implement cache variant tests as a reusable harness (permission change, password unlock, member mod assignment, flag change and plugin generation each produce a distinct variant with no leaked content), and apply it to the demo route; later changes register their routes with it
 
 ## 6. HTTP layer
 
@@ -34,13 +35,13 @@
 - [ ] 6.2 Implement purge on guest revocation (request-path best effort plus retrying job) and the 30 s window note in the staff app; integration test for the forum-made-private scenario
 - [ ] 6.3 Implement the overlay endpoint and client applier (unread placeholder, counts, CSRF token), with an integration test that shared HTML contains no personal data
 - [ ] 6.4 Implement the visit-recording side channel: overlay side effects for members and `POST /api/beacon` for guests (guest cookie ID, per-IP rate limit, UNLOGGED buffers), with tests for the guest-view-on-CDN and views-do-not-invalidate scenarios
-- [ ] 6.5 Give user-app its `user_app` DB pool and LISTEN connection, and add a test that user-app performs no writes outside the presence and view buffers
+- [ ] 6.5 Give user-app its `user_app` DB pool and LISTEN connection, and add a test that user-app performs no writes outside the UNLOGGED read-path buffers (presence, views, redirect clicks)
 
 ## 7. Performance
 
-- [ ] 7.1 Add the latency benchmark against the seeded stack (cached guest, member and cold) and wire it into CI; verify the thresholds pass
+- [ ] 7.1 Add the latency benchmark against the seeded stack (cached guest, member and cold) on the demo route, with an extension point for later routes to register and wire it into CI; verify the thresholds pass
 
 ## 8. Strings and seed
 
 - [ ] 8.1 Add en/es/fr strings for template validation errors and cache settings notes; verify completeness
-- [ ] 8.2 Seed the default theme into the DB from repo files, and verify the index renders from the DB-stored templates after `docker compose up --watch`
+- [ ] 8.2 Seed the default theme into the DB from repo files, and verify the demo route renders from the DB-stored templates after `docker compose up --watch`

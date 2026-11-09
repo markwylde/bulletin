@@ -5,9 +5,9 @@
 - [ ] 1.1 Implement `packages/content` parse → extensions → sanitise with profiles (post, signature, profile field, rules), producing `body_html`, `body_text` and versions; unit tests and an XSS corpus per profile
 - [ ] 1.2 Implement the mention, emoticon, spoiler and code-highlight extensions, with unit tests for each scenario
 - [ ] 1.3 Implement quote placeholders and snapshots, the author-can-read check, source-context rules (no PM quotes in forum posts, same-conversation only), and quote exclusion from `body_text`; unit and integration tests for the quote, PM-quoted-into-forum and cross-conversation scenarios
-- [ ] 1.5 Implement snapshot redaction (`redacted_at`, `post:{id}:snapshots` tag, redaction notice rendering) exposed for the moderator edit form in `topics-posts`; tests for the redacted and redaction-off scenarios
-- [ ] 1.6 Implement the render-time replace-word transform hook (list supplied later by `moderation`), folded into `render_version` with on-read application for stale rows; unit test that `body_md` is never modified
-- [ ] 1.4 Implement the `beforeSave` stage registry (empty stages for bad words, link limits and spam) with unit tests for ordering
+- [ ] 1.4 Implement snapshot redaction (`redacted_at`, `post:{id}:snapshots` tag, redaction notice rendering) exposed for the moderator edit form in `topics-posts`; tests for the redacted and redaction-off scenarios
+- [ ] 1.5 Implement the render-time replace-word transform hook (list supplied later by `moderation`), folded into `render_version` with on-read application for stale rows; unit test that `body_md` is never modified
+- [ ] 1.6 Implement the `beforeSave` stage registry (empty stages for bad words, link limits and spam) with unit tests for ordering
 
 ## 2. Versioning
 
@@ -34,3 +34,7 @@
 
 - [ ] 6.1 Add en/es/fr strings for the editor UI, accessible names and errors; verify completeness
 - [ ] 6.2 Seed a default emoticon set and render the seeded rules and announcements through the pipeline; verify after `docker compose up --watch`
+
+## 7. Feature flag
+
+- [ ] 7.1 Register `unfurls`, `mentions` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

@@ -25,3 +25,9 @@ Uses the Guests permission snapshot and CDN caching rules (ADR 0006).
 ## Risks / Trade-offs
 
 - [Large boards' sitemap generation cost] → served from cache; regenerated per tag invalidation, not per request.
+
+## Feature flags (ADR 0010)
+
+`feeds` (RSS/Atom). Sitemaps and canonical URLs are core.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

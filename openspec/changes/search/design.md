@@ -2,7 +2,7 @@
 
 ## Context
 
-ADR 0017. `body_text` already excludes quotes (change 9).
+ADR 0017. `body_text` already excludes quotes (change `content-pipeline`).
 
 ## Goals / Non-Goals
 
@@ -31,3 +31,9 @@ ADR 0017. `body_text` already excludes quotes (change 9).
 
 - [Large readable-forum arrays for admins] → fine at forum scale (hundreds).
 - [Mixed-language posts] → the `simple` OR-branch catches exact words.
+
+## Feature flags (ADR 0010)
+
+`search`.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).
