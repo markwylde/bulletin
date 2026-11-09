@@ -42,7 +42,10 @@ for (const app of APPS) {
             throw new Error(`No seeded member for profile ${profile.sub}`);
           }
 
-          const refused = app.name === "staff-app" && seeded.group !== "administrators";
+          const refused =
+            app.name === "staff-app" &&
+            seeded.group !== "administrators" &&
+            seeded.group !== "super_moderators";
 
           await withPage(
             {

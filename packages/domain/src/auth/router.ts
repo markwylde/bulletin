@@ -1,5 +1,6 @@
 import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import type { StaffScheme } from "../permissions/acp.ts";
 import { can } from "../permissions/can.ts";
 import { createJwks, type IdTokenClaims, IdTokenError, verifyIdToken } from "./jwt.ts";
 import { exchangeAuthorizationCode, OidcError } from "./oidc.ts";
@@ -70,6 +71,15 @@ export interface SessionView {
   readonly locale: Locale | null;
   readonly reauthAt: string | null;
   readonly kind: SessionKind;
+  /** ACP permissions when the session is a staff session; empty for members and guests. */
+  readonly permissions: readonly string[];
+  /** The staff member's remembered colour mode; null outside a staff session. */
+  readonly scheme: StaffScheme | null;
+}
+
+export interface SessionCapabilities {
+  readonly permissions?: readonly string[];
+  readonly scheme?: StaffScheme | null;
 }
 
 function json(body: unknown, status = 200, cookies: readonly string[] = []): Response {
@@ -108,6 +118,7 @@ export function sessionView(
   options: AuthRouterOptions,
   session: SessionRecord,
   locale: Locale | null = null,
+  capabilities: SessionCapabilities = {},
 ): SessionView {
   return {
     authenticated: true,
@@ -118,6 +129,8 @@ export function sessionView(
     locale,
     reauthAt: session.reauthAt.toISOString(),
     kind: options.kind,
+    permissions: capabilities.permissions ?? [],
+    scheme: capabilities.scheme ?? null,
   };
 }
 
@@ -130,6 +143,8 @@ const GUEST_VIEW: SessionView = {
   locale: null,
   reauthAt: null,
   kind: "user",
+  permissions: [],
+  scheme: null,
 };
 
 export function guestView(kind: SessionKind): SessionView {

@@ -152,6 +152,20 @@ describe("unused and duplicate keys", () => {
     expect(result.issues.filter((issue) => issue.code === "unused_key")).toEqual([]);
   });
 
+  test("recognises section and widget registry label keys", async () => {
+    const root = await fixture({
+      "apps/forum/i18n/en.json": { "nav.section": "Section", "widget.title": "Widget" },
+      "apps/forum/i18n/es.json": { "nav.section": "Sección", "widget.title": "Widget" },
+      "apps/forum/i18n/fr.json": { "nav.section": "Section", "widget.title": "Widget" },
+      "apps/forum/src/registry.tsx":
+        'export const sections = [{ labelKey: "nav.section" }];\nexport const widgets = [{ titleKey: "widget.title" }];\n',
+    });
+
+    const result = await checkCatalogs({ root });
+
+    expect(result.issues.filter((issue) => issue.code === "unused_key")).toEqual([]);
+  });
+
   test("ignores test files, fixtures, comments and unrelated string literals", async () => {
     const root = await fixture({
       "apps/forum/i18n/en.json": {

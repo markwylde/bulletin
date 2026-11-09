@@ -4,6 +4,7 @@ import {
   setConfig,
   sha256,
 } from "@darkauth/client";
+import type { StaffScheme } from "../permissions/acp.ts";
 import { type AuthFetch, clearStashedRequest } from "./fetch.ts";
 import { safeReturnTo } from "./return-to.ts";
 
@@ -37,6 +38,8 @@ export interface BrowserSessionView {
   readonly locale: "en" | "es" | "fr" | null;
   readonly reauthAt: string | null;
   readonly kind: "user" | "staff";
+  readonly permissions: readonly string[];
+  readonly scheme: StaffScheme | null;
 }
 
 export interface CompletedLogin {
@@ -232,6 +235,14 @@ export class ReauthRequiredError extends Error {
   }
 }
 
+/** The session exists but its member may not use this app (no `acp.access`). */
+export class AccessDeniedError extends Error {
+  constructor() {
+    super("The session is not allowed to use this app");
+    this.name = "AccessDeniedError";
+  }
+}
+
 export async function loadSession(): Promise<BrowserSessionView> {
   const response = await fetch("/api/auth/session", {
     credentials: "include",
@@ -257,6 +268,10 @@ export async function loadSession(): Promise<BrowserSessionView> {
 
       throw new ReauthRequiredError();
     }
+  }
+
+  if (response.status === 403) {
+    throw new AccessDeniedError();
   }
 
   if (!response.ok) {

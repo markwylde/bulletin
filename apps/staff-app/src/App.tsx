@@ -1,170 +1,71 @@
-import {
-  beginLogin,
-  beginStepUp,
-  finishLoginAndRedirect,
-  loadSession,
-  logout,
-} from "@bulletin/domain/auth/browser";
+import { isStaffScheme } from "@bulletin/domain/permissions";
 import type { Locale } from "@bulletin/i18n";
-import { I18nProvider, useT } from "@bulletin/ui";
-import { useEffect, useRef, useState } from "react";
+import { I18nProvider } from "@bulletin/ui";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useCallback, useEffect, useState } from "react";
+import { BrowserRouter } from "react-router";
 import { STAFF_CATALOGS } from "./catalogs.ts";
 import { localeFromRequest } from "./locale.ts";
+import { SessionProvider, useSession } from "./session.tsx";
+import { Shell } from "./shell/Shell.tsx";
+import { DeniedPage, ErrorPage, GuestPage, LoadingPage } from "./shell/States.tsx";
 import "./styles.css";
 
-type AuthState =
-  | { readonly status: "loading" }
-  | { readonly status: "guest" }
-  | { readonly status: "authenticated"; readonly displayName: string | null }
-  | { readonly status: "error" };
+const SCHEME_STORAGE_KEY = "bulletin_staff_scheme";
 
-type SensitiveState = "idle" | "ok" | "error";
+function AppRoutes() {
+  const { state } = useSession();
 
-const STEP_UP_PENDING_KEY = "bulletin_step_up_pending";
-
-async function runSensitive(setState: (state: SensitiveState) => void): Promise<void> {
-  const response = await fetch("/api/test/sensitive", {
-    credentials: "include",
-    headers: { accept: "application/json" },
-  });
-
-  if (response.ok) {
-    setState("ok");
-    return;
+  switch (state.status) {
+    case "loading":
+      return <LoadingPage />;
+    case "guest":
+      return <GuestPage />;
+    case "denied":
+      return <DeniedPage />;
+    case "error":
+      return <ErrorPage />;
+    case "authenticated":
+      return <Shell />;
   }
-
-  const body = await response.json().catch(() => null);
-
-  if (
-    response.status === 401 &&
-    typeof body === "object" &&
-    body !== null &&
-    (body as Record<string, unknown>).code === "step_up_required"
-  ) {
-    sessionStorage.setItem(STEP_UP_PENDING_KEY, "1");
-    await beginStepUp({ returnTo: "/" });
-    return;
-  }
-
-  setState("error");
-}
-
-function LoginButton({ onError }: { readonly onError: () => void }) {
-  const t = useT();
-
-  return (
-    <button
-      type="button"
-      data-login
-      onClick={() => {
-        void beginLogin().catch(onError);
-      }}
-    >
-      {t("auth.login")}
-    </button>
-  );
-}
-
-function Content({ onLocale }: { readonly onLocale: (locale: Locale) => void }) {
-  const t = useT();
-  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
-  const [sensitive, setSensitive] = useState<SensitiveState>("idle");
-  const [logoutFailed, setLogoutFailed] = useState(false);
-  const callbackStarted = useRef(false);
-
-  useEffect(() => {
-    if (window.location.pathname === "/auth/callback") {
-      if (callbackStarted.current) {
-        return;
-      }
-
-      callbackStarted.current = true;
-      void finishLoginAndRedirect().catch(() => setAuth({ status: "error" }));
-      return;
-    }
-
-    void loadSession()
-      .then((session) => {
-        if (session.authenticated && session.locale !== null) {
-          onLocale(session.locale);
-        }
-
-        setAuth(
-          session.authenticated
-            ? { status: "authenticated", displayName: session.displayName }
-            : { status: "guest" },
-        );
-      })
-      .catch(() => setAuth({ status: "error" }));
-  }, [onLocale]);
-
-  useEffect(() => {
-    if (auth.status === "authenticated" && sessionStorage.getItem(STEP_UP_PENDING_KEY) === "1") {
-      sessionStorage.removeItem(STEP_UP_PENDING_KEY);
-      void runSensitive(setSensitive);
-    }
-  }, [auth.status]);
-
-  if (auth.status === "loading") {
-    return (
-      <main data-auth-state="loading">
-        <p>{t("auth.signingIn")}</p>
-      </main>
-    );
-  }
-
-  return (
-    <main data-auth-state={auth.status}>
-      <h1>{t("staff.placeholder.title")}</h1>
-      <p>{t("staff.placeholder.body")}</p>
-      {auth.status === "authenticated" ? (
-        <p data-signed-in>
-          {t("auth.signedIn")} {auth.displayName ?? ""}
-        </p>
-      ) : null}
-      {auth.status === "authenticated" ? (
-        <button
-          type="button"
-          data-logout
-          onClick={() => {
-            void logout().then((ok) => {
-              if (!ok) {
-                setLogoutFailed(true);
-              }
-            });
-          }}
-        >
-          {t("auth.logout")}
-        </button>
-      ) : null}
-      {auth.status === "authenticated" && import.meta.env.DEV ? (
-        <button type="button" data-sensitive onClick={() => void runSensitive(setSensitive)}>
-          {t("auth.sensitiveCheck")}
-        </button>
-      ) : null}
-      {logoutFailed ? <p data-logout-error>{t("auth.logoutError")}</p> : null}
-      {sensitive === "ok" ? <p data-sensitive-result="ok">{t("auth.sensitiveOk")}</p> : null}
-      {sensitive === "error" ? <p data-sensitive-error>{t("auth.sensitiveError")}</p> : null}
-      {auth.status === "guest" || auth.status === "error" ? (
-        <LoginButton onError={() => setAuth({ status: "error" })} />
-      ) : null}
-      {auth.status === "error" ? <p data-auth-error>{t("auth.loginError")}</p> : null}
-    </main>
-  );
 }
 
 export function App() {
   const [locale, setLocale] = useState<Locale>(() =>
     localeFromRequest(window.location.search, document.cookie),
   );
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: 1,
+            staleTime: 30_000,
+            refetchOnWindowFocus: false,
+          },
+        },
+      }),
+  );
+  const onLocale = useCallback((next: Locale) => setLocale(next), []);
 
   useEffect(() => {
     document.documentElement.lang = locale;
   }, [locale]);
 
+  useEffect(() => {
+    const stored = localStorage.getItem(SCHEME_STORAGE_KEY);
+    document.documentElement.dataset.scheme = isStaffScheme(stored) ? stored : "system";
+  }, []);
+
   return (
-    <I18nProvider locale={locale} messages={STAFF_CATALOGS[locale]}>
-      <Content onLocale={setLocale} />
-    </I18nProvider>
+    <QueryClientProvider client={queryClient}>
+      <I18nProvider locale={locale} messages={STAFF_CATALOGS[locale]}>
+        <SessionProvider onLocale={onLocale}>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </SessionProvider>
+      </I18nProvider>
+    </QueryClientProvider>
   );
 }

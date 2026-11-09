@@ -8,7 +8,7 @@ export interface SeededProfile {
   readonly email: string;
   readonly locale: "en" | "es" | "fr";
   /** Primary group key; Members is added as a secondary group when this is not Members. */
-  readonly group: "members" | "administrators" | "banned";
+  readonly group: "members" | "super_moderators" | "administrators" | "banned";
 }
 
 /**
@@ -28,7 +28,7 @@ const PROFILE_INPUTS: readonly Omit<SeededProfile, "skeleton">[] = [
     name: "Super Moderator",
     email: "super-mod@bulletin.test",
     locale: "en",
-    group: "members",
+    group: "super_moderators",
   },
   {
     sub: "forum-mod",

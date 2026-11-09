@@ -371,6 +371,19 @@ function typescriptReferences(source: string, file: string): Set<string> {
       }
     }
 
+    // Section and widget registries keep translation keys as data; they are still rendered.
+    if (
+      ts.isPropertyAssignment(node) &&
+      ts.isIdentifier(node.name) &&
+      (node.name.text === "labelKey" || node.name.text === "titleKey")
+    ) {
+      const key = stringValue(node.initializer);
+
+      if (key !== undefined) {
+        keys.add(key);
+      }
+    }
+
     ts.forEachChild(node, visit);
   };
 

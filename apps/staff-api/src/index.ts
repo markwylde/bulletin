@@ -8,6 +8,7 @@ import {
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
+import { createStaffApi } from "./api.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "staff-api", level: config.logLevel });
@@ -34,18 +35,21 @@ const auth = await createAuthService({
   testEndpoints: config.nodeEnv !== "production",
 });
 
+const checks = [
+  createDatabaseCheck(sql),
+  { name: "migrations", check: () => migrationsCurrent(sql) },
+  listener,
+];
+const api = createStaffApi({ auth, sql, checks });
+
 await startService({
   service: "staff-api",
   logger,
   port,
-  async fetch(request) {
-    return (await auth.handle(request)) ?? Response.json({ code: "not_found" }, { status: 404 });
+  fetch(request) {
+    return api.handle(request);
   },
-  checks: [
-    createDatabaseCheck(sql),
-    { name: "migrations", check: () => migrationsCurrent(sql) },
-    listener,
-  ],
+  checks,
   budget: {
     sql,
     service: "staff-api",

@@ -27,12 +27,20 @@ export function I18nProvider({ locale, messages, children }: I18nProviderProps) 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 
-export function useT(): Translator {
+function useI18nContext(): I18nContextValue {
   const value = useContext(I18nContext);
 
   if (value === null) {
     throw new Error("useT must be used within an I18nProvider");
   }
 
-  return value.t;
+  return value;
+}
+
+export function useT(): Translator {
+  return useI18nContext().t;
+}
+
+export function useLocale(): Locale {
+  return useI18nContext().locale;
 }

@@ -70,7 +70,10 @@ integrationDescribe("member seed", () => {
                 { sub: profile.sub, key: profile.group, is_primary: true },
                 { sub: profile.sub, key: "members", is_primary: false },
               ];
-        expect(groups.filter((group) => group.sub === profile.sub)).toEqual(expected);
+        const actual = groups
+          .filter((group) => group.sub === profile.sub)
+          .sort((left, right) => left.key.localeCompare(right.key));
+        expect(actual).toEqual(expected.sort((left, right) => left.key.localeCompare(right.key)));
       }
 
       const history = (await sql`

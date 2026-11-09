@@ -168,6 +168,29 @@ export async function waitForSelector(
   throw new Error(`Timed out waiting for selector ${selector}`);
 }
 
+/** Polls a boolean JavaScript expression until it is true. */
+export async function waitForExpression(
+  view: Bun.WebView,
+  expression: string,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    try {
+      if (await view.evaluate<boolean>(expression)) {
+        return;
+      }
+    } catch {
+      // The document may still be navigating; retry until the timeout.
+    }
+
+    await Bun.sleep(50);
+  }
+
+  throw new Error(`Timed out waiting for expression ${expression}`);
+}
+
 export async function screenshot(view: Bun.WebView, path: string): Promise<void> {
   const buffer = await view.screenshot({ encoding: "buffer" });
   await Bun.write(path, buffer);

@@ -1,4 +1,5 @@
 import { isLocale } from "@bulletin/i18n";
+import type { SQL } from "bun";
 import { validateDisplayName } from "../member/names.ts";
 import {
   readMember,
@@ -7,8 +8,14 @@ import {
   saveMemberLocale,
   updateDisplayName,
 } from "../member/store.ts";
+import {
+  acpPermissionsFor,
+  DEFAULT_STAFF_SCHEME,
+  isStaffScheme,
+  type StaffScheme,
+} from "../permissions/acp.ts";
 import { can } from "../permissions/can.ts";
-import type { AuthRouterOptions } from "./router.ts";
+import type { AuthRouterOptions, SessionCapabilities } from "./router.ts";
 import { createAuthRouter, guestView, sessionView } from "./router.ts";
 import { createSessionStore, type SessionRecord, type SessionStore } from "./session-store.ts";
 import {
@@ -94,6 +101,24 @@ function withSetCookie(response: Response, cookie: string): Response {
     statusText: response.statusText,
     headers,
   });
+}
+
+interface StaffSessionContext extends SessionCapabilities {
+  readonly scheme: StaffScheme;
+}
+
+/** ACP capabilities and the remembered colour mode for the staff session view. */
+async function readStaffSessionContext(sql: SQL, memberId: string): Promise<StaffSessionContext> {
+  const [preferences] = (await sql`
+    SELECT staff_scheme
+    FROM core.member_prefs
+    WHERE member_id = ${memberId}
+  `) as Array<{ staff_scheme: string }>;
+  const scheme = isStaffScheme(preferences?.staff_scheme)
+    ? preferences.staff_scheme
+    : DEFAULT_STAFF_SCHEME;
+
+  return { permissions: await acpPermissionsFor(sql, memberId), scheme };
 }
 
 /**
@@ -422,7 +447,11 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
             }
 
             const locale = await resolveMemberLocale(options.sql, session.memberId);
-            return json(sessionView(options, session, locale));
+            const capabilities =
+              options.kind === "staff"
+                ? await readStaffSessionContext(options.sql, session.memberId)
+                : {};
+            return json(sessionView(options, session, locale, capabilities));
           },
           {
             onReauthRequired: (session) =>

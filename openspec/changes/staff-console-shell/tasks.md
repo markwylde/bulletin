@@ -2,10 +2,10 @@
 
 ## 1. Shell
 
-- [ ] 1.1 Build the staff app layout (responsive nav, header, colour mode switch, locale switcher) and section registry with route guards; E2E at 360/390/1440 for nav and mode switching
-- [ ] 1.2 Implement the staff-api permission guard used by every route, with an integration test that every registered route rejects a member without `acp.access` (403)
-- [ ] 1.3 Dashboard widget registry (permission-gated widgets, data endpoints checked server-side) with member stats, admin log and system health widgets; tests for the moderator scenario
-- [ ] 1.4 Implement `core.has_acp(member_id, permission)` in SQL, mirroring the ACP permission check for `pii` definer functions, with a property test that it agrees with the TypeScript check
+- [x] 1.1 Build the staff app layout (responsive nav, header, colour mode switch, locale switcher) and section registry with route guards; E2E at 360/390/1440 for nav and mode switching
+- [x] 1.2 Implement the staff-api permission guard used by every route, with an integration test that every registered route rejects a member without `acp.access` (403)
+- [x] 1.3 Dashboard widget registry (permission-gated widgets, data endpoints checked server-side) with member stats, admin log and system health widgets; tests for the moderator scenario
+- [x] 1.4 Implement `core.has_acp(member_id, permission)` in SQL, mirroring the ACP permission check for `pii` definer functions, with a property test that it agrees with the TypeScript check
 
 ## 2. Building blocks
 

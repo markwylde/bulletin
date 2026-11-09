@@ -119,6 +119,7 @@ integrationDescribe("identity schema", () => {
         { key: "banned", title: "Banned", is_system: true },
         { key: "guests", title: "Guests", is_system: true },
         { key: "members", title: "Members", is_system: true },
+        { key: "super_moderators", title: "Super Moderators", is_system: true },
       ]);
     });
   }, 20_000);

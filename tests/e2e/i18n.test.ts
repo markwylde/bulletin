@@ -23,7 +23,7 @@ const APPS = [
   {
     name: "staff-app",
     url: Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080",
-    key: "staff.placeholder.body",
+    key: "staff.login.body",
     catalogs: { en: staffEn, es: staffEs, fr: staffFr },
   },
 ] as const;
@@ -71,7 +71,7 @@ integrationDescribe("member locale", () => {
 
     await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "admin");
-      await waitForText(view, staffFr["staff.placeholder.body"]);
+      await waitForText(view, staffFr["staff.dashboard.title"]);
       expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
     });
   }, 180_000);
