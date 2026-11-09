@@ -13,7 +13,15 @@
    quotas, the per-file size limit and the type allowlist. It then **reserves quota
    transactionally** (a row in `pending` state with a size limit) and returns a presigned PUT
    to `quarantine/<uuid>`, valid for 5 minutes with an exact content-length condition.
-2. The client uploads, then calls `finalize`. A worker then:
+2. The client uploads, then calls `finalize`. Finalisation is an idempotent state machine
+   (`pending → snapshotted → processing → ready | rejected`). In one step the API:
+   - **server-side copies** the quarantine object to an immutable key `processing/<uuid>`,
+   - records its size and SHA-256,
+   - deletes the quarantine object, and marks the upload `snapshotted`.
+
+   The presigned PUT may still be replayed against the quarantine key, but nothing ever reads
+   that key again. Stray objects are removed by the orphan job. All later steps operate only on
+   the snapshot and verify its checksum. A worker then:
    - checks magic bytes against the allowed types (the declared MIME type is not trusted),
    - for images: decodes, re-encodes (strips EXIF and metadata), and produces thumbnails
      (`sharp`; justified as libvips image processing, which Bun has no built-in for),

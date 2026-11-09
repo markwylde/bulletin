@@ -34,9 +34,18 @@ and an access permission.
     functions take the raw session token, look up `core.sessions` themselves, then check the
     actor's permission for that resource (e.g. `mod.view_ips` on the forum),
   - write an audit row to `pii.access_log`.
-- **Durable auditing**: PII-reading functions refuse to run inside an explicit multi-statement
-  transaction (they check `statement_timestamp() = transaction_timestamp()`). The read and its
-  audit row therefore commit together or not at all.
+- **Durable auditing, committed before release**: reading PII takes two calls in two transactions.
+  1. `pii.open_access(session_token, purpose, resource)` validates the actor and permission,
+     inserts the audit row and a single-use grant (60 s expiry), and returns the grant ID.
+     The caller commits.
+  2. `pii.read_*(grant_id, …)` returns data only if the grant's creating transaction is
+     **committed**. It checks the stored `pg_current_xact_id()` from step 1 with
+     `pg_xact_status(...) = 'committed'`. A grant created in the current transaction is still
+     `in progress` and is refused. The read also checks the grant's actor, purpose and
+     resource, then marks the grant consumed.
+
+  No PII can leave the database without an already-committed audit record, regardless of how
+  the caller batches statements.
 - Migrations run as owners; app roles cannot run DDL.
 - CI tests prove each app role is denied direct `SELECT`/`INSERT` on every `pii` table and on
   every function it has no grant for.

@@ -18,8 +18,16 @@
   tags, attributes and URL schemes; `rel="nofollow ugc noopener"`; no inline styles or scripts;
   embeds only via our own wrapper for allowlisted providers). The result is stored as
   `body_md`, `body_html`, `body_text` (for search) and `render_version`.
-- **Quotes are rendered by reference**: the quoted text is a snapshot at quote time, and
-  `can()` controls whether the source link is shown.
+- **Quotes**:
+  - On save, every quote must reference a source post the **author can read**. Otherwise the
+    save is rejected.
+  - The stored HTML contains a quote **placeholder** (`source_post_id` + snapshot ID), not the
+    quoted text.
+  - At fragment build, the placeholder is resolved for the viewer. If the viewer can read the
+    source and it is not deleted, the snapshot text is shown with a link. Otherwise the viewer
+    sees "Quoted content unavailable".
+  - The source forum's `read` bit is part of the fragment's visibility deps (ADR 0005), and the
+    fragment is tagged with the source topic, so source deletion or permission changes invalidate it.
 - **Re-render**: bumping `render_version` triggers a background job.
 - **Emergency sanitiser fix**: bump `sanitiser_version`. Until a row is re-rendered, reads of
   rows below that version **re-sanitise on the fly** before caching. Reads never trust old HTML.

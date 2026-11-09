@@ -68,8 +68,10 @@ ETag/304 uses the same key, so a 304 cannot be issued across a permission change
 ### Materialisations
 - Request paths read authoritative tables on a cache miss. Materialised counters are allowed to
   be eventual. **Visibility and deletion state are never read from a materialisation.**
-- A worker that updates a materialisation bumps its tags **after** committing, so a fragment
-  rebuilt before the worker finished is invalidated again.
+- A worker that updates a materialisation bumps its tags **in the same transaction** as the
+  update. `NOTIFY` is transactional, so it is delivered on commit. A fragment rebuilt before
+  the commit recorded the old tag version, so it is invalidated. A crash rolls back both the
+  update and the bump, and the job retries.
 - Materialisations carry a `source_version`, and workers only apply updates newer than the stored one.
 
 ### Personal overlay

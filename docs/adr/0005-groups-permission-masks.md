@@ -57,13 +57,21 @@ Permissions compile in three layers:
 The effective result is a **per-forum capability bitmap**
 `forum → {show, read, start, reply, upload, download, vote, mod powers…}`.
 - `domain/permissions.can(ctx, action, resource)` is the only way to check. There are no inline checks.
-- **Resource visibility key**: for any cacheable resource, the cache key uses only the bits
-  that affect *that resource's rendering*:
-  - topic page: `hash(read, see_unapproved, see_deleted, mod-controls bits)` for its forum
-  - forum index: hash of the `show`/`read` bitmap across all forums
-  - Members with different groups but identical relevant bits share cache entries. Members
-    whose grants change those bits get a different key automatically. No other source of
-    access exists, so the key is complete by construction.
+- **Resource visibility key**: for any cacheable view model, the cache key is a hash of the
+  **capability bits that view model actually reads**. Each view-model builder declares those
+  bits (`deps`).
+  - topic page: its forum's `read, reply, upload, vote, see_unapproved, see_deleted`, plus
+    every mod power that renders a control, plus the `read` bit of any forum whose content
+    is embedded (quotes, ADR 0007)
+  - forum index: `show`/`read`/`see_unapproved`/`see_deleted` for all forums (they affect
+    counts and last-post previews)
+  - profile: the viewer's visibility class for custom profile fields (the set of field
+    groups the viewer may see)
+- **Enforcement, not convention**: builders receive a capability accessor, not the raw
+  bitmap. In dev and test, the accessor records every bit read during a render and throws if a
+  bit was read that the builder did not declare. CI renders every route under the seeded
+  profiles with tracking on. This is what makes the key complete; a missing dependency fails the build.
+- Members with different groups but identical relevant bits share cache entries.
 - Every reader of forum content, including search, attachments, RSS, sitemap, previews,
   counters, notifications, webhooks, SSE and the public API, uses `can()`. CI has an
   architectural test that fails if a content query bypasses the permission-filtered

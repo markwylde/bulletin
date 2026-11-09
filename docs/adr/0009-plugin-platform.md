@@ -18,8 +18,14 @@ member, or take the board down.
   review capabilities → approve → verify signature and checksum → store in S3 → run migrations
   → start the sandbox → bump `pluginsGeneration`.
 - **Lifecycle states**: `installing → active → disabled → uninstalled`, plus `failed`.
-  Upgrades run migrations in the plugin's schema; on failure the plugin stays disabled at the
-  old version, with no partial activation.
+- **Upgrades are all-or-nothing**:
+  - All pending migrations for an upgrade run in **one transaction** in the plugin's schema.
+    Non-transactional statements (`CREATE INDEX CONCURRENTLY`, `VACUUM`, …) are rejected at
+    bundle validation.
+  - On failure, everything rolls back and the **old version stays active, unchanged**.
+  - On success, the new code is activated and `pluginsGeneration` is bumped.
+  - Downgrades are not supported. Restoring a previous version means uninstall plus a data
+    export/import that the plugin provides.
 
 ### Server isolation: brokered sandbox
 - `plugin-host` is a supervisor container. Each plugin runs as a Bun process inside **its
@@ -34,9 +40,31 @@ member, or take the board down.
     `CONNECTION LIMIT 2`; `statement_timeout 2s`; `idle_in_transaction_session_timeout 5s`;
     temp table quota. The broker rejects `LISTEN`, `NOTIFY`, `COPY … PROGRAM`, `SET ROLE`
     and other session-level commands.
-  - **Core data**: SDK calls (`posts.get`, `members.addBadge`…) go via the broker to the core
-    APIs as the plugin's **service principal**. That principal is checked with `can()` plus
-    capability scopes. PII requires an explicit audited capability (ADR 0012).
+  - **DB resource budgets** (Postgres work isn't bounded by process cgroups, so the broker
+    and database enforce them):
+    - the role has `work_mem`, `temp_file_limit` and `statement_timeout` set, plus
+      `maintenance_work_mem` caps,
+    - the broker limits each plugin to 2 concurrent statements and a statements/second rate,
+    - **storage quota**: a worker measures `pg_total_relation_size` for the plugin schema every
+      5 minutes. Over quota (default 1 GB, admin-configurable), the plugin's
+      INSERT/UPDATE grants are revoked and admins are alerted,
+    - `CREATE EXTENSION`, untrusted languages, `CREATE FUNCTION … SECURITY DEFINER`, and
+      triggers on anything outside its schema are disallowed (`plpgsql` only),
+    - production may point all plugin schemas at a **separate Postgres cluster**
+      (`PLUGIN_DATABASE_URL`) to fully isolate core availability. Locally they share the one
+      Postgres (ADR 0003).
+  - **Core data**: SDK calls (`posts.get`, `members.addBadge`…) go via the broker to the core APIs.
+    - **In a viewer context** (enrichers, template-hook data, plugin routes serving a request,
+      iframe bridge calls), the effective principal is **plugin capabilities ∩ current
+      viewer's permissions**. The broker attaches the viewer context, and core APIs check
+      `can()` as the viewer. The visibility bits used are added to the fragment's deps
+      (ADR 0005), so a privileged plugin can never expose to a viewer anything the viewer
+      couldn't read.
+    - **In a background context** (event subscribers, jobs), calls use the plugin's
+      **service principal**, a service member in normal groups plus capability scopes.
+      Background output can only reach viewers by writing back through core APIs, which
+      re-apply `can()` on read.
+    - PII requires an explicit audited capability (ADR 0012).
   - **HTTP egress**: through the broker's proxy, allowed only to manifest-declared hosts, with
     SSRF rules.
   - **Jobs**: the broker enqueues and schedules into `plugin.<id>.*` pg-boss queues on the

@@ -24,11 +24,23 @@ be explicit.
   Names: `__Host-bl_session` (user), `__Host-bl_staff` (staff). User and staff sessions are
   separate: a staff session is never created from, or valid on, the user origin.
 
-### Login flow
-- Authorization Code + PKCE via `@darkauth/client`, with `state` and `nonce` checked.
-- The browser posts the ID token to `POST /api/auth/session`. The API verifies `iss`, `aud`
-  (client-specific), `exp`, `nonce` and the signature via JWKS, maps `(issuer, sub)` to a member
-  (ADR 0004), then **creates a new session** (new ID; any pre-login session is discarded).
+### Login flow (server-bound challenge)
+1. `POST /api/auth/challenge` (Origin-checked) creates a row in `core.login_challenges(id,
+   state, nonce, expires_at = +10 min, used_at)` and sets host-only cookie
+   `__Host-bl_login=<id>` (`HttpOnly; SameSite=Lax`). It returns `state` and `nonce`.
+2. The browser runs Authorization Code + PKCE via `@darkauth/client` with that `state` and
+   `nonce`. The PKCE verifier stays client-side, and the client checks `state` on return.
+3. The browser posts the ID token to `POST /api/auth/session`. The API requires:
+   - a matching `Origin`,
+   - the `__Host-bl_login` cookie referencing an unexpired, **unused** challenge,
+   - the token's `nonce` to equal the challenge's nonce,
+   - valid `iss`, `aud` (client-specific), `exp` and signature via JWKS.
+
+   It marks the challenge used (single-use, in the same transaction as session creation),
+   maps `(issuer, sub)` to a member (ADR 0004), and **creates a new session** (new ID; the
+   login cookie is cleared).
+- This endpoint is exempt from the session CSRF token because no session exists yet. The
+  browser-bound challenge cookie plus nonce replaces it, which prevents login CSRF and token replay.
 - **DarkAuth tokens are accepted only at `/api/auth/session`.** App APIs accept only session
   cookies, and `/api/v1` accepts only API keys (ADR 0016).
 
