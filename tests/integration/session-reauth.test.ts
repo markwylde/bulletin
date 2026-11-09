@@ -14,7 +14,9 @@ const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
 const ISSUER = "http://auth.bulletin.localhost:8080";
 const USER_ORIGIN = "http://bulletin.localhost:8080";
+const STAFF_ORIGIN = "http://staff.bulletin.localhost:8080";
 const USER_CLIENT = "bulletin-user";
+const STAFF_CLIENT = "bulletin-staff";
 const SESSION_SECRET = "test-session-secret";
 
 let privateKey: KeyInput;
@@ -100,6 +102,7 @@ async function signToken(options: {
   readonly nonce: string;
   readonly email?: string;
   readonly name?: string;
+  readonly clientId?: string;
 }): Promise<string> {
   const payload: Record<string, unknown> = { nonce: options.nonce };
 
@@ -114,15 +117,25 @@ async function signToken(options: {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "EdDSA", kid: "test-key" })
     .setIssuer(ISSUER)
-    .setAudience(USER_CLIENT)
+    .setAudience(options.clientId ?? USER_CLIENT)
     .setSubject(options.sub)
     .setIssuedAt()
     .setExpirationTime("5m")
     .sign(privateKey);
 }
 
-async function login(service: AuthService, sub: string): Promise<string> {
-  const challengeResponse = await call(service, "/api/auth/challenge", { body: {} });
+async function login(
+  service: AuthService,
+  sub: string,
+  kind: "user" | "staff" = "user",
+): Promise<string> {
+  const origin = kind === "staff" ? STAFF_ORIGIN : USER_ORIGIN;
+  const clientId = kind === "staff" ? STAFF_CLIENT : USER_CLIENT;
+  const cookieName = kind === "staff" ? "bl_staff" : "bl_session";
+  const challengeResponse = await call(service, "/api/auth/challenge", {
+    body: {},
+    origin,
+  });
   expect(challengeResponse.status).toBe(200);
   const challenge = (await challengeResponse.json()) as ChallengeView;
   const challengeCookie = cookieValue(challengeResponse, "bl_login");
@@ -132,11 +145,12 @@ async function login(service: AuthService, sub: string): Promise<string> {
   }
 
   const response = await call(service, "/api/auth/session", {
-    body: { idToken: await signToken({ sub, nonce: challenge.nonce }) },
+    body: { idToken: await signToken({ sub, nonce: challenge.nonce, clientId }) },
     cookie: `bl_login=${challengeCookie}`,
+    origin,
   });
   expect(response.status).toBe(200);
-  const sessionCookie = cookieValue(response, "bl_session");
+  const sessionCookie = cookieValue(response, cookieName);
 
   if (sessionCookie === undefined) {
     throw new Error("session cookie missing");
@@ -222,6 +236,28 @@ integrationDescribe("silent re-auth and background grace", () => {
       nodeEnv: "test",
       testEndpoints: true,
       cacheTtlMs: 0,
+    });
+
+    return { service, sql };
+  }
+
+  async function staffServiceFor(
+    database: TestDatabase,
+  ): Promise<{ service: AuthService; sql: SQL }> {
+    const sql = new SQL(roleUrl(database.url, "staff_api"));
+    const service = await createAuthService({
+      sql,
+      kind: "staff",
+      issuer: ISSUER,
+      jwksUrl,
+      tokenUrl,
+      clientId: STAFF_CLIENT,
+      origin: STAFF_ORIGIN,
+      sessionSecret: SESSION_SECRET,
+      nodeEnv: "test",
+      testEndpoints: true,
+      cacheTtlMs: 0,
+      bootstrapAdmins: [{ issuer: ISSUER, sub: "admin" }],
     });
 
     return { service, sql };
@@ -425,6 +461,89 @@ integrationDescribe("silent re-auth and background grace", () => {
         });
         expect(oldAfterOverlap.status).toBe(401);
         expect(await oldAfterOverlap.json()).toEqual({ code: "unauthenticated" });
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("logout revokes the session and clears the cookie", async () => {
+    await withDb("auth_logout", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const sessionCookie = await login(service, "logout-user");
+        const response = await call(service, "/api/auth/logout", {
+          method: "POST",
+          cookie: `bl_session=${sessionCookie}`,
+        });
+
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual({ code: "logged_out", clearLocalData: true });
+        expect(cookieValue(response, "bl_session")).toBe("");
+
+        const read = await call(service, "/api/auth/session", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(((await read.json()) as SessionView).authenticated).toBe(false);
+
+        const [session] = (await database.sql`
+          SELECT s.revoked_at
+          FROM core.sessions s
+          JOIN pii.identities i ON i.member_id = s.member_id
+          WHERE i.sub = 'logout-user'
+        `) as Array<{ revoked_at: Date | null }>;
+        expect(session?.revoked_at).not.toBeNull();
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("lets an administrator revoke a member's sessions but denies a regular member", async () => {
+    await withDb("auth_revoke_all", async (database) => {
+      const { service, sql } = await staffServiceFor(database);
+
+      try {
+        const adminCookie = await login(service, "admin", "staff");
+        const targetCookie = await login(service, "target-member", "staff");
+        const regularCookie = await login(service, "regular-staff", "staff");
+
+        const [target] = (await database.sql`
+          SELECT member_id FROM pii.identities WHERE sub = 'target-member'
+        `) as Array<{ member_id: string }>;
+
+        if (target === undefined) {
+          throw new Error("target member missing");
+        }
+
+        const denied = await call(
+          service,
+          `/api/staff/members/${target.member_id}/sessions/revoke`,
+          { method: "POST", cookie: `bl_staff=${regularCookie}` },
+        );
+        expect(denied.status).toBe(403);
+        expect(await denied.json()).toEqual({ code: "forbidden" });
+
+        const stillThere = await call(service, "/api/auth/session", {
+          cookie: `bl_staff=${targetCookie}`,
+        });
+        expect(((await stillThere.json()) as SessionView).authenticated).toBe(true);
+
+        const revoked = await call(
+          service,
+          `/api/staff/members/${target.member_id}/sessions/revoke`,
+          { method: "POST", cookie: `bl_staff=${adminCookie}` },
+        );
+        expect(revoked.status).toBe(200);
+        expect(await revoked.json()).toEqual({ revoked: 1 });
+
+        const after = await call(service, "/api/auth/session", {
+          cookie: `bl_staff=${targetCookie}`,
+        });
+        expect(((await after.json()) as SessionView).authenticated).toBe(false);
       } finally {
         await service.close();
         await sql.close();

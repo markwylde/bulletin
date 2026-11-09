@@ -1,6 +1,7 @@
 {
   "auth.login": "Log in",
   "auth.loginError": "Sign-in failed. Please try again.",
+  "auth.logout": "Log out",
   "auth.signedIn": "Signed in",
   "auth.signingIn": "Signing you in…",
   "staff.placeholder.body": "The staff console is being prepared.",

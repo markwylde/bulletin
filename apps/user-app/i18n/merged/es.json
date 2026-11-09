@@ -1,6 +1,10 @@
 {
+  "auth.continue": "Continuar",
   "auth.login": "Iniciar sesión",
   "auth.loginError": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+  "auth.logout": "Cerrar sesión",
+  "auth.reauthPrompt": "Tu sesión necesita actualizarse antes de continuar.",
+  "auth.resume": "Reanudar",
   "auth.signedIn": "Sesión iniciada",
   "auth.signingIn": "Te estamos iniciando sesión…",
   "common.siteName": "Bulletin",

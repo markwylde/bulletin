@@ -140,6 +140,9 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
           <span data-i18n="auth.signedIn">{t("auth.signedIn")}</span>
           <span data-display-name></span>
         </p>
+        <button type="button" data-logout data-i18n="auth.logout" hidden
+          >{t("auth.logout")}</button
+        >
         <p data-auth-error data-i18n="auth.loginError" hidden>{t("auth.loginError")}</p>
       </div>
       <div class="reauth" data-reauth hidden>
@@ -181,12 +184,14 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
         clearStashedRequest,
         createAuthFetch,
         loadSession,
+        logout,
         reauthUrl,
         takeStashedRequest,
       } from "@bulletin/domain/auth/browser";
 
       const root = document.querySelector<HTMLElement>("[data-auth]");
       const loginButton = document.querySelector<HTMLButtonElement>("[data-login]");
+      const logoutButton = document.querySelector<HTMLButtonElement>("[data-logout]");
       const signedIn = document.querySelector<HTMLElement>("[data-signed-in]");
       const displayName = document.querySelector<HTMLElement>("[data-display-name]");
       const error = document.querySelector<HTMLElement>("[data-auth-error]");
@@ -229,6 +234,10 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
               loginButton.hidden = true;
             }
 
+            if (logoutButton !== null) {
+              logoutButton.hidden = false;
+            }
+
             if (signedIn !== null) {
               signedIn.hidden = false;
             }
@@ -247,6 +256,10 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
             loginButton.hidden = false;
           }
 
+          if (logoutButton !== null) {
+            logoutButton.hidden = true;
+          }
+
           updateReauthPrompt(false);
         } catch {
           root?.setAttribute("data-auth-state", "error");
@@ -261,6 +274,13 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
             showError();
             loginButton.disabled = false;
           });
+        });
+      }
+
+      if (logoutButton !== null) {
+        logoutButton.addEventListener("click", () => {
+          logoutButton.disabled = true;
+          void logout();
         });
       }
 

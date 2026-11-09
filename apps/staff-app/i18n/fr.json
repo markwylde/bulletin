@@ -1,6 +1,7 @@
 {
   "auth.login": "Se connecter",
   "auth.loginError": "La connexion a échoué. Réessayez.",
+  "auth.logout": "Se déconnecter",
   "auth.signedIn": "Connecté",
   "auth.signingIn": "Connexion en cours…",
   "staff.placeholder.body": "La console de l'équipe est en préparation.",

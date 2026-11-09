@@ -1,4 +1,9 @@
-import { beginLogin, finishLoginAndRedirect, loadSession } from "@bulletin/domain/auth/browser";
+import {
+  beginLogin,
+  finishLoginAndRedirect,
+  loadSession,
+  logout,
+} from "@bulletin/domain/auth/browser";
 import { I18nProvider, useT } from "@bulletin/ui";
 import { useEffect, useState } from "react";
 import { STAFF_CATALOGS } from "./catalogs.ts";
@@ -64,6 +69,11 @@ function Content() {
         <p data-signed-in>
           {t("auth.signedIn")} {auth.displayName ?? ""}
         </p>
+      ) : null}
+      {auth.status === "authenticated" ? (
+        <button type="button" data-logout onClick={() => void logout()}>
+          {t("auth.logout")}
+        </button>
       ) : null}
       {auth.status === "guest" || auth.status === "error" ? (
         <LoginButton onError={() => setAuth({ status: "error" })} />

@@ -1,6 +1,7 @@
 {
   "auth.login": "Iniciar sesión",
   "auth.loginError": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+  "auth.logout": "Cerrar sesión",
   "auth.signedIn": "Sesión iniciada",
   "auth.signingIn": "Te estamos iniciando sesión…",
   "staff.placeholder.body": "La consola del personal se está preparando.",

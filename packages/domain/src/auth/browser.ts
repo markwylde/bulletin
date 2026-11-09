@@ -4,6 +4,7 @@ import {
   setConfig,
   sha256,
 } from "@darkauth/client";
+import { clearStashedRequest } from "./fetch.ts";
 import { safeReturnTo } from "./return-to.ts";
 
 export {
@@ -181,4 +182,15 @@ export async function loadSession(): Promise<BrowserSessionView> {
   }
 
   return (await response.json()) as BrowserSessionView;
+}
+
+/** Logout revokes the server session and tells the client to drop local data (ADR 0018). */
+export async function logout(): Promise<void> {
+  await fetch("/api/auth/logout", {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+  });
+  clearStashedRequest();
+  browser.location.replace("/");
 }

@@ -1,3 +1,4 @@
+import { can } from "../permissions/can.ts";
 import type { AuthRouterOptions } from "./router.ts";
 import { createAuthRouter } from "./router.ts";
 import { createSessionStore, type SessionRecord, type SessionStore } from "./session-store.ts";
@@ -167,6 +168,25 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
     return null;
   }
 
+  async function handleStaffRevoke(request: Request, memberId: string): Promise<Response> {
+    if (request.method !== "POST") {
+      return json({ code: "method_not_allowed" }, 405);
+    }
+
+    return withSession(request, async ({ session }) => {
+      if (session === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      if (!(await can(options.sql, session.memberId, "sessions.revoke"))) {
+        return json({ code: "forbidden" }, 403);
+      }
+
+      const revoked = await sessions.revokeMemberSessions(memberId);
+      return json({ revoked });
+    });
+  }
+
   return {
     sessions,
     async handle(request, next) {
@@ -177,6 +197,15 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       }
 
       const { pathname } = new URL(request.url);
+
+      if (options.kind === "staff") {
+        const match = /^\/api\/staff\/members\/(\d+)\/sessions\/revoke$/.exec(pathname);
+
+        if (match !== null) {
+          return handleStaffRevoke(request, match[1] ?? "");
+        }
+      }
+
       const testResponse = testEndpoint(request, pathname);
 
       if (testResponse !== null) {

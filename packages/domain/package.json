@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./auth": "./src/auth/index.ts",
+    "./permissions": "./src/permissions/index.ts",
     "./auth/browser": "./src/auth/browser.ts",
     "./net": "./src/net/index.ts",
     "./urls": "./src/urls/index.ts"

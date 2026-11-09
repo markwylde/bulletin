@@ -317,6 +317,26 @@ export function createAuthRouter(
     await options.sql`SELECT pg_notify('session_revoked', ${sessionId})`;
   }
 
+  async function logout(request: Request): Promise<Response> {
+    if (!originAllowed(request, options)) {
+      return json({ code: "invalid_origin" }, 403);
+    }
+
+    const token = parseCookieHeader(request.headers.get("cookie"))[sessionCookie];
+
+    if (token !== undefined) {
+      const session = await sessions.find(options.kind, token);
+
+      if (session !== null) {
+        await revokeSession(session.id);
+      }
+    }
+
+    return json({ code: "logged_out", clearLocalData: true }, 200, [
+      serializeCookie(sessionCookie, "", { maxAge: 0, secure, httpOnly: true }),
+    ]);
+  }
+
   /** Starts the silent top-level re-auth through DarkAuth with `prompt=none` (ADR 0018). */
   async function refresh(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -480,6 +500,14 @@ export function createAuthRouter(
       }
 
       return json({ code: "method_not_allowed" }, 405);
+    }
+
+    if (pathname === "/api/auth/logout") {
+      if (request.method !== "POST") {
+        return json({ code: "method_not_allowed" }, 405);
+      }
+
+      return logout(request);
     }
 
     if (options.kind === "user" && pathname === "/api/auth/refresh") {
