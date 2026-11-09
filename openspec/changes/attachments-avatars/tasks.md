@@ -1,0 +1,35 @@
+# Tasks
+
+## 1. Storage core
+
+- [ ] 1.1 Implement `packages/storage` (Bun.S3Client wrapper, presign, server-side copy, key conventions) with contract tests against the S3 mock
+- [ ] 1.2 Migrations for attachments (state machine), post_attachments, member_storage and avatar fields; integration tests for state transitions
+
+## 2. Upload pipeline
+
+- [ ] 2.1 Upload request endpoint (permission, quota reservation, type and size checks, presigned PUT) with integration tests for over-quota, disallowed type and permission denial
+- [ ] 2.2 Finalise endpoint (server-side snapshot, checksum, delete quarantine) and the processing worker (type sniffing, sharp re-encode, EXIF strip, thumbnails, SVG rasterise, scan hook); tests for the disguised-executable, GPS and replaced-after-finalise scenarios
+- [ ] 2.3 Orphan cleanup and reconciliation jobs, with integration tests
+
+## 3. Delivery
+
+- [ ] 3.1 Download endpoint with per-request `can(download)`, 60 s presigned redirect, files-origin headers in Caddy, and inline-vs-download rules; tests for unauthorised, revoked and HTML-attachment scenarios
+- [ ] 3.2 Image proxy for unfurl card images, reusing the pipeline; integration test
+
+## 4. Editor and posts
+
+- [ ] 4.1 Editor upload UI (pick, drag, paste, mobile picker, progress) and the attachment extension in the content pipeline; E2E paste and upload at 360 and 1440
+- [ ] 4.2 Post rendering of inline images and the file list with download counts, with the cache variant harness applied; integration tests
+- [ ] 4.3 "My attachments" page with quota usage and deletion, plus moderator removal; tests including permission denial
+
+## 5. Avatars
+
+- [ ] 5.1 Avatar upload, crop UI and processing to 3 sizes with group limits; tests for the upload and group-disallowed scenarios; E2E crop at 360
+- [ ] 5.2 Initials fallback in the default theme templates, with a unit test for stable colour
+- [ ] 5.3 Staff avatar removal with block period, logged; integration test with permission denial
+
+## 6. Settings, strings and seed
+
+- [ ] 6.1 Group settings entries for quotas, types, sizes and avatar limits, plus board settings for allowed types; tests for merge behaviour
+- [ ] 6.2 Add en/es/fr strings for upload UI, errors, attachment lists and avatar UI; verify completeness
+- [ ] 6.3 Seed avatars for a subset of members, image and file attachments in posts (including one in a staff-only forum), and verify after `docker compose up --watch`
