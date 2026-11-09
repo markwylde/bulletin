@@ -35,7 +35,7 @@ The local stack runs in containers; Bun is only needed to run tests and developm
 | Bun | **1.4.0** (`packageManager` and Docker images) |
 | Postgres | **18.6-alpine** |
 | Caddy | **2.11.9-alpine** |
-| darkauth-mock | pinned image digest in `compose.yaml` |
+| darkauth-mock | local Bun mock in `mocks/darkauth` |
 | Chrome/Chromium (E2E) | required on the host or CI image; set `BUN_CHROME_PATH` if auto-detection fails |
 
 ## Origins and ports
@@ -148,4 +148,4 @@ docker compose -f compose.yaml -f /tmp/bulletin-offline.yml exec -T user-api \
 - **Port 8080 already in use**: stop the other stack or override the published port.
 - **E2E cannot find a browser**: install Chrome/Chromium or set `BUN_CHROME_PATH`.
 - **Changes not reloading**: `docker compose up --watch` must be running; infrastructure
-  services (Postgres, Caddy, darkauth-mock) are intentionally not watched.
+  services (Postgres, Caddy) are intentionally not watched; darkauth-mock watches its source and config.

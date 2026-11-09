@@ -147,6 +147,32 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       });
     }
 
+    if (pathname === "/api/test/age-reauth") {
+      if (options.kind !== "user") {
+        return null;
+      }
+
+      if (request.method !== "POST") {
+        return Promise.resolve(json({ code: "method_not_allowed" }, 405));
+      }
+
+      return withSession(request, async ({ session }) => {
+        if (session === null) {
+          return json({ code: "unauthenticated" }, 401);
+        }
+
+        await options.sql`
+          UPDATE core.sessions
+          SET reauth_at = now() - interval '25 hours'
+          WHERE id = ${session.id}
+        `;
+        sessions.invalidate();
+        await options.sql`SELECT pg_notify('session_revoked', ${session.id})`;
+
+        return json({ ok: true });
+      });
+    }
+
     if (options.kind === "staff" && pathname === "/api/test/sensitive") {
       if (request.method !== "GET" && request.method !== "POST") {
         return Promise.resolve(json({ code: "method_not_allowed" }, 405));
