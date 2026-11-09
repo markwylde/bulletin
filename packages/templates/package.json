@@ -8,5 +8,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bulletin/i18n": "workspace:*",
+    "liquidjs": "^10.30.1"
   }
 }
