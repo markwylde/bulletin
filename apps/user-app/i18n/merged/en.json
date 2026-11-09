@@ -1,4 +1,8 @@
 {
+  "auth.login": "Log in",
+  "auth.loginError": "Sign-in failed. Please try again.",
+  "auth.signedIn": "Signed in",
+  "auth.signingIn": "Signing you in…",
   "common.siteName": "Bulletin",
   "user.placeholder.body": "The Bulletin community is being prepared.",
   "user.placeholder.title": "Bulletin"

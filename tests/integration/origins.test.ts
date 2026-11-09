@@ -6,33 +6,33 @@ import { describe, expect, test } from "bun:test";
 
 const ENABLED = Bun.env.BULLETIN_INTEGRATION === "1";
 
-const ORIGIN_HOSTS = [
-  "bulletin.localhost",
-  "staff.bulletin.localhost",
-  "files.bulletin.localhost",
-  "plugins.bulletin.localhost",
-  "auth.bulletin.localhost",
-] as const;
+const ORIGIN_PATHS = {
+  "bulletin.localhost": "/",
+  "staff.bulletin.localhost": "/",
+  "files.bulletin.localhost": "/health/live",
+  "plugins.bulletin.localhost": "/",
+  "auth.bulletin.localhost": "/",
+} as const;
 
 const integrationDescribe = ENABLED ? describe : describe.skip;
 
 integrationDescribe("compose origins", () => {
-  for (const host of ORIGIN_HOSTS) {
+  for (const [host, path] of Object.entries(ORIGIN_PATHS)) {
     test(`${host}:8080 responds through the proxy`, async () => {
-      const response = await fetch(`http://${host}:8080/`);
+      const response = await fetch(`http://${host}:8080${path}`);
 
       expect(response.status).toBe(200);
     });
   }
 
   test("each app's /api/* route reaches its own API", async () => {
-    const userApi = await fetch("http://bulletin.localhost:8080/api/ping");
+    const userApi = await fetch("http://bulletin.localhost:8080/api/auth/session");
     expect(userApi.status).toBe(200);
-    expect(await userApi.json()).toMatchObject({ service: "user-api" });
+    expect(await userApi.json()).toMatchObject({ authenticated: false, kind: "user" });
 
-    const staffApi = await fetch("http://staff.bulletin.localhost:8080/api/ping");
+    const staffApi = await fetch("http://staff.bulletin.localhost:8080/api/auth/session");
     expect(staffApi.status).toBe(200);
-    expect(await staffApi.json()).toMatchObject({ service: "staff-api" });
+    expect(await staffApi.json()).toMatchObject({ authenticated: false, kind: "staff" });
   });
 
   test("app origins expose liveness and readiness", async () => {

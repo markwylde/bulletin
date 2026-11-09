@@ -1,4 +1,8 @@
 {
+  "auth.login": "Se connecter",
+  "auth.loginError": "La connexion a échoué. Réessayez.",
+  "auth.signedIn": "Connecté",
+  "auth.signingIn": "Connexion en cours…",
   "user.placeholder.body": "La communauté Bulletin est en préparation.",
   "user.placeholder.title": "Bulletin"
 }

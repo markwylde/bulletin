@@ -48,6 +48,45 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
         color: #5c6878;
       }
 
+      .auth {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+        margin-top: 1.25rem;
+        min-height: 2.75rem;
+      }
+
+      .auth button {
+        min-height: 2.75rem;
+        padding: 0.6rem 1.1rem;
+        border: 0;
+        border-radius: 0.5rem;
+        background: #3157c7;
+        color: #ffffff;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .auth button:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+
+      .auth button:focus-visible {
+        outline: 3px solid #93a7ea;
+        outline-offset: 2px;
+      }
+
+      .auth [data-auth-error] {
+        color: #a02a2a;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
+
       @media (prefers-color-scheme: dark) {
         body {
           background: #141a22;
@@ -62,6 +101,10 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
         p {
           color: #93a0b1;
         }
+
+        .auth [data-auth-error] {
+          color: #ff9d9d;
+        }
       }
     </style>
   </head>
@@ -69,6 +112,19 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
     <main>
       <h1 data-i18n="user.placeholder.title">{t("user.placeholder.title")}</h1>
       <p data-i18n="user.placeholder.body">{t("user.placeholder.body")}</p>
+      <div class="auth" data-auth data-auth-state="loading">
+        <button
+          type="button"
+          data-login
+          data-i18n="auth.login"
+          hidden>{t("auth.login")}</button
+        >
+        <p data-signed-in hidden>
+          <span data-i18n="auth.signedIn">{t("auth.signedIn")}</span>
+          <span data-display-name></span>
+        </p>
+        <p data-auth-error data-i18n="auth.loginError" hidden>{t("auth.loginError")}</p>
+      </div>
     </main>
     <script type="application/json" id="i18n-catalog" set:html={messages}></script>
     <script is:inline>
@@ -90,6 +146,70 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
           }
         }
       })();
+    </script>
+    <script>
+      import { beginLogin, loadSession } from "@bulletin/domain/auth/browser";
+
+      const root = document.querySelector<HTMLElement>("[data-auth]");
+      const loginButton = document.querySelector<HTMLButtonElement>("[data-login]");
+      const signedIn = document.querySelector<HTMLElement>("[data-signed-in]");
+      const displayName = document.querySelector<HTMLElement>("[data-display-name]");
+      const error = document.querySelector<HTMLElement>("[data-auth-error]");
+
+      const showError = (): void => {
+        if (error !== null) {
+          error.hidden = false;
+        }
+      };
+
+      async function refresh(): Promise<void> {
+        try {
+          const session = await loadSession();
+
+          if (session.authenticated) {
+            root?.setAttribute("data-auth-state", "authenticated");
+
+            if (loginButton !== null) {
+              loginButton.hidden = true;
+            }
+
+            if (signedIn !== null) {
+              signedIn.hidden = false;
+            }
+
+            if (displayName !== null) {
+              displayName.textContent = session.displayName ?? "";
+            }
+
+            return;
+          }
+
+          root?.setAttribute("data-auth-state", "guest");
+
+          if (loginButton !== null) {
+            loginButton.hidden = false;
+          }
+        } catch {
+          root?.setAttribute("data-auth-state", "error");
+          showError();
+        }
+      }
+
+      if (loginButton !== null) {
+        loginButton.addEventListener("click", () => {
+          loginButton.disabled = true;
+          void beginLogin().catch(() => {
+            showError();
+            loginButton.disabled = false;
+          });
+        });
+      }
+
+      if (new URLSearchParams(window.location.search).has("auth_error")) {
+        showError();
+      }
+
+      void refresh();
     </script>
   </body>
 </html>

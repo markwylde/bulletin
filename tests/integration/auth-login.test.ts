@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { type ChallengeView, createAuthRouter, type SessionView } from "@bulletin/domain/auth";
+import {
+  type ChallengeView,
+  createAuthRouter,
+  createCsrfToken,
+  type SessionView,
+} from "@bulletin/domain/auth";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
 import { exportJWK, generateKeyPair, type KeyInput, SignJWT } from "jose";
@@ -206,12 +211,13 @@ integrationDescribe("login flow", () => {
         expect(cookieValue(response, "bl_login")).toBe("");
 
         const sessions = (await database.sql`
-          SELECT s.member_id, s.kind, encode(s.token_hash, 'hex') AS token_hash,
+          SELECT s.id, s.member_id, s.kind, encode(s.token_hash, 'hex') AS token_hash,
                  s.reauth_at > now() AS has_reauth_window,
                  m.display_name
           FROM core.sessions s
           JOIN core.members m ON m.id = s.member_id
         `) as Array<{
+          id: string;
           member_id: string;
           kind: string;
           token_hash: string;
@@ -227,6 +233,21 @@ integrationDescribe("login flow", () => {
             .digest("hex"),
         );
         expect(sessions[0]?.has_reauth_window).toBe(true);
+
+        const readResponse = await call(router, "/api/auth/session", {
+          cookie: `bl_session=${sessionToken ?? ""}`,
+        });
+        expect(readResponse.status).toBe(200);
+        const readView = (await readResponse.json()) as SessionView;
+        expect(readView).toMatchObject({
+          authenticated: true,
+          kind: "user",
+          displayName: null,
+          displayNameRequired: true,
+        });
+        expect(readView.csrfToken).toBe(
+          createCsrfToken(sessions[0]?.id ?? "", SESSION_SECRET),
+        );
 
         const identities = (await database.sql`
           SELECT issuer, sub, email, idp_name FROM pii.identities

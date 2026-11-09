@@ -1,0 +1,71 @@
+---
+import { createServerT } from "@bulletin/i18n";
+
+const t = createServerT("en");
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>{t("auth.signingIn")}</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 1rem;
+        background: #f4f6f9;
+        color: #1c2430;
+      }
+
+      main {
+        width: min(100%, 40rem);
+        padding: 1.5rem;
+        border: 1px solid #dce1e8;
+        border-radius: 0.75rem;
+        background: #ffffff;
+      }
+
+      p {
+        margin: 0;
+        color: #5c6878;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #141a22;
+          color: #e7ecf3;
+        }
+
+        main {
+          background: #1d2530;
+          border-color: #303b49;
+        }
+
+        p {
+          color: #93a0b1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>{t("auth.signingIn")}</p>
+    </main>
+    <script>
+      import { finishLoginAndRedirect } from "@bulletin/domain/auth/browser";
+
+      void finishLoginAndRedirect().catch(() => {
+        window.location.replace("/?auth_error=1");
+      });
+    </script>
+  </body>
+</html>

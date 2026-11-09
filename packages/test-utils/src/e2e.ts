@@ -133,3 +133,67 @@ export async function waitForText(
 
   throw new Error(`Timed out waiting for text ${text}`);
 }
+
+export interface LoginAsOptions {
+  readonly timeoutMs?: number;
+}
+
+async function authState(view: Bun.WebView): Promise<string | null> {
+  try {
+    return await view.evaluate<string | null>(
+      "document.querySelector('[data-auth-state]')?.getAttribute('data-auth-state') ?? null",
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Logs a page in as one darkauth-mock profile. The app must expose
+ * `[data-auth-state]` and `[data-login]`; the mock login page lists users as forms.
+ */
+export async function loginAs(
+  view: Bun.WebView,
+  profile: string,
+  options: LoginAsOptions = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    const state = await authState(view);
+
+    if (state === "authenticated") {
+      return;
+    }
+
+    if (state === "guest" || state === "error") {
+      break;
+    }
+
+    await Bun.sleep(50);
+  }
+
+  await waitForSelector(view, "[data-login]", timeoutMs);
+  await view.evaluate('document.querySelector("[data-login]")?.click()');
+  await waitForSelector(view, 'form.card-form input[name="user"]', timeoutMs);
+
+  const submitted = await view.evaluate<boolean>(`(() => {
+    const input = [...document.querySelectorAll('form.card-form input[name="user"]')].find(
+      (element) => element.value === ${JSON.stringify(profile)}
+    );
+
+    if (!input || !input.form) {
+      return false;
+    }
+
+    input.form.requestSubmit();
+    return true;
+  })()`);
+
+  if (!submitted) {
+    throw new Error(`darkauth-mock has no profile with subject ${profile}`);
+  }
+
+  await waitForSelector(view, '[data-auth-state="authenticated"]', timeoutMs);
+}

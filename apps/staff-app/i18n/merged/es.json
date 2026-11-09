@@ -1,4 +1,8 @@
 {
+  "auth.login": "Iniciar sesión",
+  "auth.loginError": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+  "auth.signedIn": "Sesión iniciada",
+  "auth.signingIn": "Te estamos iniciando sesión…",
   "common.siteName": "Bulletin",
   "staff.placeholder.body": "La consola del personal se está preparando.",
   "staff.placeholder.title": "Personal de Bulletin"

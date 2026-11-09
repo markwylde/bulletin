@@ -34,6 +34,37 @@ p {
   color: #5c6878;
 }
 
+button {
+  min-height: 2.75rem;
+  margin-top: 1.25rem;
+  padding: 0.6rem 1.1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #3157c7;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+button:focus-visible {
+  outline: 3px solid #93a7ea;
+  outline-offset: 2px;
+}
+
+main > p + p {
+  margin-top: 0.75rem;
+}
+
+[data-auth-error] {
+  color: #a02a2a;
+}
+
 @media (prefers-color-scheme: dark) {
   body {
     background: #141a22;
@@ -47,5 +78,9 @@ p {
 
   p {
     color: #93a0b1;
+  }
+
+  [data-auth-error] {
+    color: #ff9d9d;
   }
 }

@@ -1,15 +1,74 @@
+import { beginLogin, finishLoginAndRedirect, loadSession } from "@bulletin/domain/auth/browser";
 import { I18nProvider, useT } from "@bulletin/ui";
+import { useEffect, useState } from "react";
 import { STAFF_CATALOGS } from "./catalogs.ts";
 import { localeFromRequest } from "./locale.ts";
 import "./styles.css";
 
-function Content() {
+type AuthState =
+  | { readonly status: "loading" }
+  | { readonly status: "guest" }
+  | { readonly status: "authenticated"; readonly displayName: string | null }
+  | { readonly status: "error" };
+
+function LoginButton({ onError }: { readonly onError: () => void }) {
   const t = useT();
 
   return (
-    <main>
+    <button
+      type="button"
+      data-login
+      onClick={() => {
+        void beginLogin().catch(onError);
+      }}
+    >
+      {t("auth.login")}
+    </button>
+  );
+}
+
+function Content() {
+  const t = useT();
+  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+
+  useEffect(() => {
+    if (window.location.pathname === "/auth/callback") {
+      void finishLoginAndRedirect().catch(() => setAuth({ status: "error" }));
+      return;
+    }
+
+    void loadSession()
+      .then((session) => {
+        setAuth(
+          session.authenticated
+            ? { status: "authenticated", displayName: session.displayName }
+            : { status: "guest" },
+        );
+      })
+      .catch(() => setAuth({ status: "error" }));
+  }, []);
+
+  if (auth.status === "loading") {
+    return (
+      <main data-auth-state="loading">
+        <p>{t("auth.signingIn")}</p>
+      </main>
+    );
+  }
+
+  return (
+    <main data-auth-state={auth.status}>
       <h1>{t("staff.placeholder.title")}</h1>
       <p>{t("staff.placeholder.body")}</p>
+      {auth.status === "authenticated" ? (
+        <p data-signed-in>
+          {t("auth.signedIn")} {auth.displayName ?? ""}
+        </p>
+      ) : null}
+      {auth.status === "guest" || auth.status === "error" ? (
+        <LoginButton onError={() => setAuth({ status: "error" })} />
+      ) : null}
+      {auth.status === "error" ? <p data-auth-error>{t("auth.loginError")}</p> : null}
     </main>
   );
 }

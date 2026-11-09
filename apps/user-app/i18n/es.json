@@ -1,4 +1,8 @@
 {
+  "auth.login": "Iniciar sesión",
+  "auth.loginError": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+  "auth.signedIn": "Sesión iniciada",
+  "auth.signingIn": "Te estamos iniciando sesión…",
   "user.placeholder.body": "La comunidad de Bulletin se está preparando.",
   "user.placeholder.title": "Bulletin"
 }

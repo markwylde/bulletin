@@ -11,7 +11,8 @@
   "dependencies": {
     "astro": "7.4.7",
     "@bulletin/i18n": "workspace:*",
-    "@bulletin/config": "workspace:*"
+    "@bulletin/config": "workspace:*",
+    "@bulletin/domain": "workspace:*"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12"

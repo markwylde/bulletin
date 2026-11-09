@@ -3,7 +3,8 @@ import { formatCatalogIssues } from "@bulletin/i18n/catalogs";
 import { watchCatalogs } from "./i18n-watch.ts";
 
 const separator = process.argv.indexOf("--");
-const command = separator === -1 ? [] : process.argv.slice(separator + 1);
+// Bun removes the literal `--` separator, so the command starts at argv[2] either way.
+const command = separator === -1 ? process.argv.slice(2) : process.argv.slice(separator + 1);
 
 if (command.length === 0) {
   console.error("Usage: bun scripts/dev-i18n.ts -- <app dev command>");
