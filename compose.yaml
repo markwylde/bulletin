@@ -407,6 +407,30 @@ services:
         - action: rebuild
           path: ./bun.lock
         - action: rebuild
+          path: ./packages/db/package.json
+        - action: rebuild
+          path: ./packages/domain/package.json
+        - action: rebuild
+          path: ./packages/cache/package.json
+        - action: rebuild
+          path: ./packages/content/package.json
+        - action: rebuild
+          path: ./packages/templates/package.json
+        - action: rebuild
+          path: ./packages/plugin-sdk/package.json
+        - action: rebuild
+          path: ./packages/i18n/package.json
+        - action: rebuild
+          path: ./packages/flags/package.json
+        - action: rebuild
+          path: ./packages/storage/package.json
+        - action: rebuild
+          path: ./packages/ui/package.json
+        - action: rebuild
+          path: ./packages/config/package.json
+        - action: rebuild
+          path: ./packages/test-utils/package.json
+        - action: rebuild
           path: ./tsconfig.base.json
         - action: rebuild
           path: ./apps/user-app/package.json
@@ -448,6 +472,30 @@ services:
         - action: rebuild
           path: ./bun.lock
         - action: rebuild
+          path: ./packages/db/package.json
+        - action: rebuild
+          path: ./packages/domain/package.json
+        - action: rebuild
+          path: ./packages/cache/package.json
+        - action: rebuild
+          path: ./packages/content/package.json
+        - action: rebuild
+          path: ./packages/templates/package.json
+        - action: rebuild
+          path: ./packages/plugin-sdk/package.json
+        - action: rebuild
+          path: ./packages/i18n/package.json
+        - action: rebuild
+          path: ./packages/flags/package.json
+        - action: rebuild
+          path: ./packages/storage/package.json
+        - action: rebuild
+          path: ./packages/ui/package.json
+        - action: rebuild
+          path: ./packages/config/package.json
+        - action: rebuild
+          path: ./packages/test-utils/package.json
+        - action: rebuild
           path: ./tsconfig.base.json
         - action: rebuild
           path: ./apps/user-api/package.json
@@ -462,6 +510,7 @@ services:
     environment:
       <<: *app-environment
       PORT: "5173"
+      STAFF_API_INTERNAL_URL: http://staff-api:3002
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -489,6 +538,30 @@ services:
           path: ./package.json
         - action: rebuild
           path: ./bun.lock
+        - action: rebuild
+          path: ./packages/db/package.json
+        - action: rebuild
+          path: ./packages/domain/package.json
+        - action: rebuild
+          path: ./packages/cache/package.json
+        - action: rebuild
+          path: ./packages/content/package.json
+        - action: rebuild
+          path: ./packages/templates/package.json
+        - action: rebuild
+          path: ./packages/plugin-sdk/package.json
+        - action: rebuild
+          path: ./packages/i18n/package.json
+        - action: rebuild
+          path: ./packages/flags/package.json
+        - action: rebuild
+          path: ./packages/storage/package.json
+        - action: rebuild
+          path: ./packages/ui/package.json
+        - action: rebuild
+          path: ./packages/config/package.json
+        - action: rebuild
+          path: ./packages/test-utils/package.json
         - action: rebuild
           path: ./tsconfig.base.json
         - action: rebuild
@@ -530,6 +603,30 @@ services:
           path: ./package.json
         - action: rebuild
           path: ./bun.lock
+        - action: rebuild
+          path: ./packages/db/package.json
+        - action: rebuild
+          path: ./packages/domain/package.json
+        - action: rebuild
+          path: ./packages/cache/package.json
+        - action: rebuild
+          path: ./packages/content/package.json
+        - action: rebuild
+          path: ./packages/templates/package.json
+        - action: rebuild
+          path: ./packages/plugin-sdk/package.json
+        - action: rebuild
+          path: ./packages/i18n/package.json
+        - action: rebuild
+          path: ./packages/flags/package.json
+        - action: rebuild
+          path: ./packages/storage/package.json
+        - action: rebuild
+          path: ./packages/ui/package.json
+        - action: rebuild
+          path: ./packages/config/package.json
+        - action: rebuild
+          path: ./packages/test-utils/package.json
         - action: rebuild
           path: ./tsconfig.base.json
         - action: rebuild
@@ -573,6 +670,30 @@ services:
         - action: rebuild
           path: ./bun.lock
         - action: rebuild
+          path: ./packages/db/package.json
+        - action: rebuild
+          path: ./packages/domain/package.json
+        - action: rebuild
+          path: ./packages/cache/package.json
+        - action: rebuild
+          path: ./packages/content/package.json
+        - action: rebuild
+          path: ./packages/templates/package.json
+        - action: rebuild
+          path: ./packages/plugin-sdk/package.json
+        - action: rebuild
+          path: ./packages/i18n/package.json
+        - action: rebuild
+          path: ./packages/flags/package.json
+        - action: rebuild
+          path: ./packages/storage/package.json
+        - action: rebuild
+          path: ./packages/ui/package.json
+        - action: rebuild
+          path: ./packages/config/package.json
+        - action: rebuild
+          path: ./packages/test-utils/package.json
+        - action: rebuild
           path: ./tsconfig.base.json
         - action: rebuild
           path: ./apps/workers/package.json
@@ -608,6 +729,30 @@ services:
           path: ./package.json
         - action: rebuild
           path: ./bun.lock
+        - action: rebuild
+          path: ./packages/db/package.json
+        - action: rebuild
+          path: ./packages/domain/package.json
+        - action: rebuild
+          path: ./packages/cache/package.json
+        - action: rebuild
+          path: ./packages/content/package.json
+        - action: rebuild
+          path: ./packages/templates/package.json
+        - action: rebuild
+          path: ./packages/plugin-sdk/package.json
+        - action: rebuild
+          path: ./packages/i18n/package.json
+        - action: rebuild
+          path: ./packages/flags/package.json
+        - action: rebuild
+          path: ./packages/storage/package.json
+        - action: rebuild
+          path: ./packages/ui/package.json
+        - action: rebuild
+          path: ./packages/config/package.json
+        - action: rebuild
+          path: ./packages/test-utils/package.json
         - action: rebuild
           path: ./tsconfig.base.json
         - action: rebuild

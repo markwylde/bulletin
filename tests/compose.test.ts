@@ -17,6 +17,21 @@ const ORIGIN_HOSTS = [
   "auth.bulletin.localhost",
 ] as const;
 
+const PACKAGE_WORKSPACES = [
+  "db",
+  "domain",
+  "cache",
+  "content",
+  "templates",
+  "plugin-sdk",
+  "i18n",
+  "flags",
+  "storage",
+  "ui",
+  "config",
+  "test-utils",
+] as const;
+
 interface ComposeWatch {
   readonly action?: string;
   readonly path?: string;
@@ -81,6 +96,13 @@ describe("compose stack", () => {
         path: `./apps/${name}/src`,
         target: `/app/apps/${name}/src`,
       });
+
+      for (const packageName of PACKAGE_WORKSPACES) {
+        expect(watch).toContainEqual({
+          action: "rebuild",
+          path: `./packages/${packageName}/package.json`,
+        });
+      }
     }
   });
 

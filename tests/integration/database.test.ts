@@ -10,7 +10,13 @@ import {
   MigrationError,
   runMigrations,
 } from "@bulletin/db";
-import { type EventSubscriber, emit, isStaleEvent, type JobQueue } from "@bulletin/db/events";
+import {
+  createEventWorker,
+  type EventSubscriber,
+  emit,
+  isStaleEvent,
+  type JobQueue,
+} from "@bulletin/db/events";
 import { baseSeedModule, runSeeds, type SeedModule, SeedRegistry } from "@bulletin/db/seed";
 import { SQL } from "bun";
 
@@ -459,6 +465,84 @@ integrationDescribe("database lifecycle", () => {
       }
     });
   });
+
+  test("event worker retries a failing subscriber with backoff while another succeeds", async () => {
+    await withDatabase(async (databaseUrl) => {
+      await runMigrations({ databaseUrl });
+      const sql = new SQL(databaseUrl);
+      const bossUrl = new URL(databaseUrl);
+      bossUrl.username = "workers";
+      bossUrl.password = "";
+
+      const boss = await createPgBossQueue({
+        connectionString: bossUrl.toString(),
+        schema: "pgboss",
+        supervise: false,
+        schedule: false,
+      });
+
+      let coreHandled = 0;
+      let webhookAttempts = 0;
+      const worker = await createEventWorker({
+        boss: boss.boss,
+        sql,
+        handlers: {
+          core: async () => {
+            coreHandled += 1;
+          },
+          webhook: async () => {
+            webhookAttempts += 1;
+            throw new Error("webhook handler failed");
+          },
+        },
+      });
+      const relay = createRelay({ sql, subscribers, queue: boss.queue });
+
+      try {
+        await sql.begin(async (tx) => {
+          await emit(tx, postCreated());
+        });
+        expect(await relay.runOnce()).toEqual({ claimed: 1, published: 1, failed: 0 });
+
+        let jobRows: Array<{ subscriber: string; state: string; retry_count: number }> = [];
+
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+          jobRows = (await sql`
+            SELECT data->>'subscriber' AS subscriber, state, retry_count
+            FROM pgboss.job
+            WHERE name = 'domain-events'
+            ORDER BY subscriber
+          `) as typeof jobRows;
+
+          if (
+            coreHandled === 1 &&
+            webhookAttempts >= 1 &&
+            jobRows.some((row) => row.subscriber === "webhook" && row.state === "retry")
+          ) {
+            break;
+          }
+
+          await Bun.sleep(50);
+        }
+
+        expect(coreHandled).toBe(1);
+        expect(webhookAttempts).toBeGreaterThanOrEqual(1);
+        expect(jobRows).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ subscriber: "core", state: "completed" }),
+            expect.objectContaining({ subscriber: "webhook", state: "retry" }),
+          ]),
+        );
+
+        const queue = await boss.boss.getQueue("domain-events");
+        expect(queue).toMatchObject({ retryBackoff: true, retryDelay: 30 });
+      } finally {
+        await worker.stop();
+        await boss.stop();
+        await sql.close();
+      }
+    });
+  }, 20_000);
 
   test("pg-boss installs its own schema and enqueues singleton jobs", async () => {
     await withDatabase(async (databaseUrl) => {

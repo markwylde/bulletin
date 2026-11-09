@@ -26,7 +26,7 @@ export interface BaseSeedOptions {
 
 /** Runs the foundation's base seed modules against a database after migrations. */
 export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult> {
-  const sql = new SQL(options.databaseUrl);
+  const sql = new SQL(options.databaseUrl, { connectionTimeout: 5 });
 
   try {
     return await runSeeds({

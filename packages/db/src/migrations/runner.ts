@@ -117,6 +117,7 @@ async function appliedMigrations(reserved: SQL): Promise<readonly AppliedRow[]> 
         Bun.env.MIGRATION_DATABASE_URL ??
         Bun.env.DATABASE_URL ??
         "postgres://bulletin:bulletin@localhost:5432/bulletin",
+      { connectionTimeout: 5 },
     );
 
   const reserved = await sql.reserve();

@@ -8,6 +8,7 @@ import {
   connectionPoolSize,
   type ServiceName,
 } from "./connections.ts";
+import { createLogger, type Logger } from "./log.ts";
 
 export interface HealthCheck {
   readonly name: string;
@@ -33,6 +34,7 @@ export interface StartServiceOptions {
   readonly installSignalHandlers?: boolean;
   readonly budget?: ConnectionBudgetConfig;
   readonly onShutdown?: () => Promise<void>;
+  readonly logger?: Logger;
 }
 
 export interface RunningService {
@@ -65,13 +67,15 @@ export async function createListenerCheck(
   sql: SQL,
   channel = "bulletin_health",
 ): Promise<ListenerCheck> {
-  let pending: ((ok: boolean) => void) | undefined;
-  let expected: string | undefined;
+  const pending = new Map<string, (ok: boolean) => void>();
   let closed = false;
 
   const subscription = await sql.listen(channel, (payload) => {
-    if (pending !== undefined && payload === expected) {
-      pending(true);
+    const resolve = pending.get(payload);
+
+    if (resolve !== undefined) {
+      pending.delete(payload);
+      resolve(true);
     }
   });
 
@@ -84,30 +88,36 @@ export async function createListenerCheck(
 
       return new Promise<boolean>((resolve) => {
         const token = randomUUID();
-        expected = token;
-
         const timer = setTimeout(() => {
-          if (pending !== undefined) {
-            pending(false);
+          const pendingResolve = pending.get(token);
+          if (pendingResolve !== undefined) {
+            pending.delete(token);
+            pendingResolve(false);
           }
         }, 1_000);
 
-        pending = (ok) => {
+        pending.set(token, (ok) => {
           clearTimeout(timer);
-          pending = undefined;
           resolve(ok);
-        };
+        });
 
         void sql.notify(channel, token).catch(() => {
-          if (pending !== undefined) {
-            pending(false);
+          const pendingResolve = pending.get(token);
+          if (pendingResolve !== undefined) {
+            pending.delete(token);
+            pendingResolve(false);
           }
         });
       });
     },
     async close() {
       closed = true;
-      pending?.(false);
+
+      for (const [token, resolve] of pending) {
+        pending.delete(token);
+        resolve(false);
+      }
+
       await subscription.unlisten();
     },
   };
@@ -141,7 +151,10 @@ export function createServiceSql(
   databaseUrl: string,
   connections?: Partial<Record<ServiceName, ConnectionShare>>,
 ): SQL {
-  return new BunSQL(databaseUrl, { max: connectionPoolSize(service, connections) });
+  return new BunSQL(databaseUrl, {
+    max: connectionPoolSize(service, connections),
+    connectionTimeout: 5,
+  });
 }
 
 /**
@@ -154,6 +167,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
     await checkBudget(options.budget);
   }
 
+  const logger = options.logger ?? createLogger({ service: options.service });
   let draining = false;
   let active = 0;
   let idleResolve: (() => void) | undefined;
@@ -172,6 +186,66 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       : new Promise<void>((resolve) => {
           idleResolve = resolve;
         });
+
+  const finishRequest = (): void => {
+    active -= 1;
+    becomeIdle();
+  };
+
+  const trackResponse = (response: Response): Response => {
+    const body = response.body;
+
+    if (body === null) {
+      finishRequest();
+      return response;
+    }
+
+    const reader = body.getReader();
+    let finished = false;
+
+    const finish = (): void => {
+      if (!finished) {
+        finished = true;
+        finishRequest();
+      }
+    };
+
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        try {
+          const chunk = await reader.read();
+
+          if (chunk.done) {
+            finish();
+            controller.close();
+          } else {
+            controller.enqueue(chunk.value);
+          }
+        } catch (error) {
+          finish();
+          controller.error(error);
+        }
+      },
+      async cancel(reason) {
+        try {
+          await reader.cancel(reason);
+        } finally {
+          finish();
+        }
+      },
+    });
+
+    try {
+      return new Response(stream, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    } catch {
+      finish();
+      return response;
+    }
+  };
 
   const readiness = async (): Promise<Response> => {
     if (draining) {
@@ -213,12 +287,22 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       }
 
       active += 1;
+      const requestId = randomUUID();
+      const requestLogger = logger.child({
+        requestId,
+        method: request.method,
+        path: url.pathname,
+      });
 
       try {
-        return await options.fetch(request);
-      } finally {
-        active -= 1;
-        becomeIdle();
+        requestLogger.info("request.started");
+        const response = await options.fetch(request);
+        requestLogger.info("request.completed", { status: response.status });
+        return trackResponse(response);
+      } catch (error) {
+        requestLogger.error("request.failed", { error });
+        finishRequest();
+        throw error;
       }
     },
   });

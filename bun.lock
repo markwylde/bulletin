@@ -52,6 +52,8 @@
     "apps/user-app": {
       "name": "@bulletin/user-app",
       "dependencies": {
+        "@bulletin/config": "workspace:*",
+        "@bulletin/db": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "astro": "7.4.7",
       },

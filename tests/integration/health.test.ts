@@ -96,6 +96,11 @@ integrationDescribe("service health", () => {
 
     try {
       expect(await listener.check()).toBe(true);
+      expect(await Promise.all([listener.check(), listener.check(), listener.check()])).toEqual([
+        true,
+        true,
+        true,
+      ]);
       await listener.close();
       expect(await listener.check()).toBe(false);
     } finally {

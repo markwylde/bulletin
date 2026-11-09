@@ -1,4 +1,4 @@
-import { loadConfig, parseReplicas } from "@bulletin/config";
+import { createLogger, loadConfig, parseReplicas } from "@bulletin/config";
 import {
   createDatabaseCheck,
   createListenerCheck,
@@ -15,6 +15,7 @@ import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 
 const config = loadConfig();
+const logger = createLogger({ service: "workers", level: config.logLevel });
 const port = config.port;
 const databaseUrl = config.databaseUrl;
 const migrationUrl = Bun.env.MIGRATION_DATABASE_URL ?? databaseUrl;
@@ -46,7 +47,7 @@ const relayTimer = setInterval(() => {
     .runOnce()
     .then(() => undefined)
     .catch((error: unknown) => {
-      console.error("domain-event relay failed", error);
+      logger.error("domain-event relay failed", { error });
     })
     .finally(() => {
       relayInFlight = undefined;
@@ -55,6 +56,7 @@ const relayTimer = setInterval(() => {
 
 await startService({
   service: "workers",
+  logger,
   port,
   fetch() {
     return Response.json({ service: "workers", status: "ok" });
@@ -83,4 +85,4 @@ await startService({
   throw error;
 });
 
-console.log(`workers listening on http://localhost:${port}`);
+logger.info("service listening", { port });

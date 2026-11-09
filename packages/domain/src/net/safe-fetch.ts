@@ -318,7 +318,42 @@ export function createSafeFetch(config: SafeFetchConfig = {}): SafeFetch {
       throw new SafeFetchError("https_required", "HTTPS is required in production");
     }
 
-    const pinned = await resolveAddresses(url, { devAllow, resolve });
+    const startedAt = Date.now();
+    const remainingMs = (): number => Math.max(0, timeoutMs - (Date.now() - startedAt));
+
+    const resolution = resolveAddresses(url, { devAllow, resolve });
+    // A resolver that never settles must not outlive the caller's deadline.
+    resolution.catch(() => undefined);
+
+    const deadline = new Promise<never>((_resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new SafeFetchError("timeout", `DNS resolution exceeded ${timeoutMs} ms`));
+      }, remainingMs());
+
+      void resolution.then(
+        () => clearTimeout(timer),
+        () => clearTimeout(timer),
+      );
+    });
+
+    const abort = init.signal
+      ? new Promise<never>((_resolve, reject) => {
+          if (init.signal?.aborted === true) {
+            reject(abortError());
+            return;
+          }
+
+          init.signal?.addEventListener("abort", () => reject(abortError()), { once: true });
+        })
+      : null;
+
+    const pinned = await Promise.race([resolution, deadline, ...(abort === null ? [] : [abort])]);
+    const requestTimeoutMs = remainingMs();
+
+    if (requestTimeoutMs <= 0) {
+      throw new SafeFetchError("timeout", `Request exceeded ${timeoutMs} ms`);
+    }
+
     const body = await bodyBuffer(init.body);
     const headers = toHeaders(init.headers);
     headers.delete("host");
@@ -338,7 +373,7 @@ export function createSafeFetch(config: SafeFetchConfig = {}): SafeFetch {
       pinned,
       {
         maxBytes,
-        timeoutMs,
+        timeoutMs: requestTimeoutMs,
         ...(init.signal === undefined || init.signal === null ? {} : { signal: init.signal }),
       },
     );

@@ -104,7 +104,7 @@ function seconds(map: Map<string, string | true>, name: string): number {
 function cachePolicy(headers: Headers): { ttl: number; stale: number } | null {
   const map = directives(headers.get("cache-control"));
 
-  if (map.has("no-store") || map.has("private")) {
+  if (map.has("no-store") || map.has("no-cache") || map.has("private")) {
     return null;
   }
 

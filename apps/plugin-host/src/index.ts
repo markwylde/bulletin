@@ -1,10 +1,12 @@
-import { loadConfig } from "@bulletin/config";
+import { createLogger, loadConfig } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
 
 const config = loadConfig();
+const logger = createLogger({ service: "plugin-host", level: config.logLevel });
 
 await startService({
   service: "plugin-host",
+  logger,
   port: config.port,
   fetch() {
     return Response.json({ service: "plugin-host", status: "ok" });
@@ -12,4 +14,4 @@ await startService({
   checks: [],
 });
 
-console.log(`plugin-host listening on http://localhost:${config.port}`);
+logger.info("service listening", { port: config.port });

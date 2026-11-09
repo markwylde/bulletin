@@ -25,6 +25,12 @@ function start(options?: { now?: () => number }) {
         return new Response("nocache", { headers: { "cache-control": "no-store" } });
       }
 
+      if (url.pathname === "/must-revalidate") {
+        return new Response("must-revalidate", {
+          headers: { "cache-control": "no-cache, max-age=60" },
+        });
+      }
+
       return new Response(`page ${upstreamRequests}`, {
         headers: {
           "cache-control": "public, s-maxage=60, stale-while-revalidate=60",
@@ -89,6 +95,13 @@ describe("CDN mock", () => {
     expect((await fetch(`${base}/private`)).headers.get("x-cache")).toBe("MISS");
     expect((await fetch(`${base}/nocache`)).headers.get("x-cache")).toBe("MISS");
     expect((await fetch(`${base}/nocache`)).headers.get("x-cache")).toBe("MISS");
+  });
+
+  test("honours no-cache even with a positive max-age", async () => {
+    const { base } = start();
+
+    expect((await fetch(`${base}/must-revalidate`)).headers.get("x-cache")).toBe("MISS");
+    expect((await fetch(`${base}/must-revalidate`)).headers.get("x-cache")).toBe("MISS");
   });
 
   test("purges by surrogate key", async () => {

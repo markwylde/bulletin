@@ -259,6 +259,19 @@ describe("safeFetch", () => {
     expect(await response.json()).toEqual({ authorization: "Bearer secret" });
   });
 
+  test("bounds DNS resolution with the request timeout", async () => {
+    const fetch = createSafeFetch({
+      timeoutMs: 20,
+      resolve: () => new Promise(() => undefined),
+    });
+
+    const started = Date.now();
+    await expect(fetch("http://stalled-resolver.test")).rejects.toMatchObject({
+      code: "timeout",
+    });
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
   test("blocks a host whose DNS answer includes a private address", async () => {
     const fetch = createSafeFetch({
       resolve: async () => [

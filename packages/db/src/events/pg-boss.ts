@@ -20,6 +20,7 @@ export interface PgBossQueue {
 export async function createPgBossQueue(options: PgBossQueueOptions): Promise<PgBossQueue> {
   const boss = new PgBoss({
     connectionString: options.connectionString,
+    connectionTimeoutMillis: 5_000,
     schema: options.schema ?? "pgboss",
     ...(options.max === undefined ? {} : { max: options.max }),
     // The schema is created by migration 0002 and owned by the workers role.
@@ -32,10 +33,18 @@ export async function createPgBossQueue(options: PgBossQueueOptions): Promise<Pg
 
   const queueName = options.queueName ?? "domain-events";
   const existing = await boss.getQueue(queueName);
+  const retryOptions = {
+    retryLimit: 5,
+    retryDelay: 30,
+    retryBackoff: true,
+    retryDelayMax: 600,
+  };
 
   if (existing === null) {
-    // A short queue admits one queued job per singleton key, making relay retries idempotent.
-    await boss.createQueue(queueName, { policy: "short" });
+    // A short queue admits one queued job per singleton key; retries use exponential backoff.
+    await boss.createQueue(queueName, { policy: "short", ...retryOptions });
+  } else {
+    await boss.updateQueue(queueName, retryOptions);
   }
 
   const queue: JobQueue = {

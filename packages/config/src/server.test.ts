@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { ConnectionBudgetError } from "./connections.ts";
+import { createLogger } from "./log.ts";
 import { createServiceSql, type RunningService, startService } from "./server.ts";
 
 const running: RunningService[] = [];
@@ -14,7 +15,8 @@ afterEach(async () => {
 async function start(
   options: Omit<Parameters<typeof startService>[0], "installSignalHandlers">,
 ): Promise<{ service: RunningService; base: string }> {
-  const service = await startService({ ...options, installSignalHandlers: false });
+  const logger = options.logger ?? createLogger({ service: "test", sink: () => undefined });
+  const service = await startService({ ...options, logger, installSignalHandlers: false });
   running.push(service);
   const port = service.server.port;
 
@@ -97,6 +99,47 @@ describe("shared service lifecycle", () => {
     await shutdown;
   });
 
+  test("waits for a streamed response body to finish", async () => {
+    let finishStream: (() => void) | undefined;
+    const { service, base } = await start({
+      service: "test",
+      port: 0,
+      fetch() {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("first"));
+            finishStream = () => {
+              controller.enqueue(new TextEncoder().encode("second"));
+              controller.close();
+            };
+          },
+        });
+
+        return new Response(stream);
+      },
+      drainTimeoutMs: 2_000,
+    });
+
+    const response = await fetch(`${base}/stream`);
+    const reader = response.body?.getReader();
+    expect(reader).toBeDefined();
+    expect(await reader?.read()).toMatchObject({ done: false });
+
+    let shutdownFinished = false;
+    const shutdown = service.shutdown().then(() => {
+      shutdownFinished = true;
+    });
+    await Bun.sleep(20);
+    expect(shutdownFinished).toBe(false);
+
+    finishStream?.();
+    while ((await reader?.read())?.done === false) {
+      // Drain the rest of the stream.
+    }
+    await shutdown;
+    expect(shutdownFinished).toBe(true);
+  });
+
   test("stops after the drain timeout", async () => {
     const { service, base } = await start({
       service: "test",
@@ -136,6 +179,31 @@ describe("shared service lifecycle", () => {
     } finally {
       await sql.close();
     }
+  });
+
+  test("emits redacted structured request logs with correlation IDs", async () => {
+    const lines: string[] = [];
+    const logger = createLogger({
+      service: "test",
+      level: "debug",
+      sink: (line) => lines.push(line),
+      now: () => new Date("2026-11-09T12:00:00.000Z"),
+    });
+    const { base } = await start({
+      service: "test",
+      port: 0,
+      fetch: () => new Response("ok"),
+      logger,
+    });
+
+    await fetch(`${base}/jane@example.com`);
+
+    const records = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    expect(records).toHaveLength(2);
+    expect(records[0]?.requestId).toBeString();
+    expect(records[0]?.message).toBe("request.started");
+    expect(records[1]?.status).toBe(200);
+    expect(lines.join("\n")).not.toContain("jane@example.com");
   });
 
   test("refuses to start an over-budget service", async () => {
