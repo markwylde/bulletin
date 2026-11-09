@@ -18,7 +18,7 @@
 
 ## 4. Bindings
 
-- [ ] 4.1 Provide `useT()` for React and a server `t()` for emails and push; verify with unit tests
+- [x] 4.1 Provide `useT()` for React and a server `t()` for emails and push; verify with unit tests
 - [ ] 4.2 Register a `{% t %}` tag for the template engine (consumed by change `rendering-and-caching`) with a unit test
 
 ## 5. Strings and seed

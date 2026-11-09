@@ -5,6 +5,7 @@
   "description": "Message catalogs and the ICU formatter.",
   "exports": {
     ".": "./src/index.ts",
+    "./bindings": "./src/bindings.ts",
     "./catalogs": "./src/catalogs.ts",
     "./lint": "./src/lint.ts",
     "./overrides": "./src/overrides.ts",

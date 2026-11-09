@@ -1,2 +1,1 @@
-/** Shared React components for user-app islands and the staff app. */
-export {};
+export * from "./i18n.tsx";
