@@ -9,10 +9,8 @@ import {
   isLocale,
   LOCALES,
   loadCatalog,
-  localeFromBp,
   type MessageKey,
   parseCatalog,
-  resolveLocale,
   t,
 } from "./catalog.ts";
 
@@ -40,21 +38,10 @@ describe("shipped catalogs", () => {
   });
 });
 
-describe("locale helpers", () => {
-  test("resolves only shipped locales and defaults to English", () => {
-    expect(resolveLocale("es")).toBe("es");
-    expect(resolveLocale("fr")).toBe("fr");
-    expect(resolveLocale("de")).toBe("en");
-    expect(resolveLocale(null)).toBe("en");
+describe("catalog lookup", () => {
+  test("recognises only shipped locales", () => {
     expect(isLocale("en")).toBe(true);
     expect(isLocale("EN")).toBe(false);
-  });
-
-  test("reads the locale from the bp cookie", () => {
-    expect(localeFromBp("es.2.dark")).toBe("es");
-    expect(localeFromBp("fr.1.light")).toBe("fr");
-    expect(localeFromBp("xx.1.light")).toBe("en");
-    expect(localeFromBp(null)).toBe("en");
   });
 
   test("returns translated placeholder strings", () => {

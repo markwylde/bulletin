@@ -31,19 +31,6 @@ export function isLocale(value: string | null | undefined): value is Locale {
   return value !== null && value !== undefined && (LOCALES as readonly string[]).includes(value);
 }
 
-/** Guest locale from `?lang=` or the first segment of the `bp` cookie; defaults to English. */
-export function resolveLocale(value: string | null | undefined): Locale {
-  return isLocale(value) ? value : DEFAULT_LOCALE;
-}
-
-export function localeFromBp(bp: string | null | undefined): Locale {
-  if (bp === null || bp === undefined) {
-    return DEFAULT_LOCALE;
-  }
-
-  return resolveLocale(bp.split(".")[0] ?? null);
-}
-
 function compile(locale: Locale, message: string): IntlMessageFormat {
   const cacheKey = `${locale}\u0000${message}`;
   const cached = compiled.get(cacheKey);

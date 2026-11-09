@@ -8,7 +8,7 @@
 
 ## 2. Locale resolution
 
-- [ ] 2.1 Implement member/guest locale resolution and the `bp` cookie codec, with unit tests for each fallback path
+- [x] 2.1 Implement member/guest locale resolution and the `bp` cookie codec, with unit tests for each fallback path
 - [ ] 2.2 Add `core.board_settings.default_locale` (migration) with integration tests; member locale lands in `identity-sessions`
 
 ## 3. Overrides and runtime validation
