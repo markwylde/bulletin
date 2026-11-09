@@ -46,6 +46,14 @@ http://bulletin.localhost:8080 {
 		redir * /_mocks/oembed/ 308
 	}
 
+	handle_path /_mocks/cdn/* {
+		reverse_proxy cdn:4006
+	}
+
+	handle /_mocks/cdn {
+		redir * /_mocks/cdn/__ui 308
+	}
+
 	handle /api/* {
 		reverse_proxy user-api:3001
 	}

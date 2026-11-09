@@ -263,6 +263,35 @@ services:
           path: ./mocks/Dockerfile
     restart: unless-stopped
 
+  cdn:
+    build:
+      <<: *mock-build
+      args:
+        MOCK_NAME: cdn
+    environment:
+      PORT: "4006"
+      CDN_ORIGIN: http://user-app:4321
+      CDN_UPSTREAM_HOST: bulletin.localhost
+    healthcheck: *bun-healthcheck
+    depends_on:
+      user-app:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: sync
+          path: ./mocks/cdn/src
+          target: /app/mocks/cdn/src
+        - action: sync
+          path: ./mocks/shared/src
+          target: /app/mocks/shared/src
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./mocks/cdn/package.json
+        - action: rebuild
+          path: ./mocks/Dockerfile
+    restart: unless-stopped
+
   proxy:
     image: caddy:2.11.9-alpine
     ports:
@@ -291,6 +320,8 @@ services:
       webhooks:
         condition: service_healthy
       oembed:
+        condition: service_healthy
+      cdn:
         condition: service_healthy
     healthcheck:
       test:

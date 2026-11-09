@@ -1,0 +1,17 @@
+{
+  "name": "@bulletin/mock-cdn",
+  "private": true,
+  "type": "module",
+  "description": "Local caching reverse proxy mock for cache-header and purge tests.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bulletin/mock-ui": "workspace:*"
+  }
+}
