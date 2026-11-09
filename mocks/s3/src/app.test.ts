@@ -109,6 +109,47 @@ describe("S3 mock", () => {
     expect(presigned.status).toBe(403);
   });
 
+  test("rejects stale and future-dated Authorization signatures", async () => {
+    const { endpoint } = serverFor(createMemoryStore());
+    const url = new URL(`${endpoint}/bulletin/att/freshness`);
+    const body = new TextEncoder().encode("freshness body");
+
+    const stale = await fetch(url, {
+      method: "PUT",
+      headers: signRequestHeaders({
+        method: "PUT",
+        url,
+        body,
+        credentials,
+        date: new Date("2020-01-01T00:00:00.000Z"),
+      }),
+      body,
+    });
+    expect(stale.status).toBe(403);
+    expect(await stale.text()).toContain("expired");
+
+    const future = await fetch(url, {
+      method: "PUT",
+      headers: signRequestHeaders({
+        method: "PUT",
+        url,
+        body,
+        credentials,
+        date: new Date(Date.now() + 60 * 60 * 1000),
+      }),
+      body,
+    });
+    expect(future.status).toBe(403);
+    expect(await future.text()).toContain("future");
+
+    const valid = await fetch(url, {
+      method: "PUT",
+      headers: signRequestHeaders({ method: "PUT", url, body, credentials }),
+      body,
+    });
+    expect(valid.status).toBe(200);
+  });
+
   test("rejects a valid signature with a tampered concrete payload", async () => {
     const { endpoint } = serverFor(createMemoryStore());
     const url = new URL(`${endpoint}/bulletin/att/signed`);

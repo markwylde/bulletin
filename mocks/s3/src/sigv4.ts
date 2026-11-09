@@ -3,6 +3,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 const ALGORITHM = "AWS4-HMAC-SHA256";
 const SERVICE = "s3";
 const UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
+const MAX_CLOCK_SKEW_MS = 15 * 60 * 1000;
 
 export interface S3Credentials {
   readonly accessKeyId: string;
@@ -180,6 +181,14 @@ export function verifyRequestSignature(
 
   if (Number.isNaN(requestDate.getTime())) {
     return { ok: false, reason: "Invalid X-Amz-Date" };
+  }
+
+  if (requestDate.getTime() > now.getTime() + MAX_CLOCK_SKEW_MS) {
+    return { ok: false, reason: "Request date is in the future" };
+  }
+
+  if (presignedSignature === null && requestDate.getTime() < now.getTime() - MAX_CLOCK_SKEW_MS) {
+    return { ok: false, reason: "Request signature expired" };
   }
 
   if (expires !== null) {
