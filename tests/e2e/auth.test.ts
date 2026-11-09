@@ -36,28 +36,37 @@ for (const app of APPS) {
     for (const profile of profiles) {
       for (const viewport of VIEWPORTS) {
         test(`${app.name} ${profile.sub} at ${viewport}`, async () => {
-          await withPage({ url: app.url, viewport }, async (view) => {
-            const seeded = SEEDED_PROFILES.find((candidate) => candidate.sub === profile.sub);
+          const seeded = SEEDED_PROFILES.find((candidate) => candidate.sub === profile.sub);
 
-            if (seeded === undefined) {
-              throw new Error(`No seeded member for profile ${profile.sub}`);
-            }
+          if (seeded === undefined) {
+            throw new Error(`No seeded member for profile ${profile.sub}`);
+          }
 
-            if (app.name === "staff-app" && seeded.group !== "administrators") {
-              await loginAsRefused(view, profile.sub);
-              return;
-            }
+          const refused = app.name === "staff-app" && seeded.group !== "administrators";
 
-            await loginAs(view, profile.sub);
+          await withPage(
+            {
+              url: app.url,
+              viewport,
+              ...(refused ? { allowConsoleErrors: [/403.*\/api\/auth\/session/] } : {}),
+            },
+            async (view) => {
+              if (refused) {
+                await loginAsRefused(view, profile.sub);
+                return;
+              }
 
-            expect(
-              await view.evaluate<string | null>(
-                "document.querySelector('[data-auth-state]')?.getAttribute('data-auth-state') ?? null",
-              ),
-            ).toBe("authenticated");
+              await loginAs(view, profile.sub);
 
-            await waitForText(view, seeded.name, 30_000);
-          });
+              expect(
+                await view.evaluate<string | null>(
+                  "document.querySelector('[data-auth-state]')?.getAttribute('data-auth-state') ?? null",
+                ),
+              ).toBe("authenticated");
+
+              await waitForText(view, seeded.name, 30_000);
+            },
+          );
         }, 90_000);
       }
     }

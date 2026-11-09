@@ -294,6 +294,10 @@ export function createMockHandler(
       return json(request, { status: "ok" });
     }
 
+    if (url.pathname === "/favicon.ico") {
+      return new Response(null, { status: 204, headers: corsHeaders(request, config) });
+    }
+
     if (url.pathname === "/") {
       return html(
         request,

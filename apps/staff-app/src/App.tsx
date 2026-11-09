@@ -7,7 +7,7 @@ import {
 } from "@bulletin/domain/auth/browser";
 import type { Locale } from "@bulletin/i18n";
 import { I18nProvider, useT } from "@bulletin/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { STAFF_CATALOGS } from "./catalogs.ts";
 import { localeFromRequest } from "./locale.ts";
 import "./styles.css";
@@ -69,9 +69,15 @@ function Content({ onLocale }: { readonly onLocale: (locale: Locale) => void }) 
   const t = useT();
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
   const [sensitive, setSensitive] = useState<SensitiveState>("idle");
+  const callbackStarted = useRef(false);
 
   useEffect(() => {
     if (window.location.pathname === "/auth/callback") {
+      if (callbackStarted.current) {
+        return;
+      }
+
+      callbackStarted.current = true;
       void finishLoginAndRedirect().catch(() => setAuth({ status: "error" }));
       return;
     }

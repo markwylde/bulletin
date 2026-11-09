@@ -208,10 +208,21 @@ export async function submitIdToken(idToken: string): Promise<void> {
 }
 
 /** The callback transit route: exchange, post the ID token, then return to the page. */
-export async function finishLoginAndRedirect(): Promise<void> {
-  const { returnTo, idToken } = await finishLogin();
-  await submitIdToken(idToken);
-  browser.location.replace(returnTo);
+let loginCompletion: Promise<void> | undefined;
+
+/**
+ * The callback transit route: exchange, post the ID token, then return to the page.
+ * Single-flight: React StrictMode runs the callback effect twice, and the login challenge
+ * is single-use, so only one POST may be made.
+ */
+export function finishLoginAndRedirect(): Promise<void> {
+  loginCompletion ??= (async () => {
+    const { returnTo, idToken } = await finishLogin();
+    await submitIdToken(idToken);
+    browser.location.replace(returnTo);
+  })();
+
+  return loginCompletion;
 }
 
 export class ReauthRequiredError extends Error {

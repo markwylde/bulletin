@@ -15,6 +15,8 @@ export interface PageOptions {
   readonly url: string;
   readonly viewport: ViewportName | Viewport;
   readonly profileDirectory?: string;
+  /** Expected console errors (e.g. an intentional 403 refusal); uncaught errors always fail. */
+  readonly allowConsoleErrors?: readonly RegExp[];
 }
 
 function resolveViewport(viewport: ViewportName | Viewport): Viewport {
@@ -53,9 +55,10 @@ export async function withPage<T>(
         });
         const errors: string[] = [];
 
-        // Set up the CDP session and exception capture before the real navigation.
+        // Set up the CDP session and exception/console capture before the real navigation.
         await candidate.navigate("about:blank");
         await candidate.cdp("Runtime.enable");
+        await candidate.cdp("Log.enable");
         candidate.addEventListener<{
           readonly exceptionDetails?: {
             readonly text?: string;
@@ -66,6 +69,40 @@ export async function withPage<T>(
           errors.push(
             details?.exception?.description ?? details?.text ?? "Uncaught page exception",
           );
+        });
+        const allowedConsoleError = (message: string): boolean =>
+          (options.allowConsoleErrors ?? []).some((pattern) => pattern.test(message));
+        candidate.addEventListener<{
+          readonly type?: string;
+          readonly args?: readonly { readonly value?: unknown; readonly description?: string }[];
+        }>("Runtime.consoleAPICalled", (event) => {
+          if (event.data.type !== "error") {
+            return;
+          }
+
+          const message = (event.data.args ?? [])
+            .map((arg) => String(arg.value ?? arg.description ?? ""))
+            .join(" ");
+
+          if (!allowedConsoleError(message)) {
+            errors.push(message === "" ? "console.error" : message);
+          }
+        });
+        candidate.addEventListener<{
+          readonly entry?: {
+            readonly level?: string;
+            readonly text?: string;
+            readonly url?: string;
+          };
+        }>("Log.entryAdded", (event) => {
+          if (event.data.entry?.level === "error") {
+            const entry = event.data.entry;
+            const message = `${entry.text ?? "console error"}${entry.url === undefined ? "" : ` (${entry.url})`}`;
+
+            if (!allowedConsoleError(message)) {
+              errors.push(message);
+            }
+          }
         });
 
         await candidate.navigate(options.url);
@@ -91,7 +128,7 @@ export async function withPage<T>(
     const result = await run(view);
 
     if (pageErrors.length > 0) {
-      throw new Error(`Uncaught page errors:\n${pageErrors.join("\n")}`);
+      throw new Error(`Page errors (uncaught or console):\n${pageErrors.join("\n")}`);
     }
 
     return result;
