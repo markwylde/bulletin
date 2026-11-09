@@ -11,7 +11,10 @@ afterEach(() => {
 });
 
 function serve(handler: (request: Request) => Response | Promise<Response>) {
-  const server = Bun.serve({ port: 0, fetch: handler });
+  // safeFetch connects to the pinned IPv4 address, so bind the fixture to IPv4 too. Binding to
+  // the default "localhost" can land on IPv6 and pick an ephemeral port that another process
+  // already uses on 127.0.0.1, making requests hit that process instead of this server.
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: handler });
   const port = server.port;
 
   if (port === undefined) {
