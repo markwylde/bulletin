@@ -24,7 +24,7 @@ describe("staff section registry", () => {
     ]);
     expect(
       visibleSections(["acp.access", "acp.settings"], sections).map((section) => section.id),
-    ).toEqual(["dashboard", "settings"]);
+    ).toEqual(["dashboard", "boardSettings", "settings"]);
   });
 
   test("guards a section on its own permission", () => {

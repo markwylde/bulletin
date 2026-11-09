@@ -16,7 +16,7 @@ integrationDescribe("silent re-auth", () => {
       {
         url: USER_URL,
         viewport: "mobile360",
-        allowConsoleErrors: [/401.*\/api\/auth\/session/],
+        allowConsoleErrors: [/401.*\/api\/auth\/session/, /401.*\/api\/board/],
       },
       async (view) => {
         await loginAs(view, "member-1");

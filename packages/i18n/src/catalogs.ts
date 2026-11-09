@@ -348,6 +348,22 @@ function callKey(node: ts.CallExpression): string | undefined {
   return second ?? stringValue(node.arguments[0]);
 }
 
+const TRANSLATION_KEY_PROPERTIES = new Set([
+  "labelKey",
+  "titleKey",
+  "headerKey",
+  "descriptionKey",
+  "helpKey",
+  "placeholderKey",
+  "submitLabelKey",
+  "bodyKey",
+  "confirmLabelKey",
+  "cancelLabelKey",
+  "messageKey",
+  "emptyKey",
+  "captionKey",
+]);
+
 function typescriptReferences(source: string, file: string): Set<string> {
   const scriptKind =
     file.endsWith(".jsx") || file.endsWith(".js") ? ts.ScriptKind.JSX : ts.ScriptKind.TSX;
@@ -363,11 +379,21 @@ function typescriptReferences(source: string, file: string): Set<string> {
       }
     }
 
-    if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === "data-i18n") {
-      const value = node.initializer;
+    if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name)) {
+      const name = node.name.text;
 
-      if (value !== undefined && ts.isStringLiteral(value)) {
-        keys.add(value.text);
+      if (name === "data-i18n" || TRANSLATION_KEY_PROPERTIES.has(name)) {
+        const value = node.initializer;
+
+        if (value !== undefined && ts.isStringLiteral(value)) {
+          keys.add(value.text);
+        } else if (value !== undefined && ts.isJsxExpression(value)) {
+          const key = stringValue(value.expression);
+
+          if (key !== undefined) {
+            keys.add(key);
+          }
+        }
       }
     }
 
@@ -375,17 +401,7 @@ function typescriptReferences(source: string, file: string): Set<string> {
     if (
       ts.isPropertyAssignment(node) &&
       ts.isIdentifier(node.name) &&
-      (node.name.text === "labelKey" ||
-        node.name.text === "titleKey" ||
-        node.name.text === "headerKey" ||
-        node.name.text === "descriptionKey" ||
-        node.name.text === "helpKey" ||
-        node.name.text === "placeholderKey" ||
-        node.name.text === "submitLabelKey" ||
-        node.name.text === "bodyKey" ||
-        node.name.text === "confirmLabelKey" ||
-        node.name.text === "cancelLabelKey" ||
-        node.name.text === "messageKey")
+      TRANSLATION_KEY_PROPERTIES.has(node.name.text)
     ) {
       const key = stringValue(node.initializer);
 

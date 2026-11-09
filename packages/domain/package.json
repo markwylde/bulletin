@@ -11,7 +11,8 @@
     "./auth/silent": "./src/auth/silent.ts",
     "./member": "./src/member/index.ts",
     "./net": "./src/net/index.ts",
-    "./urls": "./src/urls/index.ts"
+    "./urls": "./src/urls/index.ts",
+    "./board": "./src/board/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

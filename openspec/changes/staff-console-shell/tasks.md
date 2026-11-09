@@ -15,10 +15,10 @@
 
 ## 3. Sections
 
-- [ ] 3.1 Board settings (name, description, default locale, offline mode and message) with `board.view_offline` enforcement in the user app; integration tests including permission denial, and E2E for offline mode
-- [ ] 3.2 String override editor (search keys, edit per locale, revert, list of active overrides) using `i18n-foundation` validation; E2E for override and revert
-- [ ] 3.3 Admin log table, the write helper used by all staff writes, and the filtered log view; integration test that a settings change is logged
-- [ ] 3.4 Dashboard with stats, health and recent log panels gated per permission; tests that a moderator does not receive admin-only panels
+- [x] 3.1 Board settings (name, description, default locale, offline mode and message) with `board.view_offline` enforcement in the user app; integration tests including permission denial, and E2E for offline mode
+- [x] 3.2 String override editor (search keys, edit per locale, revert, list of active overrides) using `i18n-foundation` validation; E2E for override and revert
+- [x] 3.3 Admin log table, the write helper used by all staff writes, and the filtered log view; integration test that a settings change is logged
+- [x] 3.4 Dashboard with stats, health and recent log panels gated per permission; tests that a moderator does not receive admin-only panels
 
 ## 4. Strings and seed
 

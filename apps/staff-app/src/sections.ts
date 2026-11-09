@@ -1,8 +1,8 @@
 import type { AcpPermission } from "@bulletin/domain/permissions";
 
-export type StaffNavGroup = "overview";
+export type StaffNavGroup = "overview" | "configuration";
 
-export type StaffIcon = "dashboard";
+export type StaffIcon = "dashboard" | "settings" | "strings" | "log";
 
 /** Section metadata only; route components are attached in `section-routes.tsx`. */
 export interface StaffSection {
@@ -23,6 +23,30 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     permission: "acp.access",
     icon: "dashboard",
     labelKey: "staff.nav.dashboard",
+  },
+  {
+    id: "adminLog",
+    path: "/log",
+    navGroup: "overview",
+    permission: "acp.log",
+    icon: "log",
+    labelKey: "staff.nav.adminLog",
+  },
+  {
+    id: "boardSettings",
+    path: "/settings/board",
+    navGroup: "configuration",
+    permission: "acp.settings",
+    icon: "settings",
+    labelKey: "staff.nav.boardSettings",
+  },
+  {
+    id: "stringOverrides",
+    path: "/settings/strings",
+    navGroup: "configuration",
+    permission: "acp.strings",
+    icon: "strings",
+    labelKey: "staff.nav.strings",
   },
 ];
 

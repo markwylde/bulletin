@@ -8,6 +8,8 @@
   "auth.resume": "Reprendre",
   "auth.signedIn": "Connecté",
   "auth.signingIn": "Connexion en cours…",
+  "board.offline.defaultMessage": "Le forum est temporairement indisponible. Réessayez plus tard.",
+  "board.offline.title": "Le forum est hors ligne",
   "displayName.changeLimit": "Vous pourrez changer votre nom à nouveau le {date}.",
   "displayName.help": "De 3 à 32 caractères. Les noms sont uniques et visibles par tous.",
   "displayName.invalid": "Le nom doit contenir entre 3 et 32 caractères.",

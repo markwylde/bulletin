@@ -149,6 +149,17 @@ integrationDescribe("staff dashboard permissions", () => {
         await waitForSelector(view, '[data-widget="members"]');
 
         expect(
+          await view.evaluate<boolean>(
+            "!document.querySelector('[data-section=\"boardSettings\"]')",
+          ),
+        ).toBe(true);
+        expect(
+          await view.evaluate<boolean>(
+            "Boolean(document.querySelector('[data-section=\"dashboard\"]'))",
+          ),
+        ).toBe(true);
+
+        expect(
           await view.evaluate<boolean>("Boolean(document.querySelector('[data-widget=\"log\"]'))"),
         ).toBe(false);
         expect(

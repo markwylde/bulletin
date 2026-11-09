@@ -1,6 +1,7 @@
 import { isStaffScheme } from "@bulletin/domain/permissions";
 import type { Locale } from "@bulletin/i18n";
 import { I18nProvider } from "@bulletin/ui";
+import { ToastProvider } from "@bulletin/ui/feedback";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { BrowserRouter } from "react-router";
@@ -60,11 +61,13 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <I18nProvider locale={locale} messages={STAFF_CATALOGS[locale]}>
-        <SessionProvider onLocale={onLocale}>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </SessionProvider>
+        <ToastProvider>
+          <SessionProvider onLocale={onLocale}>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </SessionProvider>
+        </ToastProvider>
       </I18nProvider>
     </QueryClientProvider>
   );

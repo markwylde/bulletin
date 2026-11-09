@@ -8,6 +8,8 @@
   "auth.resume": "Resume",
   "auth.signedIn": "Signed in",
   "auth.signingIn": "Signing you in…",
+  "board.offline.defaultMessage": "The forum is temporarily unavailable. Please try again later.",
+  "board.offline.title": "The forum is offline",
   "common.siteName": "Bulletin",
   "displayName.changeLimit": "You can change your name again on {date}.",
   "displayName.help": "3–32 characters. Names are unique and visible to everyone.",

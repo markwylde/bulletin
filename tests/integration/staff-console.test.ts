@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createAuthService, createCsrfToken, hashToken } from "@bulletin/domain/auth";
 import { displayNameSkeleton } from "@bulletin/domain/member";
-import { ACP_PERMISSIONS } from "@bulletin/domain/permissions";
+import { ACP_PERMISSIONS, can } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
 import {
@@ -132,15 +132,16 @@ async function createStaffApiFor(database: TestDatabase): Promise<{
   return { api, auth, sql };
 }
 
-async function callRoute(
+async function callPath(
   api: StaffApi,
-  route: StaffRoute,
   session: StaffSession,
+  method: string,
+  path: string,
   body?: unknown,
 ): Promise<Response> {
   const headers = new Headers({ cookie: `bl_staff=${session.cookie}` });
 
-  if (route.method !== "GET") {
+  if (method !== "GET") {
     headers.set("origin", STAFF_ORIGIN);
     headers.set("x-bulletin-csrf", createCsrfToken(session.sessionId, SESSION_SECRET));
 
@@ -150,12 +151,21 @@ async function callRoute(
   }
 
   return api.handle(
-    new Request(`http://api.test${route.path}`, {
-      method: route.method,
+    new Request(`http://api.test${path}`, {
+      method,
       headers,
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     }),
   );
+}
+
+async function callRoute(
+  api: StaffApi,
+  route: StaffRoute,
+  session: StaffSession,
+  body?: unknown,
+): Promise<Response> {
+  return callPath(api, session, route.method, route.path, body);
 }
 
 function route(id: string): StaffRoute {
@@ -373,6 +383,200 @@ integrationDescribe("staff API permission guard", () => {
       }
     });
   }, 30_000);
+
+  test("updates board settings, logs the change and denies a moderator", async () => {
+    await withDb("staff_board_settings", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Board Administrator", ["administrators"]);
+        const admin = await createSession(database, adminId);
+        const moderatorId = await createMember(database, "Board Moderator", [
+          "members",
+          "super_moderators",
+        ]);
+        const moderator = await createSession(database, moderatorId);
+
+        const before = await callRoute(api, route("settings.board"), admin);
+        expect(before.status).toBe(200);
+        expect(await before.json()).toMatchObject({ boardName: "", offline: false });
+
+        expect(await callRoute(api, route("settings.board"), moderator)).toHaveProperty(
+          "status",
+          403,
+        );
+
+        const saved = await callRoute(api, route("settings.board.update"), admin, {
+          boardName: "New Board",
+          boardDescription: "Welcome to the board",
+          defaultLocale: "fr",
+          offline: true,
+          offlineMessage: "Down for maintenance",
+        });
+        expect(saved.status).toBe(200);
+        expect(await saved.json()).toMatchObject({
+          boardName: "New Board",
+          defaultLocale: "fr",
+          offline: true,
+          offlineMessage: "Down for maintenance",
+        });
+
+        const denied = await callRoute(api, route("settings.board.update"), moderator, {
+          boardName: "Denied",
+          boardDescription: "",
+          defaultLocale: "en",
+          offline: false,
+          offlineMessage: "",
+        });
+        expect(denied.status).toBe(403);
+
+        const [entry] = (await database.sql`
+          SELECT
+            actor_member_id,
+            action,
+            summary->'before'->>'boardName' AS before_name,
+            summary->'after'->>'boardName' AS after_name
+          FROM core.admin_log
+          WHERE action = 'board.settings.update'
+          ORDER BY id DESC
+          LIMIT 1
+        `) as Array<{
+          actor_member_id: string;
+          action: string;
+          before_name: string;
+          after_name: string;
+        }>;
+
+        expect(entry).toMatchObject({
+          actor_member_id: adminId,
+          action: "board.settings.update",
+          before_name: "",
+          after_name: "New Board",
+        });
+        expect(await can(database.sql, adminId, "board.view_offline")).toBe(true);
+        expect(await can(database.sql, moderatorId, "board.view_offline")).toBe(false);
+
+        const today = new Date().toISOString().slice(0, 10);
+        const filtered = await callPath(
+          api,
+          admin,
+          "GET",
+          `/api/staff/log?action=board.settings.update&actor=Board&from=${today}&to=${today}`,
+        );
+        expect(filtered.status).toBe(200);
+        const log = (await filtered.json()) as { entries: Array<Record<string, unknown>> };
+        expect(log.entries).toHaveLength(1);
+        expect(log.entries[0]).toMatchObject({
+          actor: "Board Administrator",
+          action: "board.settings.update",
+        });
+
+        const empty = await callPath(
+          api,
+          admin,
+          "GET",
+          "/api/staff/log?actor=Nobody&action=board.settings.update",
+        );
+        expect(((await empty.json()) as { entries: unknown[] }).entries).toEqual([]);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("saves, lists and reverts string overrides with admin log entries", async () => {
+    await withDb("staff_string_overrides", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Strings Administrator", ["administrators"]);
+        const admin = await createSession(database, adminId);
+        const moderatorId = await createMember(database, "Strings Moderator", [
+          "members",
+          "super_moderators",
+        ]);
+        const moderator = await createSession(database, moderatorId);
+
+        expect(await callRoute(api, route("i18n.keys"), moderator)).toHaveProperty("status", 403);
+
+        const keys = await callPath(
+          api,
+          admin,
+          "GET",
+          "/api/staff/i18n/keys?query=user.placeholder",
+        );
+        expect(keys.status).toBe(200);
+        const keyList = (await keys.json()) as {
+          keys: Array<{ key: string; base: string; overrides: Record<string, string> }>;
+        };
+        expect(keyList.keys.map((entry) => entry.key)).toContain("user.placeholder.title");
+
+        const saved = await callRoute(api, route("i18n.overrides.save"), admin, {
+          key: "user.placeholder.title",
+          values: { en: "Custom title", es: "Título propio", fr: "" },
+        });
+        expect(saved.status).toBe(200);
+        expect(await saved.json()).toEqual({ ok: true });
+
+        const active = await callRoute(api, route("i18n.overrides"), admin);
+        const activeList = (await active.json()) as {
+          overrides: Array<{ locale: string; key: string; value: string }>;
+        };
+        expect(activeList.overrides).toContainEqual(
+          expect.objectContaining({
+            locale: "en",
+            key: "user.placeholder.title",
+            value: "Custom title",
+          }),
+        );
+        expect(activeList.overrides).toContainEqual(
+          expect.objectContaining({
+            locale: "es",
+            key: "user.placeholder.title",
+            value: "Título propio",
+          }),
+        );
+
+        const invalid = await callRoute(api, route("i18n.overrides.save"), admin, {
+          key: "user.placeholder.body",
+          values: { en: "Hello {name}" },
+        });
+        expect(invalid.status).toBe(400);
+        expect(await invalid.json()).toMatchObject({ code: "invalid_override" });
+
+        const reverted = await callPath(
+          api,
+          admin,
+          "DELETE",
+          "/api/staff/i18n/overrides?locale=en&key=user.placeholder.title",
+        );
+        expect(reverted.status).toBe(200);
+        expect(await reverted.json()).toEqual({ ok: true });
+
+        const afterRevert = await callRoute(api, route("i18n.overrides"), admin);
+        const afterList = (await afterRevert.json()) as {
+          overrides: Array<{ locale: string }>;
+        };
+        expect(afterList.overrides.some((entry) => entry.locale === "en")).toBe(false);
+
+        const actions = (await database.sql`
+          SELECT action, summary->>'key' AS key
+          FROM core.admin_log
+          WHERE action IN ('i18n.override.update', 'i18n.override.revert')
+          ORDER BY id
+        `) as Array<{ action: string; key: string | null }>;
+        expect(actions.map((entry) => entry.action)).toEqual([
+          "i18n.override.update",
+          "i18n.override.revert",
+        ]);
+        expect(actions[0]?.key).toBe("user.placeholder.title");
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
 });
 
 integrationDescribe("ACP permission catalog", () => {
@@ -387,7 +591,7 @@ integrationDescribe("ACP permission catalog", () => {
 
       expect(
         rows.filter((row) => row.key === "administrators").map((row) => row.permission),
-      ).toEqual([...ACP_PERMISSIONS].sort());
+      ).toEqual([...ACP_PERMISSIONS, "board.view_offline"].sort());
       expect(
         rows.filter((row) => row.key === "super_moderators").map((row) => row.permission),
       ).toEqual(["acp.access", "acp.members"]);

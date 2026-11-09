@@ -8,6 +8,7 @@ import {
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
+import { boardView } from "./board.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
@@ -39,6 +40,18 @@ await startService({
   logger,
   port,
   async fetch(request) {
+    const { pathname } = new URL(request.url);
+
+    if (request.method === "GET" && pathname === "/api/board") {
+      const response = await auth.handle(request, async ({ session }) =>
+        Response.json(await boardView(sql, session), {
+          headers: { "cache-control": "no-store" },
+        }),
+      );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
     return (await auth.handle(request)) ?? Response.json({ code: "not_found" }, { status: 404 });
   },
   checks: [

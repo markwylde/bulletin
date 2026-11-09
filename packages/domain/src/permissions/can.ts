@@ -5,10 +5,14 @@ import { type AcpPermission, isAcpPermission } from "./acp.ts";
  * The minimal permission seam for this change. The full capability matrix replaces the
  * implementation in `groups-permissions`; callers keep using `can()` (ADR 0005).
  */
-export type PermissionAction = AcpPermission | "sessions.revoke" | "members.view_name_history";
+export type PermissionAction =
+  | AcpPermission
+  | "board.view_offline"
+  | "sessions.revoke"
+  | "members.view_name_history";
 
 export async function can(sql: SQL, memberId: string, action: PermissionAction): Promise<boolean> {
-  if (isAcpPermission(action)) {
+  if (isAcpPermission(action) || action === "board.view_offline") {
     const rows = (await sql`
       SELECT 1
       FROM core.member_groups mg

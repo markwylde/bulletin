@@ -78,6 +78,20 @@ export async function setStringOverride(
   override: StringOverrideWrite,
   options: StringOverrideSaveOptions = {},
 ): Promise<void> {
+  await sql.begin(async (tx) => {
+    await writeStringOverride(tx, override, options);
+  });
+}
+
+/**
+ * Validates and writes one override in the caller's transaction. Every write route uses this
+ * so the audit row can commit atomically with the string change.
+ */
+export async function writeStringOverride(
+  sql: SQL,
+  override: StringOverrideWrite,
+  options: StringOverrideSaveOptions = {},
+): Promise<void> {
   const base: Catalog = options.base ?? CATALOGS.en;
   const baseMessage = base[override.key];
 
@@ -102,15 +116,13 @@ export async function setStringOverride(
     throw new StringOverrideError(issues);
   }
 
-  await sql.begin(async (tx) => {
-    await tx`
-      INSERT INTO core.string_overrides (locale, key, value, updated_by, updated_at)
-      VALUES (${override.locale}, ${override.key}, ${override.value}, ${override.updatedBy ?? null}, now())
-      ON CONFLICT (locale, key) DO UPDATE
-      SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()
-    `;
-    await bumpTag(tx, override.locale);
-  });
+  await sql`
+    INSERT INTO core.string_overrides (locale, key, value, updated_by, updated_at)
+    VALUES (${override.locale}, ${override.key}, ${override.value}, ${override.updatedBy ?? null}, now())
+    ON CONFLICT (locale, key) DO UPDATE
+    SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = now()
+  `;
+  await bumpTag(sql, override.locale);
 }
 
 export async function deleteStringOverride(
@@ -118,10 +130,18 @@ export async function deleteStringOverride(
   override: Pick<StringOverrideWrite, "locale" | "key">,
 ): Promise<void> {
   await sql.begin(async (tx) => {
-    await tx`
-      DELETE FROM core.string_overrides
-      WHERE locale = ${override.locale} AND key = ${override.key}
-    `;
-    await bumpTag(tx, override.locale);
+    await writeStringOverrideDelete(tx, override);
   });
+}
+
+/** Deletes one override and bumps its locale tag in the caller's transaction. */
+export async function writeStringOverrideDelete(
+  sql: SQL,
+  override: Pick<StringOverrideWrite, "locale" | "key">,
+): Promise<void> {
+  await sql`
+    DELETE FROM core.string_overrides
+    WHERE locale = ${override.locale} AND key = ${override.key}
+  `;
+  await bumpTag(sql, override.locale);
 }

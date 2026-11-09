@@ -63,3 +63,24 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 
   return (await response.json()) as T;
 }
+
+export async function apiDelete<T>(path: string): Promise<T> {
+  const headers = new Headers({ accept: "application/json" });
+  const token = csrfToken();
+
+  if (token !== null) {
+    headers.set("x-bulletin-csrf", token);
+  }
+
+  const response = await fetch(path, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    throw await responseError(response);
+  }
+
+  return (await response.json()) as T;
+}

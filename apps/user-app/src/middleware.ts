@@ -1,7 +1,12 @@
 import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
+import { parseCookieHeader } from "@bulletin/domain/auth";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
+import { BP_COOKIE_NAME, resolveRequestLocale } from "@bulletin/i18n";
+import { canViewOffline, readBoard } from "./board.ts";
+import { readSql } from "./db.ts";
+import { offlinePage } from "./offline.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
 
 const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
@@ -67,18 +72,39 @@ export const onRequest = defineMiddleware(async (context, next) => {
       !NON_PAGE_PREFIXES.some((prefix) => context.url.pathname.startsWith(prefix))
     ) {
       let sessionContext: Awaited<ReturnType<typeof currentSessionContext>> = null;
+      const cookieHeader = context.request.headers.get("cookie");
 
       try {
-        sessionContext = await currentSessionContext(context.request.headers.get("cookie"));
+        sessionContext = await currentSessionContext(cookieHeader);
       } catch {
         sessionContext = null;
+      }
+
+      let board: Awaited<ReturnType<typeof readBoard>> | null = null;
+
+      try {
+        board = await readBoard(readSql());
+      } catch {
+        board = null;
       }
 
       if (sessionContext !== null) {
         context.locals.locale = sessionContext.locale;
         context.locals.localeSource = "member";
       } else {
+        const bp = parseCookieHeader(cookieHeader)[BP_COOKIE_NAME];
+        const resolution = resolveRequestLocale({
+          audience: "guest",
+          bp: bp ?? null,
+          boardDefaultLocale: board?.defaultLocale ?? null,
+          acceptLanguage: context.request.headers.get("accept-language"),
+        });
+        context.locals.locale = resolution.locale;
         context.locals.localeSource = "guest";
+      }
+
+      if (board !== null) {
+        context.locals.board = board;
       }
 
       if (
@@ -92,6 +118,28 @@ export const onRequest = defineMiddleware(async (context, next) => {
         return secure(
           context.redirect(reauthRedirectUrl(`${context.url.pathname}${context.url.search}`), 303),
         );
+      }
+
+      if (board?.offline === true) {
+        let allowed = false;
+
+        if (sessionContext !== null) {
+          try {
+            allowed = await canViewOffline(readSql(), sessionContext.memberId);
+          } catch {
+            allowed = false;
+          }
+        }
+
+        if (!allowed) {
+          return secure(
+            offlinePage({
+              locale: context.locals.locale ?? "en",
+              nonce,
+              message: board.offlineMessage,
+            }),
+          );
+        }
       }
     }
 

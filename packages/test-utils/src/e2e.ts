@@ -200,6 +200,50 @@ export async function pageText(view: Bun.WebView): Promise<string> {
   return view.evaluate<string>("document.body?.innerText ?? ''");
 }
 
+/** Sets a controlled input/textarea/select value and fires the event React listens for. */
+export async function setInputValue(
+  view: Bun.WebView,
+  selector: string,
+  value: string,
+): Promise<void> {
+  const changed = await view.evaluate<boolean>(`(() => {
+    const input = document.querySelector(${JSON.stringify(selector)});
+    if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement)) {
+      return false;
+    }
+    const proto = input instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : input instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    setter?.call(input, ${JSON.stringify(value)});
+    input.dispatchEvent(new Event(input instanceof HTMLSelectElement ? "change" : "input", {
+      bubbles: true,
+    }));
+    return true;
+  })()`);
+
+  if (!changed) {
+    throw new Error(`Input not found: ${selector}`);
+  }
+}
+
+export async function clickSelector(view: Bun.WebView, selector: string): Promise<void> {
+  const clicked = await view.evaluate<boolean>(`(() => {
+    const element = document.querySelector(${JSON.stringify(selector)});
+    if (!(element instanceof HTMLElement)) {
+      return false;
+    }
+    element.click();
+    return true;
+  })()`);
+
+  if (!clicked) {
+    throw new Error(`Element not found: ${selector}`);
+  }
+}
+
 export async function waitForText(
   view: Bun.WebView,
   text: string,

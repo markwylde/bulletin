@@ -24,6 +24,24 @@ function SectionIcon({ icon }: { readonly icon: StaffIcon }) {
           <path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z" />
         </svg>
       );
+    case "settings":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.1-.7-.6-1.4 1-2-1.8-1.8-2 1-1.4-.6L13.4 4h-2.8l-.7 2.1-1.4.6-2-1L4.7 7.5l1 2-.6 1.4L3 12v2.8l2.1.7.6 1.4-1 2 1.8 1.8 2-1 1.4.6.7 2.1h2.8l.7-2.1 1.4-.6 2 1 1.8-1.8-1-2 .6-1.4L21 14z" />
+        </svg>
+      );
+    case "strings":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 5h16v2H4zM4 9h10v2H4zM4 13h16v2H4zM4 17h12v2H4z" />
+        </svg>
+      );
+    case "log":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 5h16v2H4zM4 9h16v2H4zM4 13h16v2H4zM4 17h16v2H4z" />
+        </svg>
+      );
   }
 }
 
@@ -86,6 +104,7 @@ function Navigation({
               to={section.path}
               end={section.path === "/"}
               className={({ isActive }) => (isActive ? "nav-link nav-link-active" : "nav-link")}
+              data-section={section.id}
               onClick={onNavigate}
             >
               <SectionIcon icon={section.icon} />

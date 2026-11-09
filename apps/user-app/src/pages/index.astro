@@ -7,14 +7,20 @@ const locale = Astro.locals.locale ?? "en";
 const localeSource = Astro.locals.localeSource ?? "guest";
 const t = createServerT(locale, { shipped: USER_CATALOGS });
 const nonce = Astro.locals.cspNonce;
+const configuredBoardName = Astro.locals.board?.boardName.trim();
+const boardName = configuredBoardName || t("user.placeholder.title");
+const pageTitle = configuredBoardName || t("common.siteName");
+const boardDescription =
+  Astro.locals.board?.boardDescription.trim() || t("user.placeholder.body");
 ---
+
 <!doctype html>
 <html lang={locale} data-server-locale={locale} data-locale-source={localeSource}>
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{t("common.siteName")}</title>
+    <title>{pageTitle}</title>
     <style nonce={nonce}>
       :root {
         color-scheme: light dark;
@@ -132,9 +138,9 @@ const nonce = Astro.locals.cspNonce;
     </style>
   </head>
   <body>
-    <main>
-      <h1 data-i18n="user.placeholder.title">{t("user.placeholder.title")}</h1>
-      <p data-i18n="user.placeholder.body">{t("user.placeholder.body")}</p>
+    <main data-online>
+      <h1 data-i18n="user.placeholder.title" data-board-name>{boardName}</h1>
+      <p data-i18n="user.placeholder.body" data-board-description>{boardDescription}</p>
       <div class="auth" data-auth data-auth-state="loading">
         <button
           type="button"
@@ -164,6 +170,10 @@ const nonce = Astro.locals.cspNonce;
         </div>
       </div>
     </main>
+    <main data-offline hidden>
+      <h1 data-i18n="board.offline.title">{t("board.offline.title")}</h1>
+      <p data-offline-message>{t("board.offline.defaultMessage")}</p>
+    </main>
     <script type="application/json" id="i18n-catalog" set:html={messages}></script>
     <script is:inline nonce={nonce}>
       (() => {
@@ -186,9 +196,67 @@ const nonce = Astro.locals.cspNonce;
         const isMember = root.dataset.localeSource === "member";
         const requested = isMember ? root.dataset.serverLocale : (params.get("lang") ?? bp);
         const locale = ["en", "es", "fr"].includes(requested) ? requested : "en";
+        const messageFor = (key) => data[locale]?.[key] ?? data.en[key] ?? key;
+        const onlineMain = document.querySelector("[data-online]");
+        const offlineMain = document.querySelector("[data-offline]");
+        const offlineMessage = document.querySelector("[data-offline-message]");
+
+        const loadBoard = async () => {
+          try {
+            const response = await fetch("/api/board", {
+              credentials: "include",
+              cache: "no-store",
+              headers: { accept: "application/json" },
+            });
+
+            if (!response.ok) {
+              return;
+            }
+
+            const board = await response.json();
+
+            if (
+              !isMember &&
+              params.get("lang") === null &&
+              bp === undefined &&
+              ["en", "es", "fr"].includes(board.defaultLocale) &&
+              board.defaultLocale !== locale
+            ) {
+              applyLocale(board.defaultLocale);
+            }
+
+            if (typeof board.boardName === "string" && board.boardName.trim() !== "") {
+              document.title = board.boardName;
+              const title = document.querySelector("[data-board-name]");
+              if (title !== null) title.textContent = board.boardName;
+            }
+
+            if (
+              typeof board.boardDescription === "string" &&
+              board.boardDescription.trim() !== ""
+            ) {
+              const description = document.querySelector("[data-board-description]");
+              if (description !== null) description.textContent = board.boardDescription;
+            }
+
+            if (board.offline === true && board.canViewOffline !== true) {
+              if (onlineMain !== null) onlineMain.hidden = true;
+              if (offlineMain !== null) offlineMain.hidden = false;
+              if (offlineMessage !== null) {
+                offlineMessage.textContent =
+                  typeof board.offlineMessage === "string" && board.offlineMessage.trim() !== ""
+                    ? board.offlineMessage
+                    : messageFor("board.offline.defaultMessage");
+              }
+            }
+          } catch {
+            // The board stays usable when the state endpoint is unavailable.
+          }
+        };
 
         applyLocale(locale);
         window.__bulletinApplyLocale = applyLocale;
+        void loadBoard();
       })();
     </script>
     <script>

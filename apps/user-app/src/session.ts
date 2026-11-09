@@ -8,18 +8,9 @@ import {
 import { resolveMemberLocale } from "@bulletin/domain/member";
 import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import { closeReadSql, readSql } from "./db.ts";
 
 const nodeEnv: AuthNodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
-
-let pool: SQL | undefined;
-
-function sessionSql(): SQL {
-  pool ??= new Bun.SQL(process.env.DATABASE_URL ?? "postgres://user_app@localhost:5432/bulletin", {
-    max: 1,
-    connectionTimeout: 5,
-  });
-  return pool;
-}
 
 async function readSession(
   sql: SQL,
@@ -71,18 +62,15 @@ export async function readSessionContext(
 }
 
 export async function currentSessionReauthAt(cookieHeader: string | null): Promise<string | null> {
-  return readSessionReauthAt(sessionSql(), cookieHeader);
+  return readSessionReauthAt(readSql(), cookieHeader);
 }
 
 export async function currentSessionContext(
   cookieHeader: string | null,
 ): Promise<UserAppSessionContext | null> {
-  return readSessionContext(sessionSql(), cookieHeader);
+  return readSessionContext(readSql(), cookieHeader);
 }
 
 export async function closeSessionReadPool(): Promise<void> {
-  if (pool !== undefined) {
-    await pool.close();
-    pool = undefined;
-  }
+  await closeReadSql();
 }

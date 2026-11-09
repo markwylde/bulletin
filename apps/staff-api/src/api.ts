@@ -7,6 +7,14 @@ import {
   isStaffScheme,
 } from "@bulletin/domain/permissions";
 import type { SQL } from "bun";
+import { type AdminLogEntry, listAdminLog } from "./admin-log.ts";
+import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
+import {
+  listActiveOverrides,
+  revertOverride,
+  saveOverrideSet,
+  searchOverrideKeys,
+} from "./string-overrides.ts";
 
 export interface StaffRouteContext {
   readonly request: Request;
@@ -19,7 +27,7 @@ export interface StaffRouteContext {
 export interface StaffRoute {
   /** Stable id used by tests and, later, by the route audit log. */
   readonly id: string;
-  readonly method: "GET" | "POST";
+  readonly method: "GET" | "POST" | "DELETE";
   readonly path: string;
   /** Section permission; `acp.access` is also checked for every route. */
   readonly permission: AcpPermission;
@@ -70,47 +78,6 @@ async function memberStats(sql: SQL): Promise<MemberStats> {
   };
 }
 
-interface AdminLogEntry {
-  readonly id: string;
-  readonly actor: string | null;
-  readonly action: string;
-  readonly targetType: string | null;
-  readonly targetId: string | null;
-  readonly createdAt: string;
-}
-
-async function recentAdminLog(sql: SQL): Promise<AdminLogEntry[]> {
-  const rows = (await sql`
-    SELECT
-      a.id,
-      m.display_name AS actor,
-      a.action,
-      a.target_type,
-      a.target_id,
-      a.created_at
-    FROM core.admin_log a
-    LEFT JOIN core.members m ON m.id = a.actor_member_id
-    ORDER BY a.created_at DESC, a.id DESC
-    LIMIT 10
-  `) as Array<{
-    id: string;
-    actor: string | null;
-    action: string;
-    target_type: string | null;
-    target_id: string | null;
-    created_at: Date;
-  }>;
-
-  return rows.map((row) => ({
-    id: String(row.id),
-    actor: row.actor,
-    action: row.action,
-    targetType: row.target_type,
-    targetId: row.target_id === null ? null : String(row.target_id),
-    createdAt: row.created_at.toISOString(),
-  }));
-}
-
 async function systemHealth(checks: readonly HealthCheck[]): Promise<{
   readonly status: "ok" | "degraded";
   readonly checks: Readonly<Record<string, boolean>>;
@@ -156,6 +123,92 @@ async function saveScheme(context: StaffRouteContext): Promise<Response> {
   return json({ scheme: body.scheme });
 }
 
+async function boardSettings(context: StaffRouteContext): Promise<Response> {
+  return json(await loadBoardSettings(context.sql));
+}
+
+async function updateBoardSettings(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await saveBoardSettings(context.sql, context.session.memberId, body);
+
+  if (!result.ok) {
+    return json({ code: "invalid_settings", fields: result.fields }, 400);
+  }
+
+  return json(result.settings);
+}
+
+const DATE_FILTER = /^\d{4}-\d{2}-\d{2}$/;
+
+function dateFilter(value: string | null): string | undefined | null {
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+
+  return DATE_FILTER.test(value) ? value : null;
+}
+
+async function logEntries(context: StaffRouteContext): Promise<Response> {
+  const params = context.url.searchParams;
+  const from = dateFilter(params.get("from"));
+  const to = dateFilter(params.get("to"));
+
+  if (from === null || to === null) {
+    return json({ code: "invalid_date" }, 400);
+  }
+
+  const entries: AdminLogEntry[] = await listAdminLog(context.sql, {
+    actor: params.get("actor") ?? "",
+    action: params.get("action") ?? "",
+    ...(from === undefined ? {} : { from }),
+    ...(to === undefined ? {} : { to }),
+  });
+
+  return json({ entries });
+}
+
+async function overrideKeys(context: StaffRouteContext): Promise<Response> {
+  return json({
+    keys: await searchOverrideKeys(context.sql, context.url.searchParams.get("query") ?? ""),
+  });
+}
+
+async function overrideList(context: StaffRouteContext): Promise<Response> {
+  return json({ overrides: await listActiveOverrides(context.sql) });
+}
+
+async function overrideSave(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await saveOverrideSet(context.sql, context.session.memberId, body);
+
+  if (!result.ok) {
+    return json(
+      {
+        code: result.code,
+        ...(result.issues === undefined ? {} : { issues: result.issues }),
+      },
+      400,
+    );
+  }
+
+  return json({ ok: true });
+}
+
+async function overrideRevert(context: StaffRouteContext): Promise<Response> {
+  const result = await revertOverride(
+    context.sql,
+    context.session.memberId,
+    context.url.searchParams.get("locale"),
+    context.url.searchParams.get("key"),
+  );
+
+  if (!result.ok) {
+    return json({ code: result.code }, result.code === "not_found" ? 404 : 400);
+  }
+
+  return json({ ok: true });
+}
+
 export const STAFF_ROUTES: readonly StaffRoute[] = [
   {
     id: "dashboard.members",
@@ -169,7 +222,7 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "GET",
     path: "/api/staff/dashboard/log",
     permission: "acp.log",
-    handler: async ({ sql }) => json({ entries: await recentAdminLog(sql) }),
+    handler: async ({ sql }) => json({ entries: await listAdminLog(sql, { limit: 10 }) }),
   },
   {
     id: "dashboard.health",
@@ -177,6 +230,55 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/dashboard/health",
     permission: "acp.system",
     handler: async ({ checks }) => json(await systemHealth(checks)),
+  },
+  {
+    id: "log.list",
+    method: "GET",
+    path: "/api/staff/log",
+    permission: "acp.log",
+    handler: logEntries,
+  },
+  {
+    id: "settings.board",
+    method: "GET",
+    path: "/api/staff/settings/board",
+    permission: "acp.settings",
+    handler: boardSettings,
+  },
+  {
+    id: "settings.board.update",
+    method: "POST",
+    path: "/api/staff/settings/board",
+    permission: "acp.settings",
+    handler: updateBoardSettings,
+  },
+  {
+    id: "i18n.keys",
+    method: "GET",
+    path: "/api/staff/i18n/keys",
+    permission: "acp.strings",
+    handler: overrideKeys,
+  },
+  {
+    id: "i18n.overrides",
+    method: "GET",
+    path: "/api/staff/i18n/overrides",
+    permission: "acp.strings",
+    handler: overrideList,
+  },
+  {
+    id: "i18n.overrides.save",
+    method: "POST",
+    path: "/api/staff/i18n/overrides",
+    permission: "acp.strings",
+    handler: overrideSave,
+  },
+  {
+    id: "i18n.overrides.revert",
+    method: "DELETE",
+    path: "/api/staff/i18n/overrides",
+    permission: "acp.strings",
+    handler: overrideRevert,
   },
   {
     id: "preferences.scheme",
@@ -214,8 +316,12 @@ export async function authorizeStaffRoute(
   return route.handler(context);
 }
 
-function findRoute(pathname: string): StaffRoute | undefined {
-  return STAFF_ROUTES.find((route) => route.path === pathname);
+function findRoute(method: string, pathname: string): StaffRoute | undefined {
+  return STAFF_ROUTES.find((route) => route.method === method && route.path === pathname);
+}
+
+function knownPath(pathname: string): boolean {
+  return STAFF_ROUTES.some((route) => route.path === pathname);
 }
 
 export function createStaffApi(options: StaffApiOptions): StaffApi {
@@ -229,14 +335,12 @@ export function createStaffApi(options: StaffApiOptions): StaffApi {
         }
 
         const url = new URL(request.url);
-        const route = findRoute(url.pathname);
+        const route = findRoute(request.method, url.pathname);
 
         if (route === undefined) {
-          return json({ code: "not_found" }, 404);
-        }
-
-        if (route.method !== request.method) {
-          return json({ code: "method_not_allowed" }, 405);
+          return knownPath(url.pathname)
+            ? json({ code: "method_not_allowed" }, 405)
+            : json({ code: "not_found" }, 404);
         }
 
         return authorizeStaffRoute(route, {
