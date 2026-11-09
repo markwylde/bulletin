@@ -33,6 +33,35 @@ describe("loadConfig", () => {
     expect(config.bootstrapAdmins).toEqual([]);
   });
 
+  test("derives local origins from BULLETIN_HTTP_PORT", () => {
+    const config = loadConfig({ BULLETIN_HTTP_PORT: "18080" });
+
+    expect(config.authIssuer).toBe("http://auth.bulletin.localhost:18080");
+    expect(config.authJwksUrl).toBe("http://auth.bulletin.localhost:18080/.well-known/jwks.json");
+    expect(config.authTokenUrl).toBe("http://auth.bulletin.localhost:18080/token");
+    expect(config.userOrigin).toBe("http://bulletin.localhost:18080");
+    expect(config.staffOrigin).toBe("http://staff.bulletin.localhost:18080");
+  });
+
+  test("lets explicit origins override BULLETIN_HTTP_PORT", () => {
+    const config = loadConfig({
+      BULLETIN_HTTP_PORT: "18080",
+      BULLETIN_AUTH_ISSUER: "https://auth.example.test",
+      BULLETIN_USER_ORIGIN: "https://forum.example.test",
+      BULLETIN_STAFF_ORIGIN: "https://staff.example.test",
+    });
+
+    expect(config.authIssuer).toBe("https://auth.example.test");
+    expect(config.userOrigin).toBe("https://forum.example.test");
+    expect(config.staffOrigin).toBe("https://staff.example.test");
+  });
+
+  test("rejects a malformed BULLETIN_HTTP_PORT", () => {
+    const error = configError({ BULLETIN_HTTP_PORT: "not-a-port" });
+
+    expect(error.message).toContain("BULLETIN_HTTP_PORT");
+  });
+
   test("reads explicit values", () => {
     const config = loadConfig({
       NODE_ENV: "test",

@@ -100,10 +100,10 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = PROFILE_INPUTS.map((pro
   skeleton: displayNameSkeleton(profile.name),
 }));
 
-const AUTH_ISSUER = (Bun.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080").replace(
-  /\/+$/,
-  "",
-);
+const AUTH_ISSUER = (
+  Bun.env.BULLETIN_AUTH_ISSUER ??
+  `http://auth.bulletin.localhost:${Bun.env.BULLETIN_HTTP_PORT ?? "8080"}`
+).replace(/\/+$/, "");
 
 /**
  * Seeds one member per DarkAuth mock profile, the matching `(issuer, sub)` identity, the

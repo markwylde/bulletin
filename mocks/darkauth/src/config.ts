@@ -38,6 +38,9 @@ interface RawConfig {
   }[];
 }
 
+/** Environment variables as a plain record, so tests never have to touch the process env. */
+export type Env = Readonly<Record<string, string | undefined>>;
+
 function string(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
@@ -48,7 +51,19 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
-export async function loadConfig(path: string): Promise<MockConfig> {
+function read(env: Env, key: string): string | null {
+  const value = env[key]?.trim();
+  return value === undefined || value === "" ? null : value;
+}
+
+function commaList(value: string): string[] {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+}
+
+export async function loadConfig(path: string, env: Env = Bun.env): Promise<MockConfig> {
   const file = Bun.file(path);
 
   if (!(await file.exists())) {
@@ -57,10 +72,10 @@ export async function loadConfig(path: string): Promise<MockConfig> {
 
   const raw = Bun.YAML.parse(await file.text()) as RawConfig;
   const server = raw.server ?? {};
-  const issuer = (string(server.issuer) ?? "http://auth.bulletin.localhost:8080").replace(
-    /\/+$/,
-    "",
-  );
+  // Compose derives the issuer and redirect origins from the published stack port.
+  const configuredIssuer = read(env, "DARKAUTH_MOCK_ISSUER") ?? string(server.issuer);
+  const issuer = (configuredIssuer ?? "http://auth.bulletin.localhost:8080").replace(/\/+$/, "");
+  const configuredOrigins = read(env, "DARKAUTH_MOCK_ALLOWED_ORIGINS");
   const clients: MockClient[] = [];
 
   for (const client of raw.clients ?? []) {
@@ -95,7 +110,8 @@ export async function loadConfig(path: string): Promise<MockConfig> {
     port: typeof server.port === "number" ? server.port : 3020,
     host: string(server.host) ?? "0.0.0.0",
     appName: string(raw.app?.name) ?? "Bulletin",
-    allowedOrigins: stringList(server.allowedOrigins),
+    allowedOrigins:
+      configuredOrigins === null ? stringList(server.allowedOrigins) : commaList(configuredOrigins),
     clients,
     users,
   };

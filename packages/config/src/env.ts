@@ -52,6 +52,9 @@ export const DEVELOPMENT_DEFAULTS = {
   BULLETIN_STAFF_ORIGIN: "http://staff.bulletin.localhost:8080",
 } as const;
 
+/** Port published by the local proxy when `BULLETIN_HTTP_PORT` is unset (ADR 0002). */
+export const DEFAULT_HTTP_PORT = 8080;
+
 const PORT_BOUNDS = { min: 1, max: 65_535 } as const;
 const SEED_BOUNDS = { min: 0, max: 0xff_ff_ff_ff } as const;
 const MIN_PRODUCTION_SECRET_LENGTH = 32;
@@ -277,10 +280,13 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     MIN_PRODUCTION_SECRET_LENGTH,
   );
 
+  // Local origins follow the published port so a stack on another port stays consistent
+  // even when only BULLETIN_HTTP_PORT is set. Compose passes the explicit values too.
+  const httpPort = parseInteger(env, "BULLETIN_HTTP_PORT", DEFAULT_HTTP_PORT, PORT_BOUNDS, issues);
   const authIssuer = parseUrl(
     env,
     "BULLETIN_AUTH_ISSUER",
-    DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_ISSUER,
+    `http://auth.bulletin.localhost:${httpPort}`,
     issues,
   );
   const authJwksUrl = parseOptionalUrl(
@@ -303,13 +309,13 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
   const userOrigin = parseUrl(
     env,
     "BULLETIN_USER_ORIGIN",
-    DEVELOPMENT_DEFAULTS.BULLETIN_USER_ORIGIN,
+    `http://bulletin.localhost:${httpPort}`,
     issues,
   );
   const staffOrigin = parseUrl(
     env,
     "BULLETIN_STAFF_ORIGIN",
-    DEVELOPMENT_DEFAULTS.BULLETIN_STAFF_ORIGIN,
+    `http://staff.bulletin.localhost:${httpPort}`,
     issues,
   );
   const bootstrapAdmins = parseBootstrapAdmins(env, issues);

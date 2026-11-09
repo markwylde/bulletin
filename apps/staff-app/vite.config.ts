@@ -5,7 +5,9 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 const staffApiUrl = process.env.STAFF_API_INTERNAL_URL ?? "http://staff-api:3002";
-const authIssuer = process.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080";
+const authIssuer =
+  process.env.BULLETIN_AUTH_ISSUER ??
+  `http://auth.bulletin.localhost:${process.env.BULLETIN_HTTP_PORT ?? "8080"}`;
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const cspNonce = createCspNonce();
 

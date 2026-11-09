@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createOembedHandler } from "./app.ts";
+import { createOembedHandler, type OembedHandlerOptions } from "./app.ts";
 
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
 
@@ -9,8 +9,12 @@ afterEach(() => {
   }
 });
 
-function start(): string {
-  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: createOembedHandler() });
+function start(options?: OembedHandlerOptions): string {
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: createOembedHandler(options),
+  });
   servers.push(server);
   return `http://127.0.0.1:${server.port}`;
 }
@@ -27,6 +31,26 @@ describe("oEmbed mock", () => {
     expect(body.type).toBe("rich");
     expect(body.title).toContain("example.test");
     expect(body.html).toContain("https://example.test/article");
+  });
+
+  test("derives provider_url from the configured public origin", async () => {
+    const base = start({ providerUrl: "http://bulletin.localhost:18080" });
+    const response = await fetch(
+      `${base}/oembed?url=${encodeURIComponent("https://example.test/article")}`,
+    );
+    const body = (await response.json()) as { provider_url?: string };
+
+    expect(body.provider_url).toBe("http://bulletin.localhost:18080");
+  });
+
+  test("defaults provider_url to the documented stack", async () => {
+    const base = start();
+    const response = await fetch(
+      `${base}/oembed?url=${encodeURIComponent("https://example.test/article")}`,
+    );
+    const body = (await response.json()) as { provider_url?: string };
+
+    expect(body.provider_url).toBe("http://bulletin.localhost:8080");
   });
 
   test("serves OpenGraph HTML", async () => {

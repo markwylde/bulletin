@@ -16,7 +16,16 @@ function target(url: URL): string | null {
   }
 }
 
-export function createOembedHandler(): (request: Request) => Promise<Response> {
+export interface OembedHandlerOptions {
+  /** Public forum origin; the default keeps the documented local stack (ADR 0002). */
+  readonly providerUrl?: string;
+}
+
+export function createOembedHandler(
+  options: OembedHandlerOptions = {},
+): (request: Request) => Promise<Response> {
+  const providerUrl = options.providerUrl ?? "http://bulletin.localhost:8080";
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -46,7 +55,7 @@ export function createOembedHandler(): (request: Request) => Promise<Response> {
         title: `Mock embed for ${host}`,
         author_name: "Bulletin mock",
         provider_name: "Bulletin OEmbed",
-        provider_url: "http://bulletin.localhost:8080",
+        provider_url: providerUrl,
         thumbnail_url: THUMBNAIL,
         thumbnail_width: 600,
         thumbnail_height: 200,

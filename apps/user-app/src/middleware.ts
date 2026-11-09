@@ -10,7 +10,9 @@ import { offlinePage } from "./offline.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
 
 const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
-const authIssuer = process.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080";
+const authIssuer =
+  process.env.BULLETIN_AUTH_ISSUER ??
+  `http://auth.bulletin.localhost:${process.env.BULLETIN_HTTP_PORT ?? "8080"}`;
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const drain = import.meta.env.DEV ? createDrainController() : null;
 
