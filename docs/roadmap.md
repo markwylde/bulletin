@@ -27,9 +27,9 @@ Architecture is fixed by `docs/adr/`; product scope by `docs/features.md`.
 | 19 | `plugin-platform` (spike S2) | plugin-lifecycle, plugin-sandbox, plugin-hooks, plugin-admin-forms | 12, 18 | 0009 |
 | 20 | `privacy-gdpr` | privacy | 16, 19 | 0012 |
 | 21 | `public-api-webhooks` | public-api, webhooks | 12 | 0016 |
-| 22 | `pwa-push` | pwa, web-push | 12 | 0014 |
+| 22 | `pwa-push` | pwa, web-push | 12, 18 | 0014 |
 | 23 | `seo-feeds` | seo-feeds | 10 | 0006 |
-| 24 | `operations-observability` | observability, backups | 1 | 0020 |
+| 24 | `operations-observability` | observability, backups | 8, 12, 19 | 0020 |
 
 Conventions every change follows (enforced through `openspec/config.yaml` rules):
 - Ships behind a feature flag (once change 5 exists), with en/es/fr strings and seed data.
