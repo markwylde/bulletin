@@ -4,6 +4,7 @@ import { startService } from "@bulletin/config/server";
 import { Broker } from "./broker/broker.ts";
 import { BrokerChannel } from "./broker/channel.ts";
 import { PluginDatabase } from "./broker/database.ts";
+import { EgressProxy } from "./broker/egress.ts";
 import { loadPluginManifest, loadPluginMigrations } from "./broker/manifest.ts";
 import { loadPluginHostConfig } from "./config.ts";
 import { resolveSandboxCgroupRoot } from "./sandbox/cgroup.ts";
@@ -22,7 +23,11 @@ const database = await PluginDatabase.open({
   migrations,
   logger,
 });
-const broker = new Broker({ database, logger });
+const egress = new EgressProxy({
+  allowedHosts: manifest.egressHosts,
+  logger: logger.child({ component: "egress" }),
+});
+const broker = new Broker({ database, egress, logger });
 const channel = new BrokerChannel({
   socketPath: join(sandboxConfig.stateDir, "broker.sock"),
   logger,

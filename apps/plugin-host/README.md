@@ -30,7 +30,7 @@ the sandbox, so `/health/ready` fails when nsjail cannot start.
 The broker listens on the bind-mounted Unix socket and speaks **length-prefixed JSON-RPC 2.0**:
 a 4-byte big-endian length followed by UTF-8 JSON, capped at 1 MiB per frame. The first message
 is a `hello` notification; requests on one connection are handled in order. The spike
-implements `db.query` and `log` (`http.fetch` is task 2.2).
+implements `db.query`, `http.fetch` and `log`.
 
 ```json
 {"jsonrpc":"2.0","method":"hello","params":{"pluginId":"sandbox-demo","sdkVersion":"0.0.0"}}
@@ -66,12 +66,36 @@ The broker opens the runtime pool with `max: 2`, matching the role limit.
   rejected;
 - function calls must be in a curated pure-builtin allowlist or defined in the plugin schema;
   `pg_sleep`, `set_config`, `pg_notify`, advisory locks, file/admin functions and `dblink`
-  are rejected.
+  are rejected;
+- data-modifying CTEs are rejected: PostgreSQL only allows them at the top level, and the
+  result-row wrapper would move them into a subquery.
 
 `SELECT`s are wrapped in `SELECT * FROM (…) LIMIT 1001`; DML with `RETURNING` is wrapped in a
-CTE with the same limit. More than 1000 rows returns an RPC error rather than flooding the
-broker. Database failures return a generic error to the plugin; details go to the broker log,
+CTE with the same limit. More than 1000 rows or a serialised result over 512 KiB returns an
+RPC error rather than flooding the broker. Database failures return a generic error to the plugin; details go to the broker log,
 without the SQL text or parameters.
+
+### Egress (task 2.2)
+
+`http.fetch` goes through `EgressProxy` (`src/broker/egress.ts`). The manifest's
+`egressHosts` is an exact, lowercase allowlist; the demo declares `example.com`.
+
+- Only `http`/`https`, ports 80/443, no URL credentials and no IP-address literals.
+- Every hostname is resolved before each request; **all** answers must be public. Loopback,
+  RFC 1918, CGNAT, link-local, metadata (`169.254.169.254`, `100.100.100.200`,
+  `192.0.0.192`), multicast, documentation and reserved ranges are blocked, including
+  IPv4-mapped (`::ffff:`) and NAT64 (`64:ff9b::`) forms.
+- Redirects are followed manually (at most 5), and every hop is re-validated against the
+  allowlist and the DNS rules. A redirect to a host outside the allowlist or to a private
+  address is denied.
+- `GET`, `POST` and `HEAD` only; request bodies are capped at 256 KiB, responses at 512 KiB.
+  Hop-by-hop and `Host`/`Cookie` request headers are stripped, `Set-Cookie` is removed from
+  responses, and `credentials: "omit"` is set.
+- A denied request returns JSON-RPC `-32000` with a reason; network failures return `-32603`.
+  The broker logs the host/reason, never resolved addresses.
+
+The remaining DNS rebinding window (resolve, then let `fetch` resolve again) is recorded for
+`plugin-platform`; pinning the checked address needs a custom fetch transport.
 
 The demo plugin inserts into `plugin_sandbox_demo.notes`, reads it back and sends a `log`
 request. `GET /broker` reports the schema and request/denial counters.

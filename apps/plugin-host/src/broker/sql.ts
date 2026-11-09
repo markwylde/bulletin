@@ -298,6 +298,8 @@ function assertFuncCall(value: unknown, policy: SqlPolicy): void {
   throw new SqlDeniedError("function", "Qualified function calls are not allowed");
 }
 
+const NESTED_DML = new Set(["InsertStmt", "UpdateStmt", "DeleteStmt", "MergeStmt"]);
+
 function walk(statement: unknown, policy: SqlPolicy): void {
   const stack: unknown[] = [statement];
 
@@ -328,6 +330,10 @@ function walk(statement: unknown, policy: SqlPolicy): void {
         assertRangeVar(value, policy);
       } else if (key === "FuncCall") {
         assertFuncCall(value, policy);
+      } else if (NESTED_DML.has(key)) {
+        // PostgreSQL only allows data-modifying CTEs at the top level, and our result-row
+        // wrapper would move them into a subquery; reject them instead.
+        throw new SqlDeniedError("statement", "Data-modifying CTEs are not allowed");
       }
 
       if (typeof value === "object" && value !== null) {

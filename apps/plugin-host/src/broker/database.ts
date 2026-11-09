@@ -168,10 +168,22 @@ export class PluginDatabase {
         ALTER DEFAULT PRIVILEGES FOR ROLE ${quote(identifiers.ownerRole)}
           IN SCHEMA ${quote(identifiers.schema)}
           GRANT EXECUTE ON FUNCTIONS TO ${quote(identifiers.runtimeRole)};
-        REVOKE ALL ON SCHEMA core FROM ${quote(identifiers.runtimeRole)};
-        REVOKE ALL ON SCHEMA pii FROM ${quote(identifiers.runtimeRole)};
-        REVOKE ALL ON SCHEMA public FROM ${quote(identifiers.runtimeRole)};
       `);
+
+      // Revoke PUBLIC's default reachability from the plugin role. On a fresh volume the
+      // core/pii schemas may not exist yet (the API services migrate them), so only touch
+      // schemas that are present. The plugin role has no grants on them either way.
+      for (const schema of ["core", "pii", "public"] as const) {
+        const exists = (await admin`
+          SELECT 1 FROM pg_namespace WHERE nspname = ${schema}
+        `) as unknown[];
+
+        if (exists.length > 0) {
+          await admin.unsafe(
+            `REVOKE ALL ON SCHEMA ${quote(schema)} FROM ${quote(identifiers.runtimeRole)}`,
+          );
+        }
+      }
 
       const functionRows = (await admin`
         SELECT p.proname AS name

@@ -41,9 +41,9 @@ describe("runtime SQL allowlist", () => {
     await allowed("SELECT pg_catalog.count(*) FROM notes");
   });
 
-  test("allows data-modifying CTEs and subqueries", async () => {
+  test("allows read-only CTEs and subqueries", async () => {
     await allowed(
-      "WITH removed AS (DELETE FROM notes WHERE id = $1 RETURNING *) SELECT * FROM removed",
+      "WITH recent AS (SELECT * FROM notes ORDER BY id DESC LIMIT 5) SELECT * FROM recent",
     );
     await allowed("SELECT (SELECT count(*) FROM notes) AS total");
   });
@@ -71,6 +71,8 @@ describe("runtime SQL allowlist", () => {
       "VACUUM notes",
       "LOCK TABLE notes",
       "MERGE INTO notes USING notes AS source ON true WHEN MATCHED THEN DO NOTHING",
+      "WITH removed AS (DELETE FROM notes RETURNING *) SELECT * FROM removed",
+      "WITH changed AS (UPDATE notes SET body = 'x' RETURNING *) SELECT * FROM changed",
     ]) {
       await denied(sql);
     }

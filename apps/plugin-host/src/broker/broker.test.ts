@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@bulletin/config";
-import { Broker, type BrokerDatabase } from "./broker.ts";
+import { Broker, type BrokerDatabase, type BrokerEgress } from "./broker.ts";
 import type { QueryResult } from "./database.ts";
+import { EgressDeniedError, type EgressRequest, type EgressResponse } from "./egress.ts";
 import { RpcError } from "./protocol.ts";
 import type { AllowedStatement } from "./sql.ts";
 
@@ -13,6 +14,7 @@ interface RecordedQuery {
 
 interface FakeDatabase extends BrokerDatabase {
   readonly queries: RecordedQuery[];
+  result: QueryResult;
   closed: boolean;
   failWith: Error | undefined;
 }
@@ -23,6 +25,7 @@ function createDatabase(): FakeDatabase {
     functions: new Set(["note_count"]),
     ready: true,
     queries: [],
+    result: { rows: [{ id: "1" }], rowCount: 1, command: "select" },
     closed: false,
     failWith: undefined,
     async query(
@@ -36,7 +39,7 @@ function createDatabase(): FakeDatabase {
         throw database.failWith;
       }
 
-      return { rows: [{ id: "1" }], rowCount: 1, command: statement.command };
+      return { ...database.result, command: statement.command };
     },
     async close() {
       database.closed = true;
@@ -46,19 +49,49 @@ function createDatabase(): FakeDatabase {
   return database;
 }
 
+interface FakeEgress extends BrokerEgress {
+  readonly requests: EgressRequest[];
+  failWith: Error | undefined;
+}
+
+function createEgress(): FakeEgress {
+  const egress: FakeEgress = {
+    requests: [],
+    failWith: undefined,
+    async request(input: EgressRequest): Promise<EgressResponse> {
+      egress.requests.push(input);
+
+      if (egress.failWith !== undefined) {
+        throw egress.failWith;
+      }
+
+      return {
+        url: input.url,
+        status: 200,
+        headers: { "content-type": "text/plain" },
+        body: "ok",
+      };
+    },
+  };
+
+  return egress;
+}
+
 function createBroker(): {
   broker: Broker;
   database: FakeDatabase;
+  egress: FakeEgress;
   lines: string[];
 } {
   const lines: string[] = [];
   const database = createDatabase();
+  const egress = createEgress();
   const logger = createLogger({
     service: "broker-test",
     level: "debug",
     sink: (line) => lines.push(line),
   });
-  return { broker: new Broker({ database, logger }), database, lines };
+  return { broker: new Broker({ database, egress, logger }), database, egress, lines };
 }
 
 async function expectRpcError(promise: Promise<unknown>, code: number): Promise<void> {
@@ -151,6 +184,25 @@ describe("broker dispatch", () => {
     );
   });
 
+  test("refuses an oversized query result before it reaches the socket", async () => {
+    const { broker, database } = createBroker();
+    database.result = {
+      rows: [{ body: "x".repeat(600_000) }],
+      rowCount: 1,
+      command: "select",
+    };
+
+    await expectRpcError(
+      broker.handle({
+        method: "db.query",
+        pluginId: "sandbox-demo",
+        params: { sql: "SELECT * FROM notes" },
+      }),
+      -32000,
+    );
+    expect(broker.stats()).toMatchObject({ queries: 0, denials: 1 });
+  });
+
   test("maps database failures to an internal error without leaking details", async () => {
     const { broker, database } = createBroker();
     database.failWith = new Error("relation secret_table does not exist");
@@ -170,6 +222,83 @@ describe("broker dispatch", () => {
     }
 
     expect(broker.stats().failures).toBe(1);
+  });
+
+  test("forwards an allowed egress request", async () => {
+    const { broker, egress } = createBroker();
+
+    const result = await broker.handle({
+      method: "http.fetch",
+      pluginId: "sandbox-demo",
+      params: {
+        url: "https://example.com/data",
+        method: "POST",
+        headers: { accept: "application/json" },
+        body: "{}",
+      },
+    });
+
+    expect(result).toMatchObject({ status: 200, body: "ok" });
+    expect(egress.requests).toEqual([
+      {
+        url: "https://example.com/data",
+        method: "POST",
+        headers: { accept: "application/json" },
+        body: "{}",
+      },
+    ]);
+    expect(broker.stats()).toMatchObject({ fetches: 1, denials: 0, failures: 0 });
+  });
+
+  test("maps egress denials and failures to JSON-RPC errors", async () => {
+    const { broker, egress } = createBroker();
+    egress.failWith = new EgressDeniedError("host", "Host is not on the allowlist");
+
+    await expectRpcError(
+      broker.handle({
+        method: "http.fetch",
+        pluginId: "sandbox-demo",
+        params: { url: "https://evil.example/" },
+      }),
+      -32000,
+    );
+    expect(broker.stats().denials).toBe(1);
+
+    egress.failWith = new Error("socket reset");
+    await expectRpcError(
+      broker.handle({
+        method: "http.fetch",
+        pluginId: "sandbox-demo",
+        params: { url: "https://example.com/" },
+      }),
+      -32603,
+    );
+    expect(broker.stats().failures).toBe(1);
+  });
+
+  test("rejects malformed egress params", async () => {
+    const { broker } = createBroker();
+
+    await expectRpcError(
+      broker.handle({ method: "http.fetch", pluginId: "sandbox-demo", params: {} }),
+      -32602,
+    );
+    await expectRpcError(
+      broker.handle({
+        method: "http.fetch",
+        pluginId: "sandbox-demo",
+        params: { url: "https://example.com/", headers: { accept: 1 } },
+      }),
+      -32602,
+    );
+    await expectRpcError(
+      broker.handle({
+        method: "http.fetch",
+        pluginId: "sandbox-demo",
+        params: { url: "https://example.com/", body: {} },
+      }),
+      -32602,
+    );
   });
 
   test("logs plugin messages at the requested level", async () => {
