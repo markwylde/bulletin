@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 function start(): string {
-  const server = Bun.serve({ port: 0, fetch: createOembedHandler() });
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: createOembedHandler() });
   servers.push(server);
   return `http://127.0.0.1:${server.port}`;
 }

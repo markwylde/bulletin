@@ -21,6 +21,19 @@ describe("runtime message validation", () => {
         "{role, select, admin {{count, number} admin} other {{name} guest}}",
       ),
     ]).toEqual(["role", "count", "name"]);
+    expect([...messagePlaceholders("en", "<b>{name}</b>")]).toEqual(["name"]);
+  });
+
+  test("rejects rich-text tags the string formatter cannot render", () => {
+    const [issue] = validateRuntimeMessage({
+      locale: "en",
+      key: "topic.reply.count",
+      message: "<count>hello</count>",
+      baseMessage: "{count}",
+    });
+
+    expect(issue).toMatchObject({ code: "unsupported_tag", key: "topic.reply.count" });
+    expect(issue?.message).toContain("<count>");
   });
 
   test("rejects invalid ICU syntax", () => {

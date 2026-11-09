@@ -24,6 +24,7 @@ export type CatalogIssueCode =
   | "duplicate_key"
   | "missing_catalog"
   | "missing_key"
+  | "stale_merged"
   | "unused_key";
 
 export interface CatalogIssue {
@@ -50,6 +51,8 @@ export interface CatalogCheckOptions {
   readonly root: string;
   /** Write the merged per-app catalogs after a successful check. */
   readonly write?: boolean;
+  /** Require the checked-in merged app catalogs to match the sources. */
+  readonly requireMerged?: boolean;
 }
 
 const CATALOG_GLOBS = ["apps/*/i18n/*.json", "packages/*/i18n/*.json"] as const;
@@ -339,7 +342,10 @@ function callKey(node: ts.CallExpression): string | undefined {
     return undefined;
   }
 
-  return stringValue(node.arguments[0]) ?? stringValue(node.arguments[1]);
+  const second = stringValue(node.arguments[1]);
+
+  // `t("es", "topic.title")` is locale-first; `t("topic.title", { count })` is bound.
+  return second ?? stringValue(node.arguments[0]);
 }
 
 function typescriptReferences(source: string, file: string): Set<string> {
@@ -437,12 +443,53 @@ export async function findUnusedKeysInSources(
   return new Set(remaining);
 }
 
+function mergedCatalogPath(root: string, app: string, locale: Locale): string {
+  return join(root, "apps", app, "i18n", "merged", `${locale}.json`);
+}
+
+function serialiseCatalog(catalog: Catalog): string {
+  return `${JSON.stringify(catalog, null, 2)}\n`;
+}
+
+async function validateMergedCatalogs(
+  root: string,
+  merged: MergedCatalogs,
+): Promise<CatalogIssue[]> {
+  const issues: CatalogIssue[] = [];
+
+  for (const [app, catalogs] of Object.entries(merged)) {
+    for (const locale of LOCALES) {
+      const path = mergedCatalogPath(root, app, locale);
+      const file = Bun.file(path);
+      const expected = serialiseCatalog(catalogs[locale]);
+
+      if (!(await file.exists())) {
+        issues.push({
+          code: "stale_merged",
+          path,
+          locale,
+          message: `apps/${app}/i18n/merged/${locale}.json is missing; run bun run i18n:build`,
+        });
+      } else if ((await file.text()) !== expected) {
+        issues.push({
+          code: "stale_merged",
+          path,
+          locale,
+          message: `apps/${app}/i18n/merged/${locale}.json is stale; run bun run i18n:build`,
+        });
+      }
+    }
+  }
+
+  return issues;
+}
+
 async function writeMergedCatalogs(root: string, merged: MergedCatalogs): Promise<void> {
   for (const [app, catalogs] of Object.entries(merged)) {
     for (const locale of LOCALES) {
-      const path = join(root, "apps", app, "i18n", "merged", `${locale}.json`);
+      const path = mergedCatalogPath(root, app, locale);
       await mkdir(dirname(path), { recursive: true });
-      await Bun.write(path, `${JSON.stringify(catalogs[locale], null, 2)}\n`);
+      await Bun.write(path, serialiseCatalog(catalogs[locale]));
     }
   }
 }
@@ -456,7 +503,9 @@ export async function checkCatalogs(options: CatalogCheckOptions): Promise<Catal
     discovered.sources,
     await findUnusedKeysInSources(options.root, keys),
   );
-  const issues = [...discovered.issues, ...validation, ...built.issues, ...unused];
+  const mergedIssues =
+    options.requireMerged === true ? await validateMergedCatalogs(options.root, built.merged) : [];
+  const issues = [...discovered.issues, ...validation, ...built.issues, ...unused, ...mergedIssues];
 
   if (options.write === true && issues.length === 0) {
     await writeMergedCatalogs(options.root, built.merged);

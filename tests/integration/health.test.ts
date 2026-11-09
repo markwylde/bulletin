@@ -21,6 +21,7 @@ integrationDescribe("service health", () => {
     const sql = new SQL(databaseUrl);
     const service = await startService({
       service: "health-test",
+      hostname: "127.0.0.1",
       port: 0,
       fetch: () => new Response("ok"),
       checks: [createDatabaseCheck(sql)],
@@ -65,6 +66,7 @@ integrationDescribe("service health", () => {
     const sql = new SQL(databaseUrl);
     const service = await startService({
       service: "health-test",
+      hostname: "127.0.0.1",
       port: 0,
       fetch: () => new Response("ok"),
       checks: [

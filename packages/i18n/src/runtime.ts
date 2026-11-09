@@ -12,7 +12,8 @@ export type RuntimeCatalogIssueCode =
   | "foreign_key"
   | "invalid_icu"
   | "placeholder_mismatch"
-  | "unknown_key";
+  | "unknown_key"
+  | "unsupported_tag";
 
 export interface RuntimeCatalogIssue {
   readonly code: RuntimeCatalogIssueCode;
@@ -54,8 +55,14 @@ export function isPluginMessageKey(pluginId: string, key: string): boolean {
 
 const LITERAL_TYPE = 0;
 const POUND_TYPE = 7;
+const TAG_TYPE = 8;
 
-function collectPlaceholders(nodes: unknown, found: Set<string>): void {
+interface MessageAnalysis {
+  readonly placeholders: ReadonlySet<string>;
+  readonly tags: ReadonlySet<string>;
+}
+
+function collectPlaceholders(nodes: unknown, placeholders: Set<string>, tags: Set<string>): void {
   if (!Array.isArray(nodes)) {
     return;
   }
@@ -72,32 +79,36 @@ function collectPlaceholders(nodes: unknown, found: Set<string>): void {
       readonly children?: unknown;
     };
 
-    if (
-      typeof element.type === "number" &&
-      element.type !== LITERAL_TYPE &&
-      element.type !== POUND_TYPE &&
-      typeof element.value === "string"
-    ) {
-      found.add(element.value);
+    if (typeof element.type === "number" && typeof element.value === "string") {
+      if (element.type === TAG_TYPE) {
+        tags.add(element.value);
+      } else if (element.type !== LITERAL_TYPE && element.type !== POUND_TYPE) {
+        placeholders.add(element.value);
+      }
     }
 
     if (typeof element.options === "object" && element.options !== null) {
       for (const option of Object.values(element.options as Record<string, unknown>)) {
         if (typeof option === "object" && option !== null) {
-          collectPlaceholders((option as { readonly value?: unknown }).value, found);
+          collectPlaceholders((option as { readonly value?: unknown }).value, placeholders, tags);
         }
       }
     }
 
-    collectPlaceholders(element.children, found);
+    collectPlaceholders(element.children, placeholders, tags);
   }
+}
+
+function analyzeMessage(locale: Locale, message: string): MessageAnalysis {
+  const placeholders = new Set<string>();
+  const tags = new Set<string>();
+  collectPlaceholders(new IntlMessageFormat(message, locale).getAst(), placeholders, tags);
+  return { placeholders, tags };
 }
 
 /** The argument names used by an ICU message, across every plural/select branch. */
 export function messagePlaceholders(locale: Locale, message: string): ReadonlySet<string> {
-  const found = new Set<string>();
-  collectPlaceholders(new IntlMessageFormat(message, locale).getAst(), found);
-  return found;
+  return analyzeMessage(locale, message).placeholders;
 }
 
 function errorText(error: unknown): string {
@@ -111,10 +122,10 @@ export function validateRuntimeMessage(input: {
   readonly baseMessage: string;
 }): RuntimeCatalogIssue[] {
   const issues: RuntimeCatalogIssue[] = [];
-  let placeholders: ReadonlySet<string>;
+  let analysis: MessageAnalysis;
 
   try {
-    placeholders = messagePlaceholders(input.locale, input.message);
+    analysis = analyzeMessage(input.locale, input.message);
   } catch (error) {
     return [
       {
@@ -125,10 +136,20 @@ export function validateRuntimeMessage(input: {
     ];
   }
 
-  let basePlaceholders: ReadonlySet<string>;
+  if (analysis.tags.size > 0) {
+    return [
+      {
+        code: "unsupported_tag",
+        key: input.key,
+        message: `"${input.key}" uses rich-text tags (<${[...analysis.tags].sort().join(">, <")}>) which the string formatter cannot render`,
+      },
+    ];
+  }
+
+  let baseAnalysis: MessageAnalysis;
 
   try {
-    basePlaceholders = messagePlaceholders(DEFAULT_LOCALE, input.baseMessage);
+    baseAnalysis = analyzeMessage(DEFAULT_LOCALE, input.baseMessage);
   } catch (error) {
     return [
       {
@@ -139,8 +160,22 @@ export function validateRuntimeMessage(input: {
     ];
   }
 
-  const missing = [...basePlaceholders].filter((name) => !placeholders.has(name)).sort();
-  const extra = [...placeholders].filter((name) => !basePlaceholders.has(name)).sort();
+  if (baseAnalysis.tags.size > 0) {
+    return [
+      {
+        code: "unsupported_tag",
+        key: input.key,
+        message: `"${input.key}" has unsupported rich-text tags in its base message`,
+      },
+    ];
+  }
+
+  const missing = [...baseAnalysis.placeholders]
+    .filter((name) => !analysis.placeholders.has(name))
+    .sort();
+  const extra = [...analysis.placeholders]
+    .filter((name) => !baseAnalysis.placeholders.has(name))
+    .sort();
 
   if (missing.length > 0 || extra.length > 0) {
     const details = [

@@ -5,7 +5,7 @@ const write = args.includes("--write");
 const rootFlag = args.indexOf("--root");
 const root = rootFlag === -1 ? process.cwd() : (args[rootFlag + 1] ?? process.cwd());
 
-const result = await checkCatalogs({ root, write });
+const result = await checkCatalogs({ root, write, requireMerged: !write });
 
 if (result.issues.length > 0) {
   console.error(formatCatalogIssues(result.issues));

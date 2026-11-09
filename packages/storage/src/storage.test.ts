@@ -23,7 +23,7 @@ function start() {
     bucket: "bulletin",
     credentials,
   });
-  const server = Bun.serve({ port: 0, fetch: handler });
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: handler });
   servers.push(server);
 
   const storage = createStorage({

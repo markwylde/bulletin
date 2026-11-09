@@ -138,6 +138,20 @@ describe("unused and duplicate keys", () => {
     ).toEqual(["topic.unused"]);
   });
 
+  test("recognises locale-first and bound translation calls", async () => {
+    const root = await fixture({
+      "apps/forum/i18n/en.json": { "topic.body": "Body", "topic.title": "Title" },
+      "apps/forum/i18n/es.json": { "topic.body": "Cuerpo", "topic.title": "Título" },
+      "apps/forum/i18n/fr.json": { "topic.body": "Corps", "topic.title": "Titre" },
+      "apps/forum/src/page.ts":
+        't("es", "topic.title");\nconst translate = useT();\ntranslate("topic.body");\n',
+    });
+
+    const result = await checkCatalogs({ root });
+
+    expect(result.issues.filter((issue) => issue.code === "unused_key")).toEqual([]);
+  });
+
   test("ignores test files, fixtures, comments and unrelated string literals", async () => {
     const root = await fixture({
       "apps/forum/i18n/en.json": {
@@ -214,5 +228,18 @@ describe("merged catalogs", () => {
 
     expect(merged.forum?.en).toEqual({ "app.key": "App", "ui.key": "UI" });
     expect(issues).toEqual([]);
+  });
+
+  test("fails when the checked-in merged app catalogs are stale", async () => {
+    const root = await fixture({
+      "apps/forum/i18n/en.json": { "app.key": "App" },
+      "apps/forum/i18n/es.json": { "app.key": "Aplicación" },
+      "apps/forum/i18n/fr.json": { "app.key": "Application" },
+      "apps/forum/src/page.ts": 't("app.key");\n',
+    });
+
+    const result = await checkCatalogs({ root, requireMerged: true });
+
+    expect(result.issues.filter((issue) => issue.code === "stale_merged")).toHaveLength(3);
   });
 });

@@ -16,6 +16,7 @@ function start(options?: { now?: () => number }) {
     releaseSlow = resolve;
   });
   const upstream = Bun.serve({
+    hostname: "127.0.0.1",
     port: 0,
     async fetch(request) {
       upstreamRequests += 1;
@@ -60,7 +61,7 @@ function start(options?: { now?: () => number }) {
     origin: `http://127.0.0.1:${upstream.port}`,
     ...options,
   });
-  const server = Bun.serve({ port: 0, fetch: cdn.handler });
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: cdn.handler });
   servers.push(server);
 
   return {

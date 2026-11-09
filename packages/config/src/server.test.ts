@@ -16,7 +16,12 @@ async function start(
   options: Omit<Parameters<typeof startService>[0], "installSignalHandlers">,
 ): Promise<{ service: RunningService; base: string }> {
   const logger = options.logger ?? createLogger({ service: "test", sink: () => undefined });
-  const service = await startService({ ...options, logger, installSignalHandlers: false });
+  const service = await startService({
+    ...options,
+    hostname: options.hostname ?? "127.0.0.1",
+    logger,
+    installSignalHandlers: false,
+  });
   running.push(service);
   const port = service.server.port;
 

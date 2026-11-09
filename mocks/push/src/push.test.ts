@@ -11,7 +11,7 @@ afterEach(() => {
 
 function start() {
   const store = createPushStore();
-  const server = Bun.serve({ port: 0, fetch: createPushHandler(store) });
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: createPushHandler(store) });
   servers.push(server);
   return { store, server, base: `http://127.0.0.1:${server.port}` };
 }

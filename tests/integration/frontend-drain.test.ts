@@ -33,6 +33,7 @@ async function waitFor(url: string, timeoutMs = 20_000): Promise<void> {
 integrationDescribe("frontend SIGTERM drain", () => {
   test("staff-app exits after the drain deadline while readiness is pending", async () => {
     const stalledApi = Bun.serve({
+      hostname: "127.0.0.1",
       port: 0,
       fetch() {
         return new Promise<Response>(() => undefined);

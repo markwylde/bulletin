@@ -17,7 +17,9 @@ function start(store: ObjectStore, basePath?: string) {
     credentials,
     ...(basePath === undefined ? {} : { basePath }),
   });
-  const server = Bun.serve({ port: 0, fetch: handler });
+  // The client connects to 127.0.0.1, so bind the fixture to IPv4 as well. The default
+  // "localhost" can bind IPv6 and let an ephemeral port collide with another IPv4 listener.
+  const server = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: handler });
   const endpoint = `http://127.0.0.1:${server.port}${basePath ?? ""}`;
   const client = new Bun.S3Client({
     endpoint,

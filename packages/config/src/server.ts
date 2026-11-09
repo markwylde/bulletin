@@ -28,6 +28,8 @@ export interface ConnectionBudgetConfig {
 export interface StartServiceOptions {
   readonly service: string;
   readonly port: number;
+  /** Optional bind address; tests pin IPv4 while production services use Bun's default. */
+  readonly hostname?: string;
   readonly fetch: (request: Request) => Response | Promise<Response>;
   readonly checks?: readonly HealthCheck[];
   readonly drainTimeoutMs?: number;
@@ -275,6 +277,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
 
   const server = Bun.serve({
     port: options.port,
+    ...(options.hostname === undefined ? {} : { hostname: options.hostname }),
     async fetch(request) {
       const url = new URL(request.url);
 

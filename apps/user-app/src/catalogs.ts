@@ -1,13 +1,7 @@
-import { CATALOGS, type Catalog, type Locale } from "@bulletin/i18n";
-import en from "../i18n/en.json";
-import es from "../i18n/es.json";
-import fr from "../i18n/fr.json";
+import type { Catalog, Locale } from "@bulletin/i18n";
+import en from "../i18n/merged/en.json";
+import es from "../i18n/merged/es.json";
+import fr from "../i18n/merged/fr.json";
 
-const appCatalogs = { en, es, fr } as const satisfies Record<Locale, Catalog>;
-
-/** The app strings layered over the shared package catalogs. */
-export const USER_CATALOGS = {
-  en: { ...CATALOGS.en, ...appCatalogs.en },
-  es: { ...CATALOGS.es, ...appCatalogs.es },
-  fr: { ...CATALOGS.fr, ...appCatalogs.fr },
-} as const satisfies Record<Locale, Catalog>;
+/** The generated app catalogs, already merged from app and package catalogs. */
+export const USER_CATALOGS = { en, es, fr } as const satisfies Record<Locale, Catalog>;

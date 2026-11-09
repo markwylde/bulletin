@@ -59,7 +59,7 @@ async function sendMail(port: number, raw: string): Promise<void> {
 
 function startMail(store: MailStore) {
   const smtp = startSmtpServer({ port: 0, store, hostname: "127.0.0.1" });
-  const http = Bun.serve({ port: 0, fetch: createMailHandler(store) });
+  const http = Bun.serve({ port: 0, hostname: "127.0.0.1", fetch: createMailHandler(store) });
   mailServers.push(smtp);
   httpServers.push(http);
 

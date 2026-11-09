@@ -64,6 +64,33 @@ integrationDescribe("string overrides", () => {
     });
   }, 15_000);
 
+  test("rejects an override with rich-text tags at save time", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "i18n_tag_override" }, async ({ sql }) => {
+      let error: unknown;
+
+      try {
+        await setStringOverride(
+          sql,
+          {
+            locale: "en",
+            key: "topic.reply.button",
+            value: "<b>Reply</b>",
+          },
+          { base: BASE },
+        );
+      } catch (caught) {
+        error = caught;
+      }
+
+      expect(error).toBeInstanceOf(StringOverrideError);
+      expect(String(error)).toContain("rich-text tags");
+    });
+  }, 15_000);
+
   test("rejects an override that drops the base placeholder", async () => {
     if (adminUrl === undefined) {
       return;
