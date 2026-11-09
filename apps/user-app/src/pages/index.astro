@@ -264,6 +264,10 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
         } catch {
           root?.setAttribute("data-auth-state", "error");
           showError();
+
+          if (loginButton !== null) {
+            loginButton.hidden = false;
+          }
         }
       }
 

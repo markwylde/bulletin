@@ -96,9 +96,6 @@ services:
         - action: sync
           path: ./mocks/darkauth/src
           target: /app/mocks/darkauth/src
-        - action: sync+restart
-          path: ./darkauth-mock.yaml
-          target: /config/darkauth-mock.yaml
         - action: rebuild
           path: ./mocks/darkauth/package.json
         - action: rebuild

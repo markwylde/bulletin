@@ -278,17 +278,25 @@ export function createAuthRouter(
         return json({ code: "step_up_required" }, 401);
       }
 
-      const consumed = await options.sql.begin(async (tx) => {
-        if (!(await consumeChallenge(tx, options.kind, challengeId))) {
-          return false;
-        }
+      const consumed = await options.sql
+        .begin(async (tx) => {
+          if (!(await consumeChallenge(tx, options.kind, challengeId))) {
+            return false;
+          }
 
-        await tx`
-          UPDATE core.sessions SET last_auth_at = ${new Date(authTime)}
-          WHERE id = ${session.id}
-        `;
-        return true;
-      });
+          const member = await resolveMember(tx, identity);
+
+          if (member.id !== session.memberId) {
+            throw new Error("step_up_member_mismatch");
+          }
+
+          await tx`
+            UPDATE core.sessions SET last_auth_at = ${new Date(authTime)}
+            WHERE id = ${session.id}
+          `;
+          return true;
+        })
+        .catch(() => false);
 
       if (!consumed) {
         return json({ code: "invalid_challenge" }, 401);
