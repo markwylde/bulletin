@@ -187,6 +187,7 @@ const nonce = Astro.locals.cspNonce;
         loadSession,
         logout,
         reauthUrl,
+        stashedBodyInit,
         takeStashedRequest,
       } from "@bulletin/domain/auth/browser";
 
@@ -308,7 +309,7 @@ const nonce = Astro.locals.cspNonce;
           void authFetch(stashed.url, {
             method: stashed.method,
             headers: stashed.headers,
-            body: stashed.body,
+            body: stashedBodyInit(stashed.body),
           })
             .then((response) => {
               if (response.ok) {

@@ -422,7 +422,9 @@ integrationDescribe("login flow", () => {
       const userSql = new SQL(roleUrl(database.url, "user_api"));
       const staffSql = new SQL(roleUrl(database.url, "staff_api"));
       const userRouter = routerFor(userSql, "user");
-      const staffRouter = routerFor(staffSql, "staff");
+      const staffRouter = routerFor(staffSql, "staff", {
+        bootstrapAdmins: [{ issuer: ISSUER, sub: "admin" }],
+      });
 
       try {
         const staffChallenge = await challenge(staffRouter, STAFF_ORIGIN);
@@ -610,7 +612,9 @@ integrationDescribe("login flow", () => {
   test("expires staff sessions after 2 hours idle or 12 hours absolute", async () => {
     await withDb("auth_lifetime_staff", async (database) => {
       const sql = new SQL(roleUrl(database.url, "staff_api"));
-      const router = routerFor(sql, "staff");
+      const router = routerFor(sql, "staff", {
+        bootstrapAdmins: [{ issuer: ISSUER, sub: "admin" }],
+      });
 
       async function loginCookie(sub: string): Promise<string> {
         const started = await challenge(router, STAFF_ORIGIN);
@@ -635,7 +639,7 @@ integrationDescribe("login flow", () => {
       }
 
       try {
-        const idleCookie = await loginCookie("idle-staff");
+        const idleCookie = await loginCookie("admin");
         await database.sql`
           UPDATE core.sessions SET last_seen_at = now() - interval '3 hours'
           WHERE token_hash = ${hashToken(idleCookie)}
@@ -645,7 +649,7 @@ integrationDescribe("login flow", () => {
         });
         expect(((await idle.json()) as SessionView).authenticated).toBe(false);
 
-        const absoluteCookie = await loginCookie("absolute-staff");
+        const absoluteCookie = await loginCookie("admin");
         await database.sql`
           UPDATE core.sessions
           SET created_at = now() - interval '13 hours', last_seen_at = now()

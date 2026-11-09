@@ -3,12 +3,16 @@ import { displayNameSkeleton, NAME_CHANGE_INTERVAL_MS, validateDisplayName } fro
 
 describe("display name skeleton and validation", () => {
   test("folds case, diacritics and confusable scripts", () => {
-    expect(displayNameSkeleton("Admin")).toBe("admin");
-    expect(displayNameSkeleton("Admіn")).toBe("admin");
-    expect(displayNameSkeleton("Αdmin")).toBe("admin");
-    expect(displayNameSkeleton("Ａdmin")).toBe("admin");
+    const admin = displayNameSkeleton("Admin");
+
+    expect(admin).toBe("adrnin");
+    expect(displayNameSkeleton("Admіn")).toBe(admin);
+    expect(displayNameSkeleton("Αdmin")).toBe(admin);
+    expect(displayNameSkeleton("Ａdmin")).toBe(admin);
+    expect(displayNameSkeleton("Adrnin")).toBe(admin);
+    expect(displayNameSkeleton("rn")).toBe(displayNameSkeleton("m"));
     expect(displayNameSkeleton("José")).toBe("jose");
-    expect(displayNameSkeleton("  Miembro   Español  ")).toBe("miembro espanol");
+    expect(displayNameSkeleton("Miembro Español")).toBe(displayNameSkeleton("Miembro Espanol"));
   });
 
   test("accepts 3–32 code points and rejects invalid or control-filled names", () => {

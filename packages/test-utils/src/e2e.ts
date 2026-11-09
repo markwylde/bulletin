@@ -37,6 +37,7 @@ export async function withPage<T>(
 
   let view: Bun.WebView | undefined;
   let lastError: unknown;
+  let pageErrors: string[] = [];
 
   try {
     for (let attempt = 0; attempt < 3 && view === undefined; attempt += 1) {
@@ -50,6 +51,22 @@ export async function withPage<T>(
           height: viewport.height,
           dataStore: { directory: profileDirectory },
         });
+        const errors: string[] = [];
+
+        // Set up the CDP session and exception capture before the real navigation.
+        await candidate.navigate("about:blank");
+        await candidate.cdp("Runtime.enable");
+        candidate.addEventListener<{
+          readonly exceptionDetails?: {
+            readonly text?: string;
+            readonly exception?: { readonly description?: string };
+          };
+        }>("Runtime.exceptionThrown", (event) => {
+          const details = event.data.exceptionDetails;
+          errors.push(
+            details?.exception?.description ?? details?.text ?? "Uncaught page exception",
+          );
+        });
 
         await candidate.navigate(options.url);
         await candidate.cdp("Emulation.setDeviceMetricsOverride", {
@@ -59,6 +76,7 @@ export async function withPage<T>(
           mobile: viewport.width < 500,
         });
         view = candidate;
+        pageErrors = errors;
       } catch (error) {
         lastError = error;
         Bun.WebView.closeAll();
@@ -70,7 +88,13 @@ export async function withPage<T>(
       throw lastError instanceof Error ? lastError : new Error("Could not start Chrome");
     }
 
-    return await run(view);
+    const result = await run(view);
+
+    if (pageErrors.length > 0) {
+      throw new Error(`Uncaught page errors:\n${pageErrors.join("\n")}`);
+    }
+
+    return result;
   } finally {
     view?.close();
     Bun.WebView.closeAll();
@@ -204,4 +228,18 @@ export async function loginAs(
   await view.evaluate('document.querySelector("[data-login]")?.click()');
   await chooseMockProfile(view, profile, timeoutMs);
   await waitForSelector(view, '[data-auth-state="authenticated"]', timeoutMs);
+}
+
+/** Runs the login flow and expects the app to reject the identity (e.g. no ACP access). */
+export async function loginAsRefused(
+  view: Bun.WebView,
+  profile: string,
+  options: LoginAsOptions = {},
+): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 30_000;
+
+  await waitForSelector(view, "[data-login]", timeoutMs);
+  await view.evaluate('document.querySelector("[data-login]")?.click()');
+  await chooseMockProfile(view, profile, timeoutMs);
+  await waitForSelector(view, '[data-auth-state="error"]', timeoutMs);
 }

@@ -1,7 +1,12 @@
+export type OidcErrorKind = "network" | "denied";
+
 export class OidcError extends Error {
-  constructor(message: string) {
+  readonly kind: OidcErrorKind;
+
+  constructor(message: string, kind: OidcErrorKind) {
     super(message);
     this.name = "OidcError";
+    this.kind = kind;
   }
 }
 
@@ -35,19 +40,26 @@ export async function exchangeAuthorizationCode(
       }),
     });
   } catch {
-    throw new OidcError("The identity provider could not be reached");
+    throw new OidcError("The identity provider could not be reached", "network");
   }
 
   const body: unknown = await response.json().catch(() => null);
 
-  if (!response.ok || body === null || typeof body !== "object") {
-    throw new OidcError("The identity provider rejected the authorization code");
+  if (!response.ok) {
+    throw new OidcError(
+      "The identity provider rejected the authorization code",
+      response.status >= 500 ? "network" : "denied",
+    );
+  }
+
+  if (body === null || typeof body !== "object") {
+    throw new OidcError("The identity provider returned an invalid token response", "denied");
   }
 
   const idToken = (body as Record<string, unknown>).id_token;
 
   if (typeof idToken !== "string" || idToken === "") {
-    throw new OidcError("The identity provider returned no ID token");
+    throw new OidcError("The identity provider returned no ID token", "denied");
   }
 
   return { idToken };

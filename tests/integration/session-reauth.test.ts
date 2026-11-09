@@ -2,10 +2,15 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { resolveMemberLocale } from "@bulletin/db/i18n";
 import {
   type AuthService,
+  type AuthServiceOptions,
   type ChallengeView,
   createAuthService,
+  createCsrfToken,
+  hashToken,
   type SessionView,
 } from "@bulletin/domain/auth";
+import { displayNameSkeleton } from "@bulletin/domain/member";
+import { can } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
 import { exportJWK, generateKeyPair, type KeyInput, SignJWT } from "jose";
@@ -134,6 +139,7 @@ async function login(
   service: AuthService,
   sub: string,
   kind: "user" | "staff" = "user",
+  options: { readonly authTime?: number } = {},
 ): Promise<string> {
   const origin = kind === "staff" ? STAFF_ORIGIN : USER_ORIGIN;
   const clientId = kind === "staff" ? STAFF_CLIENT : USER_CLIENT;
@@ -151,7 +157,14 @@ async function login(
   }
 
   const response = await call(service, "/api/auth/session", {
-    body: { idToken: await signToken({ sub, nonce: challenge.nonce, clientId }) },
+    body: {
+      idToken: await signToken({
+        sub,
+        nonce: challenge.nonce,
+        clientId,
+        ...(options.authTime === undefined ? {} : { authTime: options.authTime }),
+      }),
+    },
     cookie: `bl_login=${challengeCookie}`,
     origin,
   });
@@ -193,6 +206,91 @@ async function memberIdFor(database: TestDatabase, sub: string): Promise<string>
   }
 
   return row.member_id;
+}
+
+async function createMemberWithIdentity(
+  database: TestDatabase,
+  sub: string,
+  name: string,
+): Promise<string> {
+  const skeleton = displayNameSkeleton(name);
+  const [member] = (await database.sql`
+    INSERT INTO core.members (display_name, name_skeleton)
+    VALUES (${name}, ${skeleton})
+    ON CONFLICT DO NOTHING
+    RETURNING id
+  `) as Array<{ id: string }>;
+  const memberId =
+    member?.id ??
+    (
+      (await database.sql`
+      SELECT id FROM core.members WHERE name_skeleton = ${skeleton} LIMIT 1
+    `) as Array<{ id: string }>
+    )[0]?.id;
+
+  if (memberId === undefined) {
+    throw new Error(`member ${sub} could not be created`);
+  }
+
+  await database.sql`
+    INSERT INTO pii.identities (member_id, issuer, sub, email, idp_name)
+    VALUES (
+      ${memberId}, 'http://auth.bulletin.localhost:8080', ${sub},
+      ${`${sub}@bulletin.test`}, ${name}
+    )
+    ON CONFLICT (issuer, sub) DO NOTHING
+  `;
+
+  return memberId;
+}
+
+/** A staff session for a member that does not have `acp.access`, for denial tests. */
+async function directStaffSession(
+  database: TestDatabase,
+  sub: string,
+  name: string,
+): Promise<{ readonly cookie: string; readonly memberId: string; readonly sessionId: string }> {
+  const memberId = await createMemberWithIdentity(database, sub, name);
+  const token = crypto.randomUUID();
+
+  const [session] = (await database.sql`
+    INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at, last_auth_at)
+    VALUES (
+      ${memberId}, 'staff', ${hashToken(token)},
+      now() + interval '12 hours', now() - interval '1 hour'
+    )
+    RETURNING id
+  `) as Array<{ id: string }>;
+
+  if (session === undefined) {
+    throw new Error(`staff session for ${sub} could not be created`);
+  }
+
+  return { cookie: token, memberId, sessionId: session.id };
+}
+
+async function directUserSession(
+  database: TestDatabase,
+  sub: string,
+  name: string,
+): Promise<{ readonly cookie: string; readonly memberId: string; readonly sessionId: string }> {
+  const memberId = await createMemberWithIdentity(database, sub, name);
+  const token = crypto.randomUUID();
+
+  const [session] = (await database.sql`
+    INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at, last_auth_at)
+    VALUES (
+      ${memberId}, 'user', ${hashToken(token)},
+      now() - interval '25 hours', now()
+    )
+    RETURNING id
+  `) as Array<{ id: string }>;
+
+  if (session === undefined) {
+    throw new Error(`user session for ${sub} could not be created`);
+  }
+
+  return { cookie: token, memberId, sessionId: session.id };
 }
 
 /** Drives the refresh redirect and its callback through the real service handlers. */
@@ -258,7 +356,10 @@ integrationDescribe("silent re-auth and background grace", () => {
     tokenServer.stop(true);
   });
 
-  async function serviceFor(database: TestDatabase): Promise<{ service: AuthService; sql: SQL }> {
+  async function serviceFor(
+    database: TestDatabase,
+    overrides: Partial<AuthServiceOptions> = {},
+  ): Promise<{ service: AuthService; sql: SQL }> {
     const sql = new SQL(roleUrl(database.url, "user_api"));
     const service = await createAuthService({
       sql,
@@ -272,6 +373,7 @@ integrationDescribe("silent re-auth and background grace", () => {
       nodeEnv: "test",
       testEndpoints: true,
       cacheTtlMs: 0,
+      ...overrides,
     });
 
     return { service, sql };
@@ -379,6 +481,124 @@ integrationDescribe("silent re-auth and background grace", () => {
       }
     });
   }, 20_000);
+
+  test("extends reauth by one hour for an identity-provider outage, up to three times", async () => {
+    await withDb("auth_outage", async (database) => {
+      const { service, sql } = await serviceFor(database, {
+        oidcFetch: async () => {
+          throw new TypeError("fetch failed");
+        },
+      });
+
+      try {
+        const sessionCookie = await login(service, "outage-user");
+        await database.sql`
+          UPDATE core.sessions SET reauth_at = now() - interval '25 hours'
+          WHERE member_id = (SELECT member_id FROM pii.identities WHERE sub = 'outage-user')
+        `;
+
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          const { callback } = await silentReauth(service, sessionCookie);
+          expect(callback.status).toBe(303);
+          expect(callback.headers.get("location")).toBe("/topic/12-welcome");
+
+          const [row] = (await database.sql`
+            SELECT s.reauth_retry_count,
+                   s.reauth_at > now() + interval '50 minutes' AS extended,
+                   s.revoked_at
+            FROM core.sessions s
+            JOIN pii.identities i ON i.member_id = s.member_id
+            WHERE i.sub = 'outage-user'
+          `) as Array<{
+            reauth_retry_count: number;
+            extended: boolean;
+            revoked_at: Date | null;
+          }>;
+          expect(row).toEqual({
+            reauth_retry_count: attempt,
+            extended: true,
+            revoked_at: null,
+          });
+        }
+
+        const fourth = await silentReauth(service, sessionCookie);
+        expect(fourth.callback.status).toBe(303);
+        expect(fourth.callback.headers.get("location")).toBe("/topic/12-welcome?auth_error=1");
+
+        const [revoked] = (await database.sql`
+          SELECT s.revoked_at
+          FROM core.sessions s
+          JOIN pii.identities i ON i.member_id = s.member_id
+          WHERE i.sub = 'outage-user'
+        `) as Array<{ revoked_at: Date | null }>;
+        expect(revoked?.revoked_at).not.toBeNull();
+
+        const read = await call(service, "/api/auth/session", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(((await read.json()) as SessionView).authenticated).toBe(false);
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("treats a 5xx token response as an outage", async () => {
+    await withDb("auth_outage_5xx", async (database) => {
+      const { service, sql } = await serviceFor(database, {
+        oidcFetch: async () => new Response("unavailable", { status: 503 }),
+      });
+
+      try {
+        const sessionCookie = await login(service, "outage-5xx");
+        await database.sql`
+          UPDATE core.sessions SET reauth_at = now() - interval '25 hours'
+          WHERE member_id = (SELECT member_id FROM pii.identities WHERE sub = 'outage-5xx')
+        `;
+
+        const { callback } = await silentReauth(service, sessionCookie);
+        expect(callback.status).toBe(303);
+        expect(callback.headers.get("location")).toBe("/topic/12-welcome");
+
+        const [row] = (await database.sql`
+          SELECT reauth_retry_count, revoked_at
+          FROM core.sessions s
+          JOIN pii.identities i ON i.member_id = s.member_id
+          WHERE i.sub = 'outage-5xx'
+        `) as Array<{ reauth_retry_count: number; revoked_at: Date | null }>;
+        expect(row).toEqual({ reauth_retry_count: 1, revoked_at: null });
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("applies the outage grace when the JWKS endpoint is unreachable", async () => {
+    await withDb("auth_outage_jwks", async (database) => {
+      const { service, sql } = await serviceFor(database, {
+        jwksUrl: "http://127.0.0.1:1/.well-known/jwks.json",
+      });
+
+      try {
+        const session = await directUserSession(database, "jwks-outage", "Jwks Outage");
+        const { callback } = await silentReauth(service, session.cookie);
+
+        expect(callback.status).toBe(303);
+        expect(callback.headers.get("location")).toBe("/topic/12-welcome");
+
+        const [row] = (await database.sql`
+          SELECT reauth_retry_count, reauth_at > now() + interval '50 minutes' AS extended
+          FROM core.sessions WHERE id = ${session.sessionId}
+        `) as Array<{ reauth_retry_count: number; extended: boolean }>;
+        expect(row).toEqual({ reauth_retry_count: 1, extended: true });
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
 
   test("revokes the session when the identity provider denies re-auth", async () => {
     await withDb("auth_reauth_disabled", async (database) => {
@@ -548,31 +768,23 @@ integrationDescribe("silent re-auth and background grace", () => {
     });
   }, 20_000);
 
-  test("lets an administrator revoke a member's sessions but denies a regular member", async () => {
+  test("lets an administrator revoke a member's sessions but denies a member without acp.access", async () => {
     await withDb("auth_revoke_all", async (database) => {
       const { service, sql } = await staffServiceFor(database);
 
       try {
         const adminCookie = await login(service, "admin", "staff");
-        const targetCookie = await login(service, "target-member", "staff");
-        const regularCookie = await login(service, "regular-staff", "staff");
         const adminCsrf = await csrfFor(service, adminCookie, "staff");
-        const regularCsrf = await csrfFor(service, regularCookie, "staff");
-
-        const [target] = (await database.sql`
-          SELECT member_id FROM pii.identities WHERE sub = 'target-member'
-        `) as Array<{ member_id: string }>;
-
-        if (target === undefined) {
-          throw new Error("target member missing");
-        }
+        const target = await directStaffSession(database, "target-member", "Target Member");
+        const regular = await directStaffSession(database, "regular-staff", "Regular Staff");
+        const regularCsrf = createCsrfToken(regular.sessionId, SESSION_SECRET);
 
         const denied = await call(
           service,
-          `/api/staff/members/${target.member_id}/sessions/revoke`,
+          `/api/staff/members/${target.memberId}/sessions/revoke`,
           {
             method: "POST",
-            cookie: `bl_staff=${regularCookie}`,
+            cookie: `bl_staff=${regular.cookie}`,
             origin: STAFF_ORIGIN,
             headers: { "x-bulletin-csrf": regularCsrf },
           },
@@ -580,14 +792,14 @@ integrationDescribe("silent re-auth and background grace", () => {
         expect(denied.status).toBe(403);
         expect(await denied.json()).toEqual({ code: "forbidden" });
 
-        const stillThere = await call(service, "/api/auth/session", {
-          cookie: `bl_staff=${targetCookie}`,
-        });
-        expect(((await stillThere.json()) as SessionView).authenticated).toBe(true);
+        const [stillThere] = (await database.sql`
+          SELECT revoked_at FROM core.sessions WHERE id = ${target.sessionId}
+        `) as Array<{ revoked_at: Date | null }>;
+        expect(stillThere?.revoked_at).toBeNull();
 
         const revoked = await call(
           service,
-          `/api/staff/members/${target.member_id}/sessions/revoke`,
+          `/api/staff/members/${target.memberId}/sessions/revoke`,
           {
             method: "POST",
             cookie: `bl_staff=${adminCookie}`,
@@ -599,9 +811,103 @@ integrationDescribe("silent re-auth and background grace", () => {
         expect(await revoked.json()).toEqual({ revoked: 1 });
 
         const after = await call(service, "/api/auth/session", {
-          cookie: `bl_staff=${targetCookie}`,
+          cookie: `bl_staff=${target.cookie}`,
         });
         expect(((await after.json()) as SessionView).authenticated).toBe(false);
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("denies staff sessions to members without acp.access", async () => {
+    await withDb("auth_staff_acp", async (database) => {
+      const { service, sql } = await staffServiceFor(database);
+
+      try {
+        for (const sub of ["member-1", "banned-member"]) {
+          const challengeResponse = await call(service, "/api/auth/challenge", {
+            body: {},
+            origin: STAFF_ORIGIN,
+          });
+          expect(challengeResponse.status).toBe(200);
+          const challenge = (await challengeResponse.json()) as ChallengeView;
+          const challengeCookie = cookieValue(challengeResponse, "bl_login");
+
+          const response = await call(service, "/api/auth/session", {
+            body: {
+              idToken: await signToken({
+                sub,
+                nonce: challenge.nonce,
+                clientId: STAFF_CLIENT,
+              }),
+            },
+            cookie: `bl_login=${challengeCookie ?? ""}`,
+            origin: STAFF_ORIGIN,
+          });
+          expect(response.status).toBe(403);
+          expect(await response.json()).toEqual({ code: "forbidden" });
+          expect(cookieValue(response, "bl_staff")).toBeUndefined();
+        }
+
+        const adminCookie = await login(service, "admin", "staff");
+        expect(adminCookie).toBeString();
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("ordinary login with an old or absent auth_time requires step-up", async () => {
+    await withDb("auth_stale_login", async (database) => {
+      const { service, sql } = await staffServiceFor(database);
+
+      try {
+        const oldTime = Math.floor(Date.now() / 1_000) - 2 * 60 * 60;
+        const oldCookie = await login(service, "admin", "staff", { authTime: oldTime });
+        const oldSensitive = await call(service, "/api/test/sensitive", {
+          cookie: `bl_staff=${oldCookie}`,
+        });
+        expect(oldSensitive.status).toBe(401);
+        expect(await oldSensitive.json()).toEqual({ code: "step_up_required" });
+
+        const [oldSession] = (await database.sql`
+          SELECT now() - last_auth_at > interval '1 hour' AS stale
+          FROM core.sessions
+          WHERE token_hash = ${hashToken(oldCookie)}
+        `) as Array<{ stale: boolean }>;
+        expect(oldSession?.stale).toBe(true);
+
+        const absentCookie = await login(service, "admin", "staff");
+        const absentSensitive = await call(service, "/api/test/sensitive", {
+          cookie: `bl_staff=${absentCookie}`,
+        });
+        expect(absentSensitive.status).toBe(401);
+        expect(await absentSensitive.json()).toEqual({ code: "step_up_required" });
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("grants acp and staff actions only to administrators in this change", async () => {
+    await withDb("auth_permission_seam", async (database) => {
+      const { service, sql } = await staffServiceFor(database);
+
+      try {
+        await login(service, "admin", "staff");
+        const adminId = await memberIdFor(database, "admin");
+        const regular = await directStaffSession(database, "regular-perms", "Regular Perms");
+
+        expect(await can(database.sql, adminId, "acp.access")).toBe(true);
+        expect(await can(database.sql, regular.memberId, "acp.access")).toBe(false);
+        expect(await can(database.sql, adminId, "sessions.revoke")).toBe(true);
+        expect(await can(database.sql, regular.memberId, "sessions.revoke")).toBe(false);
+        expect(await can(database.sql, adminId, "members.view_name_history")).toBe(true);
+        expect(await can(database.sql, regular.memberId, "members.view_name_history")).toBe(false);
       } finally {
         await service.close();
         await sql.close();
@@ -1024,10 +1330,10 @@ integrationDescribe("silent re-auth and background grace", () => {
         );
 
         const adminCookie = await login(staff.service, "admin", "staff");
-        const regularCookie = await login(staff.service, "regular-staff", "staff");
+        const regular = await directStaffSession(database, "regular-staff", "Regular Staff");
 
         const denied = await call(staff.service, `/api/staff/members/${memberId}/name-history`, {
-          cookie: `bl_staff=${regularCookie}`,
+          cookie: `bl_staff=${regular.cookie}`,
         });
         expect(denied.status).toBe(403);
         expect(await denied.json()).toEqual({ code: "forbidden" });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SEEDED_PROFILES } from "@bulletin/db/seed";
-import { loginAs, waitForText, withPage } from "@bulletin/test-utils/e2e";
+import { loginAs, loginAsRefused, waitForText, withPage } from "@bulletin/test-utils/e2e";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -35,8 +35,19 @@ for (const app of APPS) {
   integrationDescribe(`${app.name} login`, () => {
     for (const profile of profiles) {
       for (const viewport of VIEWPORTS) {
-        test(`logs in as ${profile.sub} at ${viewport}`, async () => {
+        test(`${app.name} ${profile.sub} at ${viewport}`, async () => {
           await withPage({ url: app.url, viewport }, async (view) => {
+            const seeded = SEEDED_PROFILES.find((candidate) => candidate.sub === profile.sub);
+
+            if (seeded === undefined) {
+              throw new Error(`No seeded member for profile ${profile.sub}`);
+            }
+
+            if (app.name === "staff-app" && seeded.group !== "administrators") {
+              await loginAsRefused(view, profile.sub);
+              return;
+            }
+
             await loginAs(view, profile.sub);
 
             expect(
@@ -44,12 +55,6 @@ for (const app of APPS) {
                 "document.querySelector('[data-auth-state]')?.getAttribute('data-auth-state') ?? null",
               ),
             ).toBe("authenticated");
-
-            const seeded = SEEDED_PROFILES.find((candidate) => candidate.sub === profile.sub);
-
-            if (seeded === undefined) {
-              throw new Error(`No seeded member for profile ${profile.sub}`);
-            }
 
             await waitForText(view, seeded.name, 30_000);
           });

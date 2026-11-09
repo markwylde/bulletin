@@ -1,3 +1,4 @@
+import { displayNameSkeleton } from "@bulletin/domain/member";
 import type { SeedModule } from "./framework.ts";
 
 export interface SeededProfile {
@@ -12,13 +13,12 @@ export interface SeededProfile {
 
 /**
  * Every local identity profile. The subjects and emails must match the identity provider's
- * local configuration; the skeletons are the precomputed UTS #39 values for the names.
+ * local configuration; skeletons are computed from the UTS #39 dataset.
  */
-export const SEEDED_PROFILES: readonly SeededProfile[] = [
+const PROFILE_INPUTS: readonly Omit<SeededProfile, "skeleton">[] = [
   {
     sub: "admin",
     name: "Admin",
-    skeleton: "admin",
     email: "admin@bulletin.test",
     locale: "en",
     group: "administrators",
@@ -26,7 +26,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "super-mod",
     name: "Super Moderator",
-    skeleton: "super moderator",
     email: "super-mod@bulletin.test",
     locale: "en",
     group: "members",
@@ -34,7 +33,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "forum-mod",
     name: "Forum Moderator",
-    skeleton: "forum moderator",
     email: "forum-mod@bulletin.test",
     locale: "en",
     group: "members",
@@ -42,7 +40,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "member-mod",
     name: "Member Moderator",
-    skeleton: "member moderator",
     email: "member-mod@bulletin.test",
     locale: "en",
     group: "members",
@@ -50,7 +47,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "member-1",
     name: "Regular Member One",
-    skeleton: "regular member one",
     email: "member-1@bulletin.test",
     locale: "en",
     group: "members",
@@ -58,7 +54,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "member-2",
     name: "Regular Member Two",
-    skeleton: "regular member two",
     email: "member-2@bulletin.test",
     locale: "en",
     group: "members",
@@ -66,7 +61,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "new-member",
     name: "New Member",
-    skeleton: "new member",
     email: "new-member@bulletin.test",
     locale: "en",
     group: "members",
@@ -74,7 +68,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "banned-member",
     name: "Banned Member",
-    skeleton: "banned member",
     email: "banned-member@bulletin.test",
     locale: "en",
     group: "banned",
@@ -82,7 +75,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "warned-member",
     name: "Warned Member",
-    skeleton: "warned member",
     email: "warned-member@bulletin.test",
     locale: "en",
     group: "members",
@@ -90,7 +82,6 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "member-es",
     name: "Miembro Español",
-    skeleton: "miembro espanol",
     email: "member-es@bulletin.test",
     locale: "es",
     group: "members",
@@ -98,12 +89,16 @@ export const SEEDED_PROFILES: readonly SeededProfile[] = [
   {
     sub: "member-fr",
     name: "Membre Français",
-    skeleton: "membre francais",
     email: "member-fr@bulletin.test",
     locale: "fr",
     group: "members",
   },
 ];
+
+export const SEEDED_PROFILES: readonly SeededProfile[] = PROFILE_INPUTS.map((profile) => ({
+  ...profile,
+  skeleton: displayNameSkeleton(profile.name),
+}));
 
 const AUTH_ISSUER = (Bun.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080").replace(
   /\/+$/,

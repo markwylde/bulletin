@@ -118,6 +118,10 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       return next({ session: null, csrfToken: null });
     }
 
+    if (options.kind === "staff" && !(await can(options.sql, session.memberId, "acp.access"))) {
+      return json({ code: "forbidden" }, 403);
+    }
+
     if (options.kind === "user" && Date.now() > session.reauthAt.getTime() + REAUTH_GRACE_MS) {
       return json({ code: "reauth_required" }, 401);
     }

@@ -12,6 +12,7 @@ export {
   createAuthFetch,
   reauthUrl,
   type StashedRequest,
+  stashedBodyInit,
   takeStashedRequest,
 } from "./fetch.ts";
 export { reauthRedirectUrl, shouldRedirectToReauth } from "./silent.ts";

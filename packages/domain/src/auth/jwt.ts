@@ -10,11 +10,34 @@ export interface IdTokenClaims {
   readonly authTime: Date | null;
 }
 
+export type IdTokenErrorKind = "network" | "denied";
+
 export class IdTokenError extends Error {
-  constructor(message: string) {
+  readonly kind: IdTokenErrorKind;
+
+  constructor(message: string, kind: IdTokenErrorKind) {
     super(message);
     this.name = "IdTokenError";
+    this.kind = kind;
   }
+}
+
+function isNetworkError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  if (error.name === "JWKSTimeout" || error.name === "JWKSFetchError") {
+    return true;
+  }
+
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  return /fetch failed|network|ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|timed out/i.test(
+    error.message,
+  );
 }
 
 export function createJwks(jwksUrl: string): Jwks {
@@ -24,7 +47,8 @@ export function createJwks(jwksUrl: string): Jwks {
 /**
  * Verifies a DarkAuth ID token against the JWKS (ADR 0018): signature, issuer, audience,
  * expiry and the challenge nonce. The nonce is the login-CSRF binding, so it is checked
- * here rather than by `jose`.
+ * here rather than by `jose`. Network failures are distinguished from denials so the
+ * silent re-auth callback can apply the outage grace.
  */
 export async function verifyIdToken(
   jwks: Jwks,
@@ -43,15 +67,16 @@ export async function verifyIdToken(
   } catch (error) {
     throw new IdTokenError(
       error instanceof Error ? `ID token rejected: ${error.message}` : "ID token rejected",
+      isNetworkError(error) ? "network" : "denied",
     );
   }
 
   if (payload.nonce !== expected.nonce) {
-    throw new IdTokenError("ID token nonce does not match the challenge");
+    throw new IdTokenError("ID token nonce does not match the challenge", "denied");
   }
 
   if (typeof payload.sub !== "string" || payload.sub === "") {
-    throw new IdTokenError("ID token has no subject");
+    throw new IdTokenError("ID token has no subject", "denied");
   }
 
   return {

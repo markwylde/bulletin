@@ -10,6 +10,7 @@ export interface SessionRecord {
   readonly lastSeenAt: Date;
   readonly reauthAt: Date;
   readonly lastAuthAt: Date;
+  readonly reauthRetryCount: number;
   readonly revokedAt: Date | null;
   readonly rotatePending: boolean;
   readonly viaPreviousToken: boolean;
@@ -50,6 +51,7 @@ interface SessionRow {
   last_seen_at: Date | string;
   reauth_at: Date | string;
   last_auth_at: Date | string;
+  reauth_retry_count: number;
   revoked_at: Date | string | null;
   display_name: string | null;
 }
@@ -99,7 +101,8 @@ export async function loadSession(
            encode(s.token_hash, 'hex') AS token_hash,
            encode(s.previous_token_hash, 'hex') AS previous_token_hash,
            s.previous_token_expires_at, s.rotate_pending,
-           s.created_at, s.last_seen_at, s.reauth_at, s.last_auth_at, s.revoked_at,
+           s.created_at, s.last_seen_at, s.reauth_at, s.last_auth_at,
+           s.reauth_retry_count, s.revoked_at,
            m.display_name
     FROM core.sessions s
     JOIN core.members m ON m.id = s.member_id
@@ -119,6 +122,7 @@ export async function loadSession(
     lastSeenAt: toDate(row.last_seen_at),
     reauthAt: toDate(row.reauth_at),
     lastAuthAt: toDate(row.last_auth_at),
+    reauthRetryCount: row.reauth_retry_count,
     revokedAt: row.revoked_at === null ? null : toDate(row.revoked_at),
     rotatePending: row.rotate_pending,
     viaPreviousToken: row.token_hash !== hashHex,

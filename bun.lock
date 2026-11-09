@@ -143,6 +143,7 @@
       "name": "@bulletin/db",
       "dependencies": {
         "@bulletin/config": "workspace:*",
+        "@bulletin/domain": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "pg-boss": "12.38.1",
       },

@@ -1,6 +1,7 @@
 import type { SQL } from "bun";
-import { createJwks, type IdTokenClaims, verifyIdToken } from "./jwt.ts";
-import { exchangeAuthorizationCode } from "./oidc.ts";
+import { can } from "../permissions/can.ts";
+import { createJwks, type IdTokenClaims, IdTokenError, verifyIdToken } from "./jwt.ts";
+import { exchangeAuthorizationCode, OidcError } from "./oidc.ts";
 import { directSessionLookup, type SessionLookup, type SessionRecord } from "./session-store.ts";
 import {
   assignDefaultGroups,
@@ -327,11 +328,17 @@ export function createAuthRouter(
           (admin) => admin.issuer === identity.issuer && admin.sub === identity.sub,
         ),
       );
+
+      if (options.kind === "staff" && !(await can(tx, member.id, "acp.access"))) {
+        return { forbidden: true };
+      }
+
       const session = await issueSession(tx, {
         kind: options.kind,
         memberId: member.id,
         ip: clientIp(request),
         userAgent: userAgent(request),
+        authTime: identity.authTime,
       });
 
       return { session, member };
@@ -339,6 +346,10 @@ export function createAuthRouter(
 
     if (result === null) {
       return json({ code: "invalid_challenge" }, 401);
+    }
+
+    if ("forbidden" in result) {
+      return json({ code: "forbidden" }, 403);
     }
 
     const record: SessionRecord = {
@@ -350,6 +361,7 @@ export function createAuthRouter(
       lastSeenAt: new Date(result.session.lastSeenAt),
       reauthAt: new Date(result.session.reauthAt),
       lastAuthAt: new Date(result.session.lastAuthAt),
+      reauthRetryCount: 0,
       revokedAt: null,
       rotatePending: false,
       viaPreviousToken: false,
@@ -379,12 +391,22 @@ export function createAuthRouter(
       return json(guestView(options.kind));
     }
 
+    if (options.kind === "staff" && !(await can(options.sql, session.memberId, "acp.access"))) {
+      return json({ code: "forbidden" }, 403);
+    }
+
     await sessions.touch?.(session);
     return json(sessionView(options, session));
   }
 
   const tokenUrl = options.tokenUrl ?? `${options.issuer}/token`;
   const callbackUrl = `${options.origin}/api/auth/callback`;
+
+  function isOutageError(error: unknown): boolean {
+    return (
+      (error instanceof OidcError || error instanceof IdTokenError) && error.kind === "network"
+    );
+  }
 
   function redirect(location: string, cookies: readonly string[] = []): Response {
     const headers = new Headers({ location, "cache-control": "no-store" });
@@ -524,6 +546,7 @@ export function createAuthRouter(
     }
 
     let identity: IdTokenClaims;
+    let outage = false;
 
     try {
       const exchanged = await exchangeAuthorizationCode({
@@ -539,7 +562,40 @@ export function createAuthRouter(
         { issuer: options.issuer, clientId: options.clientId, nonce: stored.nonce },
         exchanged.idToken,
       );
-    } catch {
+    } catch (error) {
+      outage = isOutageError(error);
+
+      if (!outage) {
+        await revokeSession(stored.sessionId);
+        return redirect(withAuthError(returnTo), clearSessionCookies());
+      }
+    }
+
+    if (outage) {
+      const extended = await options.sql.begin(async (tx) => {
+        if (!(await consumeChallenge(tx, "user", challengeId))) {
+          return false;
+        }
+
+        const rows = (await tx`
+          UPDATE core.sessions
+          SET reauth_at = now() + interval '1 hour',
+              reauth_retry_count = reauth_retry_count + 1
+          WHERE id = ${stored.sessionId}
+            AND reauth_retry_count < 3
+          RETURNING id
+        `) as Array<{ id: string }>;
+
+        return rows.length === 1;
+      });
+
+      if (extended) {
+        sessions.invalidate?.();
+        return redirect(returnTo, [
+          serializeCookie(challengeCookie, "", { maxAge: 0, secure, httpOnly: true }),
+        ]);
+      }
+
       await revokeSession(stored.sessionId);
       return redirect(withAuthError(returnTo), clearSessionCookies());
     }
@@ -566,7 +622,8 @@ export function createAuthRouter(
 
       await tx`
         UPDATE core.sessions
-        SET reauth_at = now() + make_interval(hours => ${SESSION_LIFETIMES.user.reauthHours})
+        SET reauth_at = now() + make_interval(hours => ${SESSION_LIFETIMES.user.reauthHours}),
+            reauth_retry_count = 0
         WHERE id = ${stored.sessionId}
       `;
 

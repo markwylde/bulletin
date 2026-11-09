@@ -81,6 +81,7 @@ integrationDescribe("identity schema", () => {
           "last_seen_at",
           "reauth_at",
           "last_auth_at",
+          "reauth_retry_count",
           "revoked_at",
         ].sort(),
       );

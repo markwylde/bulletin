@@ -198,16 +198,19 @@ export async function issueSession(
     readonly memberId: string;
     readonly ip: string | null;
     readonly userAgent: string | null;
+    /** The verified ID token's `auth_time`; absent means the authentication is not fresh. */
+    readonly authTime: Date | null;
   },
 ): Promise<IssuedSession> {
   const token = createToken();
   const tokenHash = hashToken(token);
   const reauthHours = SESSION_LIFETIMES[options.kind].reauthHours;
+  const lastAuthAt = options.authTime ?? new Date(0);
   const [row] = (await tx`
-    INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+    INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at, last_auth_at)
     VALUES (
       ${options.memberId}, ${options.kind}, ${tokenHash},
-      now() + make_interval(hours => ${reauthHours})
+      now() + make_interval(hours => ${reauthHours}), ${lastAuthAt}
     )
     RETURNING id, created_at, last_seen_at, reauth_at, last_auth_at
   `) as Array<{
