@@ -22,5 +22,5 @@
 
 ## 4. Strings and seed
 
-- [ ] 4.1 Add en/es/fr strings for the shell, sections and form errors; verify completeness
-- [ ] 4.2 Seed board settings and a few admin log entries, and verify the dashboard shows data after `docker compose up --watch`
+- [x] 4.1 Add en/es/fr strings for the shell, sections and form errors; verify completeness
+- [x] 4.2 Seed board settings and a few admin log entries, and verify the dashboard shows data after `docker compose up --watch`

@@ -1,5 +1,6 @@
 import type { SeedSize } from "@bulletin/config";
 import { SQL } from "bun";
+import { adminLogSeedModule } from "./admin-log.ts";
 import { runSeeds, type SeedModule, SeedRegistry, type SeedResult } from "./framework.ts";
 import { membersSeedModule } from "./members.ts";
 
@@ -7,8 +8,13 @@ export const baseSeedModule: SeedModule = {
   name: "base",
   async run({ sql }) {
     await sql`
-      INSERT INTO core.board_settings (id, board_name, board_description, default_locale)
-      VALUES (1, 'Bulletin', '', 'en')
+      INSERT INTO core.board_settings (
+        id, board_name, board_description, default_locale, offline, offline_message
+      )
+      VALUES (
+        1, 'Bulletin', 'A friendly place to talk about everything Bulletin.',
+        'en', false, ''
+      )
       ON CONFLICT (id) DO NOTHING
     `;
   },
@@ -32,7 +38,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
   try {
     return await runSeeds({
       sql,
-      registry: new SeedRegistry([baseSeedModule, membersSeedModule]),
+      registry: new SeedRegistry([baseSeedModule, membersSeedModule, adminLogSeedModule]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",
     });

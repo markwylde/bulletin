@@ -17,7 +17,7 @@ const APPS = [
   {
     name: "user-app",
     url: Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080",
-    key: "user.placeholder.body",
+    key: "auth.login",
     catalogs: { en: userEn, es: userEs, fr: userFr },
   },
   {
@@ -51,7 +51,7 @@ integrationDescribe("member locale", () => {
     test(`renders the saved member locale on ${viewport}`, async () => {
       await withPage({ url: USER_URL, viewport }, async (view) => {
         await loginAs(view, "member-fr");
-        await waitForText(view, userFr["user.placeholder.body"]);
+        await waitForText(view, userFr["auth.logout"]);
         expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
       });
     }, 120_000);
