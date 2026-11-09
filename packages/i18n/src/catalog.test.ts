@@ -52,6 +52,7 @@ describe("catalog lookup", () => {
 
   test("returns the key when the shipped catalog has no message", () => {
     expect(t("en", "not.shipped")).toBe("not.shipped");
+    expect(t("en", "toString")).toBe("toString");
   });
 });
 

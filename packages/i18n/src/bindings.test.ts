@@ -37,6 +37,7 @@ describe("server translator", () => {
 
   test("returns the key when no message exists", () => {
     expect(createServerT("en", options)("missing.key")).toBe("missing.key");
+    expect(createServerT("en")("toString")).toBe("toString");
   });
 
   test("supports one-shot translation", () => {

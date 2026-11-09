@@ -80,12 +80,17 @@ export function formatMessage(locale: Locale, message: string, values: MessageVa
   return formatted;
 }
 
+/** Reads only an own entry, so prototype properties such as `toString` are never messages. */
+export function catalogEntry(catalog: Catalog | undefined, key: string): string | undefined {
+  return catalog !== undefined && Object.hasOwn(catalog, key) ? catalog[key] : undefined;
+}
+
 export function catalogMessage(
   locale: Locale,
   key: string,
   catalog: Catalog = shipped[locale],
 ): string | undefined {
-  return catalog[key] ?? shipped[DEFAULT_LOCALE][key];
+  return catalogEntry(catalog, key) ?? catalogEntry(shipped[DEFAULT_LOCALE], key);
 }
 
 /**

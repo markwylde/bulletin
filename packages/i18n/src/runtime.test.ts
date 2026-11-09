@@ -107,6 +107,63 @@ describe("runtime catalog completeness and fallback", () => {
     });
   });
 
+  test("keeps a nearly complete catalog below 100%", () => {
+    const base = Object.fromEntries(
+      Array.from({ length: 200 }, (_, index) => [`key.${index}`, "message"]),
+    );
+    const candidate = Object.fromEntries(Object.entries(base).slice(0, 199));
+
+    const report = catalogCompleteness(base, candidate);
+
+    expect(report.percentage).toBe(99.5);
+    expect(report.percentage).toBeLessThan(100);
+    expect(report.missingKeys).toEqual(["key.199"]);
+  });
+
+  test("ignores inherited properties in every lookup layer", () => {
+    expect(resolveRuntimeMessage({ key: "toString", locale: "en" })).toBeUndefined();
+    expect(
+      resolveRuntimeMessage({
+        key: "toString",
+        locale: "en",
+        overrides: {},
+        theme: {},
+        plugin: { id: "acme", catalogs: {} },
+        shipped: { en: {} },
+      }),
+    ).toBeUndefined();
+
+    expect(
+      resolveRuntimeMessage({
+        key: "toString",
+        locale: "en",
+        overrides: {},
+        theme: { toString: "Theme" },
+      }),
+    ).toBe("Theme");
+    expect(
+      resolveRuntimeMessage({
+        key: "toString",
+        locale: "en",
+        overrides: { toString: "Override" },
+      }),
+    ).toBe("Override");
+    expect(
+      resolveRuntimeMessage({
+        key: "constructor",
+        locale: "en",
+        shipped: { en: { constructor: "Shipped" } },
+      }),
+    ).toBe("Shipped");
+  });
+
+  test("does not count inherited properties as present", () => {
+    const report = catalogCompleteness({ toString: "Text" }, {});
+
+    expect(report.missingKeys).toEqual(["toString"]);
+    expect(report.percentage).toBe(0);
+  });
+
   test("falls back to the plugin's English key, then the shipped catalog", () => {
     const plugin = {
       id: "acme",

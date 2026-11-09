@@ -1,5 +1,5 @@
 import { IntlMessageFormat } from "intl-messageformat";
-import { CATALOGS, type Catalog, DEFAULT_LOCALE, type Locale } from "./catalog.ts";
+import { CATALOGS, type Catalog, catalogEntry, DEFAULT_LOCALE, type Locale } from "./catalog.ts";
 
 export interface CompletenessReport {
   readonly totalKeys: number;
@@ -197,15 +197,19 @@ export function validateRuntimeMessage(input: {
 
 export function catalogCompleteness(base: Catalog, candidate: Catalog): CompletenessReport {
   const keys = Object.keys(base).sort();
-  const missingKeys = keys.filter((key) => candidate[key] === undefined);
+  const missingKeys = keys.filter((key) => catalogEntry(candidate, key) === undefined);
   const totalKeys = keys.length;
   const presentKeys = totalKeys - missingKeys.length;
+  const percentage =
+    totalKeys === 0 || presentKeys === totalKeys
+      ? 100
+      : Math.min(99.99, Number(((presentKeys / totalKeys) * 100).toFixed(2)));
 
   return {
     totalKeys,
     presentKeys,
     missingKeys,
-    percentage: totalKeys === 0 ? 100 : Math.round((presentKeys / totalKeys) * 100),
+    percentage,
   };
 }
 
@@ -235,7 +239,7 @@ export function validateRuntimeCatalog(input: {
       continue;
     }
 
-    const baseMessage = base[key];
+    const baseMessage = catalogEntry(base, key);
 
     if (baseMessage === undefined) {
       issues.push({
@@ -271,15 +275,15 @@ export function resolveRuntimeMessage(input: RuntimeMessageInput): string | unde
   const shipped: Partial<Record<Locale, Catalog>> = input.shipped ?? CATALOGS;
   const plugin =
     input.plugin !== undefined && isPluginMessageKey(input.plugin.id, input.key)
-      ? (input.plugin.catalogs[input.locale]?.[input.key] ??
-        input.plugin.catalogs[DEFAULT_LOCALE]?.[input.key])
+      ? (catalogEntry(input.plugin.catalogs[input.locale], input.key) ??
+        catalogEntry(input.plugin.catalogs[DEFAULT_LOCALE], input.key))
       : undefined;
 
   return (
-    input.overrides?.[input.key] ??
-    input.theme?.[input.key] ??
+    catalogEntry(input.overrides, input.key) ??
+    catalogEntry(input.theme, input.key) ??
     plugin ??
-    shipped[input.locale]?.[input.key] ??
-    shipped[DEFAULT_LOCALE]?.[input.key]
+    catalogEntry(shipped[input.locale], input.key) ??
+    catalogEntry(shipped[DEFAULT_LOCALE], input.key)
   );
 }
