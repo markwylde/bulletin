@@ -142,10 +142,11 @@ describe("result budget wrapper", () => {
 
     expect(wrapped).toContain("WITH result_rows AS (SELECT * FROM notes ORDER BY id DESC)");
     expect(wrapped).toContain("LIMIT 1001");
-    expect(wrapped).toContain("pg_column_size(raw)");
+    expect(wrapped).toContain("octet_length(broker_json::text)");
     expect(wrapped).toContain("broker_too_large");
     expect(wrapped).toContain("broker_rows");
-    expect(wrapped).toContain("jsonb_agg(to_jsonb(broker_row)");
+    expect(wrapped).toContain("to_jsonb(raw)");
+    expect(wrapped).toContain("jsonb_agg(broker_json");
     expect(wrapped).toContain("broker_bytes > 262144");
   });
 

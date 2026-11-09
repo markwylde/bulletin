@@ -188,6 +188,22 @@ integrationDescribe("plugin database roles", () => {
           "too large",
         );
 
+        // Compressible values can have a small pg_column_size; the budget must measure the
+        // expanded JSON instead.
+        const insertCompressed = await assertAllowedSql(
+          "INSERT INTO notes (body) VALUES (repeat('a', 2097152))",
+          policy,
+        );
+        await plugin.query(
+          "INSERT INTO notes (body) VALUES (repeat('a', 2097152))",
+          [],
+          insertCompressed,
+        );
+        const compressed = await assertAllowedSql("SELECT body FROM notes", policy);
+        await expect(plugin.query("SELECT body FROM notes", [], compressed)).rejects.toThrow(
+          "too large",
+        );
+
         const recovered = await assertAllowedSql("SELECT 1 AS ok", policy);
         expect(await plugin.query("SELECT 1 AS ok", [], recovered)).toMatchObject({
           rows: [{ ok: 1 }],

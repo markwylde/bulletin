@@ -438,10 +438,11 @@ export async function assertAllowedSql(sql: string, policy: SqlPolicy): Promise<
 /**
  * Wraps a statement so the broker never receives a result beyond the byte and row budgets.
  *
- * Postgres computes the row sizes (`pg_column_size`) and the running totals, then returns one
- * small row containing either the JSON rows or `broker_too_large = true`. A single value such
- * as `repeat('x', 100 MB)` is never sent to plugin-host. DML without `RETURNING` is executed
- * directly because it has no rows.
+ * Postgres expands each row to JSON, measures that expanded text (`octet_length`), and
+ * returns one small row containing either the JSON rows or `broker_too_large = true`. A
+ * highly compressible large value is therefore measured after decompression, not by its
+ * compressed storage size. A single value such as `repeat('x', 100 MB)` is never sent to
+ * plugin-host. DML without `RETURNING` is executed directly because it has no rows.
  *
  * The JSON representation is the price of enforcing a cumulative budget in one execution;
  * `plugin-platform` can replace it with a typed cursor if large bigint precision matters.
@@ -464,18 +465,25 @@ export function buildBoundedQuery(
   return `
     WITH result_rows AS (${trimmed}),
     raw AS (SELECT * FROM result_rows LIMIT ${limit}),
-    sized AS (SELECT raw AS broker_row, pg_column_size(raw) AS broker_size FROM raw),
-    ordered AS (SELECT broker_row, broker_size, row_number() OVER () AS broker_order FROM sized),
+    json_rows AS (SELECT to_jsonb(raw) AS broker_json FROM raw),
+    measured AS (
+      SELECT broker_json, octet_length(broker_json::text) AS broker_size
+      FROM json_rows
+    ),
+    ordered AS (
+      SELECT broker_json, broker_size, row_number() OVER () AS broker_order
+      FROM measured
+    ),
     stats AS (
       SELECT count(*) AS broker_count, coalesce(sum(broker_size), 0) AS broker_bytes
-      FROM sized
+      FROM measured
     )
     SELECT
       ${tooLarge} AS broker_too_large,
       CASE
         WHEN ${tooLarge} THEN '[]'::jsonb
         ELSE coalesce(
-          (SELECT jsonb_agg(to_jsonb(broker_row) ORDER BY broker_order) FROM ordered),
+          (SELECT jsonb_agg(broker_json ORDER BY broker_order) FROM ordered),
           '[]'::jsonb
         )
       END AS broker_rows

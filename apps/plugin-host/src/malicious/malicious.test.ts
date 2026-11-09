@@ -51,6 +51,7 @@ interface CaseContext {
 
 interface LogRecord {
   readonly message?: string;
+  readonly schema?: string;
   readonly fields?: Record<string, unknown>;
 }
 
@@ -289,11 +290,50 @@ async function withCase(
   }
 }
 
+function findDemoDatabaseSuccess(schema: string): Record<string, unknown> | undefined {
+  for (const line of lines) {
+    const record = parseLine(line);
+
+    if (
+      record?.message === "plugin.log" &&
+      record.schema === schema &&
+      record.fields?.insertedId !== undefined
+    ) {
+      return record.fields;
+    }
+  }
+
+  return undefined;
+}
+
+async function waitForDemoDatabaseSuccess(
+  schema: string,
+  timeoutMs = 5_000,
+): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const result = findDemoDatabaseSuccess(schema);
+
+    if (result !== undefined) {
+      return result;
+    }
+
+    await Bun.sleep(20);
+  }
+
+  throw new Error(
+    `Timed out waiting for the benign sandbox's database operation. Last logs:
+${lines.slice(-8).join("\n")}`,
+  );
+}
+
 async function expectBenignSandbox(): Promise<void> {
   if (broker === undefined) {
     throw new Error("Malicious suite is not initialised");
   }
 
+  lines.length = 0;
   const channel = new BrokerChannel({
     socketPath: join(config.stateDir, `benign-${randomUUID()}.sock`),
     logger,
@@ -318,6 +358,12 @@ async function expectBenignSandbox(): Promise<void> {
   try {
     const status = await supervisor.start();
     expect(status.state).toBe("ready");
+
+    // The demo catches DB errors. Wait for its acknowledged insert/select/log so a broken
+    // broker cannot make a recovery test pass on handshake readiness alone.
+    const result = await waitForDemoDatabaseSuccess(database?.schema ?? "");
+    expect(result.insertedId).toBeDefined();
+    expect(result.recentRows).toEqual(expect.any(Number));
   } finally {
     await supervisor.stop().catch(() => undefined);
     await channel.close();
