@@ -40,15 +40,40 @@ The local stack runs in containers; Bun is only needed to run tests and developm
 
 ## Origins and ports
 
-Only port **8080** is published. Everything is routed by hostname through Caddy:
+Only the proxy port is published; it comes from `BULLETIN_HTTP_PORT` and defaults to **8080**.
+Everything is routed by hostname through Caddy, and every public origin, the DarkAuth issuer
+and its redirect origins are derived from that port:
 
-| URL | Serves |
+| URL (default port) | Serves |
 |---|---|
 | `http://bulletin.localhost:8080` | user app; `/api/*` → user API |
 | `http://staff.bulletin.localhost:8080` | staff app; `/api/*` → staff API |
 | `http://files.bulletin.localhost:8080` | attachments and avatars |
 | `http://plugins.bulletin.localhost:8080` | plugin iframe apps |
 | `http://auth.bulletin.localhost:8080` | DarkAuth mock |
+
+### Running a second isolated stack
+
+Two checkouts can run at the same time. Give the second stack its own compose project (so it
+gets separate containers and volumes) and its own published port:
+
+```bash
+COMPOSE_PROJECT_NAME=bulletin-agent BULLETIN_HTTP_PORT=18080 docker compose up --watch
+```
+
+Open `http://bulletin.localhost:18080`. The default stack on port 8080 keeps running unchanged.
+Tests and E2E read the same variable, so run them in the second checkout's shell with the
+variables exported:
+
+```bash
+export COMPOSE_PROJECT_NAME=bulletin-agent BULLETIN_HTTP_PORT=18080
+docker compose up -d --wait
+BULLETIN_INTEGRATION=1 bun run test:integration
+bun run test:e2e
+```
+
+Never reuse the same `COMPOSE_PROJECT_NAME` on two ports: `docker compose down` in one checkout
+would stop the other's containers.
 
 All service health endpoints are available at `/health/live` and `/health/ready` on their
 origin.
@@ -137,7 +162,7 @@ the network:
 
 ```bash
 docker compose -f compose.yaml -f /tmp/bulletin-offline.yml exec -T user-api \
-  bun -e 'const r = await fetch("http://proxy:8080/", { headers: { host: "bulletin.localhost" } }); console.log(r.status)'
+  bun -e 'const r = await fetch("http://proxy:" + (process.env.BULLETIN_HTTP_PORT ?? "8080") + "/", { headers: { host: "bulletin.localhost" } }); console.log(r.status)'
 ```
 
 ## Troubleshooting
@@ -145,7 +170,8 @@ docker compose -f compose.yaml -f /tmp/bulletin-offline.yml exec -T user-api \
 - **`permission denied` or role login failures after pulling an older checkout**: reset the
   Postgres volume once with `docker compose down -v`; local role auth is configured at database
   initialisation.
-- **Port 8080 already in use**: stop the other stack or override the published port.
+- **Port 8080 already in use**: stop the other stack, or set `BULLETIN_HTTP_PORT` (and a
+  different `COMPOSE_PROJECT_NAME`) for this one.
 - **E2E cannot find a browser**: install Chrome/Chromium or set `BUN_CHROME_PATH`.
 - **Changes not reloading**: `docker compose up --watch` must be running; infrastructure
   services (Postgres, Caddy) are intentionally not watched; darkauth-mock watches its source and config.
