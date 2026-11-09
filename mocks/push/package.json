@@ -1,0 +1,16 @@
+{
+  "name": "@bulletin/mock-push",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bulletin/mock-ui": "workspace:*"
+  }
+}

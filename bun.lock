@@ -51,6 +51,18 @@
         "@bulletin/mock-ui": "workspace:*",
       },
     },
+    "mocks/oembed": {
+      "name": "@bulletin/mock-oembed",
+      "dependencies": {
+        "@bulletin/mock-ui": "workspace:*",
+      },
+    },
+    "mocks/push": {
+      "name": "@bulletin/mock-push",
+      "dependencies": {
+        "@bulletin/mock-ui": "workspace:*",
+      },
+    },
     "mocks/s3": {
       "name": "@bulletin/mock-s3",
       "dependencies": {
@@ -59,6 +71,12 @@
     },
     "mocks/shared": {
       "name": "@bulletin/mock-ui",
+    },
+    "mocks/webhooks": {
+      "name": "@bulletin/mock-webhooks",
+      "dependencies": {
+        "@bulletin/mock-ui": "workspace:*",
+      },
     },
     "packages/cache": {
       "name": "@bulletin/cache",
@@ -212,9 +230,15 @@
 
     "@bulletin/mock-mail": ["@bulletin/mock-mail@workspace:mocks/mail"],
 
+    "@bulletin/mock-oembed": ["@bulletin/mock-oembed@workspace:mocks/oembed"],
+
+    "@bulletin/mock-push": ["@bulletin/mock-push@workspace:mocks/push"],
+
     "@bulletin/mock-s3": ["@bulletin/mock-s3@workspace:mocks/s3"],
 
     "@bulletin/mock-ui": ["@bulletin/mock-ui@workspace:mocks/shared"],
+
+    "@bulletin/mock-webhooks": ["@bulletin/mock-webhooks@workspace:mocks/webhooks"],
 
     "@bulletin/plugin-host": ["@bulletin/plugin-host@workspace:apps/plugin-host"],
 

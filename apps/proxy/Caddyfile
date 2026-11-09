@@ -22,6 +22,30 @@ http://bulletin.localhost:8080 {
 		redir * /_mocks/mail/ 308
 	}
 
+	handle_path /_mocks/push/* {
+		reverse_proxy push:4003
+	}
+
+	handle /_mocks/push {
+		redir * /_mocks/push/ 308
+	}
+
+	handle_path /_mocks/webhooks/* {
+		reverse_proxy webhooks:4004
+	}
+
+	handle /_mocks/webhooks {
+		redir * /_mocks/webhooks/ 308
+	}
+
+	handle_path /_mocks/oembed/* {
+		reverse_proxy oembed:4005
+	}
+
+	handle /_mocks/oembed {
+		redir * /_mocks/oembed/ 308
+	}
+
 	handle /api/* {
 		reverse_proxy user-api:3001
 	}

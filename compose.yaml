@@ -13,6 +13,11 @@ x-depends-on-postgres: &depends-on-postgres
   postgres:
     condition: service_healthy
 
+x-mock-build: &mock-build
+  context: .
+  dockerfile: mocks/Dockerfile
+  target: dev
+
 x-healthcheck: &healthcheck
   interval: 5s
   timeout: 5s
@@ -185,6 +190,79 @@ services:
           path: ./mocks/Dockerfile
     restart: unless-stopped
 
+  push:
+    build:
+      <<: *mock-build
+      args:
+        MOCK_NAME: push
+    environment:
+      PORT: "4003"
+    healthcheck: *bun-healthcheck
+    develop:
+      watch:
+        - action: sync
+          path: ./mocks/push/src
+          target: /app/mocks/push/src
+        - action: sync
+          path: ./mocks/shared/src
+          target: /app/mocks/shared/src
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./mocks/push/package.json
+        - action: rebuild
+          path: ./mocks/Dockerfile
+    restart: unless-stopped
+
+  webhooks:
+    build:
+      <<: *mock-build
+      args:
+        MOCK_NAME: webhooks
+    environment:
+      PORT: "4004"
+      WEBHOOK_SECRET: bulletin-dev-webhook-secret
+    healthcheck: *bun-healthcheck
+    develop:
+      watch:
+        - action: sync
+          path: ./mocks/webhooks/src
+          target: /app/mocks/webhooks/src
+        - action: sync
+          path: ./mocks/shared/src
+          target: /app/mocks/shared/src
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./mocks/webhooks/package.json
+        - action: rebuild
+          path: ./mocks/Dockerfile
+    restart: unless-stopped
+
+  oembed:
+    build:
+      <<: *mock-build
+      args:
+        MOCK_NAME: oembed
+    environment:
+      PORT: "4005"
+    healthcheck: *bun-healthcheck
+    develop:
+      watch:
+        - action: sync
+          path: ./mocks/oembed/src
+          target: /app/mocks/oembed/src
+        - action: sync
+          path: ./mocks/shared/src
+          target: /app/mocks/shared/src
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./mocks/oembed/package.json
+        - action: rebuild
+          path: ./mocks/Dockerfile
+    restart: unless-stopped
+
   proxy:
     image: caddy:2.11.9-alpine
     ports:
@@ -207,6 +285,12 @@ services:
       s3:
         condition: service_healthy
       mail:
+        condition: service_healthy
+      push:
+        condition: service_healthy
+      webhooks:
+        condition: service_healthy
+      oembed:
         condition: service_healthy
     healthcheck:
       test:
