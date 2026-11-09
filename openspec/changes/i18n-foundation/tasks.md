@@ -4,7 +4,7 @@
 
 - [x] 1.1 Implement `packages/i18n` (catalog loading, ICU formatting, plural/select, `Intl` date/number/relative helpers) with unit tests for plurals in en/es/fr
 - [x] 1.2 Implement the catalog build/merge step and the completeness/unused-key checker, wired into `bun run check`; verify it fails on a planted missing key
-- [ ] 1.3 Add the hard-coded-string lint rule and verify it flags a planted JSX literal
+- [x] 1.3 Add the hard-coded-string lint rule and verify it flags a planted JSX literal
 
 ## 2. Locale resolution
 
