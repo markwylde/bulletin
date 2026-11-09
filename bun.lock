@@ -8,6 +8,7 @@
         "@biomejs/biome": "2.6.6",
         "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
+        "@bulletin/test-utils": "workspace:*",
         "@types/bun": "1.4.4",
         "jose": "6.2.16",
         "typescript": "5.9.3",
@@ -147,6 +148,9 @@
     },
     "packages/test-utils": {
       "name": "@bulletin/test-utils",
+      "dependencies": {
+        "@bulletin/db": "workspace:*",
+      },
     },
     "packages/ui": {
       "name": "@bulletin/ui",

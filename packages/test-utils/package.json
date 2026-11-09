@@ -2,11 +2,16 @@
   "name": "@bulletin/test-utils",
   "private": true,
   "type": "module",
-  "description": "Fixtures, seed builders and Bun.WebView helpers.",
+  "description": "Fixtures, seed builders, Bun.WebView helpers and per-file test databases.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./database": "./src/database.ts",
+    "./e2e": "./src/e2e.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bulletin/db": "workspace:*"
   }
 }

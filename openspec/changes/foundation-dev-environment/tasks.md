@@ -38,9 +38,9 @@
 
 ## 6. Test harness
 
-- [ ] 6.1 Implement per-file template databases for `bun test` and verify two test files run in parallel without interference
-- [ ] 6.2 Implement `Bun.WebView` E2E helpers (Chrome backend, temp profile, viewport presets; `loginAs` is added by `identity-sessions` and `waitForHydration` by `rendering-and-caching`) and an E2E smoke test that opens both apps at all three viewports
-- [ ] 6.3 Add `compose.test.yaml` and the E2E runner script, and verify the smoke test passes against the full stack
+- [x] 6.1 Implement per-file template databases for `bun test` and verify two test files run in parallel without interference
+- [x] 6.2 Implement `Bun.WebView` E2E helpers (Chrome backend, temp profile, viewport presets; `loginAs` is added by `identity-sessions` and `waitForHydration` by `rendering-and-caching`) and an E2E smoke test that opens both apps at all three viewports
+- [x] 6.3 Add `compose.test.yaml` and the E2E runner script, and verify the smoke test passes against the full stack
 
 ## 7. i18n and seed placeholders
 

@@ -18,12 +18,15 @@
     "format": "biome check --write .",
     "test": "bun test",
     "test:watch": "bun test --watch",
-    "test:integration": "BULLETIN_INTEGRATION=1 bun test tests/integration"
+    "test:integration": "BULLETIN_INTEGRATION=1 bun test tests/integration",
+    "test:e2e": "bun scripts/run-e2e.ts",
+    "test:db": "bun test tests/harness"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
     "@bulletin/config": "workspace:*",
     "@bulletin/db": "workspace:*",
+    "@bulletin/test-utils": "workspace:*",
     "@types/bun": "1.4.4",
     "jose": "6.2.16",
     "typescript": "5.9.3"

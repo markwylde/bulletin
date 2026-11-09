@@ -1,0 +1,13 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+      target: test
+    environment:
+      TEST_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - test
