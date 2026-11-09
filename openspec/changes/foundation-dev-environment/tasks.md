@@ -9,7 +9,7 @@
 ## 2. Compose stack and proxy
 
 - [x] 2.1 Write per-app multi-stage Dockerfiles and `compose.yaml` services with `develop.watch` (sync / sync+restart / rebuild) and verify a source edit reloads without a rebuild
-- [ ] 2.2 Add Postgres (pinned) with a data volume and the Caddy proxy with the ADR 0018 hostnames; verify all origins respond through `*.bulletin.localhost:8080`
+- [x] 2.2 Add Postgres (pinned) with a data volume and the Caddy proxy with the ADR 0018 hostnames; verify all origins respond through `*.bulletin.localhost:8080`
 - [ ] 2.3 Add darkauth-mock (image, volume, `darkauth-mock.yaml` with `bulletin-user` and `bulletin-staff` clients and the seeded profiles) and verify with an integration test that the code flow for a profile returns an ID token verifiable via JWKS
 
 ## 3. Mocks

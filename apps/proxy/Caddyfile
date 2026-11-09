@@ -1,0 +1,41 @@
+{
+	admin off
+	auto_https off
+}
+
+# ADR 0018 origin topology. Every public entry point is a hostname on port 8080.
+
+http://bulletin.localhost:8080 {
+	handle /api/* {
+		reverse_proxy user-api:3001
+	}
+
+	handle {
+		reverse_proxy user-app:4321
+	}
+}
+
+http://staff.bulletin.localhost:8080 {
+	handle /api/* {
+		reverse_proxy staff-api:3002
+	}
+
+	handle {
+		reverse_proxy staff-app:5173
+	}
+}
+
+# Attachments and avatars (ADR 0019) are served by the user API for now.
+http://files.bulletin.localhost:8080 {
+	reverse_proxy user-api:3001
+}
+
+# Plugin iframe apps (ADR 0009) are served by the sandbox host.
+http://plugins.bulletin.localhost:8080 {
+	reverse_proxy plugin-host:3004
+}
+
+# DarkAuth issuer (ADR 0004); backed by darkauth-mock locally.
+http://auth.bulletin.localhost:8080 {
+	reverse_proxy darkauth-mock:3020
+}
