@@ -8,7 +8,11 @@ export interface CompletenessReport {
   readonly percentage: number;
 }
 
-export type RuntimeCatalogIssueCode = "invalid_icu" | "placeholder_mismatch" | "unknown_key";
+export type RuntimeCatalogIssueCode =
+  | "foreign_key"
+  | "invalid_icu"
+  | "placeholder_mismatch"
+  | "unknown_key";
 
 export interface RuntimeCatalogIssue {
   readonly code: RuntimeCatalogIssueCode;
@@ -24,13 +28,28 @@ export interface RuntimeCatalogValidation {
   readonly completeness: CompletenessReport;
 }
 
+export interface PluginMessages {
+  readonly id: string;
+  readonly catalogs: Partial<Record<Locale, Catalog>>;
+}
+
 export interface RuntimeMessageInput {
   readonly key: string;
   readonly locale: Locale;
   readonly overrides?: Catalog;
   readonly theme?: Catalog;
-  readonly plugin?: Partial<Record<Locale, Catalog>>;
+  readonly plugin?: PluginMessages;
   readonly shipped?: Partial<Record<Locale, Catalog>>;
+}
+
+export function pluginMessagePrefix(pluginId: string): string {
+  return `plugin.${pluginId}.`;
+}
+
+/** Plugin strings may only live under their own `plugin.<id>.` namespace. */
+export function isPluginMessageKey(pluginId: string, key: string): boolean {
+  const prefix = pluginMessagePrefix(pluginId);
+  return key.startsWith(prefix) && key.length > prefix.length;
 }
 
 const LITERAL_TYPE = 0;
@@ -163,6 +182,8 @@ export function validateRuntimeCatalog(input: {
   readonly locale: Locale;
   readonly catalog: Catalog;
   readonly base?: Catalog;
+  /** Set for plugin catalogs to enforce their own namespace. */
+  readonly pluginId?: string;
 }): RuntimeCatalogValidation {
   const base: Catalog = input.base ?? CATALOGS[DEFAULT_LOCALE];
   const issues: RuntimeCatalogIssue[] = [];
@@ -170,6 +191,15 @@ export function validateRuntimeCatalog(input: {
   for (const [key, message] of Object.entries(input.catalog).sort(([left], [right]) =>
     left.localeCompare(right),
   )) {
+    if (input.pluginId !== undefined && !isPluginMessageKey(input.pluginId, key)) {
+      issues.push({
+        code: "foreign_key",
+        key,
+        message: `"${key}" is outside the plugin.${input.pluginId} namespace`,
+      });
+      continue;
+    }
+
     const baseMessage = base[key];
 
     if (baseMessage === undefined) {
@@ -204,12 +234,16 @@ export function validateRuntimeCatalog(input: {
  */
 export function resolveRuntimeMessage(input: RuntimeMessageInput): string | undefined {
   const shipped: Partial<Record<Locale, Catalog>> = input.shipped ?? CATALOGS;
+  const plugin =
+    input.plugin !== undefined && isPluginMessageKey(input.plugin.id, input.key)
+      ? (input.plugin.catalogs[input.locale]?.[input.key] ??
+        input.plugin.catalogs[DEFAULT_LOCALE]?.[input.key])
+      : undefined;
 
   return (
     input.overrides?.[input.key] ??
     input.theme?.[input.key] ??
-    input.plugin?.[input.locale]?.[input.key] ??
-    input.plugin?.[DEFAULT_LOCALE]?.[input.key] ??
+    plugin ??
     shipped[input.locale]?.[input.key] ??
     shipped[DEFAULT_LOCALE]?.[input.key]
   );

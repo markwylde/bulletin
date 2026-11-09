@@ -1,3 +1,4 @@
+import { createBoundedCache } from "@bulletin/cache";
 import { IntlMessageFormat, type PrimitiveType } from "intl-messageformat";
 import en from "../i18n/en.json";
 import es from "../i18n/es.json";
@@ -15,7 +16,11 @@ export const CATALOGS = { en, es, fr } as const satisfies Record<Locale, Catalog
 export type MessageKey = keyof (typeof CATALOGS)["en"];
 
 const shipped: Record<Locale, Catalog> = CATALOGS;
-const compiled = new Map<string, IntlMessageFormat>();
+const COMPILED_MESSAGE_CACHE_MAX_BYTES = 512 * 1024;
+const encoder = new TextEncoder();
+const compiled = createBoundedCache<string, IntlMessageFormat>({
+  maxBytes: COMPILED_MESSAGE_CACHE_MAX_BYTES,
+});
 
 export class CatalogError extends Error {
   readonly code: "invalid_catalog" | "catalog_not_found";
@@ -40,9 +45,23 @@ function compile(locale: Locale, message: string): IntlMessageFormat {
   }
 
   const formatter = new IntlMessageFormat(message, locale);
-  compiled.set(cacheKey, formatter);
+  const estimatedBytes = 128 + encoder.encode(cacheKey).byteLength * 2;
+  compiled.set(cacheKey, formatter, estimatedBytes);
 
   return formatter;
+}
+
+/** Diagnostics for the bounded compiled-message cache. */
+export function compiledMessageCacheStats(): {
+  readonly entries: number;
+  readonly bytes: number;
+  readonly maxBytes: number;
+} {
+  return {
+    entries: compiled.size,
+    bytes: compiled.bytes,
+    maxBytes: COMPILED_MESSAGE_CACHE_MAX_BYTES,
+  };
 }
 
 /** Parses an ICU message, throwing if its syntax is invalid. */
@@ -73,7 +92,7 @@ export function catalogMessage(
  * Translates a shipped key. Missing translations fall back to English and, if the key is unknown,
  * the key itself is returned so a page never renders `undefined`.
  */
-export function t(locale: Locale, key: MessageKey, values: MessageValues = {}): string {
+export function t(locale: Locale, key: string, values: MessageValues = {}): string {
   const message = catalogMessage(locale, key);
 
   if (message === undefined) {

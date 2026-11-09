@@ -96,60 +96,124 @@ describe("runtime catalog completeness and fallback", () => {
 
   test("falls back to the plugin's English key, then the shipped catalog", () => {
     const plugin = {
-      en: BASE,
-      fr: { "forum.greeting": "Bonjour" },
+      id: "acme",
+      catalogs: {
+        en: {
+          "plugin.acme.greeting": "Hello from the plugin",
+          "plugin.acme.count": "{count, plural, one {# item} other {# items}}",
+        },
+        fr: { "plugin.acme.greeting": "Bonjour du plugin" },
+      },
     };
 
     expect(
       resolveRuntimeMessage({
-        key: "topic.reply.count",
+        key: "plugin.acme.count",
         locale: "fr",
         plugin,
         shipped: {},
       }),
-    ).toBe(BASE["topic.reply.count"]);
+    ).toBe(plugin.catalogs.en["plugin.acme.count"]);
 
     expect(
       resolveRuntimeMessage({
         key: "topic.reply.button",
         locale: "fr",
         plugin,
+        shipped: { fr: { "topic.reply.button": "Répondre" } },
       }),
     ).toBe("Répondre");
   });
 
-  test("applies the override, theme, plugin, shipped lookup order", () => {
-    const plugin = { fr: { "forum.greeting": "Plugin" } };
+  test("ignores plugin keys from core and other plugins", () => {
+    const plugin = {
+      id: "acme",
+      catalogs: {
+        fr: {
+          "plugin.acme.greeting": "Salut",
+          "plugin.other.greeting": "Autre",
+          "topic.reply.button": "Hacked",
+        },
+      },
+    };
 
     expect(
       resolveRuntimeMessage({
-        key: "forum.greeting",
+        key: "plugin.acme.greeting",
         locale: "fr",
-        overrides: { "forum.greeting": "Override" },
-        theme: { "forum.greeting": "Theme" },
+        plugin,
+      }),
+    ).toBe("Salut");
+    expect(
+      resolveRuntimeMessage({
+        key: "plugin.other.greeting",
+        locale: "fr",
+        plugin,
+      }),
+    ).toBeUndefined();
+    expect(
+      resolveRuntimeMessage({
+        key: "topic.reply.button",
+        locale: "fr",
+        plugin,
+        shipped: { fr: { "topic.reply.button": "Répondre" } },
+      }),
+    ).toBe("Répondre");
+  });
+
+  test("rejects plugin keys outside the owning namespace", () => {
+    const validation = validateRuntimeCatalog({
+      locale: "fr",
+      pluginId: "acme",
+      base: { "plugin.acme.greeting": "Hello" },
+      catalog: {
+        "plugin.acme.greeting": "Bonjour",
+        "plugin.other.greeting": "Autre",
+        "topic.reply.button": "Hacked",
+      },
+    });
+
+    expect(validation.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "foreign_key", key: "plugin.other.greeting" }),
+        expect.objectContaining({ code: "foreign_key", key: "topic.reply.button" }),
+      ]),
+    );
+  });
+
+  test("applies the override, theme, plugin, shipped lookup order", () => {
+    const key = "plugin.acme.forum.greeting";
+    const plugin = { id: "acme", catalogs: { fr: { [key]: "Plugin" } } };
+
+    expect(
+      resolveRuntimeMessage({
+        key,
+        locale: "fr",
+        overrides: { [key]: "Override" },
+        theme: { [key]: "Theme" },
         plugin,
       }),
     ).toBe("Override");
     expect(
       resolveRuntimeMessage({
-        key: "forum.greeting",
+        key,
         locale: "fr",
-        theme: { "forum.greeting": "Theme" },
+        theme: { [key]: "Theme" },
         plugin,
       }),
     ).toBe("Theme");
     expect(
       resolveRuntimeMessage({
-        key: "forum.greeting",
+        key,
         locale: "fr",
         plugin,
       }),
     ).toBe("Plugin");
     expect(
       resolveRuntimeMessage({
-        key: "forum.greeting",
+        key,
         locale: "fr",
-        plugin: {},
+        plugin: { id: "acme", catalogs: {} },
       }),
     ).toBeUndefined();
     expect(

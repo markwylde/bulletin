@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import ts from "typescript";
 import {
   assertValidMessage,
   type Catalog,
@@ -52,13 +53,14 @@ export interface CatalogCheckOptions {
 }
 
 const CATALOG_GLOBS = ["apps/*/i18n/*.json", "packages/*/i18n/*.json"] as const;
-const SOURCE_GLOB = "**/*.{ts,tsx,js,jsx,mts,cts,astro,liquid}";
+const SOURCE_GLOB = "**/*.{ts,tsx,js,jsx,mts,cts,astro,liquid,html}";
 const IGNORED_DIRECTORIES = new Set([
   ".astro",
   ".claude",
   ".git",
   "coverage",
   "dist",
+  "mocks",
   "node_modules",
 ]);
 
@@ -282,13 +284,19 @@ export function buildMergedCatalogs(sources: readonly CatalogSource[]): {
   return { merged, issues };
 }
 
+const TEST_OR_FIXTURE =
+  /(^|\/)(tests?|__tests__|fixtures?|__fixtures__)(\/|$)|\.(?:test|spec)\.[^/]+$/;
+
 async function scanSourceFiles(root: string): Promise<string[]> {
   const files: string[] = [];
 
   for await (const path of new Bun.Glob(SOURCE_GLOB).scan({ cwd: root, onlyFiles: true })) {
     const normalised = path.replaceAll("\\", "/");
 
-    if (normalised.split("/").some((part) => IGNORED_DIRECTORIES.has(part))) {
+    if (
+      normalised.split("/").some((part) => IGNORED_DIRECTORIES.has(part)) ||
+      TEST_OR_FIXTURE.test(normalised)
+    ) {
       continue;
     }
 
@@ -298,13 +306,115 @@ async function scanSourceFiles(root: string): Promise<string[]> {
   return files;
 }
 
-function referencesKey(source: string, key: string): boolean {
-  return (
-    source.includes(`"${key}"`) || source.includes(`'${key}'`) || source.includes(`\`${key}\``)
-  );
+function expressionName(expression: ts.Expression): string | undefined {
+  if (ts.isIdentifier(expression)) {
+    return expression.text;
+  }
+
+  if (ts.isPropertyAccessExpression(expression)) {
+    return expression.name.text;
+  }
+
+  return undefined;
 }
 
-/** Returns the subset of keys that do not appear in application, package or test sources. */
+function stringValue(expression: ts.Expression | undefined): string | undefined {
+  if (expression === undefined) {
+    return undefined;
+  }
+
+  return ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)
+    ? expression.text
+    : undefined;
+}
+
+function callKey(node: ts.CallExpression): string | undefined {
+  const name = expressionName(node.expression);
+
+  if (name === "serverT") {
+    return stringValue(node.arguments[1]);
+  }
+
+  if (name !== "t" && name !== "translate") {
+    return undefined;
+  }
+
+  return stringValue(node.arguments[0]) ?? stringValue(node.arguments[1]);
+}
+
+function typescriptReferences(source: string, file: string): Set<string> {
+  const scriptKind =
+    file.endsWith(".jsx") || file.endsWith(".js") ? ts.ScriptKind.JSX : ts.ScriptKind.TSX;
+  const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind);
+  const keys = new Set<string>();
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const key = callKey(node);
+
+      if (key !== undefined) {
+        keys.add(key);
+      }
+    }
+
+    if (ts.isJsxAttribute(node) && ts.isIdentifier(node.name) && node.name.text === "data-i18n") {
+      const value = node.initializer;
+
+      if (value !== undefined && ts.isStringLiteral(value)) {
+        keys.add(value.text);
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+
+  return keys;
+}
+
+function stripMarkupComments(source: string): string {
+  return source
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .split("\n")
+    .map((line) => (line.trimStart().startsWith("//") ? "" : line))
+    .join("\n");
+}
+
+function markupReferences(source: string): Set<string> {
+  const text = stripMarkupComments(source);
+  const keys = new Set<string>();
+  const patterns = [
+    /\bt\(\s*["'`]([^"'`]+)["'`]/g,
+    /\bt\(\s*[^,)]+,\s*["'`]([^"'`]+)["'`]/g,
+    /\btranslate\(\s*["'`]([^"'`]+)["'`]/g,
+    /\bserverT\(\s*[^,]+,\s*["'`]([^"'`]+)["'`]/g,
+    /{%\s*t\s+["']([^"']+)["']/g,
+    /\bdata-i18n=["']([^"']+)["']/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const key = match[1];
+
+      if (key !== undefined) {
+        keys.add(key);
+      }
+    }
+  }
+
+  return keys;
+}
+
+function translationReferences(source: string, file: string): Set<string> {
+  return /\.(ts|tsx|js|jsx|mts|cts)$/.test(file)
+    ? typescriptReferences(source, file)
+    : markupReferences(source);
+}
+
+/** Returns the subset of keys that no production source references through a translation call. */
 export async function findUnusedKeysInSources(
   root: string,
   keys: Iterable<string>,
@@ -319,10 +429,8 @@ export async function findUnusedKeysInSources(
 
     const source = await Bun.file(file).text();
 
-    for (const key of [...remaining]) {
-      if (referencesKey(source, key)) {
-        remaining.delete(key);
-      }
+    for (const key of translationReferences(source, file)) {
+      remaining.delete(key);
     }
   }
 

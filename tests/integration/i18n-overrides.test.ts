@@ -12,6 +12,23 @@ import { withTestDatabase } from "@bulletin/test-utils/database";
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
+const BASE = {
+  "topic.reply.button": "Reply",
+  "topic.reply.count": "{count, plural, one {# reply} other {# replies}}",
+} as const;
+
+const SHIPPED = {
+  en: BASE,
+  es: {
+    "topic.reply.button": "Responder",
+    "topic.reply.count": "{count, plural, one {# respuesta} other {# respuestas}}",
+  },
+  fr: {
+    "topic.reply.button": "Répondre",
+    "topic.reply.count": "{count, plural, one {# réponse} other {# réponses}}",
+  },
+} as const;
+
 integrationDescribe("string overrides", () => {
   test("applies an override and a revert restores the shipped string", async () => {
     if (adminUrl === undefined) {
@@ -19,17 +36,23 @@ integrationDescribe("string overrides", () => {
     }
 
     await withTestDatabase({ adminUrl, prefix: "i18n_overrides" }, async ({ sql }) => {
-      const layer = createStringOverrideLayer(createStringOverrideSource(sql));
+      const layer = createStringOverrideLayer(createStringOverrideSource(sql), {
+        shipped: SHIPPED,
+      });
 
       expect(await layer.translate("en", "topic.reply.button")).toBe("Reply");
       expect(await readStringOverrideVersion(sql, "en")).toBe("0");
 
-      await setStringOverride(sql, {
-        locale: "en",
-        key: "topic.reply.button",
-        value: "Respond",
-        updatedBy: 7n,
-      });
+      await setStringOverride(
+        sql,
+        {
+          locale: "en",
+          key: "topic.reply.button",
+          value: "Respond",
+          updatedBy: 7n,
+        },
+        { base: BASE },
+      );
 
       expect(await readStringOverrideVersion(sql, "en")).toBe("1");
       expect(await layer.translate("en", "topic.reply.button")).toBe("Respond");
@@ -50,11 +73,15 @@ integrationDescribe("string overrides", () => {
       let error: unknown;
 
       try {
-        await setStringOverride(sql, {
-          locale: "en",
-          key: "topic.reply.count",
-          value: "Many replies",
-        });
+        await setStringOverride(
+          sql,
+          {
+            locale: "en",
+            key: "topic.reply.count",
+            value: "Many replies",
+          },
+          { base: BASE },
+        );
       } catch (caught) {
         error = caught;
       }

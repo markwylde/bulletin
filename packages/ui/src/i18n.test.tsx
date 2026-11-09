@@ -16,7 +16,7 @@ describe("useT", () => {
   test("translates with the provider locale", () => {
     expect(
       renderToStaticMarkup(
-        <I18nProvider locale="es">
+        <I18nProvider locale="es" messages={{ "topic.reply.button": "Responder" }}>
           <Button />
         </I18nProvider>,
       ),
@@ -26,7 +26,10 @@ describe("useT", () => {
   test("formats ICU values", () => {
     expect(
       renderToStaticMarkup(
-        <I18nProvider locale="fr">
+        <I18nProvider
+          locale="fr"
+          messages={{ "topic.reply.count": "{count, plural, one {# réponse} other {# réponses}}" }}
+        >
           <Replies />
         </I18nProvider>,
       ),

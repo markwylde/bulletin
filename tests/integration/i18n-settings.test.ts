@@ -7,6 +7,11 @@ import { withTestDatabase } from "@bulletin/test-utils/database";
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
+const BOARD_MESSAGES = {
+  en: { "board.test.message": "English" },
+  es: { "board.test.message": "Español" },
+} as const;
+
 integrationDescribe("board default locale", () => {
   test("defaults to en and accepts only shipped locales", async () => {
     if (adminUrl === undefined) {
@@ -64,7 +69,9 @@ integrationDescribe("board default locale", () => {
       });
       expect(guest.locale).toBe("en");
       expect(guest.suggestion).toBe("es");
-      expect(createServerT(seeded)("topic.reply.button")).toBe("Reply");
+      expect(createServerT(seeded, { shipped: BOARD_MESSAGES })("board.test.message")).toBe(
+        "English",
+      );
 
       await sql`
         UPDATE core.board_settings SET default_locale = 'es' WHERE id = 1
@@ -74,7 +81,9 @@ integrationDescribe("board default locale", () => {
       expect(resolveRequestLocale({ audience: "guest", boardDefaultLocale: updated }).locale).toBe(
         "es",
       );
-      expect(createServerT(updated)("topic.reply.button")).toBe("Responder");
+      expect(createServerT(updated, { shipped: BOARD_MESSAGES })("board.test.message")).toBe(
+        "Español",
+      );
     });
   }, 15_000);
 

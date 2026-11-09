@@ -62,11 +62,11 @@ describe("catalog completeness", () => {
       "apps/forum/i18n/en.json": { "topic.title": "Topic" },
       "apps/forum/i18n/es.json": { "topic.title": "Tema" },
       "apps/forum/i18n/fr.json": { "topic.title": "Sujet" },
-      "apps/forum/src/page.ts": 'export const key = "topic.title";\n',
+      "apps/forum/src/page.ts": 't("topic.title");\n',
       "packages/ui/i18n/en.json": { "ui.button": "Reply" },
       "packages/ui/i18n/es.json": { "ui.button": "Responder" },
       "packages/ui/i18n/fr.json": { "ui.button": "Répondre" },
-      "packages/ui/src/button.ts": 'export const key = "ui.button";\n',
+      "packages/ui/src/button.ts": 't("ui.button");\n',
     });
 
     const result = await checkCatalogs({ root });
@@ -82,7 +82,7 @@ describe("catalog completeness", () => {
       "apps/forum/i18n/en.json": { "topic.title": "Topic", "topic.body": "Body" },
       "apps/forum/i18n/es.json": { "topic.title": "Tema" },
       "apps/forum/i18n/fr.json": { "topic.title": "Sujet" },
-      "apps/forum/src/page.ts": 'const a = "topic.title"; const b = "topic.body";\n',
+      "apps/forum/src/page.ts": 't("topic.title"); t("topic.body");\n',
     });
 
     const result = await checkCatalogs({ root });
@@ -100,7 +100,7 @@ describe("catalog completeness", () => {
   test("fails when a locale catalog file is missing", async () => {
     const root = await fixture({
       "apps/forum/i18n/en.json": { "topic.title": "Topic" },
-      "apps/forum/src/page.ts": 'export const key = "topic.title";\n',
+      "apps/forum/src/page.ts": 't("topic.title");\n',
     });
 
     const result = await checkCatalogs({ root });
@@ -113,7 +113,7 @@ describe("catalog completeness", () => {
       "apps/forum/i18n/en.json": { "topic.count": "{count, plural, one {# topic}" },
       "apps/forum/i18n/es.json": { "topic.count": "{count, plural, one {# tema}" },
       "apps/forum/i18n/fr.json": { "topic.count": "{count, plural, one {# sujet}" },
-      "apps/forum/src/page.ts": 'export const key = "topic.count";\n',
+      "apps/forum/src/page.ts": 't("topic.count");\n',
     });
 
     const result = await checkCatalogs({ root });
@@ -128,7 +128,7 @@ describe("unused and duplicate keys", () => {
       "apps/forum/i18n/en.json": { "topic.title": "Topic", "topic.unused": "Unused" },
       "apps/forum/i18n/es.json": { "topic.title": "Tema", "topic.unused": "Sin usar" },
       "apps/forum/i18n/fr.json": { "topic.title": "Sujet", "topic.unused": "Inutilisé" },
-      "apps/forum/src/page.ts": 'export const key = "topic.title";\n',
+      "apps/forum/src/page.ts": 't("topic.title");\n',
     });
 
     const result = await checkCatalogs({ root });
@@ -136,6 +136,41 @@ describe("unused and duplicate keys", () => {
     expect(
       result.issues.filter((issue) => issue.code === "unused_key").map((issue) => issue.key),
     ).toEqual(["topic.unused"]);
+  });
+
+  test("ignores test files, fixtures, comments and unrelated string literals", async () => {
+    const root = await fixture({
+      "apps/forum/i18n/en.json": {
+        "topic.commented": "Commented",
+        "topic.fixture": "Fixture",
+        "topic.string": "String",
+        "topic.testonly": "Test",
+      },
+      "apps/forum/i18n/es.json": {
+        "topic.commented": "Comentado",
+        "topic.fixture": "Fixture",
+        "topic.string": "Cadena",
+        "topic.testonly": "Prueba",
+      },
+      "apps/forum/i18n/fr.json": {
+        "topic.commented": "Commenté",
+        "topic.fixture": "Fixture",
+        "topic.string": "Chaîne",
+        "topic.testonly": "Test",
+      },
+      "apps/forum/src/page.test.ts": 't("topic.testonly");\n',
+      "apps/forum/fixtures/page.ts": 't("topic.fixture");\n',
+      "apps/forum/src/page.ts":
+        '// t("topic.commented")\n/* t("topic.commented") */\nconst note = "topic.string";\n',
+    });
+
+    const result = await checkCatalogs({ root });
+    const unused = result.issues
+      .filter((issue) => issue.code === "unused_key")
+      .map((issue) => issue.key)
+      .sort();
+
+    expect(unused).toEqual(["topic.commented", "topic.fixture", "topic.string", "topic.testonly"]);
   });
 
   test("fails when an app and a package define the same key", async () => {
@@ -146,7 +181,7 @@ describe("unused and duplicate keys", () => {
       "packages/ui/i18n/en.json": { "shared.title": "Topic" },
       "packages/ui/i18n/es.json": { "shared.title": "Tema" },
       "packages/ui/i18n/fr.json": { "shared.title": "Sujet" },
-      "apps/forum/src/page.ts": 'export const key = "shared.title";\n',
+      "apps/forum/src/page.ts": 't("shared.title");\n',
     });
 
     const result = await checkCatalogs({ root });

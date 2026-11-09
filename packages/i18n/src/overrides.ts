@@ -1,11 +1,6 @@
 import { createVersionedCache } from "@bulletin/cache";
-import {
-  type Catalog,
-  catalogMessage,
-  formatMessage,
-  type Locale,
-  type MessageValues,
-} from "./catalog.ts";
+import { type Catalog, formatMessage, type Locale, type MessageValues } from "./catalog.ts";
+import { resolveRuntimeMessage } from "./runtime.ts";
 
 export function stringOverrideTag(locale: Locale): string {
   return `i18n:${locale}`;
@@ -15,6 +10,10 @@ export function stringOverrideTag(locale: Locale): string {
 export interface StringOverrideSource {
   version(locale: Locale): Promise<string>;
   load(locale: Locale): Promise<Catalog>;
+}
+
+export interface StringOverrideLayerOptions {
+  readonly shipped?: Partial<Record<Locale, Catalog>>;
 }
 
 export interface StringOverrideLayer {
@@ -28,7 +27,10 @@ export interface StringOverrideLayer {
  * Layers admin overrides over the shipped catalog. Each lookup checks the `i18n:{locale}` tag
  * version, so a write takes effect on the next render without restarting the process.
  */
-export function createStringOverrideLayer(source: StringOverrideSource): StringOverrideLayer {
+export function createStringOverrideLayer(
+  source: StringOverrideSource,
+  options: StringOverrideLayerOptions = {},
+): StringOverrideLayer {
   const cache = createVersionedCache<Locale, Catalog>(source);
 
   async function overrides(locale: Locale): Promise<Catalog> {
@@ -37,7 +39,13 @@ export function createStringOverrideLayer(source: StringOverrideSource): StringO
 
   async function message(locale: Locale, key: string): Promise<string | undefined> {
     const catalog = await overrides(locale);
-    return catalog[key] ?? catalogMessage(locale, key);
+
+    return resolveRuntimeMessage({
+      key,
+      locale,
+      overrides: catalog,
+      ...(options.shipped === undefined ? {} : { shipped: options.shipped }),
+    });
   }
 
   return {

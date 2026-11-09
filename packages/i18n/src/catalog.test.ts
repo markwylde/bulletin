@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   CATALOGS,
   CatalogError,
+  compiledMessageCacheStats,
   formatDate,
   formatMessage,
   formatNumber,
@@ -9,10 +10,15 @@ import {
   isLocale,
   LOCALES,
   loadCatalog,
-  type MessageKey,
   parseCatalog,
   t,
 } from "./catalog.ts";
+
+const REPLY_COUNT = {
+  en: "{count, plural, =0 {No replies} one {# reply} other {# replies}}",
+  es: "{count, plural, =0 {Sin respuestas} one {# respuesta} other {# respuestas}}",
+  fr: "{count, plural, =0 {Aucune réponse} one {# réponse} other {# réponses}}",
+} as const;
 
 describe("shipped catalogs", () => {
   test("every locale has every English key", () => {
@@ -24,10 +30,10 @@ describe("shipped catalogs", () => {
   });
 
   test("loads a catalog from a JSON file", async () => {
-    const catalog = await loadCatalog(new URL("../i18n/en.json", import.meta.url));
+    const catalog = await loadCatalog(new URL("../fixtures/messages.json", import.meta.url));
 
-    expect(catalog["topic.reply.button"]).toBe("Reply");
-    expect(catalog["topic.reply.count"]).toContain("plural");
+    expect(catalog["test.greeting"]).toBe("Hello");
+    expect(catalog["test.reply.count"]).toContain("plural");
   });
 
   test("rejects malformed catalogs", () => {
@@ -44,34 +50,28 @@ describe("catalog lookup", () => {
     expect(isLocale("EN")).toBe(false);
   });
 
-  test("returns translated shipped strings", () => {
-    expect(t("es", "topic.reply.button")).toBe("Responder");
-    expect(t("fr", "topic.reply.button")).toBe("Répondre");
-  });
-
-  test("falls back to English and then the key itself", () => {
-    expect(t("es", "topic.reply.button")).toBe(CATALOGS.es["topic.reply.button"]);
-    expect(t("en", "not.shipped" as MessageKey)).toBe("not.shipped");
+  test("returns the key when the shipped catalog has no message", () => {
+    expect(t("en", "not.shipped")).toBe("not.shipped");
   });
 });
 
 describe("ICU formatting", () => {
   test("formats English plurals", () => {
-    expect(t("en", "topic.reply.count", { count: 0 })).toBe("No replies");
-    expect(t("en", "topic.reply.count", { count: 1 })).toBe("1 reply");
-    expect(t("en", "topic.reply.count", { count: 5 })).toBe("5 replies");
+    expect(formatMessage("en", REPLY_COUNT.en, { count: 0 })).toBe("No replies");
+    expect(formatMessage("en", REPLY_COUNT.en, { count: 1 })).toBe("1 reply");
+    expect(formatMessage("en", REPLY_COUNT.en, { count: 5 })).toBe("5 replies");
   });
 
   test("formats Spanish plurals", () => {
-    expect(t("es", "topic.reply.count", { count: 0 })).toBe("Sin respuestas");
-    expect(t("es", "topic.reply.count", { count: 1 })).toBe("1 respuesta");
-    expect(t("es", "topic.reply.count", { count: 5 })).toBe("5 respuestas");
+    expect(formatMessage("es", REPLY_COUNT.es, { count: 0 })).toBe("Sin respuestas");
+    expect(formatMessage("es", REPLY_COUNT.es, { count: 1 })).toBe("1 respuesta");
+    expect(formatMessage("es", REPLY_COUNT.es, { count: 5 })).toBe("5 respuestas");
   });
 
   test("formats French plurals", () => {
-    expect(t("fr", "topic.reply.count", { count: 0 })).toBe("Aucune réponse");
-    expect(t("fr", "topic.reply.count", { count: 1 })).toBe("1 réponse");
-    expect(t("fr", "topic.reply.count", { count: 5 })).toBe("5 réponses");
+    expect(formatMessage("fr", REPLY_COUNT.fr, { count: 0 })).toBe("Aucune réponse");
+    expect(formatMessage("fr", REPLY_COUNT.fr, { count: 1 })).toBe("1 réponse");
+    expect(formatMessage("fr", REPLY_COUNT.fr, { count: 5 })).toBe("5 réponses");
   });
 
   test("formats select branches", () => {
@@ -120,5 +120,15 @@ describe("ICU formatting", () => {
 
     expect(formatMessage("en", message, { count: 1 })).toBe("1 item");
     expect(formatMessage("en", message, { count: 2 })).toBe("2 items");
+  });
+
+  test("evicts compiled messages when the bounded cache fills", () => {
+    for (let index = 0; index < 200; index += 1) {
+      formatMessage("en", `${"x".repeat(4096)} {value} ${index}`, { value: index });
+    }
+
+    const stats = compiledMessageCacheStats();
+    expect(stats.entries).toBeLessThan(200);
+    expect(stats.bytes).toBeLessThanOrEqual(stats.maxBytes);
   });
 });

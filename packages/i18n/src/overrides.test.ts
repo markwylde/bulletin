@@ -33,6 +33,16 @@ class FakeSource implements StringOverrideSource {
   }
 }
 
+const SHIPPED = {
+  en: { "topic.reply.button": "Reply" },
+  es: { "topic.reply.button": "Responder" },
+  fr: { "topic.reply.button": "Répondre" },
+} as const;
+
+function createLayer(source: StringOverrideSource) {
+  return createStringOverrideLayer(source, { shipped: SHIPPED });
+}
+
 describe("string override layer", () => {
   test("uses the tag name from ADR 0006", () => {
     expect(stringOverrideTag("es")).toBe("i18n:es");
@@ -40,7 +50,7 @@ describe("string override layer", () => {
 
   test("applies an override and restores the shipped string after a revert", async () => {
     const source = new FakeSource();
-    const layer = createStringOverrideLayer(source);
+    const layer = createLayer(source);
 
     expect(await layer.translate("en", "topic.reply.button")).toBe("Reply");
 
@@ -54,7 +64,7 @@ describe("string override layer", () => {
 
   test("formats ICU values from an override", async () => {
     const source = new FakeSource();
-    const layer = createStringOverrideLayer(source);
+    const layer = createLayer(source);
 
     source.set("en", "topic.reply.count", "{count, plural, one {# answer} other {# answers}}");
 
@@ -62,7 +72,7 @@ describe("string override layer", () => {
   });
 
   test("falls back to the shipped locale and then English", async () => {
-    const layer = createStringOverrideLayer(new FakeSource());
+    const layer = createLayer(new FakeSource());
 
     expect(await layer.translate("es", "topic.reply.button")).toBe("Responder");
     expect(await layer.message("en", "missing.key")).toBeUndefined();
@@ -71,7 +81,7 @@ describe("string override layer", () => {
 
   test("invalidating forces the next lookup to reload", async () => {
     const source = new FakeSource();
-    const layer = createStringOverrideLayer(source);
+    const layer = createLayer(source);
 
     await layer.overrides("en");
     await layer.overrides("en");

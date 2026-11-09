@@ -1,0 +1,4 @@
+{
+  "test.greeting": "Hello",
+  "test.reply.count": "{count, plural, one {# reply} other {# replies}}"
+}
