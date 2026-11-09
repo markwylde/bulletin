@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { userBaseUrl } from "@bulletin/test-utils/urls";
 import userEn from "../../apps/user-app/i18n/en.json";
 
 const ENABLED = Bun.env.BULLETIN_INTEGRATION === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
-const BASE = Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080";
+const BASE = userBaseUrl();
 
 integrationDescribe("user app placeholder locale data", () => {
   test("ships every locale catalog and renders English by default", async () => {

@@ -7,6 +7,7 @@ import {
   waitForSelector,
   withPage,
 } from "@bulletin/test-utils/e2e";
+import { staffBaseUrl } from "@bulletin/test-utils/urls";
 
 // Run against the full stack in development mode:
 //   docker compose up -d
@@ -14,7 +15,7 @@ import {
 
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
-const STAFF_URL = Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080";
+const STAFF_URL = staffBaseUrl();
 
 integrationDescribe("admin log view", () => {
   test("filters the log by action at 360 px", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SEEDED_PROFILES } from "@bulletin/db/seed";
 import { loginAs, loginAsRefused, waitForText, withPage } from "@bulletin/test-utils/e2e";
+import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -21,11 +22,11 @@ const profiles = config.users ?? [];
 const APPS = [
   {
     name: "user-app",
-    url: Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080",
+    url: userBaseUrl(),
   },
   {
     name: "staff-app",
-    url: Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080",
+    url: staffBaseUrl(),
   },
 ] as const;
 

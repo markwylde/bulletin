@@ -8,6 +8,7 @@ import {
   waitForText,
   withPage,
 } from "@bulletin/test-utils/e2e";
+import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 
 // Run against the full stack in development mode:
 //   docker compose up -d
@@ -15,9 +16,10 @@ import {
 
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
-const USER_URL = Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080";
-const STAFF_URL = Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080";
+const USER_URL = userBaseUrl();
+const STAFF_URL = staffBaseUrl();
 const OFFLINE_MESSAGE = "Maintenance in progress. Please come back soon.";
+const OFFLINE_CONSOLE_ERROR = new RegExp(`503.*${new URL(USER_URL).host.replaceAll(".", "\\.")}`);
 
 async function setOffline(view: Bun.WebView, offline: boolean): Promise<void> {
   await waitForSelector(view, '[data-page="board-settings"]');
@@ -58,7 +60,7 @@ integrationDescribe("board offline mode", () => {
         {
           url: USER_URL,
           viewport: "mobile360",
-          allowConsoleErrors: [/503.*bulletin\.localhost:8080/],
+          allowConsoleErrors: [OFFLINE_CONSOLE_ERROR],
         },
         async (view) => {
           await waitForSelector(view, "[data-offline]:not([hidden])");
@@ -75,7 +77,7 @@ integrationDescribe("board offline mode", () => {
         {
           url: USER_URL,
           viewport: "mobile360",
-          allowConsoleErrors: [/503.*bulletin\.localhost:8080/],
+          allowConsoleErrors: [OFFLINE_CONSOLE_ERROR],
         },
         async (view) => {
           await waitForSelector(view, "[data-offline]:not([hidden])");

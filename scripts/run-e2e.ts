@@ -1,5 +1,4 @@
-const baseUrl = Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080";
-const staffBaseUrl = Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080";
+import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 
 const child = Bun.spawn(["bun", "test", "tests/e2e"], {
   stdout: "inherit",
@@ -7,8 +6,8 @@ const child = Bun.spawn(["bun", "test", "tests/e2e"], {
   env: {
     ...Bun.env,
     BULLETIN_E2E: "1",
-    BULLETIN_BASE_URL: baseUrl,
-    BULLETIN_STAFF_BASE_URL: staffBaseUrl,
+    BULLETIN_BASE_URL: userBaseUrl(),
+    BULLETIN_STAFF_BASE_URL: staffBaseUrl(),
   },
 });
 

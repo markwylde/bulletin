@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { userOrigin } from "@bulletin/test-utils/urls";
 
 // Run against the running compose stack:
 //   docker compose up -d
@@ -6,18 +7,19 @@ import { describe, expect, test } from "bun:test";
 
 const ENABLED = Bun.env.BULLETIN_INTEGRATION === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
+const ORIGIN = userOrigin();
 const MOCKS = ["s3", "mail", "push", "webhooks", "oembed", "marketplace"] as const;
 
 integrationDescribe("local mocks through the proxy", () => {
   for (const name of MOCKS) {
     test(`${name} answers its health endpoint`, async () => {
-      const response = await fetch(`http://bulletin.localhost:8080/_mocks/${name}/health`);
+      const response = await fetch(`${ORIGIN}/_mocks/${name}/health`);
 
       expect(response.status).toBe(200);
     });
 
     test(`${name} exposes its inspection UI`, async () => {
-      const response = await fetch(`http://bulletin.localhost:8080/_mocks/${name}/`);
+      const response = await fetch(`${ORIGIN}/_mocks/${name}/`);
 
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("text/html");
@@ -25,16 +27,16 @@ integrationDescribe("local mocks through the proxy", () => {
   }
 
   test("the CDN mock answers health and exposes its inspector", async () => {
-    const health = await fetch("http://bulletin.localhost:8080/_mocks/cdn/health");
+    const health = await fetch(`${ORIGIN}/_mocks/cdn/health`);
     expect(health.status).toBe(200);
 
-    const ui = await fetch("http://bulletin.localhost:8080/_mocks/cdn/__ui");
+    const ui = await fetch(`${ORIGIN}/_mocks/cdn/__ui`);
     expect(ui.status).toBe(200);
   });
 
   test("S3 round-trips through the proxy with a presigned upload", async () => {
     const client = new Bun.S3Client({
-      endpoint: "http://bulletin.localhost:8080/_mocks/s3",
+      endpoint: `${ORIGIN}/_mocks/s3`,
       bucket: "bulletin",
       accessKeyId: "bulletin",
       secretAccessKey: "bulletin-secret",

@@ -7,6 +7,7 @@ import {
   SeedRegistry,
 } from "@bulletin/db/seed";
 import { withTestDatabase } from "@bulletin/test-utils/database";
+import { authIssuer } from "@bulletin/test-utils/urls";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -47,7 +48,7 @@ integrationDescribe("member seed", () => {
       expect(identities).toHaveLength(SEEDED_PROFILES.length);
       for (const profile of SEEDED_PROFILES) {
         expect(identities).toContainEqual({
-          issuer: "http://auth.bulletin.localhost:8080",
+          issuer: authIssuer(),
           sub: profile.sub,
           email: profile.email,
           idp_name: profile.name,

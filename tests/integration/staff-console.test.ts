@@ -3,6 +3,7 @@ import { createAuthService, createCsrfToken, hashToken } from "@bulletin/domain/
 import { displayNameSkeleton } from "@bulletin/domain/member";
 import { ACP_PERMISSIONS, can } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { authIssuer, staffOrigin } from "@bulletin/test-utils/urls";
 import { SQL } from "bun";
 import { auditStaffLocaleChange } from "../../apps/staff-api/src/admin-log.ts";
 import {
@@ -15,8 +16,8 @@ import {
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
-const ISSUER = "http://auth.bulletin.localhost:8080";
-const STAFF_ORIGIN = "http://staff.bulletin.localhost:8080";
+const ISSUER = authIssuer();
+const STAFF_ORIGIN = staffOrigin();
 const STAFF_CLIENT = "bulletin-staff";
 const SESSION_SECRET = "test-session-secret";
 

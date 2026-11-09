@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 
 // Run against the running compose stack:
 //   docker compose up -d
@@ -10,12 +11,12 @@ const integrationDescribe = ENABLED ? describe : describe.skip;
 const APPS = [
   {
     name: "user-app",
-    url: Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080",
+    url: userBaseUrl(),
     apiPath: "/api/auth/session",
   },
   {
     name: "staff-app",
-    url: Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080",
+    url: staffBaseUrl(),
     apiPath: "/api/auth/session",
   },
 ] as const;
@@ -64,7 +65,7 @@ integrationDescribe("security headers", () => {
   }
 
   test("the user-app callback transit route carries security headers", async () => {
-    const base = Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080";
+    const base = userBaseUrl();
     const response = await fetch(`${base}/auth/callback`);
     expect(response.status).toBe(200);
     assertCommonHeaders(response.headers);

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { loginAs, waitForSelector, waitForText, withPage } from "@bulletin/test-utils/e2e";
+import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
@@ -7,13 +8,13 @@ const integrationDescribe = ENABLED ? describe : describe.skip;
 const APPS = [
   {
     name: "user-app",
-    url: Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080",
+    url: userBaseUrl(),
     profile: "member-1",
     displayName: "Regular Member One",
   },
   {
     name: "staff-app",
-    url: Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080",
+    url: staffBaseUrl(),
     profile: "admin",
     displayName: "Admin",
   },

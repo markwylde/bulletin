@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { createHash, randomBytes } from "node:crypto";
+import { authIssuer } from "@bulletin/test-utils/urls";
 import { createLocalJWKSet, jwtVerify } from "jose";
 
 // Run against the running compose stack:
@@ -7,10 +8,7 @@ import { createLocalJWKSet, jwtVerify } from "jose";
 //   bun run test:integration
 
 const ENABLED = Bun.env.BULLETIN_INTEGRATION === "1";
-const ISSUER = (Bun.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080").replace(
-  /\/$/,
-  "",
-);
+const ISSUER = authIssuer();
 const USER_CLIENT = "bulletin-user";
 const STAFF_CLIENT = "bulletin-staff";
 

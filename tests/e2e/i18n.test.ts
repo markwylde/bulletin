@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Locale } from "@bulletin/i18n";
 import { loginAs, waitForText, withPage } from "@bulletin/test-utils/e2e";
+import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 import staffEn from "../../apps/staff-app/i18n/en.json";
 import staffEs from "../../apps/staff-app/i18n/es.json";
 import staffFr from "../../apps/staff-app/i18n/fr.json";
@@ -16,13 +17,13 @@ const LOCALES: Locale[] = ["en", "es", "fr"];
 const APPS = [
   {
     name: "user-app",
-    url: Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080",
+    url: userBaseUrl(),
     key: "auth.login",
     catalogs: { en: userEn, es: userEs, fr: userFr },
   },
   {
     name: "staff-app",
-    url: Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080",
+    url: staffBaseUrl(),
     key: "staff.login.body",
     catalogs: { en: staffEn, es: staffEs, fr: staffFr },
   },
@@ -43,8 +44,8 @@ for (const app of APPS) {
   });
 }
 
-const USER_URL = Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080";
-const STAFF_URL = Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080";
+const USER_URL = userBaseUrl();
+const STAFF_URL = staffBaseUrl();
 
 integrationDescribe("member locale", () => {
   for (const viewport of ["mobile360", "desktop"] as const) {

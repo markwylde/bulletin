@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { loginAs, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
+import { userBaseUrl } from "@bulletin/test-utils/urls";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -8,7 +9,7 @@ import { loginAs, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
 
-const USER_URL = Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080";
+const USER_URL = userBaseUrl();
 
 integrationDescribe("silent re-auth", () => {
   test("redirects a top-level navigation through DarkAuth and returns logged in", async () => {

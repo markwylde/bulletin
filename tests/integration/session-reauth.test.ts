@@ -11,15 +11,16 @@ import {
 import { displayNameSkeleton, resolveMemberLocale } from "@bulletin/domain/member";
 import { can } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { authIssuer, staffOrigin, userOrigin } from "@bulletin/test-utils/urls";
 import { SQL } from "bun";
 import { exportJWK, generateKeyPair, type KeyInput, SignJWT } from "jose";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
-const ISSUER = "http://auth.bulletin.localhost:8080";
-const USER_ORIGIN = "http://bulletin.localhost:8080";
-const STAFF_ORIGIN = "http://staff.bulletin.localhost:8080";
+const ISSUER = authIssuer();
+const USER_ORIGIN = userOrigin();
+const STAFF_ORIGIN = staffOrigin();
 const USER_CLIENT = "bulletin-user";
 const STAFF_CLIENT = "bulletin-staff";
 const SESSION_SECRET = "test-session-secret";
@@ -240,7 +241,7 @@ async function createMemberWithIdentity(
   await database.sql`
     INSERT INTO pii.identities (member_id, issuer, sub, email, idp_name)
     VALUES (
-      ${memberId}, 'http://auth.bulletin.localhost:8080', ${sub},
+      ${memberId}, ${ISSUER}, ${sub},
       ${`${sub}@bulletin.test`}, ${name}
     )
     ON CONFLICT (issuer, sub) DO NOTHING
