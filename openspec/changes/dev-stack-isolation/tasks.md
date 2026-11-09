@@ -1,0 +1,7 @@
+## 1. Env-driven stack identity
+
+- [ ] 1.1 Make the published proxy port configurable via `BULLETIN_HTTP_PORT` (default 8080) in `compose.yaml` and `compose.test.yaml`; keep the in-container listen address working (Caddy site addresses must match the public `Host:port` the browser sends).
+- [ ] 1.2 Derive every public origin from that port: Caddy site blocks, `BULLETIN_AUTH_ISSUER`, `BULLETIN_BOOTSTRAP_ADMINS`, DarkAuth mock issuer and allowed redirect origins (make `darkauth-mock.yaml` values overridable by env, or template them), oEmbed mock `provider_url`, and any app/API origin allowlists (CSRF Origin check, CORS, CSP). Leave no hard-coded `:8080` in runtime code or config except as the default.
+- [ ] 1.3 Make the compose project name overridable by `COMPOSE_PROJECT_NAME` with default `bulletin` (do not hard-code a top-level `name:` that ignores the env var). Ensure no `container_name:` or fixed host volume paths cause two projects to collide.
+- [ ] 1.4 Make tests and E2E derive base URLs and the issuer from `BULLETIN_HTTP_PORT` (one shared helper), defaulting to 8080. Update `tests/compose.test.ts` to assert the env-driven port mapping and default.
+- [ ] 1.5 Document in README how to run a second isolated stack (`COMPOSE_PROJECT_NAME=bulletin-agent BULLETIN_HTTP_PORT=18080`), and verify: with those variables set, `docker compose up -d --wait`, unit/integration tests, `bun run test:e2e`, and real login all pass on 18080 while nothing is published on 8080.
