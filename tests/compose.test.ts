@@ -44,6 +44,10 @@ interface ComposeService {
   readonly ports?: readonly string[];
   readonly depends_on?: Readonly<Record<string, { readonly condition?: string }>>;
   readonly develop?: { readonly watch?: readonly ComposeWatch[] };
+  readonly cap_add?: readonly string[];
+  readonly security_opt?: readonly string[];
+  readonly cgroup?: string;
+  readonly volumes?: readonly string[];
 }
 
 interface ComposeFile {
@@ -119,6 +123,19 @@ describe("compose stack", () => {
       "darkauth-mock-data",
       "postgres-data",
     ]);
+  });
+
+  test("only plugin-host is privileged, with the sandbox capabilities it needs", () => {
+    const pluginHost = compose.services?.["plugin-host"];
+
+    expect(pluginHost?.cap_add).toEqual(["SYS_ADMIN"]);
+    expect(pluginHost?.security_opt).toEqual(["seccomp=unconfined", "label=disable"]);
+    expect(pluginHost?.cgroup).toBe("host");
+    expect(pluginHost?.volumes).toContain("/sys/fs/cgroup:/sys/fs/cgroup:rw");
+
+    for (const name of APP_SERVICES.filter((service) => service !== "plugin-host")) {
+      expect(compose.services?.[name]?.cap_add).toBeUndefined();
+    }
   });
 
   test("the proxy publishes 8080 for every ADR 0018 hostname", async () => {

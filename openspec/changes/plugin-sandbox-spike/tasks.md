@@ -2,8 +2,8 @@
 
 ## 1. Sandbox
 
-- [ ] 1.1 Add the plugin-host service to compose with the minimum capabilities, and prototype the supervisor spawning one Bun plugin under nsjail (UID mapping, empty netns, cgroup limits, seccomp, Unix socket) on Docker and rootless Podman
-- [ ] 1.2 Measure spawn time and memory overhead per sandbox on both engines, and record them
+- [x] 1.1 Add the plugin-host service to compose with the minimum capabilities, and prototype the supervisor spawning one Bun plugin under nsjail (UID mapping, empty netns, cgroup limits, seccomp, Unix socket) on Docker and rootless Podman
+- [x] 1.2 Measure spawn time and memory overhead per sandbox on both engines, and record them
 
 ## 2. Broker
 

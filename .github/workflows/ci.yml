@@ -88,6 +88,18 @@ jobs:
             docker compose up -d --wait --wait-timeout 300
           fi
 
+      - name: Measure sandbox spawn time and memory
+        run: |
+          if [ "${{ matrix.engine }}" = "podman" ]; then
+            podman compose exec -T \
+              -e PLUGIN_HOST_ENGINE=podman -e PLUGIN_HOST_MEASURE_ITERATIONS=10 \
+              plugin-host bun apps/plugin-host/src/spike/measure.ts
+          else
+            docker compose exec -T \
+              -e PLUGIN_HOST_ENGINE=docker -e PLUGIN_HOST_MEASURE_ITERATIONS=10 \
+              plugin-host bun apps/plugin-host/src/spike/measure.ts
+          fi
+
       - name: Run full-stack integration suites
         run: bun run test:integration
 

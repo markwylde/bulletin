@@ -709,6 +709,17 @@ services:
     environment:
       <<: *app-environment
       PORT: "3004"
+    # The only privileged container: nsjail needs SYS_ADMIN for namespaces, mounts and the
+    # cgroup hierarchy. It drops to the per-plugin UID and installs its own seccomp filter.
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp=unconfined
+      - label=disable
+    # cgroupns=host so nsjail can create one cgroup v2 child per sandbox.
+    cgroup: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
