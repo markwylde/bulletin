@@ -1,4 +1,4 @@
-import { isLocale } from "@bulletin/i18n";
+import { isLocale, type Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { validateDisplayName } from "../member/names.ts";
 import {
@@ -45,6 +45,14 @@ export function isCsrfExempt(method: string, pathname: string): boolean {
 export interface AuthServiceOptions extends AuthRouterOptions {
   readonly cacheTtlMs?: number;
   readonly testEndpoints?: boolean;
+  /** Staff-only audit hook, called in the same transaction as a locale preference write. */
+  readonly onStaffLocaleChange?: (sql: SQL, change: StaffLocaleChange) => Promise<void>;
+}
+
+export interface StaffLocaleChange {
+  readonly memberId: string;
+  readonly before: string | null;
+  readonly after: Locale;
 }
 
 export interface AuthRequestContext {
@@ -275,8 +283,23 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         return json({ code: "invalid_locale" }, 400);
       }
 
-      await saveMemberLocale(options.sql, session.memberId, body.locale);
-      return json({ locale: body.locale });
+      const nextLocale: Locale = body.locale;
+      const hook = options.kind === "staff" ? options.onStaffLocaleChange : undefined;
+
+      if (hook === undefined) {
+        await saveMemberLocale(options.sql, session.memberId, nextLocale);
+      } else {
+        await options.sql.begin(async (tx) => {
+          await saveMemberLocale(tx, session.memberId, nextLocale);
+          await hook(tx, {
+            memberId: session.memberId,
+            before: member.locale,
+            after: nextLocale,
+          });
+        });
+      }
+
+      return json({ locale: nextLocale });
     });
   }
 

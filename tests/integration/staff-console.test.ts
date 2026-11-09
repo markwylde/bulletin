@@ -4,6 +4,7 @@ import { displayNameSkeleton } from "@bulletin/domain/member";
 import { ACP_PERMISSIONS, can } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
+import { auditStaffLocaleChange } from "../../apps/staff-api/src/admin-log.ts";
 import {
   createStaffApi,
   STAFF_ROUTES,
@@ -113,6 +114,7 @@ async function createStaffApiFor(database: TestDatabase): Promise<{
     sessionSecret: SESSION_SECRET,
     nodeEnv: "test",
     cacheTtlMs: 0,
+    onStaffLocaleChange: auditStaffLocaleChange,
   });
   const api = createStaffApi({
     auth,
@@ -344,6 +346,32 @@ integrationDescribe("staff API permission guard", () => {
         `) as Array<{ before_scheme: string | null; after_scheme: string | null }>;
 
         expect(preference).toEqual({ before_scheme: "system", after_scheme: "dark" });
+
+        const localeResponse = await auth.handle(
+          new Request("http://api.test/api/me/locale", {
+            method: "POST",
+            headers: {
+              cookie: `bl_staff=${session.cookie}`,
+              origin: STAFF_ORIGIN,
+              "x-bulletin-csrf": createCsrfToken(session.sessionId, SESSION_SECRET),
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ locale: "fr" }),
+          }),
+        );
+        expect(localeResponse?.status).toBe(200);
+
+        const [localeEntry] = (await database.sql`
+          SELECT
+            summary->'before'->>'locale' AS before_locale,
+            summary->'after'->>'locale' AS after_locale
+          FROM core.admin_log
+          WHERE action = 'staff.locale.update'
+          ORDER BY id DESC
+          LIMIT 1
+        `) as Array<{ before_locale: string | null; after_locale: string | null }>;
+
+        expect(localeEntry).toEqual({ before_locale: null, after_locale: "fr" });
 
         const invalid = await callRoute(api, route("preferences.scheme"), session, {
           scheme: "sepia",

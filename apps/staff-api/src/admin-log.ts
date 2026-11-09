@@ -1,3 +1,4 @@
+import type { StaffLocaleChange } from "@bulletin/domain/auth";
 import type { SQL } from "bun";
 
 export interface AdminLogWrite {
@@ -53,6 +54,20 @@ export async function writeAdminLog(sql: SQL, entry: AdminLogWrite): Promise<voi
       ${entry.summary}::jsonb
     )
   `;
+}
+
+/** Staff locale preferences are staff writes, so they share the audit trail. */
+export async function auditStaffLocaleChange(sql: SQL, change: StaffLocaleChange): Promise<void> {
+  await writeAdminLog(sql, {
+    actorMemberId: change.memberId,
+    action: "staff.locale.update",
+    targetType: "staff_locale",
+    targetId: change.memberId,
+    summary: {
+      before: { locale: change.before },
+      after: { locale: change.after },
+    },
+  });
 }
 
 export async function listAdminLog(

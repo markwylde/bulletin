@@ -8,6 +8,7 @@ import {
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
+import { auditStaffLocaleChange } from "./admin-log.ts";
 import { createStaffApi } from "./api.ts";
 
 const config = loadConfig();
@@ -33,6 +34,7 @@ const auth = await createAuthService({
   nodeEnv: config.nodeEnv,
   bootstrapAdmins: config.bootstrapAdmins,
   testEndpoints: config.nodeEnv !== "production",
+  onStaffLocaleChange: auditStaffLocaleChange,
 });
 
 const checks = [

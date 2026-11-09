@@ -220,6 +220,48 @@ describe("form validation", () => {
     expect(valid.errors).toEqual({});
   });
 
+  test("treats false and zero as falsy for conditional visibility", () => {
+    const definition: FormDefinition = {
+      id: "truthy",
+      sections: [
+        {
+          id: "main",
+          titleKey: "test.section",
+          fields: [
+            { id: "enabled", type: "toggle", labelKey: "test.label" },
+            { id: "count", type: "number", labelKey: "test.label" },
+            {
+              id: "dependent",
+              type: "text",
+              labelKey: "test.label",
+              required: true,
+              visibleWhen: { field: "enabled", truthy: true },
+            },
+            {
+              id: "countDependent",
+              type: "text",
+              labelKey: "test.label",
+              required: true,
+              visibleWhen: { field: "count", truthy: true },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(validateForm(definition, { enabled: false, count: 0 })).toEqual({});
+    expect(validateForm(definition, { enabled: true, count: 1 })).toMatchObject({
+      dependent: { code: "required" },
+      countDependent: { code: "required" },
+    });
+    expect(validateForm(definition, { enabled: false, count: 1 })).toMatchObject({
+      countDependent: { code: "required" },
+    });
+    expect(validateForm(definition, { enabled: true, count: 0 })).toMatchObject({
+      dependent: { code: "required" },
+    });
+  });
+
   test("validates every visible field and skips hidden ones", () => {
     const definition: FormDefinition = {
       id: "visibility",

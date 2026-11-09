@@ -31,6 +31,31 @@ function valuesEqual(left: FormValue | undefined, right: string | number | boole
   return left === right;
 }
 
+/** Truth-value semantics for conditional visibility; `false` and `0` are falsy. */
+function isTruthy(value: FormValue | undefined): boolean {
+  if (value === undefined) {
+    return false;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value !== 0;
+  }
+
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  return isDurationValue(value) && Number.isFinite(value.amount) && value.amount !== 0;
+}
+
 /** Evaluates one declarative visibility condition; missing conditions are visible. */
 export function fieldIsVisible(field: FormField, values: FormValues): boolean {
   const condition = field.visibleWhen;
@@ -42,7 +67,8 @@ export function fieldIsVisible(field: FormField, values: FormValues): boolean {
   const value = values[condition.field];
 
   if ("truthy" in condition) {
-    return condition.truthy ? isPresent(value) : !isPresent(value);
+    const truthy = isTruthy(value);
+    return condition.truthy ? truthy : !truthy;
   }
 
   if ("equals" in condition) {

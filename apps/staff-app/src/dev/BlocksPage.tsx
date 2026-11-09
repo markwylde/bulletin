@@ -1,4 +1,5 @@
 import { useT } from "@bulletin/ui";
+import { ConfirmDialog } from "@bulletin/ui/feedback";
 import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui/forms";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useState } from "react";
@@ -47,6 +48,7 @@ export function BlocksPage() {
   const [archivedCount, setArchivedCount] = useState<number | null>(null);
   const [formValues, setFormValues] = useState<FormValues>({ count: 0 });
   const [submitCount, setSubmitCount] = useState(0);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const columns: readonly DataTableColumn<SampleRow>[] = [
     {
@@ -121,6 +123,19 @@ export function BlocksPage() {
         <p data-submit-count={submitCount}>
           {t("staff.dev.forms.submitted", { count: submitCount })}
         </p>
+      </section>
+
+      <section className="dev-dialog" data-dev-dialog>
+        <button type="button" data-open-dialog onClick={() => setDialogOpen(true)}>
+          {t("staff.dev.dialog.open")}
+        </button>
+        <ConfirmDialog
+          open={dialogOpen}
+          titleKey="staff.dev.dialog.title"
+          bodyKey="staff.dev.dialog.body"
+          onConfirm={() => setDialogOpen(false)}
+          onCancel={() => setDialogOpen(false)}
+        />
       </section>
     </div>
   );

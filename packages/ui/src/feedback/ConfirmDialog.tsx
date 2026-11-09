@@ -66,7 +66,6 @@ export function ConfirmDialog({
       data-confirm-tone={tone}
       aria-labelledby={titleId}
       aria-describedby={bodyId}
-      open
       onCancel={(event) => {
         event.preventDefault();
         if (!isBusy) {

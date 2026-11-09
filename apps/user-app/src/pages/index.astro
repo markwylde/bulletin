@@ -155,7 +155,7 @@ const boardDescription =
     </style>
   </head>
   <body>
-    <main data-online>
+    <main data-online hidden>
       <h1 data-i18n="user.placeholder.title" data-board-name>{boardName}</h1>
       <p data-i18n="user.placeholder.body" data-board-description>{boardDescription}</p>
       <div class="auth" data-auth data-auth-state="loading">
@@ -221,75 +221,17 @@ const boardDescription =
         const isMember = root.dataset.localeSource === "member";
         const requested = isMember ? root.dataset.serverLocale : (params.get("lang") ?? bp);
         const locale = ["en", "es", "fr"].includes(requested) ? requested : "en";
-        const messageFor = (key) => data[locale]?.[key] ?? data.en[key] ?? key;
-        const onlineMain = document.querySelector("[data-online]");
-        const offlineMain = document.querySelector("[data-offline]");
-        const offlineMessage = document.querySelector("[data-offline-message]");
-        const offlineLogin = document.querySelector("[data-offline-login]");
-
-        if (offlineLogin instanceof HTMLAnchorElement) {
-          offlineLogin.href = `/auth/login?return_to=${encodeURIComponent(
-            `${window.location.pathname}${window.location.search}`,
-          )}`;
-        }
-
-        const loadBoard = async () => {
-          try {
-            const response = await fetch("/api/board", {
-              credentials: "include",
-              cache: "no-store",
-              headers: { accept: "application/json" },
-            });
-
-            if (!response.ok) {
-              return;
-            }
-
-            const board = await response.json();
-
-            if (
-              !isMember &&
-              params.get("lang") === null &&
-              bp === undefined &&
-              ["en", "es", "fr"].includes(board.defaultLocale) &&
-              board.defaultLocale !== locale
-            ) {
-              applyLocale(board.defaultLocale);
-            }
-
-            if (typeof board.boardName === "string" && board.boardName.trim() !== "") {
-              document.title = board.boardName;
-              const title = document.querySelector("[data-board-name]");
-              if (title !== null) title.textContent = board.boardName;
-            }
-
-            if (
-              typeof board.boardDescription === "string" &&
-              board.boardDescription.trim() !== ""
-            ) {
-              const description = document.querySelector("[data-board-description]");
-              if (description !== null) description.textContent = board.boardDescription;
-            }
-
-            if (board.offline === true && board.canViewOffline !== true) {
-              if (onlineMain !== null) onlineMain.hidden = true;
-              if (offlineMain !== null) offlineMain.hidden = false;
-              if (offlineMessage !== null) {
-                offlineMessage.textContent =
-                  typeof board.offlineMessage === "string" && board.offlineMessage.trim() !== ""
-                    ? board.offlineMessage
-                    : messageFor("board.offline.defaultMessage");
-              }
-            }
-          } catch {
-            // The board stays usable when the state endpoint is unavailable.
-          }
-        };
 
         applyLocale(locale);
         window.__bulletinApplyLocale = applyLocale;
-        void loadBoard();
       })();
+    </script>
+    <script>
+      import { applyBoardState, fetchBoardState } from "../board-client.ts";
+
+      void fetchBoardState().then((state) => {
+        applyBoardState(document, state);
+      });
     </script>
     <script>
       import {

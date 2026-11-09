@@ -1081,3 +1081,9 @@ textarea.form-input {
     grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
   }
 }
+
+.dev-dialog {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}

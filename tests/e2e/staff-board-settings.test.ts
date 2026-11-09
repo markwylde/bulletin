@@ -104,4 +104,24 @@ integrationDescribe("board offline mode", () => {
       ).catch(() => undefined);
     }
   }, 180_000);
+
+  test("fails closed when the board state request fails", async () => {
+    await withPage(
+      {
+        url: USER_URL,
+        viewport: "mobile360",
+        allowConsoleErrors: [/api\/board/, /ERR_BLOCKED_BY_CLIENT|ERR_FAILED/],
+      },
+      async (view) => {
+        await view.cdp("Network.enable");
+        await view.cdp("Network.setBlockedURLs", { urls: ["*/api/board*"] });
+        await view.navigate(USER_URL);
+        await waitForSelector(view, "[data-offline]:not([hidden])");
+
+        expect(
+          await view.evaluate<boolean>("document.querySelector('[data-online]')?.hidden === true"),
+        ).toBe(true);
+      },
+    );
+  }, 120_000);
 });
