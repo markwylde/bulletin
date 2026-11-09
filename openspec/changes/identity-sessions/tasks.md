@@ -3,7 +3,7 @@
 ## 1. Schema and PII functions
 
 - [x] 1.1 Migrations for `core.members` (no identity columns; `locale`, `is_service`, `previous_visit_at`, `last_active_at`), `core.groups` (seeded built-ins), `core.member_groups`, `core.member_name_history`, `core.sessions` (bigint ID, unique `token_hash`, `rotate_pending`), `core.session_grants`, `core.login_challenges`; verify with integration tests
-- [ ] 1.2 Migrations for `pii.identities`, `pii.session_meta`, `pii.ip_log` and `pii.access_log` with RLS forced, plus the system-purpose definer functions `pii.resolve_identity`, `pii.record_session_meta` and `pii.record_login_ip` granted per ADR 0012; verify role-denial tests (no app role can SELECT `pii` tables, and each function is executable only by its listed roles)
+- [x] 1.2 Migrations for `pii.identities`, `pii.session_meta`, `pii.ip_log` and `pii.access_log` with RLS forced, plus the system-purpose definer functions `pii.resolve_identity`, `pii.record_session_meta` and `pii.record_login_ip` granted per ADR 0012; verify role-denial tests (no app role can SELECT `pii` tables, and each function is executable only by its listed roles)
 - [ ] 1.3 Add `pii.list_own_sessions(session_token)` (the member's own sessions with IP and browser family, audited as own-data access) for the sessions list, with role-denial tests
 
 ## 2. Login flow
