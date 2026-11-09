@@ -211,7 +211,7 @@ the same compose contract and malicious suite on Docker and on rootless Podman.
   `label=disable` is needed on SELinux hosts.
 - `cgroup: host` and a writable `/sys/fs/cgroup`. Rootful engines can write the host cgroup
   root; rootless Podman needs the systemd-delegated `user.slice` parent, discovered at
-  startup. No per-plugin container fallback is required.
+  startup. No per-plugin container fallback was needed on either tested engine.
 - nsjail maps the per-plugin UID and also maps UID 0 for its own mount/cgroup setup; the
   plugin process runs as the per-plugin UID (verified via `/proc/<pid>/status`).
 

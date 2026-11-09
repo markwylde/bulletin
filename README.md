@@ -19,6 +19,9 @@ offline: every external service is replaced by a local mock in [`mocks/`](mocks/
 
 Open `http://bulletin.localhost:8080`.
 
+For the development loop, the plugin sandbox and troubleshooting, see
+[`docs/dev.md`](docs/dev.md).
+
 ### Supported engines
 
 - **Docker** Engine with Compose v2 **≥ 2.24**.

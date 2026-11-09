@@ -18,4 +18,4 @@
 ## 4. Decision
 
 - [x] 4.1 Record the findings, required container capabilities and seccomp profile in ADR 0009 and set its status to Accepted, or write a superseding ADR; update `docs/roadmap.md` if `plugin-platform` scope changes
-- [ ] 4.2 Document in `docs/dev.md` how the sandbox runs under `docker compose up --watch` with no extra local setup (ADR 0002)
+- [x] 4.2 Document in `docs/dev.md` how the sandbox runs under `docker compose up --watch` with no extra local setup (ADR 0002)
