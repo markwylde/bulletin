@@ -180,17 +180,33 @@ function requestOnce(
             return;
           }
 
-          settled = true;
-          if (timer !== undefined) {
-            clearTimeout(timer);
-          }
+          const status = response.statusCode ?? 0;
 
-          resolve(
-            new Response(Buffer.concat(chunks), {
-              status: response.statusCode ?? 0,
+          try {
+            const bodyless = status === 204 || status === 205 || status === 304;
+            const result = new Response(bodyless ? null : Buffer.concat(chunks), {
+              status,
               headers: responseHeaders(response.headers),
-            }),
-          );
+            });
+
+            if (settled) {
+              return;
+            }
+
+            settled = true;
+            if (timer !== undefined) {
+              clearTimeout(timer);
+            }
+            resolve(result);
+          } catch (error) {
+            settled = true;
+            if (timer !== undefined) {
+              clearTimeout(timer);
+            }
+            reject(
+              new SafeFetchError("network", error instanceof Error ? error.message : String(error)),
+            );
+          }
         });
 
         response.on("error", (error) => {
@@ -340,9 +356,32 @@ export function createSafeFetch(config: SafeFetchConfig = {}): SafeFetch {
 
       const next = new URL(location, url);
       const dropBody = response.status === 303;
+      const nextHeaders = new Headers(init.headers);
+
+      if (next.origin !== url.origin) {
+        for (const name of [
+          "authorization",
+          "cookie",
+          "proxy-authorization",
+          "x-api-key",
+          "x-auth-token",
+        ]) {
+          nextHeaders.delete(name);
+        }
+
+        for (const name of [...nextHeaders.keys()]) {
+          if (name.startsWith("x-bulletin-")) {
+            nextHeaders.delete(name);
+          }
+        }
+      }
+
       return execute(
         next,
-        dropBody ? { ...init, method: "GET", body: null } : init,
+        {
+          ...(dropBody ? { ...init, method: "GET", body: null } : init),
+          headers: nextHeaders,
+        },
         redirectsLeft - 1,
       );
     }

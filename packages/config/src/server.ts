@@ -1,7 +1,11 @@
+import { randomUUID } from "node:crypto";
 import type { SQL } from "bun";
+import { SQL as BunSQL } from "bun";
 import {
   assertConnectionBudget,
   type ConnectionBudgetResult,
+  type ConnectionShare,
+  connectionPoolSize,
   type ServiceName,
 } from "./connections.ts";
 
@@ -15,6 +19,7 @@ export interface ConnectionBudgetConfig {
   readonly service: ServiceName;
   readonly reserve?: number;
   readonly replicas?: Partial<Record<ServiceName, number>>;
+  readonly connections?: Partial<Record<ServiceName, ConnectionShare>>;
   /** Test/ops override; otherwise read `max_connections` from Postgres. */
   readonly maxConnections?: number;
 }
@@ -47,6 +52,67 @@ export function createDatabaseCheck(sql: SQL): HealthCheck {
   };
 }
 
+export interface ListenerCheck extends HealthCheck {
+  close(): Promise<void>;
+}
+
+/**
+ * Verifies the dedicated LISTEN connection by sending a token through NOTIFY and waiting
+ * for the listener callback. Failures and reconnects make readiness fail until a notification
+ * arrives again.
+ */
+export async function createListenerCheck(
+  sql: SQL,
+  channel = "bulletin_health",
+): Promise<ListenerCheck> {
+  let pending: ((ok: boolean) => void) | undefined;
+  let expected: string | undefined;
+  let closed = false;
+
+  const subscription = await sql.listen(channel, (payload) => {
+    if (pending !== undefined && payload === expected) {
+      pending(true);
+    }
+  });
+
+  return {
+    name: "listener",
+    check() {
+      if (closed) {
+        return Promise.resolve(false);
+      }
+
+      return new Promise<boolean>((resolve) => {
+        const token = randomUUID();
+        expected = token;
+
+        const timer = setTimeout(() => {
+          if (pending !== undefined) {
+            pending(false);
+          }
+        }, 1_000);
+
+        pending = (ok) => {
+          clearTimeout(timer);
+          pending = undefined;
+          resolve(ok);
+        };
+
+        void sql.notify(channel, token).catch(() => {
+          if (pending !== undefined) {
+            pending(false);
+          }
+        });
+      });
+    },
+    async close() {
+      closed = true;
+      pending?.(false);
+      await subscription.unlisten();
+    },
+  };
+}
+
 export async function readMaxConnections(sql: SQL): Promise<number> {
   const rows = (await sql`SHOW max_connections`) as Array<{ max_connections: string }>;
   const value = Number(rows[0]?.max_connections ?? 0);
@@ -65,7 +131,17 @@ async function checkBudget(config: ConnectionBudgetConfig): Promise<ConnectionBu
     maxConnections,
     ...(config.reserve === undefined ? {} : { reserve: config.reserve }),
     ...(config.replicas === undefined ? {} : { replicas: config.replicas }),
+    ...(config.connections === undefined ? {} : { connections: config.connections }),
   });
+}
+
+/** Creates the service's SQL pool with the same pool limit used by the budget. */
+export function createServiceSql(
+  service: ServiceName,
+  databaseUrl: string,
+  connections?: Partial<Record<ServiceName, ConnectionShare>>,
+): SQL {
+  return new BunSQL(databaseUrl, { max: connectionPoolSize(service, connections) });
 }
 
 /**
@@ -154,6 +230,9 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       draining = true;
       server.stop(false);
 
+      const workerShutdown = options.onShutdown?.() ?? Promise.resolve();
+      const workerDone = workerShutdown.catch(() => undefined);
+
       await new Promise<void>((resolve) => {
         let settled = false;
         const finish = (): void => {
@@ -166,11 +245,10 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
         };
         const timer = setTimeout(finish, options.drainTimeoutMs ?? DEFAULT_DRAIN_TIMEOUT_MS);
 
-        void waitForIdle().then(finish);
+        void Promise.all([waitForIdle(), workerDone]).then(finish);
       });
 
       server.stop(true);
-      await options.onShutdown?.();
     })();
 
     return shutdownPromise;

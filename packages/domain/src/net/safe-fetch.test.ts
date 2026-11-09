@@ -196,6 +196,69 @@ describe("safeFetch", () => {
     });
   });
 
+  test("does not construct bodies for 204, 205 or 304", async () => {
+    for (const status of [204, 205, 304]) {
+      const server = serve(() => new Response(null, { status }));
+      const fetch = localFetch();
+
+      const response = await fetch(server.base);
+      expect(response.status).toBe(status);
+      expect(await response.text()).toBe("");
+    }
+  });
+
+  test("strips credentials on cross-origin redirects", async () => {
+    const destination = serve((request) =>
+      Response.json({
+        authorization: request.headers.get("authorization"),
+        cookie: request.headers.get("cookie"),
+        apiKey: request.headers.get("x-api-key"),
+      }),
+    );
+    const redirector = serve(
+      () =>
+        new Response(null, {
+          status: 302,
+          headers: { location: `${destination.base}/target` },
+        }),
+    );
+    const fetch = localFetch({ maxRedirects: 1 });
+
+    const response = await fetch(redirector.base, {
+      headers: {
+        authorization: "Bearer secret",
+        cookie: "session=secret",
+        "x-api-key": "key",
+      },
+    });
+
+    expect(await response.json()).toEqual({
+      authorization: null,
+      cookie: null,
+      apiKey: null,
+    });
+  });
+
+  test("keeps credentials on same-origin redirects", async () => {
+    let port = 0;
+    const server = serve((request) =>
+      new URL(request.url).pathname === "/final"
+        ? Response.json({ authorization: request.headers.get("authorization") })
+        : new Response(null, {
+            status: 302,
+            headers: { location: `http://127.0.0.1:${port}/final` },
+          }),
+    );
+    port = server.port;
+    const fetch = localFetch({ maxRedirects: 1 });
+
+    const response = await fetch(`${server.base}/start`, {
+      headers: { authorization: "Bearer secret" },
+    });
+
+    expect(await response.json()).toEqual({ authorization: "Bearer secret" });
+  });
+
   test("blocks a host whose DNS answer includes a private address", async () => {
     const fetch = createSafeFetch({
       resolve: async () => [

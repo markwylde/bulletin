@@ -79,3 +79,52 @@ export function isStaleEvent(
 ): boolean {
   return event.aggregateVersion <= lastSeenVersion;
 }
+
+interface StoredEventRow {
+  readonly id: bigint | string;
+  readonly type: EventType;
+  readonly aggregate_type: string;
+  readonly aggregate_id: bigint | string;
+  readonly aggregate_version: bigint | string;
+  readonly payload_ids: unknown;
+  readonly created_at: Date | string;
+  readonly published_at: Date | string | null;
+}
+
+function parseIds(value: unknown): Record<string, string> {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }
+
+  return typeof value === "object" && value !== null ? (value as Record<string, string>) : {};
+}
+
+export async function loadEvent(sql: SQL, id: bigint): Promise<StoredEvent | null> {
+  const rows = (await sql`
+    SELECT id, type, aggregate_type, aggregate_id, aggregate_version, payload_ids,
+           created_at, published_at
+    FROM core.events
+    WHERE id = ${id}
+  `) as StoredEventRow[];
+
+  const row = rows[0];
+
+  if (row === undefined) {
+    return null;
+  }
+
+  return {
+    id: toBigInt(row.id),
+    type: row.type,
+    aggregateType: row.aggregate_type,
+    aggregateId: toBigInt(row.aggregate_id),
+    aggregateVersion: toBigInt(row.aggregate_version),
+    payloadIds: parseIds(row.payload_ids),
+    createdAt: new Date(row.created_at),
+    publishedAt: row.published_at === null ? null : new Date(row.published_at),
+  };
+}

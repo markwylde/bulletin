@@ -1,17 +1,23 @@
-import { parseReplicas } from "@bulletin/config";
-import { createDatabaseCheck, startService } from "@bulletin/config/server";
+import { loadConfig, parseReplicas } from "@bulletin/config";
+import {
+  createDatabaseCheck,
+  createListenerCheck,
+  createServiceSql,
+  startService,
+} from "@bulletin/config/server";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
-import { runBaseSeedFromEnv } from "@bulletin/db/seed";
-import { SQL } from "bun";
+import { runBaseSeed } from "@bulletin/db/seed";
 
-const port = Number(Bun.env.PORT ?? 3001);
-const databaseUrl = Bun.env.DATABASE_URL ?? "postgres://user_api@postgres:5432/bulletin";
+const config = loadConfig();
+const port = config.port;
+const databaseUrl = config.databaseUrl;
 const migrationUrl = Bun.env.MIGRATION_DATABASE_URL ?? databaseUrl;
 
 await runMigrations({ databaseUrl: migrationUrl });
-await runBaseSeedFromEnv(migrationUrl);
+await runBaseSeed({ databaseUrl: migrationUrl, seed: config.seed, size: config.seedSize });
 
-const sql = new SQL(databaseUrl);
+const sql = createServiceSql("user-api", databaseUrl);
+const listener = await createListenerCheck(sql);
 
 await startService({
   service: "user-api",
@@ -19,12 +25,20 @@ await startService({
   fetch() {
     return Response.json({ service: "user-api", status: "ok" });
   },
-  checks: [createDatabaseCheck(sql), { name: "migrations", check: () => migrationsCurrent(sql) }],
+  checks: [
+    createDatabaseCheck(sql),
+    { name: "migrations", check: () => migrationsCurrent(sql) },
+    listener,
+  ],
   budget: {
     sql,
     service: "user-api",
     replicas: parseReplicas(Bun.env.BULLETIN_REPLICAS),
   },
+  onShutdown: () => listener.close(),
+}).catch(async (error: unknown) => {
+  await listener.close();
+  throw error;
 });
 
 console.log(`user-api listening on http://localhost:${port}`);

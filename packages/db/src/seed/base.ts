@@ -18,18 +18,33 @@ function seedSize(): SeedSize {
   return value === "small" || value === "large" ? value : "default";
 }
 
+export interface BaseSeedOptions {
+  readonly databaseUrl: string;
+  readonly seed?: number;
+  readonly size?: SeedSize;
+}
+
 /** Runs the foundation's base seed modules against a database after migrations. */
-export async function runBaseSeedFromEnv(databaseUrl: string): Promise<SeedResult> {
-  const sql = new SQL(databaseUrl);
+export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult> {
+  const sql = new SQL(options.databaseUrl);
 
   try {
     return await runSeeds({
       sql,
       registry: new SeedRegistry([baseSeedModule]),
-      seed: Number(Bun.env.SEED ?? 42),
-      size: seedSize(),
+      seed: options.seed ?? 42,
+      size: options.size ?? "default",
     });
   } finally {
     await sql.close();
   }
+}
+
+/** Runs the foundation's base seed modules against a database after migrations. */
+export async function runBaseSeedFromEnv(databaseUrl: string): Promise<SeedResult> {
+  return runBaseSeed({
+    databaseUrl,
+    seed: Number(Bun.env.SEED ?? 42),
+    size: seedSize(),
+  });
 }

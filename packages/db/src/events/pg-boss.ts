@@ -7,6 +7,7 @@ export interface PgBossQueueOptions {
   readonly queueName?: string;
   readonly supervise?: boolean;
   readonly schedule?: boolean;
+  readonly max?: number;
 }
 
 export interface PgBossQueue {
@@ -20,6 +21,7 @@ export async function createPgBossQueue(options: PgBossQueueOptions): Promise<Pg
   const boss = new PgBoss({
     connectionString: options.connectionString,
     schema: options.schema ?? "pgboss",
+    ...(options.max === undefined ? {} : { max: options.max }),
     // The schema is created by migration 0002 and owned by the workers role.
     createSchema: false,
     supervise: options.supervise ?? true,

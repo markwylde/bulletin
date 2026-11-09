@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { ConnectionBudgetError } from "./connections.ts";
-import { type RunningService, startService } from "./server.ts";
+import { createServiceSql, type RunningService, startService } from "./server.ts";
 
 const running: RunningService[] = [];
 
@@ -112,6 +112,30 @@ describe("shared service lifecycle", () => {
     await service.shutdown();
     expect(Date.now() - started).toBeLessThan(500);
     await pending;
+  });
+
+  test("applies one deadline to the worker shutdown callback", async () => {
+    const { service } = await start({
+      service: "test",
+      port: 0,
+      fetch: () => new Response("ok"),
+      drainTimeoutMs: 20,
+      onShutdown: () => new Promise<void>(() => undefined),
+    });
+
+    const started = Date.now();
+    await service.shutdown();
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+
+  test("creates SQL pools with the budgeted pool size", async () => {
+    const sql = createServiceSql("staff-api", "postgres://bulletin@127.0.0.1:1/postgres");
+
+    try {
+      expect(sql.options.max).toBe(5);
+    } finally {
+      await sql.close();
+    }
   });
 
   test("refuses to start an over-budget service", async () => {

@@ -89,9 +89,7 @@ class RecordingQueue implements JobQueue {
       throw new Error("queue unavailable");
     }
 
-    if (!this.jobs.some((job) => job.singletonKey === options.singletonKey)) {
-      this.jobs.push({ queue, payload: { ...payload }, singletonKey: options.singletonKey });
-    }
+    this.jobs.push({ queue, payload: { ...payload }, singletonKey: options.singletonKey });
 
     if (this.failAfterRecord) {
       throw new Error("queue crashed after recording");
@@ -392,10 +390,73 @@ integrationDescribe("database lifecycle", () => {
       expect(
         queue.jobs
           .filter((job) => job.payload.eventId === "2")
-          .map((job) => job.payload.subscriber),
-      ).toEqual(["core", "webhook"]);
+          .map((job) => job.payload.subscriber)
+          .sort(),
+      ).toEqual(["core", "core", "webhook", "webhook"]);
+
+      const [{ eventTwoPublished }] = (await sql`
+        SELECT count(*)::int AS "eventTwoPublished"
+        FROM core.events
+        WHERE aggregate_version = 2 AND published_at IS NOT NULL
+      `) as Array<{ eventTwoPublished: number }>;
+      expect(eventTwoPublished).toBe(1);
 
       await sql.close();
+    });
+  });
+
+  test("durable subscriber progress survives a completed pg-boss job", async () => {
+    await withDatabase(async (databaseUrl) => {
+      await runMigrations({ databaseUrl });
+      const sql = new SQL(databaseUrl);
+      const bossUrl = new URL(databaseUrl);
+      bossUrl.username = "workers";
+      bossUrl.password = "";
+
+      const boss = await createPgBossQueue({
+        connectionString: bossUrl.toString(),
+        schema: "pgboss",
+        supervise: false,
+        schedule: false,
+      });
+
+      let failWebhook = true;
+      const queue: JobQueue = {
+        async send(name, payload, sendOptions) {
+          if (failWebhook && payload.subscriber === "webhook") {
+            throw new Error("webhook queue unavailable");
+          }
+
+          await boss.queue.send(name, payload, sendOptions);
+        },
+      };
+      const relay = createRelay({ sql, subscribers, queue });
+
+      try {
+        await sql.begin(async (tx) => {
+          await emit(tx, postCreated());
+        });
+
+        expect(await relay.runOnce()).toEqual({ claimed: 1, published: 0, failed: 1 });
+
+        // Simulate the successful core job completing and disappearing before the retry.
+        await boss.boss.deleteQueuedJobs("domain-events");
+        failWebhook = false;
+        expect(await relay.runOnce()).toEqual({ claimed: 1, published: 1, failed: 0 });
+
+        const counts = (await sql`
+          SELECT data->>'subscriber' AS subscriber, count(*)::int AS count
+          FROM pgboss.job
+          WHERE name = 'domain-events'
+          GROUP BY 1
+          ORDER BY 1
+        `) as Array<{ subscriber: string; count: number }>;
+
+        expect(counts).toEqual([{ subscriber: "webhook", count: 1 }]);
+      } finally {
+        await boss.stop();
+        await sql.close();
+      }
     });
   });
 

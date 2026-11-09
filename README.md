@@ -89,6 +89,7 @@ Use `docker compose down` to stop the stack while keeping data.
 ```bash
 bun install
 bun run check                      # typecheck, Biome lint, unit tests
+BULLETIN_INTEGRATION=1 bun run test:integration  # full-stack mock/origin/DarkAuth suites
 bun run test:e2e                   # Bun.WebView smoke + locale tests; stack must be running
 ```
 

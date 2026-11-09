@@ -1,14 +1,15 @@
+import { loadConfig } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
 
-const port = Number(Bun.env.PORT ?? 3004);
+const config = loadConfig();
 
 await startService({
   service: "plugin-host",
-  port,
+  port: config.port,
   fetch() {
     return Response.json({ service: "plugin-host", status: "ok" });
   },
   checks: [],
 });
 
-console.log(`plugin-host listening on http://localhost:${port}`);
+console.log(`plugin-host listening on http://localhost:${config.port}`);

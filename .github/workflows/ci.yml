@@ -69,12 +69,16 @@ jobs:
           echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
             | sudo tee -a /etc/hosts
 
-      - name: Locate Chrome
+      - name: Install pinned Chrome for E2E
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 131.0.6778.85
+
+      - name: Point Bun.WebView at the pinned Chrome
         run: |
-          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
-          if [ -n "$CHROME" ]; then
-            echo "BUN_CHROME_PATH=$CHROME" >> "$GITHUB_ENV"
-          fi
+          echo "BUN_CHROME_PATH=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+          "${{ steps.setup-chrome.outputs.chrome-path }}" --version
 
       - name: Start the full stack
         run: |
@@ -83,6 +87,9 @@ jobs:
           else
             docker compose up -d --wait --wait-timeout 300
           fi
+
+      - name: Run full-stack integration suites
+        run: bun run test:integration
 
       - name: Run E2E smoke and locale tests
         run: bun run test:e2e

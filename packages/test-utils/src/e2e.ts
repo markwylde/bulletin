@@ -30,31 +30,49 @@ export async function withPage<T>(
   options: PageOptions,
   run: (view: Bun.WebView) => Promise<T>,
 ): Promise<T> {
-  Bun.WebView.closeAll();
-
   const viewport = resolveViewport(options.viewport);
   const profileDirectory =
     options.profileDirectory ?? (await mkdtemp(join(tmpdir(), "bulletin-webview-")));
   const ownsProfile = options.profileDirectory === undefined;
 
-  const view = new Bun.WebView({
-    backend: { type: "chrome", url: false },
-    width: viewport.width,
-    height: viewport.height,
-    dataStore: { directory: profileDirectory },
-  });
+  let view: Bun.WebView | undefined;
+  let lastError: unknown;
 
   try {
-    await view.navigate(options.url);
-    await view.cdp("Emulation.setDeviceMetricsOverride", {
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: 1,
-      mobile: viewport.width < 500,
-    });
+    for (let attempt = 0; attempt < 3 && view === undefined; attempt += 1) {
+      Bun.WebView.closeAll();
+      await Bun.sleep(25);
+
+      try {
+        const candidate = new Bun.WebView({
+          backend: { type: "chrome", url: false },
+          width: viewport.width,
+          height: viewport.height,
+          dataStore: { directory: profileDirectory },
+        });
+
+        await candidate.navigate(options.url);
+        await candidate.cdp("Emulation.setDeviceMetricsOverride", {
+          width: viewport.width,
+          height: viewport.height,
+          deviceScaleFactor: 1,
+          mobile: viewport.width < 500,
+        });
+        view = candidate;
+      } catch (error) {
+        lastError = error;
+        Bun.WebView.closeAll();
+        await Bun.sleep(100);
+      }
+    }
+
+    if (view === undefined) {
+      throw lastError instanceof Error ? lastError : new Error("Could not start Chrome");
+    }
+
     return await run(view);
   } finally {
-    view.close();
+    view?.close();
     Bun.WebView.closeAll();
 
     if (ownsProfile) {

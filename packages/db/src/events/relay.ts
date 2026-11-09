@@ -105,12 +105,36 @@ export function createRelay(options: RelayOptions): { runOnce(): Promise<RelayRe
             ON CONFLICT DO NOTHING
           `;
 
+          const deliveries = (await tx`
+            SELECT enqueued_at
+            FROM core.event_deliveries
+            WHERE event_id = ${event.id} AND subscriber = ${subscriber.name}
+          `) as Array<{ enqueued_at: Date | string | null }>;
+
+          const delivery = deliveries[0];
+
+          if (delivery === undefined) {
+            eventFailed = true;
+            failed += 1;
+            continue;
+          }
+
+          if (delivery.enqueued_at !== null) {
+            continue;
+          }
+
           try {
             await options.queue.send(
               queueName,
               { eventId: event.id.toString(), subscriber: subscriber.name },
               { singletonKey: `${event.id}:${subscriber.name}` },
             );
+
+            await tx`
+              UPDATE core.event_deliveries
+              SET enqueued_at = now()
+              WHERE event_id = ${event.id} AND subscriber = ${subscriber.name}
+            `;
 
             await tx`
               INSERT INTO core.job_cursors (subscriber, last_event_id)

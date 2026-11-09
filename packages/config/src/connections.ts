@@ -79,6 +79,23 @@ function replicaCount(value: number | undefined): number {
   return Math.max(1, Math.floor(value));
 }
 
+export function resolveConnectionShare(
+  service: ServiceName,
+  connections?: Partial<Record<ServiceName, ConnectionShare>>,
+): ConnectionShare {
+  return {
+    ...DEFAULT_CONNECTIONS[service],
+    ...(connections?.[service] ?? {}),
+  };
+}
+
+export function connectionPoolSize(
+  service: ServiceName,
+  connections?: Partial<Record<ServiceName, ConnectionShare>>,
+): number {
+  return resolveConnectionShare(service, connections).pool;
+}
+
 /** Pure connection-budget calculation across every declared service replica. */
 export function checkConnectionBudget(options: ConnectionBudgetOptions): ConnectionBudgetResult {
   const reserve = options.reserve ?? 10;
@@ -86,10 +103,7 @@ export function checkConnectionBudget(options: ConnectionBudgetOptions): Connect
   const shares: ConnectionBudgetShare[] = [];
 
   for (const service of SERVICE_NAMES) {
-    const connection = {
-      ...DEFAULT_CONNECTIONS[service],
-      ...(options.connections?.[service] ?? {}),
-    };
+    const connection = resolveConnectionShare(service, options.connections);
     const replicas = replicaCount(options.replicas?.[service] ?? DEFAULT_REPLICAS[service]);
     const perReplica = connection.pool + connection.listener + connection.queue;
 
