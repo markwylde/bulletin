@@ -12,5 +12,22 @@
   "ui.table.selected": "{count, plural, one {# selected} other {# selected}}",
   "ui.table.sort": "Sort by",
   "ui.table.sortBy": "Sort by {column}",
-  "ui.table.sortNone": "No sorting"
+  "ui.table.sortNone": "No sorting",
+  "ui.form.choose": "Choose…",
+  "ui.form.error.invalid": "Enter a valid value.",
+  "ui.form.error.max": "Must be at most {max}.",
+  "ui.form.error.maxItems": "Select at most {maxItems}.",
+  "ui.form.error.maxLength": "Must be at most {maxLength} characters.",
+  "ui.form.error.min": "Must be at least {min}.",
+  "ui.form.error.minItems": "Select at least {minItems}.",
+  "ui.form.error.minLength": "Must be at least {minLength} characters.",
+  "ui.form.error.option": "Choose one of the listed options.",
+  "ui.form.error.required": "This field is required.",
+  "ui.form.saving": "Saving…",
+  "ui.form.submit": "Save",
+  "ui.form.unit": "Unit",
+  "ui.form.unit.days": "Days",
+  "ui.form.unit.hours": "Hours",
+  "ui.form.unit.minutes": "Minutes",
+  "ui.form.unit.seconds": "Seconds"
 }

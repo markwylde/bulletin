@@ -12,5 +12,22 @@
   "ui.table.selected": "{count, plural, one {# sélectionnée} other {# sélectionnées}}",
   "ui.table.sort": "Trier par",
   "ui.table.sortBy": "Trier par {column}",
-  "ui.table.sortNone": "Aucun tri"
+  "ui.table.sortNone": "Aucun tri",
+  "ui.form.choose": "Choisir…",
+  "ui.form.error.invalid": "Saisissez une valeur valide.",
+  "ui.form.error.max": "Doit être au plus {max}.",
+  "ui.form.error.maxItems": "Sélectionnez au plus {maxItems}.",
+  "ui.form.error.maxLength": "Doit contenir au plus {maxLength} caractères.",
+  "ui.form.error.min": "Doit être au moins {min}.",
+  "ui.form.error.minItems": "Sélectionnez au moins {minItems}.",
+  "ui.form.error.minLength": "Doit contenir au moins {minLength} caractères.",
+  "ui.form.error.option": "Choisissez l'une des options proposées.",
+  "ui.form.error.required": "Ce champ est obligatoire.",
+  "ui.form.saving": "Enregistrement…",
+  "ui.form.submit": "Enregistrer",
+  "ui.form.unit": "Unité",
+  "ui.form.unit.days": "Jours",
+  "ui.form.unit.hours": "Heures",
+  "ui.form.unit.minutes": "Minutes",
+  "ui.form.unit.seconds": "Secondes"
 }

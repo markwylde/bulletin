@@ -10,7 +10,7 @@
 ## 2. Building blocks
 
 - [x] 2.1 Implement the data table (sorting, pagination, bulk actions, mobile card view) with component tests and an E2E check at 360 px
-- [ ] 2.2 Implement the declarative form renderer (all listed field types, validation, conditional visibility, i18n labels) with unit tests per field type
+- [x] 2.2 Implement the declarative form renderer (all listed field types, validation, conditional visibility, i18n labels) with unit tests per field type
 - [ ] 2.3 Implement the confirmation dialog and toast components, with component tests
 
 ## 3. Sections
