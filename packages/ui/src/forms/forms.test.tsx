@@ -4,7 +4,7 @@ import en from "../../i18n/en.json";
 import { I18nProvider } from "../i18n.tsx";
 import { FormRenderer } from "./FormRenderer.tsx";
 import type { FormDefinition, FormField, FormFieldError, FormValues } from "./types.ts";
-import { validateField, validateForm } from "./validate.ts";
+import { prepareSubmission, validateField, validateForm } from "./validate.ts";
 
 const messages = {
   ...en,
@@ -200,6 +200,24 @@ describe("form validation", () => {
         { amount: 5, unit: "days" },
       ),
     ).toMatchObject({ code: "option" });
+  });
+
+  test("does not submit an invalid form", () => {
+    const definition = definitionFor({
+      id: "count",
+      type: "number",
+      labelKey: "test.label",
+      min: 0,
+      max: 10,
+    });
+
+    const invalid = prepareSubmission(definition, { count: 11 });
+    expect(invalid.shouldSubmit).toBe(false);
+    expect(invalid.errors).toMatchObject({ count: { code: "max", values: { max: 10 } } });
+
+    const valid = prepareSubmission(definition, { count: 5 });
+    expect(valid.shouldSubmit).toBe(true);
+    expect(valid.errors).toEqual({});
   });
 
   test("validates every visible field and skips hidden ones", () => {

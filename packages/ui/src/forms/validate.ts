@@ -199,3 +199,14 @@ export function validateForm(definition: FormDefinition, values: FormValues): Fo
 
   return errors;
 }
+
+export interface FormSubmission {
+  readonly errors: FormErrors;
+  readonly shouldSubmit: boolean;
+}
+
+/** The submit decision, kept pure so the renderer and tests share one rule. */
+export function prepareSubmission(definition: FormDefinition, values: FormValues): FormSubmission {
+  const errors = validateForm(definition, values);
+  return { errors, shouldSubmit: Object.keys(errors).length === 0 };
+}

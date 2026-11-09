@@ -13,7 +13,7 @@ import {
   isDurationUnit,
   isDurationValue,
 } from "./types.ts";
-import { fieldIsVisible, validateForm } from "./validate.ts";
+import { fieldIsVisible, prepareSubmission } from "./validate.ts";
 
 export interface FormRendererProps {
   readonly definition: FormDefinition;
@@ -119,10 +119,10 @@ export function FormRenderer({
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    const nextErrors = validateForm(definition, values);
-    setErrors(nextErrors);
+    const submission = prepareSubmission(definition, values);
+    setErrors(submission.errors);
 
-    if (Object.keys(nextErrors).length > 0) {
+    if (!submission.shouldSubmit) {
       return;
     }
 
