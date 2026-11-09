@@ -14,7 +14,7 @@
 
 ## 3. Mocks
 
-- [ ] 3.1 Build `mocks/s3` (SigV4 presign, put/get/head/delete/copy/list, Postgres storage, UI) with a contract test suite and verify the round-trip and restart scenarios
+- [x] 3.1 Build `mocks/s3` (SigV4 presign, put/get/head/delete/copy/list, Postgres storage, UI) with a contract test suite and verify the round-trip and restart scenarios
 - [ ] 3.2 Build `mocks/mail` (SMTP listener and inbox UI) and verify a test email appears
 - [ ] 3.3 Build `mocks/push`, `mocks/webhooks` (with signature verification display) and `mocks/oembed`, each with a UI and capture tests
 - [ ] 3.4 Build `mocks/cdn` (cache honouring `Cache-Control`, `bp`-cookie keying, surrogate-key purge, `X-Cache` header) and verify the purge-by-key scenario

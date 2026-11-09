@@ -83,6 +83,60 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  s3:
+    build:
+      context: .
+      dockerfile: mocks/Dockerfile
+      target: dev
+      args:
+        MOCK_NAME: s3
+    environment:
+      PORT: "4001"
+      MOCK_BASE_PATH: /_mocks/s3
+      DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
+      S3_BUCKET: bulletin
+      S3_ACCESS_KEY_ID: bulletin
+      S3_SECRET_ACCESS_KEY: bulletin-secret
+      S3_REGION: us-east-1
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - >-
+          fetch("http://127.0.0.1:4001/_mocks/s3/health")
+          .then((response) => process.exit(response.ok ? 0 : 1))
+          .catch(() => process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    depends_on: *depends-on-postgres
+    develop:
+      watch:
+        - action: sync
+          path: ./mocks/s3/src
+          target: /app/mocks/s3/src
+        - action: sync
+          path: ./mocks/shared/src
+          target: /app/mocks/shared/src
+        - action: sync+restart
+          path: ./mocks/s3/tsconfig.json
+          target: /app/mocks/s3/tsconfig.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./mocks/s3/package.json
+        - action: rebuild
+          path: ./mocks/shared/package.json
+        - action: rebuild
+          path: ./mocks/Dockerfile
+    restart: unless-stopped
+
   proxy:
     image: caddy:2.11.9-alpine
     ports:
@@ -101,6 +155,8 @@ services:
       plugin-host:
         condition: service_healthy
       darkauth-mock:
+        condition: service_healthy
+      s3:
         condition: service_healthy
     healthcheck:
       test:

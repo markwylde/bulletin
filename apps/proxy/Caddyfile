@@ -6,6 +6,14 @@
 # ADR 0018 origin topology. Every public entry point is a hostname on port 8080.
 
 http://bulletin.localhost:8080 {
+	handle /_mocks/s3/* {
+		reverse_proxy s3:4001
+	}
+
+	handle /_mocks/s3 {
+		redir * /_mocks/s3/ 308
+	}
+
 	handle /api/* {
 		reverse_proxy user-api:3001
 	}

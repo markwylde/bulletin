@@ -12,6 +12,7 @@
       "biome.json",
       "apps/**",
       "packages/**",
+      "mocks/**",
       "tests/**",
       "!**/dist",
       "!**/node_modules",

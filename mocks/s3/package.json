@@ -1,0 +1,17 @@
+{
+  "name": "@bulletin/mock-s3",
+  "private": true,
+  "type": "module",
+  "description": "Local S3-compatible object storage mock backed by Postgres.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bulletin/mock-ui": "workspace:*"
+  }
+}

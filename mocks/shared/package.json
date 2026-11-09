@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/mock-ui",
+  "private": true,
+  "type": "module",
+  "description": "Shared HTML shell and response helpers for local mock inspection UIs.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

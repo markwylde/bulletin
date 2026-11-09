@@ -45,6 +45,15 @@
     "apps/workers": {
       "name": "@bulletin/workers",
     },
+    "mocks/s3": {
+      "name": "@bulletin/mock-s3",
+      "dependencies": {
+        "@bulletin/mock-ui": "workspace:*",
+      },
+    },
+    "mocks/shared": {
+      "name": "@bulletin/mock-ui",
+    },
     "packages/cache": {
       "name": "@bulletin/cache",
     },
@@ -194,6 +203,10 @@
     "@bulletin/flags": ["@bulletin/flags@workspace:packages/flags"],
 
     "@bulletin/i18n": ["@bulletin/i18n@workspace:packages/i18n"],
+
+    "@bulletin/mock-s3": ["@bulletin/mock-s3@workspace:mocks/s3"],
+
+    "@bulletin/mock-ui": ["@bulletin/mock-ui@workspace:mocks/shared"],
 
     "@bulletin/plugin-host": ["@bulletin/plugin-host@workspace:apps/plugin-host"],
 
