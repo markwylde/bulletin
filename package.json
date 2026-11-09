@@ -1,0 +1,27 @@
+{
+  "name": "bulletin",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.0",
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "mocks/*"
+  ],
+  "scripts": {
+    "check": "bun run typecheck && bun run lint && bun run test",
+    "typecheck": "bun run --filter '*' typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.6",
+    "@types/bun": "1.4.4",
+    "typescript": "5.9.3"
+  }
+}
