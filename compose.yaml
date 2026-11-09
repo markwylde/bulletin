@@ -1,8 +1,16 @@
-name: bulletin
+# The project name is env-driven so parallel checkouts get separate containers and
+# volumes; default to `bulletin` for the documented two-step flow (ADR 0002).
+name: ${COMPOSE_PROJECT_NAME:-bulletin}
 
 x-app-environment: &app-environment
   NODE_ENV: development
   LOG_LEVEL: info
+  # Every public origin follows the published port (ADR 0018). The default keeps the
+  # documented `http://bulletin.localhost:8080` entry point.
+  BULLETIN_HTTP_PORT: "${BULLETIN_HTTP_PORT:-8080}"
+  BULLETIN_AUTH_ISSUER: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
+  BULLETIN_USER_ORIGIN: "http://bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
+  BULLETIN_STAFF_ORIGIN: "http://staff.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
   # Local-only defaults (ADR 0002). packages/config rejects them in production.
   SESSION_SECRET: bulletin-development-only-session-secret
   SEED: "42"
@@ -75,6 +83,10 @@ services:
       PORT: "3020"
       DARKAUTH_MOCK_CONFIG: /config/darkauth-mock.yaml
       DARKAUTH_MOCK_DATA_DIR: /data
+      # Overrides the issuer and redirect origins from darkauth-mock.yaml so the mock
+      # stays consistent with the published port.
+      DARKAUTH_MOCK_ISSUER: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
+      DARKAUTH_MOCK_ALLOWED_ORIGINS: "http://bulletin.localhost:${BULLETIN_HTTP_PORT:-8080},http://staff.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080},http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
     volumes:
       - darkauth-mock-data:/data
       - ./darkauth-mock.yaml:/config/darkauth-mock.yaml:ro
@@ -260,6 +272,7 @@ services:
         MOCK_NAME: oembed
     environment:
       PORT: "4005"
+      BULLETIN_PUBLIC_ORIGIN: "http://bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
     healthcheck: *bun-healthcheck
     develop:
       watch:
@@ -332,8 +345,11 @@ services:
 
   proxy:
     image: caddy:2.11.9-alpine
+    environment:
+      # Caddy site addresses use the same port, so the Host the browser sends matches.
+      BULLETIN_HTTP_PORT: "${BULLETIN_HTTP_PORT:-8080}"
     ports:
-      - "8080:8080"
+      - "${BULLETIN_HTTP_PORT:-8080}:${BULLETIN_HTTP_PORT:-8080}"
     volumes:
       - ./apps/proxy/Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
@@ -368,7 +384,7 @@ services:
         - CMD-SHELL
         - >-
           wget -q -O /dev/null --header 'Host: bulletin.localhost'
-          http://127.0.0.1:8080/
+          http://127.0.0.1:${BULLETIN_HTTP_PORT:-8080}/
       interval: 5s
       timeout: 5s
       retries: 20
@@ -385,7 +401,6 @@ services:
       PORT: "4321"
       DATABASE_URL: postgres://user_app@postgres:5432/bulletin
       USER_API_INTERNAL_URL: http://user-api:3001
-      BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -456,10 +471,9 @@ services:
       PORT: "3001"
       DATABASE_URL: postgres://user_api@postgres:5432/bulletin
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
-      BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
       BULLETIN_AUTH_JWKS_URL: http://darkauth-mock:3020/.well-known/jwks.json
       BULLETIN_AUTH_TOKEN_URL: http://darkauth-mock:3020/token
-      BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:8080|admin"
+      BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}|admin"
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -524,7 +538,6 @@ services:
       <<: *app-environment
       PORT: "5173"
       STAFF_API_INTERNAL_URL: http://staff-api:3002
-      BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -598,10 +611,9 @@ services:
       PORT: "3002"
       DATABASE_URL: postgres://staff_api@postgres:5432/bulletin
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
-      BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
       BULLETIN_AUTH_JWKS_URL: http://darkauth-mock:3020/.well-known/jwks.json
       BULLETIN_AUTH_TOKEN_URL: http://darkauth-mock:3020/token
-      BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:8080|admin"
+      BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}|admin"
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -667,7 +679,6 @@ services:
       PORT: "3003"
       DATABASE_URL: postgres://workers@postgres:5432/bulletin
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
-      BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
       PG_BOSS_DATABASE_URL: postgres://workers@postgres:5432/bulletin
     healthcheck: *service-healthcheck
     restart: unless-stopped
