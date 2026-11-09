@@ -7,7 +7,7 @@ import {
   isStaffScheme,
 } from "@bulletin/domain/permissions";
 import type { SQL } from "bun";
-import { type AdminLogEntry, listAdminLog } from "./admin-log.ts";
+import { type AdminLogEntry, listAdminLog, writeAdminLog } from "./admin-log.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import {
   listActiveOverrides,
@@ -112,13 +112,33 @@ async function saveScheme(context: StaffRouteContext): Promise<Response> {
     return json({ code: "invalid_scheme" }, 400);
   }
 
-  await context.sql`
-    INSERT INTO core.member_prefs (member_id, staff_scheme)
-    VALUES (${context.session.memberId}, ${body.scheme})
-    ON CONFLICT (member_id) DO UPDATE
-      SET staff_scheme = EXCLUDED.staff_scheme,
-          updated_at = now()
-  `;
+  await context.sql.begin(async (tx) => {
+    const [existing] = (await tx`
+      SELECT staff_scheme
+      FROM core.member_prefs
+      WHERE member_id = ${context.session.memberId}
+    `) as Array<{ staff_scheme: string }>;
+    const before = isStaffScheme(existing?.staff_scheme) ? existing.staff_scheme : "system";
+
+    await tx`
+      INSERT INTO core.member_prefs (member_id, staff_scheme)
+      VALUES (${context.session.memberId}, ${body.scheme})
+      ON CONFLICT (member_id) DO UPDATE
+        SET staff_scheme = EXCLUDED.staff_scheme,
+            updated_at = now()
+    `;
+
+    await writeAdminLog(tx, {
+      actorMemberId: context.session.memberId,
+      action: "staff.preferences.update",
+      targetType: "staff_preference",
+      targetId: context.session.memberId,
+      summary: {
+        before: { staffScheme: before },
+        after: { staffScheme: body.scheme },
+      },
+    });
+  });
 
   return json({ scheme: body.scheme });
 }

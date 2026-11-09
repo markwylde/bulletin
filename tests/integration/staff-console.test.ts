@@ -333,6 +333,18 @@ integrationDescribe("staff API permission guard", () => {
         const after = await readSession();
         expect(after.scheme).toBe("dark");
 
+        const [preference] = (await database.sql`
+          SELECT
+            summary->'before'->>'staffScheme' AS before_scheme,
+            summary->'after'->>'staffScheme' AS after_scheme
+          FROM core.admin_log
+          WHERE action = 'staff.preferences.update'
+          ORDER BY id DESC
+          LIMIT 1
+        `) as Array<{ before_scheme: string | null; after_scheme: string | null }>;
+
+        expect(preference).toEqual({ before_scheme: "system", after_scheme: "dark" });
+
         const invalid = await callRoute(api, route("preferences.scheme"), session, {
           scheme: "sepia",
         });
@@ -571,6 +583,106 @@ integrationDescribe("staff API permission guard", () => {
           "i18n.override.revert",
         ]);
         expect(actions[0]?.key).toBe("user.placeholder.title");
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("serializes concurrent board updates so audit snapshots chain", async () => {
+    await withDb("staff_board_concurrent", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Concurrent Board Admin", ["administrators"]);
+        const admin = await createSession(database, adminId);
+
+        const [first, second] = await Promise.all([
+          callRoute(api, route("settings.board.update"), admin, {
+            boardName: "First Board",
+            boardDescription: "",
+            defaultLocale: "en",
+            offline: false,
+            offlineMessage: "",
+          }),
+          callRoute(api, route("settings.board.update"), admin, {
+            boardName: "Second Board",
+            boardDescription: "",
+            defaultLocale: "en",
+            offline: false,
+            offlineMessage: "",
+          }),
+        ]);
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+
+        const entries = (await database.sql`
+          SELECT
+            summary->'before'->>'boardName' AS before_name,
+            summary->'after'->>'boardName' AS after_name
+          FROM core.admin_log
+          WHERE action = 'board.settings.update'
+          ORDER BY id
+        `) as Array<{ before_name: string | null; after_name: string | null }>;
+
+        expect(entries).toHaveLength(2);
+        expect(entries[1]?.before_name).toBe(entries[0]?.after_name);
+
+        const [board] = (await database.sql`
+          SELECT board_name FROM core.board_settings WHERE id = 1
+        `) as Array<{ board_name: string }>;
+        expect(board?.board_name).toBe(entries[1]?.after_name);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("serializes concurrent overrides so audit snapshots chain", async () => {
+    await withDb("staff_overrides_concurrent", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Concurrent Strings Admin", [
+          "administrators",
+        ]);
+        const admin = await createSession(database, adminId);
+        const key = "user.placeholder.title";
+
+        const [first, second] = await Promise.all([
+          callRoute(api, route("i18n.overrides.save"), admin, {
+            key,
+            values: { en: "First override" },
+          }),
+          callRoute(api, route("i18n.overrides.save"), admin, {
+            key,
+            values: { en: "Second override" },
+          }),
+        ]);
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+
+        const entries = (await database.sql`
+          SELECT
+            summary->'before'->>'en' AS before_en,
+            summary->'after'->>'en' AS after_en
+          FROM core.admin_log
+          WHERE action = 'i18n.override.update'
+          ORDER BY id
+        `) as Array<{ before_en: string | null; after_en: string | null }>;
+
+        expect(entries).toHaveLength(2);
+        expect(entries[0]?.before_en).toBeNull();
+        expect(entries[1]?.before_en).toBe(entries[0]?.after_en);
+
+        const [override] = (await database.sql`
+          SELECT value FROM core.string_overrides WHERE locale = 'en' AND key = ${key}
+        `) as Array<{ value: string }>;
+        expect(override?.value).toBe(entries[1]?.after_en);
       } finally {
         await auth.close();
         await sql.close();

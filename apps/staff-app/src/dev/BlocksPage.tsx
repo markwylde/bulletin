@@ -1,4 +1,5 @@
 import { useT } from "@bulletin/ui";
+import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui/forms";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useState } from "react";
 
@@ -17,12 +18,35 @@ const SAMPLE_ROWS: readonly SampleRow[] = [
   { id: "5", name: "Charlie", posts: 63, active: true },
 ];
 
+const DEMO_FORM: FormDefinition = {
+  id: "dev-form",
+  submitLabelKey: "staff.dev.forms.submit",
+  sections: [
+    {
+      id: "main",
+      titleKey: "staff.dev.forms.title",
+      fields: [
+        {
+          id: "count",
+          type: "number",
+          labelKey: "staff.dev.forms.number",
+          min: 0,
+          max: 10,
+          required: true,
+        },
+      ],
+    },
+  ],
+};
+
 /** Development-only screen for checking the shared building blocks at every viewport. */
 export function BlocksPage() {
   const t = useT();
   const [selected, setSelected] = useState<string[]>([]);
   const [activeRow, setActiveRow] = useState<SampleRow | null>(null);
   const [archivedCount, setArchivedCount] = useState<number | null>(null);
+  const [formValues, setFormValues] = useState<FormValues>({ count: 0 });
+  const [submitCount, setSubmitCount] = useState(0);
 
   const columns: readonly DataTableColumn<SampleRow>[] = [
     {
@@ -86,6 +110,18 @@ export function BlocksPage() {
           {t("staff.dev.blocks.archived", { count: archivedCount })}
         </p>
       )}
+
+      <section className="dev-form" data-dev-form>
+        <FormRenderer
+          definition={DEMO_FORM}
+          values={formValues}
+          onChange={setFormValues}
+          onSubmit={() => setSubmitCount((count) => count + 1)}
+        />
+        <p data-submit-count={submitCount}>
+          {t("staff.dev.forms.submitted", { count: submitCount })}
+        </p>
+      </section>
     </div>
   );
 }

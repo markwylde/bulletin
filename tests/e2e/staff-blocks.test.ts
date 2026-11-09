@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { loginAs, waitForExpression, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
+import {
+  clickSelector,
+  loginAs,
+  setInputValue,
+  waitForExpression,
+  waitForSelector,
+  withPage,
+} from "@bulletin/test-utils/e2e";
 
 // Run against the full stack in development mode:
 //   docker compose up -d
@@ -70,6 +77,38 @@ integrationDescribe("staff data table", () => {
           "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
         ),
       ).toBe(true);
+    });
+  }, 120_000);
+
+  test("shows a translated inline error and does not submit an out-of-range number", async () => {
+    await withPage({ url: `${STAFF_URL}/dev/blocks`, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "admin");
+      await waitForSelector(view, "[data-dev-form]");
+
+      await setInputValue(view, "[data-locale-switch]", "en");
+      await waitForExpression(view, "document.documentElement.lang === 'en'");
+
+      await setInputValue(view, '[data-form-field="count"] input', "11");
+      await clickSelector(view, "[data-dev-form] [data-form-submit]");
+      await waitForSelector(view, '[data-dev-form] [data-form-error="count"]');
+
+      expect(
+        await view.evaluate<string>(
+          "document.querySelector('[data-form-error=\"count\"]')?.textContent ?? ''",
+        ),
+      ).toContain("Must be at most 10.");
+      expect(
+        await view.evaluate<string>(
+          "document.querySelector('[data-submit-count]')?.getAttribute('data-submit-count') ?? ''",
+        ),
+      ).toBe("0");
+
+      await setInputValue(view, '[data-form-field="count"] input', "5");
+      await clickSelector(view, "[data-dev-form] [data-form-submit]");
+      await waitForExpression(
+        view,
+        "document.querySelector('[data-submit-count]')?.getAttribute('data-submit-count') === '1'",
+      );
     });
   }, 120_000);
 });

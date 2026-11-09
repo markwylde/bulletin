@@ -29,6 +29,12 @@ export async function saveBoardSettings(
   const value: BoardSettingsInput = parsed.value;
 
   const settings = await sql.begin(async (tx) => {
+    await tx`
+      INSERT INTO core.board_settings (id, board_name)
+      VALUES (1, '')
+      ON CONFLICT (id) DO NOTHING
+    `;
+    await tx`SELECT 1 FROM core.board_settings WHERE id = 1 FOR UPDATE`;
     const before = await readBoardSettings(tx);
 
     await tx`

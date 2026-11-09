@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chooseMockProfile,
   clickSelector,
   loginAs,
   setInputValue,
@@ -53,25 +54,46 @@ integrationDescribe("board offline mode", () => {
         },
       );
 
-      await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
-        await waitForSelector(view, "[data-offline]:not([hidden])");
-        await waitForText(view, OFFLINE_MESSAGE);
-        expect(
-          await view.evaluate<boolean>(
-            "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
-          ),
-        ).toBe(true);
-      });
+      await withPage(
+        {
+          url: USER_URL,
+          viewport: "mobile360",
+          allowConsoleErrors: [/503.*bulletin\.localhost:8080/],
+        },
+        async (view) => {
+          await waitForSelector(view, "[data-offline]:not([hidden])");
+          await waitForText(view, OFFLINE_MESSAGE);
+          expect(
+            await view.evaluate<boolean>(
+              "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
+            ),
+          ).toBe(true);
+        },
+      );
 
-      await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
-        await waitForSelector(view, "[data-offline]:not([hidden])");
-        await loginAs(view, "admin");
-        await waitForSelector(view, '[data-auth-state="authenticated"]');
-        expect(
-          await view.evaluate<boolean>("document.querySelector('[data-offline]')?.hidden === true"),
-        ).toBe(true);
-        await waitForSelector(view, "[data-board-name]");
-      });
+      await withPage(
+        {
+          url: USER_URL,
+          viewport: "mobile360",
+          allowConsoleErrors: [/503.*bulletin\.localhost:8080/],
+        },
+        async (view) => {
+          await waitForSelector(view, "[data-offline]:not([hidden])");
+          await waitForSelector(view, "[data-offline-login]");
+          await clickSelector(view, "[data-offline-login]");
+          await waitForSelector(view, "[data-login-page]");
+          await waitForSelector(view, "[data-login-ready]");
+          await clickSelector(view, "[data-login-page] [data-login]");
+          await chooseMockProfile(view, "admin");
+          await waitForSelector(view, '[data-auth-state="authenticated"]', 30_000);
+          expect(
+            await view.evaluate<boolean>(
+              "document.querySelector('[data-offline]')?.hidden === true",
+            ),
+          ).toBe(true);
+          await waitForSelector(view, "[data-board-name]");
+        },
+      );
     } finally {
       await withPage(
         { url: `${STAFF_URL}/settings/board`, viewport: "mobile360" },

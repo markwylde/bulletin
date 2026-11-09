@@ -111,6 +111,23 @@ const boardDescription =
         color: #a02a2a;
       }
 
+      .offline-actions {
+        margin-top: 1.25rem;
+      }
+
+      .offline-sign-in {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.75rem;
+        padding: 0.55rem 1rem;
+        border-radius: 0.5rem;
+        background: #3157c7;
+        color: #ffffff;
+        font-weight: 600;
+        text-decoration: none;
+      }
+
       [hidden] {
         display: none !important;
       }
@@ -173,6 +190,14 @@ const boardDescription =
     <main data-offline hidden>
       <h1 data-i18n="board.offline.title">{t("board.offline.title")}</h1>
       <p data-offline-message>{t("board.offline.defaultMessage")}</p>
+      <div class="offline-actions">
+        <a
+          class="offline-sign-in"
+          data-offline-login
+          data-i18n="board.offline.signIn"
+          href="/auth/login">{t("board.offline.signIn")}</a
+        >
+      </div>
     </main>
     <script type="application/json" id="i18n-catalog" set:html={messages}></script>
     <script is:inline nonce={nonce}>
@@ -200,6 +225,13 @@ const boardDescription =
         const onlineMain = document.querySelector("[data-online]");
         const offlineMain = document.querySelector("[data-offline]");
         const offlineMessage = document.querySelector("[data-offline-message]");
+        const offlineLogin = document.querySelector("[data-offline-login]");
+
+        if (offlineLogin instanceof HTMLAnchorElement) {
+          offlineLogin.href = `/auth/login?return_to=${encodeURIComponent(
+            `${window.location.pathname}${window.location.search}`,
+          )}`;
+        }
 
         const loadBoard = async () => {
           try {

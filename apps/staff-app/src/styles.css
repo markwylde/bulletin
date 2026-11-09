@@ -1034,6 +1034,12 @@ textarea.form-input {
   border-top: 1px dashed var(--border);
 }
 
+.dev-form {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--border);
+}
+
 .dev-tools p {
   margin: 0.5rem 0 0;
 }

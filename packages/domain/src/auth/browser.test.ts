@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { CSRF_STORAGE_KEY, type LogoutStorage, performLogout } from "./browser.ts";
+import {
+  AccessDeniedError,
+  CSRF_STORAGE_KEY,
+  type LogoutStorage,
+  performLogout,
+  submitIdToken,
+} from "./browser.ts";
 
 class MemoryStorage implements LogoutStorage {
   readonly values = new Map<string, string>();
@@ -139,5 +145,19 @@ describe("logout", () => {
     });
 
     expect(ok).toBe(false);
+  });
+});
+
+describe("session submission", () => {
+  test("treats a 403 response as access denied", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      Response.json({ code: "forbidden" }, { status: 403 })) as unknown as typeof fetch;
+
+    try {
+      await expect(submitIdToken("id-token")).rejects.toBeInstanceOf(AccessDeniedError);
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });

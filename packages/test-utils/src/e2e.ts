@@ -345,5 +345,5 @@ export async function loginAsRefused(
   await waitForSelector(view, "[data-login]", timeoutMs);
   await view.evaluate('document.querySelector("[data-login]")?.click()');
   await chooseMockProfile(view, profile, timeoutMs);
-  await waitForSelector(view, '[data-auth-state="error"]', timeoutMs);
+  await waitForSelector(view, '[data-access-denied="session"]', timeoutMs);
 }

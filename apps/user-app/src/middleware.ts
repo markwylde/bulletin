@@ -14,7 +14,7 @@ const authIssuer = process.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.loc
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const drain = import.meta.env.DEV ? createDrainController() : null;
 
-const NON_PAGE_PREFIXES = ["/api/", "/health/", "/auth/", "/_", "/@", "/src/"];
+const NON_PAGE_PREFIXES = ["/api/", "/health/", "/auth/", "/_", "/@", "/src/", "/favicon.ico"];
 
 if (import.meta.env.DEV) {
   process.once("SIGTERM", () => {
@@ -66,11 +66,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const isNavigation =
       context.request.method === "GET" &&
       context.request.headers.get("sec-fetch-mode") === "navigate";
+    const isPageRequest = !NON_PAGE_PREFIXES.some((prefix) =>
+      context.url.pathname.startsWith(prefix),
+    );
 
-    if (
-      isNavigation &&
-      !NON_PAGE_PREFIXES.some((prefix) => context.url.pathname.startsWith(prefix))
-    ) {
+    // Prerendered pages cannot read request cookies in Astro's static output. Their shell
+    // fetches `/api/board`, which checks `board.view_offline` server-side. Once spike S1
+    // switches the user app to SSR, every page request takes the enforcing path below.
+    if (isPageRequest && context.isPrerendered !== true) {
       let sessionContext: Awaited<ReturnType<typeof currentSessionContext>> = null;
       const cookieHeader = context.request.headers.get("cookie");
 
@@ -81,11 +84,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
       }
 
       let board: Awaited<ReturnType<typeof readBoard>> | null = null;
+      let boardFailed = false;
 
       try {
         board = await readBoard(readSql());
       } catch {
-        board = null;
+        boardFailed = true;
       }
 
       if (sessionContext !== null) {
@@ -108,6 +112,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       }
 
       if (
+        isNavigation &&
         shouldRedirectToReauth({
           method: "GET",
           secFetchMode: "navigate",
@@ -117,6 +122,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
       ) {
         return secure(
           context.redirect(reauthRedirectUrl(`${context.url.pathname}${context.url.search}`), 303),
+        );
+      }
+
+      // Fail closed: if the board state cannot be read, do not serve the forum.
+      if (boardFailed) {
+        return secure(
+          offlinePage({
+            locale: context.locals.locale ?? "en",
+            nonce,
+            message: "",
+            returnTo: `${context.url.pathname}${context.url.search}`,
+          }),
         );
       }
 
@@ -137,6 +154,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
               locale: context.locals.locale ?? "en",
               nonce,
               message: board.offlineMessage,
+              returnTo: `${context.url.pathname}${context.url.search}`,
             }),
           );
         }

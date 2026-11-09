@@ -161,6 +161,10 @@ function parseValues(value: unknown): Partial<Record<Locale, string>> {
   return result;
 }
 
+function overrideLockKey(key: string): string {
+  return `bulletin.string_override:${key}`;
+}
+
 export async function saveOverrideSet(
   sql: SQL,
   actorMemberId: string,
@@ -177,20 +181,22 @@ export async function saveOverrideSet(
     return { ok: false, code: "unknown_key" };
   }
 
-  const beforeMap = groupByKey(await allOverrides(sql)).get(key) ?? {};
-  const before = snapshot(beforeMap);
-  const after = { ...before };
-
-  for (const locale of LOCALES) {
-    const value = values[locale];
-
-    if (value !== undefined) {
-      after[locale] = value.trim() === "" ? null : value;
-    }
-  }
-
   try {
     await sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtext(${overrideLockKey(key)})::bigint)`;
+
+      const beforeMap = groupByKey(await allOverrides(tx)).get(key) ?? {};
+      const before = snapshot(beforeMap);
+      const after = { ...before };
+
+      for (const locale of LOCALES) {
+        const value = values[locale];
+
+        if (value !== undefined) {
+          after[locale] = value.trim() === "" ? null : value;
+        }
+      }
+
       for (const locale of LOCALES) {
         const value = values[locale];
 
@@ -242,16 +248,18 @@ export async function revertOverride(
     return { ok: false, code: "not_found" };
   }
 
-  const beforeMap = groupByKey(await allOverrides(sql)).get(key) ?? {};
+  const result = await sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${overrideLockKey(key)})::bigint)`;
 
-  if (beforeMap[locale] === undefined) {
-    return { ok: false, code: "not_found" };
-  }
+    const beforeMap = groupByKey(await allOverrides(tx)).get(key) ?? {};
 
-  const before = snapshot(beforeMap);
-  const after = { ...before, [locale]: null };
+    if (beforeMap[locale] === undefined) {
+      return { ok: false, code: "not_found" } as const;
+    }
 
-  await sql.begin(async (tx) => {
+    const before = snapshot(beforeMap);
+    const after = { ...before, [locale]: null };
+
     await writeStringOverrideDelete(tx, { locale, key });
     await writeAdminLog(tx, {
       actorMemberId,
@@ -260,7 +268,9 @@ export async function revertOverride(
       targetId: null,
       summary: { key, before, after },
     });
+
+    return { ok: true } as const;
   });
 
-  return { ok: true };
+  return result;
 }

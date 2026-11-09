@@ -206,6 +206,10 @@ export async function submitIdToken(idToken: string): Promise<void> {
     body: JSON.stringify({ idToken }),
   });
 
+  if (response.status === 403) {
+    throw new AccessDeniedError();
+  }
+
   if (!response.ok) {
     throw new Error("The session endpoint rejected the ID token");
   }

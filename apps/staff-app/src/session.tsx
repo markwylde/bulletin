@@ -90,7 +90,9 @@ export function SessionProvider({ onLocale, children }: SessionProviderProps) {
       }
 
       callbackStarted.current = true;
-      void finishLoginAndRedirect().catch(() => setState({ status: "error" }));
+      void finishLoginAndRedirect().catch((error: unknown) => {
+        setState(error instanceof AccessDeniedError ? { status: "denied" } : { status: "error" });
+      });
       return;
     }
 
