@@ -78,3 +78,12 @@ the cache variant harness from their first commit.
 ## Migration Plan
 
 Not applicable (greenfield). After the spike, update ADR 0008's status to Accepted with findings.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Overlay responses (unread state, counts, CSRF token) | Personal content | personalisation | not stored; `private, no-cache` | the session member only | — | — |
+| Guest beacon cookie ID | Personal data (pseudonymous) | view counting, presence | cookie 30 days; buffer rows flushed each minute | none (aggregated) | excluded | not linkable to a member |
+| Presence and view buffers (UNLOGGED) | Derived | who's online, view counts | 15 minutes | aggregated only | excluded | deleted by expiry |
+| Shared fragment cache and CDN | Derived | performance | tag invalidation or TTL | per visibility key; never holds personal data (enforced by the no-personal-data test) | — | purged by invalidation |

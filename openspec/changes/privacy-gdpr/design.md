@@ -35,4 +35,13 @@ ADR 0012. Most restricted storage exists already (changes `identity-sessions` an
 
 ## Feature flags (ADR 0010)
 
-None: export and erasure are legal obligations and are always available.
+None: export and erasure are legal obligations, exempt under ADR 0010.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Data requests and steps (`pii.data_requests`, `data_request_steps`) | Restricted | proving requests were handled | 2 years after completion | `privacy.manage`, through definer functions | the member's own requests | kept (legal basis: accountability); requester told |
+| Export archives (`export/<uuid>.zip`) | Personal content (copy) | right of access | 7 days | the requesting member, re-checked per download | — | deleted on expiry |
+| PII access log (`pii.access_log`) | Security record | accountability | 2 years | `privacy.audit` via definer function | entries about the member are included | kept with documented basis |
+| Retention settings (`privacy_settings`) | Not personal | configuration | — | `privacy.manage` | — | — |

@@ -35,8 +35,8 @@ delete/restore/lock/pin/move (change `moderation`).
     custom title, featured badges, reputation label, post count), which the page composer
     resolves at render time. The card is tagged `member:{id}` and `ranks`, so a rank, title,
     badge or post-count change rebuilds one small card per member, not every post block they
-    wrote. This change builds the card with name, avatar, group and post count; later changes
-    add fields to its view model.
+    wrote. This change builds the card with name, initials avatar, group and post count; later
+    changes add fields to its view model (`attachments-avatars` adds the uploaded avatar).
   - Reply mutation tags: `topic:{id}`, `topic:{id}:pages`, `forum:{forum}` and ancestors, the
     board index, and `member:{author}`.
 - **View counts** (ADR 0006 read-path writes): recorded by the member overlay request

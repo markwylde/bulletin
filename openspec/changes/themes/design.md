@@ -41,6 +41,6 @@ ADR 0008; the engine, validation and caching exist from change `rendering-and-ca
 
 ## Feature flags (ADR 0010)
 
-`theme_chooser` (members picking a theme). Admin theme management is not flagged.
+`theme_chooser` (members picking a theme). Admin theme management is staff-only tooling, exempt under ADR 0010.
 
 Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

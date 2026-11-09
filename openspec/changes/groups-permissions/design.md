@@ -36,3 +36,11 @@ change `forum-structure`, so the matrix is built against a `ForumTree` interface
 
 - [Snapshot explosion with many group combinations] → snapshots are LRU-bounded; ADR 0020 monitors cardinality.
 - [Bitmap width when plugins add actions] → actions map to bit indexes dynamically; the array widens as needed.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Group memberships (primary and secondary) | Personal content | access control | life of account | the member, staff with `acp.members` | included | deleted with the member row |
+| Moderator assignments | Personal content | per-forum moderation | until removed | public where the forum shows moderators; staff | included | deleted |
+| Promotion history (`member.promoted` events) | Derived (IDs only) | audit of auto-promotion | 30 days (event retention) | staff | excluded | ages out |

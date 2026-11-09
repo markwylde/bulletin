@@ -10,7 +10,7 @@
 - [ ] 2.1 Forum topic list (pinned first, sort, pagination, prefix filter) with permission-filtered queries; integration tests including permission denial; E2E at all viewports
 - [ ] 2.2 Topic view (linear, paginated, post blocks referencing the `member:{id}:card` fragment, quote placeholder resolution per viewer) with the cache variant harness applied (see-deleted, mod controls, quote source visibility); E2E at all viewports
 - [ ] 2.3 Moved-topic stubs, view counts (overlay and beacon recording, buffer, flush job without content tag bumps, separate views fragment) and `/topic/<id>-<slug>` routing with page/post forms and redirects; integration tests including the guest-view-counted scenario
-- [ ] 2.4 Author card fragment `member:{id}:card` (name, avatar, group, post count) tagged `member:{id}` and `ranks`, composed by reference into post blocks; tests that a post-count change rebuilds the card but not the post blocks, and that the card carries no viewer-specific data
+- [ ] 2.4 Author card fragment `member:{id}:card` (name, initials avatar, group, post count) tagged `member:{id}` and `ranks`, composed by reference into post blocks; tests that a post-count change rebuilds the card but not the post blocks, and that the card carries no viewer-specific data
 
 ## 3. Posting
 

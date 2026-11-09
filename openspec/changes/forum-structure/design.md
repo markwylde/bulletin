@@ -41,4 +41,4 @@ benchmark target.
 
 ## Feature flags (ADR 0010)
 
-None: core reading.
+None: core reading, exempt under ADR 0010.

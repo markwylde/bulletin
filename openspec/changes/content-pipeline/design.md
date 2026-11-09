@@ -60,3 +60,12 @@ Plugins add extensions in change `plugin-platform`.
 `unfurls` (link previews) and `mentions`. Markdown posting itself is core and not flagged.
 
 Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Drafts (`core.drafts`) | Personal content | unsent work | 30 days after last edit | the author only, via the overlay | included | deleted |
+| Quote snapshots (`quote_snapshots`) | Personal content (of the quoted author) | stable quotes | life of the quoting post | `can(read)` on the source at render; redaction per ADR 0007 | included in the quoted author's export | the quoted author's erasure redacts their snapshots |
+| Mentions (rendered links and notification triggers) | Personal content | addressing members | life of the post | as the post | included with posts | rendered as "Deleted member" after erasure |
+| Unfurl cache (URL metadata) | Derived (third-party public data) | link previews | 7 days | as the post | excluded | ages out |

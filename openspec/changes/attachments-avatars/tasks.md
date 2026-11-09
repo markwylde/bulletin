@@ -25,8 +25,9 @@
 ## 5. Avatars
 
 - [ ] 5.1 Avatar upload, crop UI and processing to 3 sizes with group limits; tests for the upload and group-disallowed scenarios; E2E crop at 360
-- [ ] 5.2 Initials fallback in the default theme templates, with a unit test for stable colour
-- [ ] 5.3 Staff avatar removal with block period, logged; integration test with permission denial
+- [ ] 5.2 Add the uploaded avatar to the `member:{id}:card` fragment, bumping `member:{id}` on avatar change or removal; invalidation test that post blocks are not re-rendered
+- [ ] 5.3 Initials fallback in the default theme templates, with a unit test for stable colour
+- [ ] 5.4 Staff avatar removal with block period, logged; integration test with permission denial
 
 ## 6. Settings, strings and seed
 
@@ -36,4 +37,4 @@
 
 ## 7. Feature flag
 
-- [ ] 7.1 Register `attachments` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle
+- [ ] 7.1 Register `attachments`, `avatar_upload` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

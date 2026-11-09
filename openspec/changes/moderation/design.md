@@ -23,7 +23,9 @@ grant). The write pipeline stages were reserved in `content-pipeline`.
 - **Reports**: `reports(id, target_type, target_id, status, assignee, created_at)`,
   `report_reporters`, `report_comments`. PM access is via `report_pm_access(report_id,
   message_ids[])`, computed at report time (reported message plus 5 prior), and is the only
-  path for staff to read PMs.
+  path for staff to read PMs. Opening the report inserts `conversation_message_holds` for those
+  messages (contract from `conversations`); closing it releases them, which lets the
+  conversation removal job finish.
 - **Merge and split**: done in one transaction with a lock on all affected topics in ID order
   (avoids deadlock). Post positions are renumbered and all affected tags are declared.
 - **Multi-mod**: `multimod_actions(id, name, forums, steps jsonb)`. Steps run through the
@@ -69,6 +71,6 @@ grant). The write pipeline stages were reserved in `content-pipeline`.
 
 ## Feature flags (ADR 0010)
 
-`warnings`, `multimod`. Reports, the queue, filters and IP tools are core safety features and not flagged.
+`warnings`, `multimod`. Reports, the queue, filters and IP tools are safety features, exempt under ADR 0010.
 
 Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

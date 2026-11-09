@@ -25,9 +25,15 @@ event pipeline.
   is no separate per-member delete. Unknown and unauthorised IDs both return 404. The `left`
   row is kept only to enforce `block_reinvite`.
 - **Quota**: counts the member's `active` participations. Leaving frees a slot.
-- **Permanent removal**: when the last `active` participant leaves, a job deletes the
-  conversation, its messages and attachment objects, except messages referenced by
-  `report_pm_access` on an open report; those are deleted when the report closes.
+- **Holds**: this change owns `conversation_message_holds(message_id, holder, ref,
+  created_at)`, a generic retention hold. Nothing creates holds until `moderation`, which
+  inserts one per message in `report_pm_access` when a PM report opens and deletes them when it
+  closes. Holds are the only way to keep messages past removal.
+- **Permanent removal**: when the last `active` participant leaves, a job deletes every
+  unheld message and its attachment objects. If any holds remain, it keeps the minimum: the
+  conversation row (title kept, starter link kept for the report), the held messages and their
+  attachments. When the last hold is released, the same job finishes removal. The job is
+  idempotent and runs again on hold release.
 - **No shared caching**: conversation routes and APIs are `Cache-Control: private, no-store`,
   bypass the shared fragment LRU entirely, and are never CDN-eligible. Templates still come
   from the theme.

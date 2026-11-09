@@ -13,7 +13,13 @@
 - `renderFlagsHash` in the cache key is computed from the **evaluated values** of
   `affectsRender` flags for the current viewer.
 - Plugins can declare flags in their namespace.
-- Every new user-facing feature ships behind a flag; the flag is removed once stable.
+- Every new user-facing feature ships behind a flag; the flag is removed once stable. The
+  only exemptions, each named in the change's design:
+  - core reading and posting (forum index, forum and topic pages, posting, editing, read tracking),
+  - safety features members rely on to report abuse and staff rely on to act on it (reports,
+    moderation queue, content filters, IP tools), so they can never be switched off by accident,
+  - legal obligations (data export and erasure),
+  - staff-only tooling in the staff app, which is not user-facing (governed by ACP permissions).
 - Flags are available in templates (`{% if flags.newEditor %}`) and React (`useFlag`).
 - Server-side enforcement: a disabled feature's endpoints also reject requests, not just the UI.
 

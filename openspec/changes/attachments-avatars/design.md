@@ -35,6 +35,9 @@ themes, plugins and exports later.
 - **Avatars**: stored as `av/<member>/<sha256>.webp` in 3 sizes. Public avatar delivery goes
   through the files origin with `Cache-Control: public, max-age=31536000, immutable`.
   Initials avatars are rendered as inline SVG by the template (no request).
+  Avatar changes (upload, removal, staff removal) bump `member:{id}`, so the author card
+  (`member:{id}:card`, from `topics-posts`) switches between the uploaded and initials avatar
+  without touching post blocks.
 - **Virus scanning hook**: an optional `attachment.scan` stage in processing (no-op by
   default), so a plugin or ClamAV sidecar can be added later.
 
@@ -47,13 +50,13 @@ themes, plugins and exports later.
 
 | Data | Class | Purpose | Retention | Access | Export | Erasure |
 |---|---|---|---|---|---|---|
-| Attachments (objects and `core.attachments`) | Personal content | files in posts and PMs | life of the post; orphans 24 h | `can(download)` per request | included (files in the export zip) | follows the admin's choice for the member's posts (delete, or keep with the anonymised post) |
+| Attachments (objects and `core.attachments`) | Personal content | files in posts and PMs | life of the post; orphans 24 h | `can(download)` per request | included (files in the export zip) | deleted, whatever the admin chooses for the posts (ADR 0012); kept posts show an "attachment removed" placeholder |
 | Avatars | Personal content | public identity | until replaced | public by design (ADR 0019) | included | deleted |
 | Upload quota (`member_storage`) | Derived | limits | life of account | member and staff | excluded | deleted |
 | EXIF metadata | Restricted if present | none | stripped on upload, never stored | — | — | — |
 
 ## Feature flags (ADR 0010)
 
-`attachments`. Avatar upload is core (the initials fallback always works).
+`attachments`, `avatar_upload` (when off, members keep the initials avatar).
 
 Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

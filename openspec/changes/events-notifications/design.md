@@ -69,6 +69,6 @@ wake-up only.
 
 ## Feature flags (ADR 0010)
 
-`follows`, `digests`, `realtime` (SSE). In-app notifications are core.
+`notifications` (in-app list and bell), `follows`, `digests`, `realtime` (SSE). When `notifications` is off, events are still recorded but no notifications are created.
 
 Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).
