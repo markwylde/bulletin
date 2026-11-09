@@ -1,6 +1,7 @@
 import type { SeedSize } from "@bulletin/config";
 import { SQL } from "bun";
 import { runSeeds, type SeedModule, SeedRegistry, type SeedResult } from "./framework.ts";
+import { membersSeedModule } from "./members.ts";
 
 export const baseSeedModule: SeedModule = {
   name: "base",
@@ -31,7 +32,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
   try {
     return await runSeeds({
       sql,
-      registry: new SeedRegistry([baseSeedModule]),
+      registry: new SeedRegistry([baseSeedModule, membersSeedModule]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",
     });

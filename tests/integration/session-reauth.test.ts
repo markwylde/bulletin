@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { resolveMemberLocale } from "@bulletin/db/i18n";
 import {
   type AuthService,
   type ChallengeView,
@@ -180,6 +181,18 @@ async function csrfFor(
   }
 
   return view.csrfToken;
+}
+
+async function memberIdFor(database: TestDatabase, sub: string): Promise<string> {
+  const [row] = (await database.sql`
+    SELECT member_id FROM pii.identities WHERE sub = ${sub}
+  `) as Array<{ member_id: string }>;
+
+  if (row === undefined) {
+    throw new Error(`member ${sub} missing`);
+  }
+
+  return row.member_id;
 }
 
 /** Drives the refresh redirect and its callback through the real service handlers. */
@@ -854,6 +867,234 @@ integrationDescribe("silent re-auth and background grace", () => {
           }),
         );
         expect(unknownWithToken).toBeNull();
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("guards member APIs until a display name is chosen", async () => {
+    await withDb("auth_display_guard", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const sessionCookie = await login(service, "name-user");
+        const csrfToken = await csrfFor(service, sessionCookie);
+        const cookie = `bl_session=${sessionCookie}`;
+
+        const before = await call(service, "/api/me", { cookie });
+        expect(before.status).toBe(409);
+        expect(await before.json()).toEqual({ code: "display_name_required" });
+
+        const localeBefore = await call(service, "/api/me/locale", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": csrfToken },
+          body: { locale: "fr" },
+        });
+        expect(localeBefore.status).toBe(409);
+        expect(await localeBefore.json()).toEqual({ code: "display_name_required" });
+
+        const invalid = await call(service, "/api/me/display-name", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": csrfToken },
+          body: { displayName: "ab" },
+        });
+        expect(invalid.status).toBe(400);
+        expect(await invalid.json()).toEqual({ code: "display_name_invalid" });
+
+        const set = await call(service, "/api/me/display-name", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": csrfToken },
+          body: { displayName: "Admin" },
+        });
+        expect(set.status).toBe(200);
+        expect(await set.json()).toEqual({ displayName: "Admin" });
+
+        const after = await call(service, "/api/me", { cookie });
+        expect(after.status).toBe(200);
+        expect(await after.json()).toMatchObject({ displayName: "Admin", locale: null });
+
+        const session = await call(service, "/api/auth/session", { cookie });
+        expect(await session.json()).toMatchObject({
+          displayName: "Admin",
+          displayNameRequired: false,
+        });
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("rejects a confusable display name as already taken", async () => {
+    await withDb("auth_display_confusable", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const firstCookie = await login(service, "first-name");
+        const firstCsrf = await csrfFor(service, firstCookie);
+        const firstSet = await call(service, "/api/me/display-name", {
+          method: "POST",
+          cookie: `bl_session=${firstCookie}`,
+          headers: { "x-bulletin-csrf": firstCsrf },
+          body: { displayName: "Admin" },
+        });
+        expect(firstSet.status).toBe(200);
+
+        const secondCookie = await login(service, "second-name");
+        const secondCsrf = await csrfFor(service, secondCookie);
+        const confusable = await call(service, "/api/me/display-name", {
+          method: "POST",
+          cookie: `bl_session=${secondCookie}`,
+          headers: { "x-bulletin-csrf": secondCsrf },
+          body: { displayName: "Adm\u0456n" },
+        });
+        expect(confusable.status).toBe(409);
+        expect(await confusable.json()).toEqual({ code: "display_name_taken" });
+
+        const available = await call(service, "/api/me/display-name", {
+          method: "POST",
+          cookie: `bl_session=${secondCookie}`,
+          headers: { "x-bulletin-csrf": secondCsrf },
+          body: { displayName: "Alicia" },
+        });
+        expect(available.status).toBe(200);
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("records display-name changes and enforces the 30-day limit", async () => {
+    await withDb("auth_display_changes", async (database) => {
+      const user = await serviceFor(database);
+      const staff = await staffServiceFor(database);
+
+      try {
+        const userCookie = await login(user.service, "rename-user");
+        const userCsrf = await csrfFor(user.service, userCookie);
+        const cookie = `bl_session=${userCookie}`;
+
+        const first = await call(user.service, "/api/me/display-name", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": userCsrf },
+          body: { displayName: "First Name" },
+        });
+        expect(first.status).toBe(200);
+
+        const changed = await call(user.service, "/api/me/display-name", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": userCsrf },
+          body: { displayName: "Second Name" },
+        });
+        expect(changed.status).toBe(200);
+
+        const memberId = await memberIdFor(database, "rename-user");
+        const history = (await database.sql`
+          SELECT old_name, new_name, changed_by
+          FROM core.member_name_history
+          WHERE member_id = ${memberId}
+          ORDER BY id
+        `) as Array<{ old_name: string; new_name: string; changed_by: string }>;
+        expect(history).toEqual([
+          { old_name: "First Name", new_name: "Second Name", changed_by: memberId },
+        ]);
+
+        const limited = await call(user.service, "/api/me/display-name", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": userCsrf },
+          body: { displayName: "Third Name" },
+        });
+        expect(limited.status).toBe(429);
+        const limitedBody = (await limited.json()) as {
+          code: string;
+          nextAllowedAt: string;
+        };
+        expect(limitedBody.code).toBe("display_name_change_limit");
+        expect(Date.parse(limitedBody.nextAllowedAt)).toBeGreaterThan(
+          Date.now() + 29 * 24 * 60 * 60 * 1_000,
+        );
+
+        const adminCookie = await login(staff.service, "admin", "staff");
+        const regularCookie = await login(staff.service, "regular-staff", "staff");
+
+        const denied = await call(staff.service, `/api/staff/members/${memberId}/name-history`, {
+          cookie: `bl_staff=${regularCookie}`,
+        });
+        expect(denied.status).toBe(403);
+        expect(await denied.json()).toEqual({ code: "forbidden" });
+
+        const allowed = await call(staff.service, `/api/staff/members/${memberId}/name-history`, {
+          cookie: `bl_staff=${adminCookie}`,
+        });
+        expect(allowed.status).toBe(200);
+        expect(await allowed.json()).toMatchObject({
+          history: [{ oldName: "First Name", newName: "Second Name", changedBy: memberId }],
+        });
+      } finally {
+        await user.service.close();
+        await user.sql.close();
+        await staff.service.close();
+        await staff.sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("saves a member locale and resolves it across requests", async () => {
+    await withDb("auth_display_locale", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const sessionCookie = await login(service, "locale-user");
+        const csrfToken = await csrfFor(service, sessionCookie);
+        const cookie = `bl_session=${sessionCookie}`;
+
+        await call(service, "/api/me/display-name", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": csrfToken },
+          body: { displayName: "Locale User" },
+        });
+
+        const saved = await call(service, "/api/me/locale", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": csrfToken },
+          body: { locale: "fr" },
+        });
+        expect(saved.status).toBe(200);
+        expect(await saved.json()).toEqual({ locale: "fr" });
+
+        const memberId = await memberIdFor(database, "locale-user");
+        expect(await resolveMemberLocale(database.sql, memberId)).toBe("fr");
+
+        const me = await call(service, "/api/me", { cookie });
+        expect(await me.json()).toMatchObject({ locale: "fr" });
+
+        const defaultCookie = await login(service, "locale-default");
+        const defaultCsrf = await csrfFor(service, defaultCookie);
+        await call(service, "/api/me/display-name", {
+          method: "POST",
+          cookie: `bl_session=${defaultCookie}`,
+          headers: { "x-bulletin-csrf": defaultCsrf },
+          body: { displayName: "Default Locale" },
+        });
+        const defaultMember = await memberIdFor(database, "locale-default");
+
+        await database.sql`
+          INSERT INTO core.board_settings (id, board_name, default_locale)
+          VALUES (1, 'Bulletin', 'fr')
+          ON CONFLICT (id) DO UPDATE SET default_locale = 'fr'
+        `;
+        expect(await resolveMemberLocale(database.sql, defaultMember)).toBe("fr");
       } finally {
         await service.close();
         await sql.close();

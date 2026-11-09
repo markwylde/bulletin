@@ -9,6 +9,7 @@
     "./permissions": "./src/permissions/index.ts",
     "./auth/browser": "./src/auth/browser.ts",
     "./auth/silent": "./src/auth/silent.ts",
+    "./member": "./src/member/index.ts",
     "./net": "./src/net/index.ts",
     "./urls": "./src/urls/index.ts"
   },
@@ -16,6 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bulletin/i18n": "workspace:*",
     "@darkauth/client": "1.32.0",
     "jose": "6.2.16"
   }

@@ -28,9 +28,9 @@
 
 ## 5. Display names
 
-- [ ] 5.1 Implement the display-name API (UTS #39 skeleton uniqueness, length rules, `display_name_required` guard on member APIs) with unit tests for confusables and integration tests for the guard; the step page lands in `rendering-and-caching`
-- [ ] 5.2 Implement name changes with a constant frequency limit (replaced by a group setting in `groups-permissions`) and history, plus a staff history view endpoint behind a permission check, with tests for the within/over-limit scenarios and a permission-denial test
-- [ ] 5.3 Member locale preference (`core.members.locale`, save endpoint, resolution for member requests) with integration tests for both scenarios; seed one es and one fr member
+- [x] 5.1 Implement the display-name API (UTS #39 skeleton uniqueness, length rules, `display_name_required` guard on member APIs) with unit tests for confusables and integration tests for the guard; the step page lands in `rendering-and-caching`
+- [x] 5.2 Implement name changes with a constant frequency limit (replaced by a group setting in `groups-permissions`) and history, plus a staff history view endpoint behind a permission check, with tests for the within/over-limit scenarios and a permission-denial test
+- [x] 5.3 Member locale preference (`core.members.locale`, save endpoint, resolution for member requests) with integration tests for both scenarios; seed one es and one fr member
 
 ## 6. Strings and seed
 

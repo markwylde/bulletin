@@ -1,3 +1,11 @@
+import { isLocale } from "@bulletin/i18n";
+import { validateDisplayName } from "../member/names.ts";
+import {
+  readMember,
+  readNameHistory,
+  saveMemberLocale,
+  updateDisplayName,
+} from "../member/store.ts";
 import { can } from "../permissions/can.ts";
 import type { AuthRouterOptions } from "./router.ts";
 import { createAuthRouter } from "./router.ts";
@@ -56,6 +64,25 @@ function json(body: unknown, status = 200, cookies: readonly string[] = []): Res
   }
 
   return new Response(JSON.stringify(body), { status, headers });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readJsonBody(request: Request): Promise<Record<string, unknown> | null> {
+  const text = await request.text();
+
+  if (text.trim() === "") {
+    return {};
+  }
+
+  try {
+    const value: unknown = JSON.parse(text);
+    return isRecord(value) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 function withSetCookie(response: Response, cookie: string): Response {
@@ -119,6 +146,127 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         httpOnly: true,
       }),
     );
+  }
+
+  async function memberMe(request: Request): Promise<Response> {
+    return withSession(request, async ({ session }) => {
+      if (session === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      const member = await readMember(options.sql, session.memberId);
+
+      if (member === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      if (member.displayName === null) {
+        return json({ code: "display_name_required" }, 409);
+      }
+
+      return json({
+        memberId: session.memberId,
+        displayName: member.displayName,
+        locale: member.locale,
+      });
+    });
+  }
+
+  async function setDisplayName(request: Request): Promise<Response> {
+    return withSession(request, async ({ session }) => {
+      if (session === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      const body = await readJsonBody(request);
+
+      if (body === null) {
+        return json({ code: "invalid_request" }, 400);
+      }
+
+      const name = validateDisplayName(body.displayName);
+
+      if (!name.ok) {
+        return json({ code: name.code }, 400);
+      }
+
+      const result = await updateDisplayName(options.sql, session.memberId, name);
+
+      if (result.kind === "missing") {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      if (result.kind === "taken") {
+        return json({ code: "display_name_taken" }, 409);
+      }
+
+      if (result.kind === "limit") {
+        return json(
+          {
+            code: "display_name_change_limit",
+            nextAllowedAt: result.nextAllowedAt.toISOString(),
+          },
+          429,
+        );
+      }
+
+      sessions.invalidate?.();
+      return json({ displayName: result.displayName });
+    });
+  }
+
+  async function saveLocale(request: Request): Promise<Response> {
+    return withSession(request, async ({ session }) => {
+      if (session === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      const member = await readMember(options.sql, session.memberId);
+
+      if (member === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      if (member.displayName === null) {
+        return json({ code: "display_name_required" }, 409);
+      }
+
+      const body = await readJsonBody(request);
+
+      if (body === null) {
+        return json({ code: "invalid_request" }, 400);
+      }
+
+      if (typeof body.locale !== "string" || !isLocale(body.locale)) {
+        return json({ code: "invalid_locale" }, 400);
+      }
+
+      await saveMemberLocale(options.sql, session.memberId, body.locale);
+      return json({ locale: body.locale });
+    });
+  }
+
+  async function nameHistory(request: Request, memberId: string): Promise<Response> {
+    return withSession(request, async ({ session }) => {
+      if (session === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      if (!(await can(options.sql, session.memberId, "members.view_name_history"))) {
+        return json({ code: "forbidden" }, 403);
+      }
+
+      const history = await readNameHistory(options.sql, memberId);
+
+      return json({
+        history: history.map((entry) => ({
+          oldName: entry.oldName,
+          newName: entry.newName,
+          changedAt: entry.changedAt.toISOString(),
+          changedBy: entry.changedBy,
+        })),
+      });
+    });
   }
 
   function testEndpoint(request: Request, pathname: string): Promise<Response> | null {
@@ -260,6 +408,42 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
 
       if (authResponse !== null) {
         return authResponse;
+      }
+
+      if (pathname === "/api/me") {
+        if (request.method !== "GET") {
+          return json({ code: "method_not_allowed" }, 405);
+        }
+
+        return memberMe(request);
+      }
+
+      if (pathname === "/api/me/display-name") {
+        if (request.method !== "POST") {
+          return json({ code: "method_not_allowed" }, 405);
+        }
+
+        return setDisplayName(request);
+      }
+
+      if (pathname === "/api/me/locale") {
+        if (request.method !== "POST") {
+          return json({ code: "method_not_allowed" }, 405);
+        }
+
+        return saveLocale(request);
+      }
+
+      if (options.kind === "staff") {
+        const historyMatch = /^\/api\/staff\/members\/(\d+)\/name-history$/.exec(pathname);
+
+        if (historyMatch !== null) {
+          if (request.method !== "GET") {
+            return json({ code: "method_not_allowed" }, 405);
+          }
+
+          return nameHistory(request, historyMatch[1] ?? "");
+        }
       }
 
       if (options.kind === "staff") {
