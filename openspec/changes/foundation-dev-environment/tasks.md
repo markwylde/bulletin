@@ -33,8 +33,8 @@
 
 ## 5. Health and lifecycle
 
-- [ ] 5.1 Implement shared `/health/live` and `/health/ready` plus SIGTERM drain in a common server helper used by every service, with integration tests for the DB-down and in-flight-request scenarios
-- [ ] 5.2 Implement the connection budget check and verify an over-budget configuration refuses to start
+- [x] 5.1 Implement shared `/health/live` and `/health/ready` plus SIGTERM drain in a common server helper used by every service, with integration tests for the DB-down and in-flight-request scenarios
+- [x] 5.2 Implement the connection budget check and verify an over-budget configuration refuses to start
 
 ## 6. Test harness
 

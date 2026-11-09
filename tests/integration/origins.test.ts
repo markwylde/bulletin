@@ -35,6 +35,16 @@ integrationDescribe("compose origins", () => {
     expect(await staffApi.json()).toMatchObject({ service: "staff-api" });
   });
 
+  test("app origins expose liveness and readiness", async () => {
+    for (const host of ["bulletin.localhost", "staff.bulletin.localhost"]) {
+      const live = await fetch(`http://${host}:8080/health/live`);
+      expect(live.status).toBe(200);
+
+      const ready = await fetch(`http://${host}:8080/health/ready`);
+      expect(ready.status).toBe(200);
+    }
+  });
+
   test("the auth origin serves the mock's discovery document", async () => {
     const response = await fetch(
       "http://auth.bulletin.localhost:8080/.well-known/openid-configuration",

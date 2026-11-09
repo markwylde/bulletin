@@ -6,6 +6,7 @@
       "name": "bulletin",
       "devDependencies": {
         "@biomejs/biome": "2.6.6",
+        "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
         "@types/bun": "1.4.4",
         "jose": "6.2.16",
@@ -14,10 +15,14 @@
     },
     "apps/plugin-host": {
       "name": "@bulletin/plugin-host",
+      "dependencies": {
+        "@bulletin/config": "workspace:*",
+      },
     },
     "apps/staff-api": {
       "name": "@bulletin/staff-api",
       "dependencies": {
+        "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
       },
     },
@@ -37,6 +42,7 @@
     "apps/user-api": {
       "name": "@bulletin/user-api",
       "dependencies": {
+        "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
       },
     },
@@ -52,6 +58,7 @@
     "apps/workers": {
       "name": "@bulletin/workers",
       "dependencies": {
+        "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
       },
     },

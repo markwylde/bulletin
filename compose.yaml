@@ -34,6 +34,17 @@ x-bun-healthcheck: &bun-healthcheck
       .then((response) => process.exit(response.ok ? 0 : 1))
       .catch(() => process.exit(1))
 
+x-service-healthcheck: &service-healthcheck
+  <<: *healthcheck
+  test:
+    - CMD
+    - bun
+    - -e
+    - >-
+      fetch("http://127.0.0.1:" + (process.env.PORT ?? "3000") + "/health/ready")
+      .then((response) => process.exit(response.ok ? 0 : 1))
+      .catch(() => process.exit(1))
+
 services:
   postgres:
     image: postgres:18.6-alpine
@@ -371,7 +382,7 @@ services:
       <<: *app-environment
       PORT: "4321"
       DATABASE_URL: postgres://user_app@postgres:5432/bulletin
-    healthcheck: *bun-healthcheck
+    healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
     develop:
@@ -412,7 +423,7 @@ services:
       PORT: "3001"
       DATABASE_URL: postgres://user_api@postgres:5432/bulletin
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
-    healthcheck: *bun-healthcheck
+    healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
     develop:
@@ -451,7 +462,7 @@ services:
     environment:
       <<: *app-environment
       PORT: "5173"
-    healthcheck: *bun-healthcheck
+    healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
     develop:
@@ -495,7 +506,7 @@ services:
       PORT: "3002"
       DATABASE_URL: postgres://staff_api@postgres:5432/bulletin
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
-    healthcheck: *bun-healthcheck
+    healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
     develop:
@@ -537,7 +548,7 @@ services:
       DATABASE_URL: postgres://workers@postgres:5432/bulletin
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
       PG_BOSS_DATABASE_URL: postgres://workers@postgres:5432/bulletin
-    healthcheck: *bun-healthcheck
+    healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
     develop:
@@ -576,7 +587,7 @@ services:
     environment:
       <<: *app-environment
       PORT: "3004"
-    healthcheck: *bun-healthcheck
+    healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
     develop:

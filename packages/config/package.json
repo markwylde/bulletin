@@ -4,7 +4,9 @@
   "type": "module",
   "description": "Environment parsing and structured logging.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./connections": "./src/connections.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

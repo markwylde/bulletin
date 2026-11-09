@@ -185,6 +185,7 @@ integrationDescribe("database lifecycle", () => {
           has_schema_privilege('user_api', 'pii', 'USAGE') AS api_pii,
           has_table_privilege('user_app', 'core.cache_tags', 'SELECT') AS app_tags_select,
           has_table_privilege('user_app', 'core.cache_tags', 'INSERT') AS app_tags_insert,
+          has_table_privilege('user_app', 'core.schema_migrations', 'SELECT') AS app_migrations_select,
           has_table_privilege('user_api', 'core.events', 'INSERT') AS api_events_insert,
           has_table_privilege('workers', 'core.events', 'UPDATE') AS workers_events_update,
           has_table_privilege('workers', 'core.seed_runs', 'INSERT') AS workers_seed_insert
@@ -196,6 +197,7 @@ integrationDescribe("database lifecycle", () => {
         api_pii: false,
         app_tags_select: true,
         app_tags_insert: false,
+        app_migrations_select: true,
         api_events_insert: true,
         workers_events_update: true,
         workers_seed_insert: true,

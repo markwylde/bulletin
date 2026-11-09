@@ -105,8 +105,9 @@ async function appliedMigrations(reserved: SQL): Promise<readonly AppliedRow[]> 
 /**
  * Applies pending migrations under a session advisory lock. Every file runs in its own
  * transaction; an edited applied file aborts before anything is applied.
- */
-export async function runMigrations(options: RunMigrationsOptions = {}): Promise<MigrationResult> {
+ */ export async function runMigrations(
+  options: RunMigrationsOptions = {},
+): Promise<MigrationResult> {
   const migrations = await loadMigrations(options.migrationsDir);
   const ownsSql = options.sql === undefined;
   const sql =
@@ -184,3 +185,19 @@ export async function runMigrations(options: RunMigrationsOptions = {}): Promise
 }
 
 export { DEFAULT_MIGRATIONS_DIR };
+
+/** True when every migration on disk is applied with the current checksum. */
+export async function migrationsCurrent(
+  sql: SQL,
+  migrationsDir = DEFAULT_MIGRATIONS_DIR,
+): Promise<boolean> {
+  const migrations = await loadMigrations(migrationsDir);
+  const applied = await appliedMigrations(sql);
+
+  if (migrations.length !== applied.length) {
+    return false;
+  }
+
+  const byName = new Map(applied.map((row) => [row.name, row.sha256]));
+  return migrations.every((migration) => byName.get(migration.name) === migration.checksum);
+}
