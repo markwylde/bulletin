@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { t } from "@bulletin/i18n";
+import userEn from "../../apps/user-app/i18n/en.json";
 
 const ENABLED = Bun.env.BULLETIN_INTEGRATION === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
@@ -11,7 +11,7 @@ integrationDescribe("user app placeholder locale data", () => {
     expect(response.status).toBe(200);
 
     const html = await response.text();
-    expect(html).toContain(t("en", "user.placeholder.body"));
+    expect(html).toContain(userEn["user.placeholder.body"]);
     expect(html).toContain('id="i18n-catalog"');
     expect(html).toContain('"es"');
     expect(html).toContain('"fr"');

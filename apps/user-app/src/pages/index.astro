@@ -1,14 +1,16 @@
 ---
-import { CATALOGS, t } from "@bulletin/i18n";
+import { createServerT } from "@bulletin/i18n";
+import { USER_CATALOGS } from "../catalogs.ts";
 
-const messages = JSON.stringify(CATALOGS);
+const messages = JSON.stringify(USER_CATALOGS);
+const t = createServerT("en", { shipped: USER_CATALOGS });
 ---
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{t("en", "user.placeholder.title")}</title>
+    <title>{t("user.placeholder.title")}</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -65,8 +67,8 @@ const messages = JSON.stringify(CATALOGS);
   </head>
   <body>
     <main>
-      <h1 data-i18n="user.placeholder.title">{t("en", "user.placeholder.title")}</h1>
-      <p data-i18n="user.placeholder.body">{t("en", "user.placeholder.body")}</p>
+      <h1 data-i18n="user.placeholder.title">{t("user.placeholder.title")}</h1>
+      <p data-i18n="user.placeholder.body">{t("user.placeholder.body")}</p>
     </main>
     <script type="application/json" id="i18n-catalog" set:html={messages}></script>
     <script is:inline>

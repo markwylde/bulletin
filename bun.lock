@@ -37,6 +37,7 @@
       "dependencies": {
         "@bulletin/config": "workspace:*",
         "@bulletin/i18n": "workspace:*",
+        "@bulletin/ui": "workspace:*",
         "react": "19.3.1",
         "react-dom": "19.3.1",
       },

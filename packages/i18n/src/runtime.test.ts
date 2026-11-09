@@ -111,11 +111,11 @@ describe("runtime catalog completeness and fallback", () => {
 
     expect(
       resolveRuntimeMessage({
-        key: "user.placeholder.title",
+        key: "topic.reply.button",
         locale: "fr",
         plugin,
       }),
-    ).toBe("Bulletin");
+    ).toBe("Répondre");
   });
 
   test("applies the override, theme, plugin, shipped lookup order", () => {
@@ -154,11 +154,11 @@ describe("runtime catalog completeness and fallback", () => {
     ).toBeUndefined();
     expect(
       resolveRuntimeMessage({
-        key: "user.placeholder.body",
+        key: "custom.message",
         locale: "fr",
-        shipped: { fr: { "user.placeholder.body": "Corps" } },
+        shipped: { fr: { "custom.message": "Sur mesure" } },
       }),
-    ).toBe("Corps");
+    ).toBe("Sur mesure");
   });
 
   test("catalogCompleteness handles an empty base", () => {

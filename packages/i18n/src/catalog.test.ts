@@ -26,7 +26,7 @@ describe("shipped catalogs", () => {
   test("loads a catalog from a JSON file", async () => {
     const catalog = await loadCatalog(new URL("../i18n/en.json", import.meta.url));
 
-    expect(catalog["user.placeholder.title"]).toBe("Bulletin");
+    expect(catalog["topic.reply.button"]).toBe("Reply");
     expect(catalog["topic.reply.count"]).toContain("plural");
   });
 
@@ -44,13 +44,13 @@ describe("catalog lookup", () => {
     expect(isLocale("EN")).toBe(false);
   });
 
-  test("returns translated placeholder strings", () => {
-    expect(t("es", "user.placeholder.body")).toContain("comunidad");
-    expect(t("fr", "user.placeholder.body")).toContain("communauté");
+  test("returns translated shipped strings", () => {
+    expect(t("es", "topic.reply.button")).toBe("Responder");
+    expect(t("fr", "topic.reply.button")).toBe("Répondre");
   });
 
   test("falls back to English and then the key itself", () => {
-    expect(t("es", "staff.placeholder.title")).toBe(CATALOGS.es["staff.placeholder.title"]);
+    expect(t("es", "topic.reply.button")).toBe(CATALOGS.es["topic.reply.button"]);
     expect(t("en", "not.shipped" as MessageKey)).toBe("not.shipped");
   });
 });

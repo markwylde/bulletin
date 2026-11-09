@@ -14,7 +14,7 @@ describe("server translator", () => {
     });
 
     expect(t("topic.reply.button")).toBe("Respond");
-    expect(t("user.placeholder.title")).toBe("Bulletin");
+    expect(t("topic.reply.count", { count: 1 })).toBe("1 reply");
   });
 
   test("returns the key when no message exists", () => {
