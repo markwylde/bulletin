@@ -29,3 +29,7 @@ reads in-process metrics and DB state directly.
 ## Risks / Trade-offs
 
 - [Load test cost] → nightly only, on a dedicated runner.
+
+## Feature flags (ADR 0010)
+
+None: staff-only tooling and operations, exempt under ADR 0010.

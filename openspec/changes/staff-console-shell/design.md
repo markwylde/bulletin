@@ -32,3 +32,14 @@ registry.
 ## Risks / Trade-offs
 
 - [Permission bootstrap before the registry exists] → a single migration in change `groups-permissions` maps the interim flags; tests guard the mapping.
+
+## Feature flags (ADR 0010)
+
+None: staff-only tooling, exempt under ADR 0010.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Staff preferences (`core.member_prefs.staff_scheme`) | Personal content | staff UI | life of account | the member | included | deleted |
+| Admin log (`core.admin_log`) | Security record | accountability | 2 years | staff with `acp.log` | entries where the member is the actor | actor anonymised |

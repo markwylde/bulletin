@@ -10,7 +10,7 @@
 
 - [ ] 2.1 Write per-app multi-stage Dockerfiles and `compose.yaml` services with `develop.watch` (sync / sync+restart / rebuild) and verify a source edit reloads without a rebuild
 - [ ] 2.2 Add Postgres (pinned) with a data volume and the Caddy proxy with the ADR 0018 hostnames; verify all origins respond through `*.bulletin.localhost:8080`
-- [ ] 2.3 Add darkauth-mock (image, volume, `darkauth-mock.yaml` with `bulletin-user` and `bulletin-staff` clients and the seeded profiles) and verify the mock login page loads at `auth.bulletin.localhost:8080`
+- [ ] 2.3 Add darkauth-mock (image, volume, `darkauth-mock.yaml` with `bulletin-user` and `bulletin-staff` clients and the seeded profiles) and verify with an integration test that the code flow for a profile returns an ID token verifiable via JWKS
 
 ## 3. Mocks
 
@@ -20,6 +20,8 @@
 - [ ] 3.4 Build `mocks/cdn` (cache honouring `Cache-Control`, `bp`-cookie keying, surrogate-key purge, `X-Cache` header) and verify the purge-by-key scenario
 - [ ] 3.5 Build `mocks/marketplace` as a stub registry serving a signed empty catalog, and verify the signature validates with the dev public key
 - [ ] 3.6 Add the architecture test that fails if app code references mock-only flags or hostnames, and verify it catches a planted violation
+- [ ] 3.7 Implement the basic `packages/storage` client over `Bun.S3Client` (put, get, delete, presign GET/PUT, opaque keys) against `mocks/s3`, with contract tests; the upload state machine is added in `attachments-avatars`
+- [ ] 3.8 Implement `safeFetch` in `packages/domain/net` (resolve once, block ranges per ADR 0016, connect to the pinned IP, HTTPS-only in production, redirect policy, caps, dev allowlist rejected in production) with tests for each blocked range, a DNS-rebinding test, and the redirect re-check
 
 ## 4. Database lifecycle
 
@@ -27,6 +29,7 @@
 - [ ] 4.2 Create migration `0001` with schemas `core` and `pii`, owner roles (`bulletin_owner`, `pii_owner`) and login roles (`user_app`, `user_api`, `staff_api`, `workers`) per ADRs 0001 and 0012 (no tables yet beyond `schema_migrations`, `seed_runs`, `cache_tags`); verify role privileges with tests
 - [ ] 4.3 Implement the ID and URL convention helpers (`/<kind>/<id>-<slug>`, ID-only resolution, canonical 301) in `packages/domain`, with unit tests for missing, outdated and correct slugs
 - [ ] 4.4 Implement the seed framework (module registry, seeded RNG, `SEED_SIZE`, run-once guard) and verify the reproducibility scenario with a test comparing two seeded databases
+- [ ] 4.5 Wire pg-boss (own schema, `workers` role) and implement the domain-event outbox: `core.events`, `core.event_deliveries`, `core.job_cursors`, the typed catalog file, `emit()` inside mutation transactions, and the relay (claim, per-subscriber delivery rows, singleton enqueue, published marking); integration tests for the rolled-back, subscriber-isolation and crash-between-steps scenarios using a test subscriber
 
 ## 5. Health and lifecycle
 
@@ -36,7 +39,7 @@
 ## 6. Test harness
 
 - [ ] 6.1 Implement per-file template databases for `bun test` and verify two test files run in parallel without interference
-- [ ] 6.2 Implement `Bun.WebView` E2E helpers (Chrome backend, temp profile, viewport presets, `loginAs`, `waitForHydration`) and an E2E smoke test that opens both apps at all three viewports
+- [ ] 6.2 Implement `Bun.WebView` E2E helpers (Chrome backend, temp profile, viewport presets; `loginAs` is added by `identity-sessions` and `waitForHydration` by `rendering-and-caching`) and an E2E smoke test that opens both apps at all three viewports
 - [ ] 6.3 Add `compose.test.yaml` and the E2E runner script, and verify the smoke test passes against the full stack
 
 ## 7. i18n and seed placeholders

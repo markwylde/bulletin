@@ -33,8 +33,8 @@ A new member SHALL choose a display name before using the forum. Names SHALL be 
 - **THEN** the name is rejected as already taken
 
 #### Scenario: Name required
-- **WHEN** a new member without a display name navigates to any page
-- **THEN** they are redirected to the display-name step
+- **WHEN** a new member without a display name calls any member API other than setting their name
+- **THEN** the API responds 409 with code `display_name_required`
 
 ### Requirement: Display name changes with history
 Members SHALL be able to change their display name within the limits of their group settings. Every change SHALL be recorded with old name, new name and time, and staff SHALL be able to view the history.

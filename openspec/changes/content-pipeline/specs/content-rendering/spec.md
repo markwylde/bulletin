@@ -40,7 +40,7 @@ When the sanitiser rules change, content rendered under older rules SHALL be re-
 - **THEN** old posts served after deployment pass through the new rules, even before the re-render job reaches them
 
 ### Requirement: Mentions
-`@DisplayName` SHALL link to the member's profile when the member exists, and SHALL be recorded for notifications. Mentions of members who cannot read the content SHALL NOT notify them.
+`@DisplayName` SHALL link to the member's profile when the member exists, and SHALL be recorded on the content so that notifications (`events-notifications`) can use them.
 
 #### Scenario: Mention renders
 - **WHEN** a post mentions an existing member
@@ -89,9 +89,9 @@ When a moderator edits another member's post with redaction enabled (the default
 ### Requirement: Quotes excluded from derived text
 Plain text derived from content (used for search, previews, notifications, emails, push, webhooks and feeds) SHALL exclude quoted text.
 
-#### Scenario: Search ignores quote
-- **WHEN** a post quotes another post containing "zebra" and contains no "zebra" itself
-- **THEN** searching "zebra" does not match the quoting post
+#### Scenario: Derived text ignores quote
+- **WHEN** content quotes a source containing "zebra" and contains no "zebra" itself
+- **THEN** its `body_text` does not contain "zebra"
 
 ### Requirement: Embeds and unfurls
 Links from allowlisted providers (YouTube, Vimeo and others configured by admins) SHALL render as embedded players. Other standalone links SHALL render as preview cards once fetched. Fetching SHALL never target private or internal network addresses.
@@ -102,7 +102,7 @@ Links from allowlisted providers (YouTube, Vimeo and others configured by admins
 
 #### Scenario: Preview card
 - **WHEN** a post contains a standalone link to a public page with OpenGraph tags
-- **THEN** after the fetch completes, the post shows a card with title, description and a proxied image
+- **THEN** after the fetch completes, the post shows a card with title and description (the image is added by `attachments-avatars`)
 
 ### Requirement: Emoticon management
 Staff with `acp.emoticons` SHALL manage emoticon sets: upload images, set codes and alt text, order them, and choose which sets appear in the editor.

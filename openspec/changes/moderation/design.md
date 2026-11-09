@@ -17,6 +17,10 @@ grant). The write pipeline stages were reserved in `content-pipeline`.
   `soft_deleted`) plus `hold_reason`. Counters include only `visible` rows. Approve and reject
   are mutations with tags and events (`post.approved` triggers notifications, badges and
   promotions).
+- **Held content and caching**: shared fragments include `unapproved` rows only for variants
+  with `see_unapproved` (ADR 0005). The viewer's own held posts for the page context come from
+  the private overlay as rendered post blocks, inserted client-side in position order and
+  marked "Awaiting approval". The same applies to held topics in forum lists.
 - **Approval decision**: a pure function `needsApproval(author, forum, content, filterFlags)`
   combining the new-member N, group restriction, forum setting, warning-imposed moderation
   and filter flags. It is unit-tested exhaustively.
@@ -48,7 +52,9 @@ grant). The write pipeline stages were reserved in `content-pipeline`.
   definer function (write-only for user_api). Lookups go through `pii.open_access` →
   `pii.read_post_ip(grant)`, per ADR 0012, from staff-api with step-up auth. The "other members
   from this IP" view uses `pii.read_members_by_ip(grant)`, a separate audited grant that only
-  returns posts in forums where the actor has `mod.view_ips` (capped at 100 rows).
+  returns posts in forums where the actor has `mod.view_ips` (capped at 100 rows). Admins with
+  `members.view_ips` can see a member's login IPs via `pii.read_login_ips(grant)`. Every
+  check runs inside SQL via `core.has_mod_power` / `core.has_acp` (ADR 0012).
 - **IP bans**: `ip_bans(cidr inet, reason, expires_at, created_by)` with a GiST index. The
   check runs in login and post middleware.
 - **Log**: `moderation_log` is append-only. The app role has INSERT and SELECT only (no UPDATE

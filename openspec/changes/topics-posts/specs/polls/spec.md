@@ -21,8 +21,8 @@ Members with `vote` on the forum SHALL vote once per poll, before it closes. Gue
 - **THEN** it is rejected
 
 #### Scenario: Closed poll
-- **WHEN** a poll's close date has passed
-- **THEN** voting is disabled, and results are shown
+- **WHEN** a poll's close date has passed, even while its page is cached
+- **THEN** within one minute voting is disabled, and results are shown
 
 ### Requirement: Results visibility
 If results are hidden before voting, a viewer SHALL see results only after voting, when the poll is closed, or if they are a moderator of the forum. Hidden counts SHALL NOT appear in shared or cached HTML; they SHALL be fetched from a private endpoint that checks these conditions per request.

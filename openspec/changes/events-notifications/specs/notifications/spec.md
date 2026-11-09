@@ -39,8 +39,16 @@ Members SHALL choose, per notification type, whether to receive it in-app, by em
 Email notifications SHALL be localised to the recipient, contain only content the recipient can read, exclude quoted text, and include a one-click unsubscribe for that type.
 
 #### Scenario: Unsubscribe link
-- **WHEN** a member clicks the unsubscribe link in a reply notification email
+- **WHEN** a member clicks the unsubscribe link in a reply notification email and confirms
 - **THEN** email for that notification type is disabled without logging in
+
+#### Scenario: Link scanner
+- **WHEN** an email security scanner fetches the unsubscribe link with GET
+- **THEN** nothing changes
+
+#### Scenario: Digest with notifications off
+- **WHEN** the `notifications` flag is off and a member's weekly digest is due
+- **THEN** the digest is still delivered to their address
 
 ### Requirement: Digests
 Members SHALL be able to receive a daily or weekly digest summarising activity in followed topics and forums since the last digest. Digests SHALL be built at send time with current permissions.

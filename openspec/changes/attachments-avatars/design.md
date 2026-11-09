@@ -26,7 +26,9 @@ themes, plugins and exports later.
   `response-content-type`, `response-content-disposition`, and the CSP/nosniff headers set by
   the files-origin proxy (Caddy adds headers for that host).
 - **Inline images in posts**: the HTML references `/attachments/:id/…`, so every view
-  re-authorises.
+  re-authorises. Attachments render as `<bl-attachment data-id>` placeholders resolved at
+  fragment build, so deleting an attachment bumps `post:{id}` and `topic:{id}:pages` for every
+  referencing post in the same transaction and the post shows "attachment removed".
 - **CDN rule** (ADR 0019): only the **302 on the forum origin** is CDN-cacheable, and only for
   session-less requests to guest-visible attachments: `s-maxage=15, stale-while-revalidate=15`,
   always inside the 60 s presign. Every other redirect is `private, no-store`. The files origin
@@ -44,7 +46,7 @@ themes, plugins and exports later.
 ## Risks / Trade-offs
 
 - [sharp native binary in Bun images] → pin the version; CI builds on both architectures.
-- [Redirect per inline image adds latency] → the presigned URL is cached per viewer-variant for 30 s; the browser follows the redirect quickly.
+- [Redirect per inline image adds latency] → accepted; presigned URLs are never cached server-side (ADR 0019), and the browser follows the redirect quickly.
 
 ## Personal data (ADR 0012 checklist)
 

@@ -25,11 +25,11 @@ Architecture is fixed by `docs/adr/`; product scope by `docs/features.md`.
 | 16 | `conversations` | conversations | `events-notifications`, `member-profiles` | 0011 |
 | 17 | `moderation` | moderation-queue, reports, topic-moderation, warnings, content-filters, ip-bans, moderation-log | `topics-posts`, `conversations` | 0005 0012 |
 | 18 | `search` | search | `topics-posts` | 0017 |
-| 19 | `themes` | themes | `rendering-and-caching` | 0008 |
+| 19 | `themes` | themes | `rendering-and-caching`, `attachments-avatars`, `search` (and every earlier user-app change, whose routes it completes) | 0008 |
 | 20 | `plugin-platform` | plugin-lifecycle, plugin-sandbox, plugin-hooks, plugin-admin-forms | `plugin-sandbox-spike`, `events-notifications`, `themes` | 0009 |
-| 21 | `privacy-gdpr` | privacy | `moderation`, `plugin-platform` | 0012 |
-| 22 | `public-api-webhooks` | public-api, webhooks | `events-notifications` | 0016 |
-| 23 | `pwa-push` | pwa, web-push | `events-notifications`, `themes` | 0014 |
+| 21 | `public-api-webhooks` | public-api, webhooks | `events-notifications` | 0016 |
+| 22 | `pwa-push` | pwa, web-push | `events-notifications`, `themes` | 0014 |
+| 23 | `privacy-gdpr` | privacy | `moderation`, `plugin-platform`, `public-api-webhooks`, `pwa-push` | 0012 |
 | 24 | `seo-feeds` | seo-feeds | `topics-posts` | 0006 |
 | 25 | `operations-observability` | observability, backups | `rendering-and-caching`, `events-notifications`, `plugin-platform` | 0020 |
 

@@ -10,34 +10,20 @@ wording, and keeps cached pages deterministic per locale.
 ### Requirement: Supported locales
 The user app, staff app, emails and push notifications SHALL be fully available in English (`en`), Spanish (`es`) and French (`fr`). The board default locale SHALL be configurable by admins.
 
-#### Scenario: Spanish member
-- **WHEN** a member with locale preference `es` views any page
-- **THEN** all interface text, dates and numbers are in Spanish
-
-### Requirement: Member locale resolution
-For logged-in members, the locale SHALL be the member's saved preference, falling back to the board default.
-
-#### Scenario: No preference set
-- **WHEN** a member has no saved locale and the board default is `fr`
-- **THEN** pages render in French
+#### Scenario: Spanish formatting
+- **WHEN** any shipped message, date and number is formatted with locale `es`
+- **THEN** the result is the Spanish text with Spanish date and number formats
 
 ### Requirement: Guest locale resolution
 For guests, the locale SHALL come from the `bp` preference cookie, falling back to the board default. `Accept-Language` SHALL NOT change server-rendered content.
 
 #### Scenario: Guest with Spanish browser
-- **WHEN** a guest without a `bp` cookie sends `Accept-Language: es`
-- **THEN** the page renders in the board default locale, and a banner offers to switch to Spanish
+- **WHEN** locale resolution runs for a guest request without a `bp` cookie and with `Accept-Language: es`
+- **THEN** the resolved locale is the board default, and `es` is returned only as a suggestion
 
-#### Scenario: Guest switches locale
-- **WHEN** the guest accepts the banner
-- **THEN** the `bp` cookie is set with locale `es` and the page reloads in Spanish
-
-### Requirement: Locale switcher
-Every user-app page SHALL offer a language switcher. For members it saves the preference; for guests it sets the `bp` cookie.
-
-#### Scenario: Member switches language
-- **WHEN** a member picks French from the switcher
-- **THEN** their preference is saved, and subsequent pages render in French on any device
+#### Scenario: Guest cookie
+- **WHEN** locale resolution runs for a guest request whose `bp` cookie has locale `es`
+- **THEN** the resolved locale is `es`
 
 ### Requirement: Message formatting
 Messages SHALL support ICU plural, select and number/date arguments. Dates, numbers and relative times SHALL be formatted for the active locale.
@@ -51,7 +37,7 @@ Admins SHALL be able to override any interface string per locale from the staff 
 
 #### Scenario: Override a string
 - **WHEN** an admin changes the `en` text of the "Reply" button to "Respond"
-- **THEN** user-app pages show "Respond" after the change, and reverting restores "Reply"
+- **THEN** formatting the key returns "Respond" after the change, and reverting restores "Reply"
 
 ### Requirement: Runtime catalog validation
 Strings supplied at runtime (admin overrides, theme catalogs, plugin catalogs) SHALL be rejected if their ICU syntax is invalid or their placeholders do not match the base key. Missing keys SHALL fall back to English.

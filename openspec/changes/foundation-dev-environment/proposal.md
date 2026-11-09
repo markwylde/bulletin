@@ -20,6 +20,7 @@ with two steps (clone, `docker compose up --watch`), with Postgres as the only s
 ## Capabilities
 
 ### New Capabilities
+- `domain-events`: the transactional outbox, relay and delivery guarantees every later change emits through.
 - `dev-environment`: two-step local startup, watch behaviour, migrations, seeding, supported engines.
 - `local-mocks`: config-driven local stand-ins for every external service, with inspection UIs.
 - `service-health`: liveness/readiness, graceful shutdown and connection budget enforcement for every service.

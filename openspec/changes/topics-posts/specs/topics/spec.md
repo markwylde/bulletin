@@ -26,7 +26,7 @@ A forum's topic list SHALL show pinned topics first, then topics ordered by last
 - **THEN** it is listed above the unpinned topics
 
 ### Requirement: Linear topic view
-A topic SHALL show its posts oldest first, paginated with a board-configurable number per page. Each post SHALL show the author's display name, avatar, group title, rank, post count, join date, the post content and signature.
+A topic SHALL show its posts oldest first, paginated with a board-configurable number per page. Each post SHALL show the author's display name, avatar, group title, post count, join date and the post content. Later changes add rank, signature and badges to the author card.
 
 #### Scenario: Paging
 - **WHEN** a topic has 45 posts and the page size is 20

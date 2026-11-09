@@ -10,7 +10,7 @@ Architecture lives in [`adr/`](adr/README.md). This file defines **what** we bui
 - Redirect/link forums (with click counter)
 - Per-forum rules box above the topic list
 - Password-protected forums (in addition to permissions)
-- Topic prefixes/tags, configurable per forum
+- Topic prefixes, configurable per forum (free-form topic tags are out of scope)
 - Linear topic view only
 - Pinned, locked, moved-topic redirect stubs, view counts, read/unread tracking
 - Global and per-forum announcements

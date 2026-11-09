@@ -33,3 +33,13 @@ lookup path with overrides layered in.
 
 - [Catalog drift across three languages] → CI completeness check; the seed includes es/fr content so drift is visible.
 - [Overrides make strings unpredictable for support] → the staff app lists all active overrides, with one-click revert.
+
+## Feature flags (ADR 0010)
+
+None: localisation is core to every page, exempt under ADR 0010.
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| String overrides (`core.string_overrides.updated_by`) | Personal content (staff identity) | accountability | life of the override | staff with `acp.strings` | included for that staff member | `updated_by` set to null |

@@ -2,15 +2,17 @@
 
 ## 1. Schema and mutations
 
-- [ ] 1.1 Migrations for topics, posts, post_revisions, polls, poll_questions, poll_choices, poll_votes, topic_reads, forum_reads and topic_view_buffer; verify with integration tests
+- [ ] 1.1 Migrations for topics, posts, post_revisions, polls, poll_questions, poll_choices, poll_votes, poll_vote_choices, topic_reads, forum_reads and topic_view_buffer; verify with integration tests
 - [ ] 1.2 Implement `startTopic`, `reply`, `editPost`, `softDelete`, `restore`, `hardDelete`, `lock`, `pin` and `move` as mutations with declared tags and transactional counters; integration tests for counter correctness under concurrent replies
 
 ## 2. Topics
 
 - [ ] 2.1 Forum topic list (pinned first, sort, pagination, prefix filter) with permission-filtered queries; integration tests including permission denial; E2E at all viewports
-- [ ] 2.2 Topic view (linear, paginated, post blocks referencing the `member:{id}:card` fragment, quote placeholder resolution per viewer) with the cache variant harness applied (see-deleted, mod controls, quote source visibility); E2E at all viewports
+- [ ] 2.2 Topic view (linear, paginated, post blocks referencing the `member:{id}:card` fragment, quote placeholder resolution per viewer, quoted forums' `read` bits declared from `posts.quoted_forum_ids` before lookup) with the cache variant harness applied (see-deleted, mod controls, quote source visibility); E2E at all viewports
 - [ ] 2.3 Moved-topic stubs, view counts (overlay and beacon recording, buffer, flush job without content tag bumps, separate views fragment) and `/topic/<id>-<slug>` routing with page/post forms and redirects; integration tests including the guest-view-counted scenario
 - [ ] 2.4 Author card fragment `member:{id}:card` (name, initials avatar, group, post count) tagged `member:{id}` and `ranks`, composed by reference into post blocks; tests that a post-count change rebuilds the card but not the post blocks, and that the card carries no viewer-specific data
+- [ ] 2.5 Permalink page computed from the viewer's visible ordering, and timestamp-based read markers; tests that a permalink lands on the right page after earlier posts are deleted, for a moderator and a member, and that unread state survives merge and split
+- [ ] 2.6 Protected revisions on redacting moderator edits, excluded from public history; tests for the public-history-with-redaction scenario
 
 ## 3. Posting
 
@@ -20,11 +22,15 @@
 - [ ] 3.4 Moderator edit form with "Redact earlier versions in quotes" (default on), wired to snapshot redaction; integration test for the default-redaction scenario
 - [ ] 3.5 Soft delete, restore and hard delete UI and API, with integration tests for visibility and counts, and permission-denial tests
 - [ ] 3.6 Permalinks with position-based paging, with an integration test
+- [ ] 3.7 Register the `approved_posts` promotion criterion and evaluate promotion after each approved post; integration test that a member's 100th approved post promotes them once
+- [ ] 3.8 Register the topics/posts/today's-activity dashboard widget, with a permission test
+- [ ] 3.9 Latest-readable-post on the index, required prefixes and prefix filters on topic lists, and the move-or-delete choice when deleting a forum with topics; integration tests for each scenario in the `forums` delta
 
 ## 4. Polls
 
 - [ ] 4.1 Poll creation in the new-topic form, voting, close dates and editing rules; integration tests for each scenario; E2E voting at 360
 - [ ] 4.2 Poll fragments: shared choices fragment, counts only when results are public, private `GET /api/polls/:id/results` (voted, closed or moderator), and `hasVoted` in the overlay; tests that hidden counts never appear in cached or CDN HTML, permission-denial tests for the results endpoint, and a cache variant test
+- [ ] 4.3 Poll close as a time transition (TTL cap and minute worker bump); integration test that a cached open poll shows as closed within one minute of `closes_at`
 
 ## 5. Read tracking
 

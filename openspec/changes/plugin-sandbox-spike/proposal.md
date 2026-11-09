@@ -26,4 +26,4 @@ costs one superseding ADR, not a rewrite.
 
 ## Impact
 
-- `apps/plugin-host` (prototype, kept as the starting point for `plugin-platform`), `docker-compose.yml` (plugin-host service and its capabilities), CI (Docker and Podman jobs), ADR 0009.
+- `apps/plugin-host` (prototype, kept as the starting point for `plugin-platform`), `compose.yaml` (plugin-host service and its capabilities), CI (Docker and Podman jobs), ADR 0009.

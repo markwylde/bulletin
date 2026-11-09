@@ -20,9 +20,15 @@ ADR 0012. Most restricted storage exists already (changes `identity-sessions` an
   possible, or `fflate`), uploads it to `export/<uuid>.zip`, and records it in
   `data_requests`. The link is an authenticated route that re-checks the member and expiry,
   then presigns for 60 s.
-- **Erasure job**: an ordered, idempotent step list recorded in `data_request_steps`:
-  revoke sessions → plugins erase → attachments → personal content → profile → restricted
-  data → anonymise member. Each step can be retried. Post handling follows the admin's choice.
+- **Erasure fence** (ADR 0012): approving the request sets `members.state = 'erasing'` and
+  revokes sessions, API keys and push devices in one transaction. Login, member writes,
+  delivery intents and job consumers check the state and refuse or skip.
+- **Erasure job**: an ordered, idempotent step list recorded in `data_request_steps`, run only
+  after the fence commits: plugins erase (maintenance sandbox if not running) → redact quote
+  snapshots of the member's posts → attachments → posts (anonymise or delete) → poll votes,
+  reactions, reputation (recount), badges, follows, ignores, friendships, drafts, revisions,
+  notifications, API keys → name history and profile slugs → re-render content mentioning
+  the member → restricted data → anonymise member → append to the erasure journal. Each step can be retried. Post handling follows the admin's choice.
   The display name becomes `Deleted member #<seq>`.
 - **Retention job**: a nightly pg-boss cron calls `pii.purge_expired()` (definer, workers role
   only) and core purges, using per-category settings in `privacy_settings`.

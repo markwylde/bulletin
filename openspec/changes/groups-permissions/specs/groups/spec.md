@@ -51,11 +51,11 @@ Staff with `acp.members.groups` SHALL set a member's primary and secondary group
 - **THEN** the member's next request reflects VIP's permissions, and their session is rotated
 
 ### Requirement: Auto-promotion rules
-Admins SHALL define ordered promotion rules that move a member from one group to another when approved post count, days since joining, and/or reputation meet thresholds. Rules SHALL be evaluated after each approved post and nightly.
+Admins SHALL define ordered promotion rules that move a member from one group to another when registered criteria meet thresholds. This change SHALL provide the days-since-joining criterion; later changes register approved post count and reputation. Rules SHALL be evaluated when a criterion's value changes and nightly, and each promotion SHALL emit `member.promoted`.
 
-#### Scenario: Promotion on post count
-- **WHEN** a rule promotes Members to Regulars at 100 approved posts, and a member's 100th post is approved
-- **THEN** their primary group becomes Regulars and they receive a notification
+#### Scenario: Promotion on days since joining
+- **WHEN** a rule promotes Members to Regulars at 30 days since joining, and the nightly run finds a member who joined 30 days ago
+- **THEN** their primary group becomes Regulars and a `member.promoted` event is recorded
 
 #### Scenario: Concurrent evaluation
 - **WHEN** two evaluations for the same member run at once

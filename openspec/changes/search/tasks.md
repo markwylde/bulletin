@@ -23,6 +23,10 @@
 - [ ] 4.2 Add en/es/fr strings for search UI and errors; verify completeness
 - [ ] 4.3 Make sure seeded content in all three languages is searchable, and verify a sample query per language after `docker compose up --watch`
 
-## 5. Feature flag
+## 5. Route contracts
 
-- [ ] 5.1 Register `search` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle
+- [ ] 5.1 View-model contracts for the search, content-by-member and new-content routes (`private, no-store` where results depend on the viewer) registered with the harness
+
+## 6. Feature flag
+
+- [ ] 6.1 Register `search` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

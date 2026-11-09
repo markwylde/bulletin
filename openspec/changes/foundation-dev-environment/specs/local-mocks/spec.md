@@ -25,9 +25,9 @@ Application code SHALL NOT branch on whether a dependency is mocked. Only config
 ### Requirement: Identity mock profiles
 The darkauth-mock configuration SHALL define login profiles matching the seeded members for every seeded role. The roles are: admin, super moderator, forum moderator, member-specific moderator, regular members, new member, banned member, warned member, Spanish-locale member and French-locale member.
 
-#### Scenario: Log in as seeded profile
-- **WHEN** a developer chooses the "forum moderator" profile on the mock login page
-- **THEN** they return to Bulletin logged in as the seeded forum moderator
+#### Scenario: Mock issues tokens for a profile
+- **WHEN** a test runs the authorization-code flow against darkauth-mock choosing the "forum moderator" profile
+- **THEN** the mock returns a signed ID token with that profile's subject, verifiable through its JWKS endpoint
 
 ### Requirement: S3 mock persists in Postgres
 The S3 mock SHALL implement the operations Bulletin uses (put, get, head, delete, copy, list, presigned GET/PUT) and SHALL store objects in Postgres.

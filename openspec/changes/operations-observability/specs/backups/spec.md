@@ -21,6 +21,13 @@ Object storage SHALL keep previous versions for 35 days, so objects deleted or o
 - **WHEN** an attachment object was deleted 3 days ago
 - **THEN** its previous version can be restored from storage
 
+### Requirement: Restores replay erasures
+After a database restore, erasures, session and API-key revocations and push-device deletions recorded after the restore point SHALL be replayed from the erasure journal before any service reports ready.
+
+#### Scenario: Erasure after the backup
+- **WHEN** a member was erased after the backup being restored was taken
+- **THEN** after the restore the member is erased again before the board serves requests, and no delivery is sent to them
+
 ### Requirement: Post-restore reconciliation
 After a database restore, a reconciliation job SHALL remove stored objects not referenced by the database, and SHALL list database records whose objects are missing in the staff app.
 
@@ -29,8 +36,8 @@ After a database restore, a reconciliation job SHALL remove stored objects not r
 - **THEN** the staff app lists it as missing, and its download shows a clear error
 
 ### Requirement: Documented runbook
-Restore procedures SHALL be documented step by step, and SHALL be exercised by a scripted drill at least quarterly in staging.
+Restore procedures SHALL be documented step by step, and SHALL be exercised by a scripted drill that runs in CI against a disposable local compose stack, and at least quarterly in staging by an operator.
 
 #### Scenario: Drill script
-- **WHEN** an operator runs the drill script against staging
+- **WHEN** the drill script runs against a disposable local compose stack
 - **THEN** it performs the restore, runs reconciliation, runs smoke tests, and reports pass or fail

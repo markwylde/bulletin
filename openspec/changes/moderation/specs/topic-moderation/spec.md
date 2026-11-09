@@ -21,8 +21,8 @@ Moderators with split SHALL move selected posts from a topic into a new topic (i
 - **WHEN** a moderator selects 4 off-topic posts and splits them into a new topic
 - **THEN** a new topic with those posts exists, and the original no longer contains them
 
-### Requirement: Move and copy topics
-Moderators with move SHALL move topics between forums they moderate, optionally leaving a redirect stub for a chosen number of days. They SHALL also be able to copy topics.
+### Requirement: Move topics
+Moderators with move SHALL move topics between forums they moderate, optionally leaving a redirect stub for a chosen number of days.
 
 #### Scenario: Move without stub
 - **WHEN** a moderator moves a topic without a stub
@@ -36,7 +36,7 @@ Moderators SHALL select multiple topics in a forum list, or multiple posts in a 
 - **THEN** all 5 topics are locked
 
 ### Requirement: Multi-moderation
-Admins SHALL define multi-moderation actions: a named set of steps (move to forum, lock/unlock, pin/unpin, set prefix, prepend/append to title, add a reply as a chosen member) available in chosen forums. Moderators with the multi-mod power SHALL apply them in one click.
+Admins SHALL define multi-moderation actions: a named set of steps (move to forum, lock/unlock, pin/unpin, set prefix, prepend/append to title, add a reply as the acting moderator or a designated service member) available in chosen forums. Moderators with the multi-mod power SHALL apply them in one click.
 
 #### Scenario: Mark solved
 - **WHEN** a moderator applies "Mark solved" (set prefix Solved, lock, add reply "Marked as solved")

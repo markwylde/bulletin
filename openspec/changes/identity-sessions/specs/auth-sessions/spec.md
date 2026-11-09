@@ -58,8 +58,8 @@ Background requests (overlay, live stream, draft autosave, mutations) SHALL keep
 - **THEN** the draft is saved normally
 
 #### Scenario: After grace
-- **WHEN** a member submits a reply 3 hours after the re-auth point without any navigation
-- **THEN** the API returns `reauth_required`, the reply text is kept locally, and after the member continues through re-auth the reply is offered for submission
+- **WHEN** a member's client sends a mutation 3 hours after the re-auth point without any navigation
+- **THEN** the API returns `reauth_required`, the client keeps the unsent request body locally, and after the member continues through re-auth the request is offered for resubmission
 
 #### Scenario: Staff idle timeout
 - **WHEN** a staff session is idle for more than 2 hours
@@ -69,15 +69,19 @@ Background requests (overlay, live stream, draft autosave, mutations) SHALL keep
 Changing permissions, managing plugins or viewing PII SHALL require a DarkAuth authentication within the last 15 minutes.
 
 #### Scenario: Stale staff auth
-- **WHEN** a staff member last authenticated 40 minutes ago and opens the IP log for a post
-- **THEN** they are redirected to re-authenticate, then returned to the IP log
+- **WHEN** a staff member last authenticated 40 minutes ago and calls a sensitive endpoint
+- **THEN** they are sent to re-authenticate, then returned to where they were
+
+#### Scenario: Old IdP session does not count
+- **WHEN** a staff member completes step-up but DarkAuth returns an `auth_time` from two hours ago
+- **THEN** `last_auth_at` is not updated and the sensitive endpoint is still refused
 
 ### Requirement: Session rotation
 The session identifier SHALL change on login and whenever the member's group membership changes.
 
 #### Scenario: Promotion rotates session
 - **WHEN** a member is promoted to a new group during an active session
-- **THEN** their next response sets a new session cookie, and the old identifier no longer works
+- **THEN** their next API response sets a new session cookie, and 60 seconds later the old identifier no longer works
 
 ### Requirement: Logout and revocation
 Logout SHALL revoke the session server-side, clear the cookie, and instruct the client to clear local data. Staff with the right permission SHALL be able to revoke all of a member's sessions.
@@ -87,11 +91,15 @@ Logout SHALL revoke the session server-side, clear the cookie, and instruct the 
 - **THEN** that member's next request on any device is treated as a guest
 
 ### Requirement: CSRF protection
-Every non-GET app API request SHALL require a matching `Origin` header and a valid per-session CSRF token. GET requests SHALL NOT change state.
+Every non-GET app API request SHALL require a matching `Origin` header and a valid per-session CSRF token, except the named bootstrap endpoints in ADR 0018 (login challenge and session, guest beacon, overlay, signed unsubscribe), which SHALL use their documented alternative checks. GET requests SHALL NOT change state.
 
 #### Scenario: Missing CSRF token
 - **WHEN** a logged-in member's browser sends a POST without the CSRF token header
 - **THEN** the API responds 403 and nothing changes
+
+#### Scenario: Cross-site overlay call
+- **WHEN** a third-party page makes the browser POST to the overlay endpoint without the required header
+- **THEN** the request is refused before any visit is recorded
 
 ### Requirement: Security headers
 All responses SHALL include a nonce-based Content Security Policy, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin`. App origins SHALL set `frame-ancestors 'none'`, and production SHALL set HSTS.

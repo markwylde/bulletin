@@ -50,3 +50,7 @@ budgets). Atlas (`../atlas`) shows the working darkauth-mock compose pattern.
 ## Migration Plan
 
 Not applicable (greenfield).
+
+## Feature flags (ADR 0010)
+
+None: infrastructure, not user-facing.

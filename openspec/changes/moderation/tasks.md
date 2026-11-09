@@ -3,8 +3,9 @@
 ## 1. Moderation queue
 
 - [ ] 1.1 Add visibility and hold_reason handling to topics/posts, `needsApproval()` with exhaustive unit tests, and the board/forum/group settings for approval (new-member N off by default)
-- [ ] 1.2 Held-content visibility (author-only marker, see-unapproved for moderators, excluded from counters, lists, search and feeds) with the cache variant harness; integration tests
+- [ ] 1.2 Held-content visibility (see-unapproved for moderators in shared fragments; the author's own held posts and topics delivered via the private overlay; excluded from counters, lists, search and feeds) with the cache variant harness; integration tests including the two-authors scenario
 - [ ] 1.3 Approval queue UI (user-app moderator view and staff-app section) with bulk approve/reject, notifications and live counts; tests including permission denial; E2E at 360 and 1440
+- [ ] 1.4 Register the pending moderation counts dashboard widget for moderators, with a permission test
 
 ## 2. Reports
 
@@ -15,9 +16,10 @@
 
 ## 3. Topic moderation
 
-- [ ] 3.1 Merge, split, move (with stubs) and copy mutations with locking, renumbering and declared tags; integration tests for each scenario, and cache invalidation tests for affected pages
+- [ ] 3.1 Merge, split and move (with stubs) mutations with locking, renumbering and declared tags; integration tests for each scenario, and cache invalidation tests for affected pages
 - [ ] 3.2 Bulk actions in forum and topic views, with integration tests and E2E at 360
 - [ ] 3.3 Multi-moderation definitions (staff app) and application (user app), with tests for the mark-solved scenario and permission denial
+- [ ] 3.4 Multi-moderation reply steps post as the acting moderator or a designated `is_service` member only; a test that any other author is rejected at definition time
 
 ## 4. Warnings
 
@@ -36,6 +38,7 @@
 - [ ] 6.2 IP capture via the write-only definer function `pii.record_post_ip` (ADR 0012 table), and IP/CIDR bans in `core.ip_bans` checked in the app without reading `pii` with expiry and middleware checks; tests for the CIDR and expiry scenarios
 - [ ] 6.3 Audited IP lookups (two-transaction grant, step-up, view-IPs power, retention-expired message) via `pii.read_post_ip`, with tests proving the audit row commits before data is returned, and a denial test
 - [ ] 6.4 Reverse IP lookup via `pii.read_members_by_ip` (own audited grant, forum-scoped to the actor's view-IPs forums, 100-row cap), with tests for the forum-scoping scenario, the audit row, and role denial for user_api and workers
+- [ ] 6.5 `pii.read_login_ips(grant)` for admins with `members.view_ips` (step-up, audited, in-SQL checks), with permission-denial and audit tests
 
 ## 7. Moderation log
 

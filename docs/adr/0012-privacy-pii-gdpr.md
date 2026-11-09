@@ -65,15 +65,30 @@ and an access permission.
   | `pii.save_push_subscription(session_token, sub)` | user_api | device ID | write-only |
 | `pii.list_push_devices(session_token)` | user_api | the session member's own devices: device ID, label, user agent family, created and last-used times (never endpoint or keys) | none (own non-secret metadata) |
 | `pii.delete_push_device(session_token, device_id)` | user_api | void | write-only; only the session member's own devices |
-  | `pii.delivery_target(notification_id, channel)` | workers | email address or push subscriptions for that notification's recipient only | one `access_log` row per call (purpose `delivery`), in the same transaction as the job's delivery record |
+  | `pii.delivery_target(intent_id, channel)` | workers | email address or push subscriptions for that delivery intent's recipient only | one `access_log` row per call (purpose `delivery`), in the same transaction as the job's delivery record |
+  | `pii.list_own_sessions(session_token)` | user_api, staff_api | the session member's own sessions with IP and browser family | `access_log` row (purpose `own_data`) |
+  | `pii.create_data_request(session_token, kind)` | user_api | request ID | write; one open request per kind |
+  | `pii.list_data_requests(session_token, filters)` / `pii.update_data_request(session_token, id, action, reason)` | staff_api | requests (member ID, kind, status, dates; no restricted fields) / void | actor checked for `privacy.requests` in SQL; each update logged |
+  | `pii.update_request_step(request_id, step, state)` | workers | void | logged against the request |
+  | `pii.read_access_log(grant, filters)` | staff_api | access log rows | two-transaction grant, actor checked for `privacy.audit` |
+  | `pii.read_login_ips(grant)` | staff_api | a member's login IPs and times | two-transaction grant, actor checked for `members.view_ips` (admins), step-up |
   | `pii.export_member(request_id)` / `pii.erase_member(request_id)` | workers | export data / void | logged against the data request |
   | `pii.purge_expired()` | workers | counts | summary row per run |
 
   - IP **ban checks** never read `pii`: bans live in `core.ip_bans`, and the request IP is
     compared in the app.
-  - `pii.delivery_target` checks that the notification exists, is undelivered on that
-    channel, and that the recipient still has that channel enabled. It cannot be used to look
-    up arbitrary members.
+  - **Delivery intents**: every outbound message (notification email or push, digest, export
+    ready, data-request updates, other system mail) is first recorded as
+    `core.delivery_intents(id, member_id, kind, ref_id, channel, created_at, delivered_at)` in
+    the transaction that decides to send it. `pii.delivery_target` checks that the intent
+    exists, is undelivered, that the member is not erasing, and that the channel is still
+    enabled for that kind (system kinds such as export-ready can't be disabled). It cannot be
+    used to look up arbitrary members, and it works whether or not the `notifications` flag
+    is on.
+  - **Permission checks inside SQL**: interactive functions check the actor's power with
+    `core.has_mod_power` (moderator powers, from `groups-permissions`) or `core.has_acp(member_id,
+    permission)` (ACP permissions), and step-up with `core.sessions.last_auth_at`, so a bug in
+    application code cannot bypass them.
   - Delivery reads use the single-transaction model rather than the two-transaction grant,
     because the data goes to the recipient themselves, not to a staff viewer. The audit row
     commits atomically with the delivery record, and a rolled-back delivery is retried and
@@ -100,12 +115,25 @@ A nightly worker purges or anonymises expired rows.
   that is not in the inventory.
 - **Export**: member-initiated. A worker builds JSON plus attachments, stored privately, and
   emails an expiring link. Plugins with personal data **must** implement `gdpr.export`.
-- **Erasure**: removes Restricted data and anonymises the member ("Deleted member #n"). The
+- **Erasure fence**: accepting an erasure atomically sets `members.state = 'erasing'`, revokes
+  every session, API key and push device, and from then on login (`pii.resolve_identity`),
+  writes by or for the member, new delivery intents and job consumers refuse or skip that
+  member. Steps run only after the fence commits, so nothing can recreate deleted data.
+- **Erasure**: removes Restricted data and anonymises the member ("Deleted member #n").
+  It also removes display-name history and old profile slugs, re-renders content that
+  mentions the member so the old name disappears, redacts quote snapshots of their posts
+  before deleting or anonymising posts, and removes poll votes, reputation entries (then
+  recounts), badges, ignores, friendships and API keys. The
   admin chooses to keep posts anonymised or delete them. Revisions, drafts, attachments,
   notifications, reactions and follows are removed. Plugins **must** implement `gdpr.erase`.
   Retained security records (e.g. a ban) are kept with a documented basis, and the requester
   is told.
 - Staff process requests from an ACP queue with deadlines.
+- **Restores cannot resurrect erasures**: completed erasures, session and API-key revocations
+  and push-device deletions are also appended to an **erasure journal** in object storage
+  (`journal/<date>/<seq>.json`, IDs and timestamps only, outside the database rollback set).
+  After a database restore, a startup step replays every journal entry newer than the restore
+  point before any service reports ready (ADR 0020).
 
 ### Hygiene
 - Logs and errors never contain emails, IPs or tokens (a redaction helper is enforced in

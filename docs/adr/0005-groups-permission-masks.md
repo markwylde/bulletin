@@ -67,6 +67,19 @@ The effective result is a **per-forum capability bitmap**
     counts and last-post previews)
   - profile: the viewer's visibility class for custom profile fields (the set of field
     groups the viewer may see)
+  - any page showing announcements: the viewer's **announcement audience class** (hash of
+    the IDs of active announcements whose target groups include one of the viewer's groups),
+    computed by `can()` from the group snapshot, never by inline group checks
+- **Password unlocks are folded into the effective `read` bit** that the accessor returns. A
+  dep whose value depends on a session unlock marks the response **not CDN-cacheable**, so
+  unlocked content can only share a variant with other viewers who also unlocked.
+- **Embedded forums are known before the cache lookup**: posts store
+  `quoted_forum_ids bigint[]` (written by the content pipeline), and a page's deps include the
+  effective `read` bit of every quoted forum on that page, computed from one indexed query
+  before `getOrRender`.
+- **Author-only content is never in shared fragments.** A shared fragment contains held
+  (unapproved) or soft-deleted posts only when the variant has `see_unapproved` or
+  `see_deleted`. An author's own held posts reach them through the private overlay.
 - **Enforcement, not convention**: builders receive a capability accessor, not the raw
   bitmap. In dev and test, the accessor records every bit read during a render and throws if a
   bit was read that the builder did not declare. CI renders every route under the seeded

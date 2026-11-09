@@ -4,6 +4,7 @@
 
 - [ ] 1.1 Complete the default theme templates for every user-app route built so far, with light/dark tokens; E2E visual check at 360/390/1440 in both schemes, and the contrast check passing
 - [ ] 1.2 Implement repo-to-DB sync of the default theme by hash, with an integration test
+- [ ] 1.3 CI WebView smoke renders at 360 px for the default and seed themes
 
 ## 2. Management
 
@@ -11,12 +12,12 @@
 - [ ] 2.2 Template editor (parent view, diff, validation errors, versions, restore, revert to parent) with tests including permission denial; E2E at 1440 and 360
 - [ ] 2.3 Token form and custom CSS with the CSS filter, with tests for the external-import scenario
 - [ ] 2.4 Asset manager and theme string overrides, with integration tests
-- [ ] 2.5 Session preview, with a cache variant test proving other viewers are unaffected
+- [ ] 2.5 Cross-origin preview via a staff-api signed token exchanged on the user origin (same member, `acp.themes`, `private, no-store`), plus `bp` theme validation for guests; tests for both scenarios and a cache variant test proving other viewers are unaffected
 
 ## 3. Distribution
 
 - [ ] 3.1 Bundle export/import with Ed25519 signatures, with tests for the unsigned-bundle scenario
-- [ ] 3.2 Marketplace theme install via `mocks/marketplace`, running all checks including the WebView smoke test in a worker; tests for the failing-check scenario
+- [ ] 3.2 Marketplace theme install via `mocks/marketplace`, running all static checks (layout rules, required islands, CSS validation, token contrast); tests for the failing-check scenario
 
 ## 4. Availability and choice
 

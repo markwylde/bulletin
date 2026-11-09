@@ -15,7 +15,8 @@
 - Plugins can declare flags in their namespace.
 - Every new user-facing feature ships behind a flag; the flag is removed once stable. The
   only exemptions, each named in the change's design:
-  - core reading and posting (forum index, forum and topic pages, posting, editing, read tracking),
+  - core reading and posting (forum index, forum and topic pages, member profile pages,
+    posting, editing, read tracking),
   - safety features members rely on to report abuse and staff rely on to act on it (reports,
     moderation queue, content filters, IP tools), so they can never be switched off by accident,
   - legal obligations (data export and erasure),

@@ -23,7 +23,10 @@ is keyed by the resource visibility key (ADR 0005). Per-user details are layered
    - Cached only if the request carries **no session cookie and no unlock grant**, and the
      route is marked `cdnCacheable`. Every other response is `Cache-Control: private`.
    - The guest variant comes **only** from the normalised preference cookie `bp`
-     (`<locale>.<theme>.<scheme>`). The CDN keys on that cookie value and ignores all other
+     (`<locale>.<theme>.<scheme>`). The proxy strips a `bp` that doesn't match
+     `^(en|es|fr)\.\d{1,6}\.(light|dark|system)$` before the CDN key is computed, and user-app
+     treats a theme the Guests group may not use (or an inactive one) as the default and
+     re-sets the cookie, so random values cannot bust the cache or unlock restricted themes. The CDN keys on that cookie value and ignores all other
      cookies and headers. Without `bp`, guests get the board defaults. `Accept-Language` never
      changes cached content; a client-side banner offers a matching locale and sets `bp`.
    - Guest render flags are evaluated by group targeting only, never by percentage (ADR 0010).
@@ -65,6 +68,12 @@ ETag/304 uses the same key, so a 304 cannot be issued across a permission change
   as a backstop independent of NOTIFY. The worst-case in-process revocation window is
   therefore 1 s.
 
+### Time-based transitions
+Content that changes state at a time without a write (poll close, announcement start/end,
+scheduled unlocks) caps its fragment TTL at `nextTransitionAt - now`, and a worker running
+every minute bumps the tags of anything that transitioned (`poll:{id}`, `announcements`,
+`forum:{id}:announcements`).
+
 ### Materialisations
 - Request paths read authoritative tables on a cache miss. Materialised counters are allowed to
   be eventual. **Visibility and deletion state are never read from a materialisation.**
@@ -76,14 +85,15 @@ ETag/304 uses the same key, so a 304 cannot be issued across a permission change
 
 ### Personal overlay
 Anything per-user (unread markers, notification counts, ignored members, "you reacted",
-drafts, PM count, mod-queue counts) is **never** in shared HTML. `GET /api/me/overlay?ctx=…`
+drafts, PM count, mod-queue counts, the viewer's own held posts on the page) is **never** in
+shared HTML. `POST /api/me/overlay` (body `{ctx}`)
 returns private JSON, and a tiny island applies it after paint. Ignored members' posts are
 collapsed client-side.
 
 ### Read-path writes (views, presence, read markers)
 Cached and CDN-served pages never reach a code path that records a visit, so visits are
 reported separately and never bump content cache tags:
-- **Members**: the overlay request (`/api/me/overlay?ctx=topic:345&page=2`) records the topic
+- **Members**: the overlay request (`POST /api/me/overlay`, `{ctx: "topic:345", page: 2}`) records the topic
   view, presence (location = the context forum), and the read marker (last post position on
   that page) as a side effect.
 - **Guests**: a tiny beacon, `POST /api/beacon` (sent via `navigator.sendBeacon`, with body

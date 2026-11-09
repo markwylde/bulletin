@@ -11,10 +11,11 @@
 - [ ] 2.1 Push subscription storage via `pii.save_push_subscription`, and the device list and removal UI via `pii.list_push_devices` and `pii.delete_push_device`; tests that the list never contains endpoints or keys, that a member cannot list or delete another member's device, and role denial on direct table access
 - [ ] 2.2 Push channel in notification preferences, and the sender worker (send-time `can()` check, subscriptions only via `pii.delivery_target`, content-free payload, VAPID, 410 cleanup); tests against `mocks/push` for each scenario
 - [ ] 2.3 Service worker push display and click handling (preview fetch, login fallback), with an E2E test via the mock
+- [ ] 2.4 Validate subscription endpoints on save and send only through `safeFetch`; tests that subscriptions pointing at loopback, private, metadata or rebinding hosts are refused or never contacted
 
 ## 3. Real-device checklist
 
-- [ ] 3.1 Write the real-device acceptance checklist (install, push, offline, editor input on iOS and Android) in `docs/qa/real-device.md`, and run it once
+- [ ] 3.1 Write the real-device acceptance checklist (install, push, offline, editor input on iOS and Android) in `docs/qa/real-device.md` as a release checklist run by a person before each release; an agent completes this task by writing it, not by running it
 
 ## 4. Strings and seed
 

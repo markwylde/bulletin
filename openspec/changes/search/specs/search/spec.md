@@ -69,4 +69,4 @@ Members SHALL view "all content by member X" and "new content since my last visi
 
 #### Scenario: Since last visit
 - **WHEN** a member opens "new content"
-- **THEN** they see topics with readable posts newer than their previous visit
+- **THEN** they see topics with readable posts newer than their previous visit (`previous_visit_at`, rolled over after 30 minutes of inactivity)

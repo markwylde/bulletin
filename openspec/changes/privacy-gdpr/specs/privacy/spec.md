@@ -36,6 +36,14 @@ Members SHALL request erasure of their account. Once processed, their restricted
 - **WHEN** an erasure is processed and a plugin holds that member's data
 - **THEN** the plugin's erase hook runs, and its completion is recorded
 
+#### Scenario: Nothing recreated during erasure
+- **WHEN** an erasure is in progress and a queued job or a still-open browser tries to write data for that member
+- **THEN** the write is refused or skipped, and no personal data for the member exists when the erasure completes
+
+#### Scenario: Old name not discoverable
+- **WHEN** an erasure completes for a member who was mentioned in other members' posts and had renamed once
+- **THEN** neither their current nor their previous display name appears in any post, profile URL or name history
+
 ### Requirement: Retained records disclosed
 When records are retained after erasure on a documented basis (for example an active ban or the moderation log), the member SHALL be told which categories are retained and why.
 

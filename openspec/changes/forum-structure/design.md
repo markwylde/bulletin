@@ -30,6 +30,11 @@ benchmark target.
   setting changes and announcement edits declare these tags through `runMutation`.
 - **Password forums**: the unlock is a variant dimension (ADR 0006), so an unlocked page is never
   served to a viewer who hasn't unlocked.
+- **Announcement audiences**: announcement blocks declare the viewer's announcement audience
+  class as a dep (ADR 0005), so members of a targeted group and everyone else get different
+  variants; guests share the Guests-group class. No inline group checks.
+- **Scheduling**: announcement fragments cap their TTL at the next start or end time, and the
+  minute transition worker bumps `announcements` / `forum:{id}:announcements` (ADR 0006).
 - **Dismissals**: `core.announcement_dismissals(member_id, announcement_id, version)`.
   Dismissal state goes into the personal overlay (ADR 0006), not shared HTML.
 - **Slugs**: generated with transliteration, stored, with old slugs kept in
@@ -41,4 +46,13 @@ benchmark target.
 
 ## Feature flags (ADR 0010)
 
-None: core reading, exempt under ADR 0010.
+`announcements`. The board index and forum pages are core reading, exempt under ADR 0010.
+
+Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Announcement dismissals (`core.announcement_dismissals`) | Personal content | hide dismissed notices | until the announcement is deleted | the member, via the overlay | included | deleted |
+| Rules-box collapse state | Personal content (client only) | UI preference | browser storage | the device only | not held server-side | — |

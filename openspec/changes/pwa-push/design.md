@@ -29,9 +29,12 @@ channel model (change `events-notifications`).
   own non-secret metadata (label, browser family, created and last-used times), and removal uses
   `pii.delete_push_device(session_token, device_id)`. Endpoints and keys never leave `pii`
   except through `pii.delivery_target`. The sender reads them only via
-  `pii.delivery_target(notification_id, 'push')` (workers only, audited). The sender worker uses the `web-push` library
+  `pii.delivery_target(intent_id, 'push')` (workers only, audited). The sender worker uses the `web-push` library
   (allowed in ADR 0001) for VAPID signing and payload encryption. Payload: `{ n: notificationId, t: titleKey }`. The service worker fetches
   `/api/notifications/:id/preview` with credentials to show details.
+- **Endpoint safety**: a subscription endpoint is client-supplied, so it is validated on save
+  (HTTPS, public host, no credentials or unusual ports) and every send goes through `safeFetch`
+  (ADR 0016) with no redirects. `mocks/push` is reachable only via the dev allowlist.
 - **Mock**: `mocks/push` acts as the push service endpoint, decrypts payloads with test keys,
   and shows them.
 

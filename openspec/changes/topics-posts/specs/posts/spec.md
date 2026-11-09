@@ -42,11 +42,15 @@ When a moderator edits another member's post, the edit form SHALL offer "Redact 
 - **THEN** existing quotes of that post show the redaction notice
 
 ### Requirement: Edit history
-Every edit SHALL keep the previous version. Moderators with the view-history power SHALL view and diff all versions. A board setting SHALL make history visible to everyone who can read the post.
+Every edit SHALL keep the previous version. Moderators with the view-history power SHALL view and diff all versions. A board setting SHALL make history visible to everyone who can read the post, except versions protected by a moderator redaction, which SHALL remain visible only to moderators with view-history.
 
 #### Scenario: Moderator views history
 - **WHEN** a moderator with view-history opens a post's history
 - **THEN** they see every previous version with editor and time, and a diff between any two
+
+#### Scenario: Public history with a redacted version
+- **WHEN** public history is on and a moderator edited the post with redaction
+- **THEN** members see the versions after the redaction but not the redacted ones, while moderators with view-history still see all
 
 #### Scenario: Member without permission
 - **WHEN** a member requests a post's history while public history is off

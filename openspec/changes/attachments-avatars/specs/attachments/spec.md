@@ -81,3 +81,10 @@ Members SHALL view and delete their own attachments and see their quota usage. M
 #### Scenario: Member deletes attachment
 - **WHEN** a member deletes one of their attachments from their attachment list
 - **THEN** it no longer appears in the post, and their quota usage decreases
+
+### Requirement: Unfurl images proxied
+Preview-card images SHALL be fetched by the unfurl worker, re-encoded and served from the files origin. The viewer's browser SHALL never load them from the third-party site.
+
+#### Scenario: Preview card image
+- **WHEN** a post's unfurled link has an OpenGraph image
+- **THEN** the card shows that image served from the files origin

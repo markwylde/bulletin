@@ -18,12 +18,16 @@ Staff with `acp.announcements` SHALL create announcements with a title, markdown
 - **WHEN** an announcement targets only the Members group
 - **THEN** guests do not see it
 
+#### Scenario: Targeted announcement in a shared cache
+- **WHEN** a VIP-targeted announcement is shown to a VIP member and a regular member with identical forum permissions then views the same forum page
+- **THEN** the regular member does not see the announcement
+
 ### Requirement: Scheduling
 Announcements SHALL appear only between their start and end dates, without manual action.
 
 #### Scenario: Expiry
-- **WHEN** an announcement's end date passes
-- **THEN** it no longer appears on any page
+- **WHEN** an announcement's end date passes while pages showing it are cached
+- **THEN** within one minute it no longer appears on any page, without any staff action
 
 ### Requirement: Dismissal
 Members SHALL be able to dismiss a dismissible announcement. It SHALL stay dismissed for them until its content is updated.

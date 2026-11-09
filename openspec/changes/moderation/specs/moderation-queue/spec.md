@@ -32,6 +32,10 @@ Held content SHALL be visible only to its author (marked as awaiting approval) a
 - **WHEN** an author views a topic containing their held reply
 - **THEN** they see it marked "Awaiting approval", and other members do not see it
 
+#### Scenario: Two authors, one cached page
+- **WHEN** two regular members each have a held reply in the same topic and view its last page one after the other
+- **THEN** each sees only their own held reply, and the shared cached page contains neither
+
 ### Requirement: Approval queue
 Moderators SHALL see a queue of held content in forums they can approve in, with author, reason held and content preview. They SHALL approve or reject (delete) items singly or in bulk.
 

@@ -45,9 +45,16 @@ wake-up only.
     closes). The shared client handles each: `resync` refreshes, `session_revoked` clears local
     state and shows the logged-out view, and `reauth_required` preserves editor content and
     shows the continue prompt.
-- **Unsubscribe links**: an HMAC-signed token of `(member, type, expires)`.
+- **Unsubscribe links**: an HMAC-signed token of `(member, type, expires)`. `GET /unsubscribe`
+  shows a confirmation page that POSTs to `/api/notifications/unsubscribe` (signed-token
+  auth, the ADR 0018 CSRF exemption). Emails carry `List-Unsubscribe` and
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058), so mail clients unsubscribe
+  by POST and link scanners can't.
+- **Delivery intents** (ADR 0012): notifications, digests and system mail each create a
+  `core.delivery_intents` row in the deciding transaction; senders resolve addresses with
+  `pii.delivery_target(intent_id, channel)`.
 - **Recipient addresses**: workers never read `pii` tables. The email job calls
-  `pii.delivery_target(notification_id, 'email')` (ADR 0012), which returns that recipient's
+  `pii.delivery_target(intent_id, 'email')` (ADR 0012), which returns that recipient's
   address only if the notification is undelivered and email is still enabled for it, and
   writes the audit row in the same transaction as the delivery record.
 - **Email**: SMTP via a small client (Bun TCP). Templates use the same i18n catalogs, with

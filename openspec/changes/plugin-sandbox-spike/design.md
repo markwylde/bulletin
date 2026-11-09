@@ -46,3 +46,7 @@ apps (all `plugin-platform`).
 
 Not applicable: the spike handles no personal data. The malicious suite only proves that
 `pii` is unreachable.
+
+## Feature flags (ADR 0010)
+
+None: spike, not user-facing.

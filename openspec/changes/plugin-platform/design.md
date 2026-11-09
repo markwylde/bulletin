@@ -24,8 +24,9 @@ ADR, follow it instead.
 
   The plugin process connects to a Unix socket bind-mounted into the jail.
 - **Broker protocol**: length-prefixed JSON-RPC over the socket. Calls:
-  - `db.query`, with the SQL statement-type allowlist enforced by `libpg_query` parsing
-    (DML only, no session commands)
+  - `db.query`, with the SQL statement-type allowlist enforced by `libpg-query` parsing
+    (DML only, no session commands, no `FuncCall` outside the allowlist), and deadlines enforced
+    by cancelling from the broker's control connection (ADR 0009)
   - `core.*` (forwarded to user-api/staff-api internal endpoints with a signed broker token
     and the viewer context)
   - `http.fetch` (egress proxy)
@@ -33,10 +34,14 @@ ADR, follow it instead.
   - `cache.invalidate(tags)` (namespaced `plugin:<id>:<tag>`, bumped by the broker's own core
     connection, coalesced at 50/s)
   - `log`
-- **DB roles**: the installer creates `plugin_<id>_owner` and `plugin_<id>`. The broker
-  connects as `plugin_<id>` using credentials it alone holds. Role settings:
-  `statement_timeout`, `work_mem`, `temp_file_limit`, `idle_in_transaction_session_timeout`.
-  `CONNECTION LIMIT 2`.
+- **DB roles**: the installer creates `plugin_<id>_owner` and `plugin_<id>`, and runs
+  migrations through `plugin_migrator` (ADR 0009). The broker connects as `plugin_<id>` using
+  credentials it alone holds. Role settings: `statement_timeout`, `work_mem`,
+  `temp_file_limit`, `idle_in_transaction_session_timeout`. `CONNECTION LIMIT 2`.
+- **Connection budget**: plugin connections are opened lazily per plugin, closed after 10 s
+  idle, and bounded by one broker-wide semaphore (default 20, ADR 0020). When the semaphore is
+  exhausted, calls queue until their deadline and then fail for that plugin only, so enabling
+  more plugins never breaks startup.
 - **Hook dispatch**:
   - Template fragments are extracted from the bundle at install and stored as theme-layer
     templates keyed by plugin. The engine merges them at compile time per `pluginsGeneration`.
@@ -44,8 +49,9 @@ ADR, follow it instead.
   - Event subscribers are pg-boss queues `plugin.<id>.events`, consumed by plugin-host and
     dispatched into the jail.
 - **Client apps**: served from `plugins.<host>/<id>/<version>/…` with a CSP. They are framed
-  with `sandbox="allow-scripts allow-forms"`. The bridge validates message schemas and origin,
-  and rate-limits calls.
+  with `sandbox="allow-scripts allow-forms"`. The bridge uses a per-iframe `MessageChannel`
+  port plus a random instance token (ADR 0009), validates message schemas, and rate-limits
+  calls. It never trusts `event.origin`.
 - **Signing**: Ed25519 over the bundle tarball. The catalog lists sha256. The dev key is used
   with `mocks/marketplace`.
 - **Operations journal**: `plugin_operations(id, plugin, kind, step, state, error)` drives the
@@ -59,10 +65,19 @@ ADR, follow it instead.
   set; plugin-host is the only privileged container, has no secrets except broker credentials,
   and is network-isolated from Postgres except through the broker's connection.
 - [RPC latency on write filters] → a total 300 ms budget, and filters run only on writes.
-- [SQL parser allowlist bypass] → defence in depth: DB grants enforce the same limits even if parsing is fooled.
+- [SQL parser allowlist bypass] → defence in depth: side-effecting built-ins are revoked from
+  `PUBLIC`, DB grants enforce the same limits even if parsing is fooled, and deadlines are
+  enforced from outside the session.
 
 ## Feature flags (ADR 0010)
 
 `plugins` (marketplace and install). Turning it off disables all plugins.
 
 Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).
+
+## Personal data (ADR 0012 checklist)
+
+| Data | Class | Purpose | Retention | Access | Export | Erasure |
+|---|---|---|---|---|---|---|
+| Plugin schema data declared personal in the manifest | Personal content (per plugin) | the plugin's feature | per plugin; until uninstall with data dropped | through the plugin's own routes and principals | `gdpr.export` (maintenance sandbox if not running) | `gdpr.erase` (maintenance sandbox if not running); requests stay open until done |
+| Plugin service principal grants | Security record | access control | life of the install | admins | — | — |

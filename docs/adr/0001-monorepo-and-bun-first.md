@@ -53,6 +53,8 @@ as several apps that share types, DB access and domain logic.
   | `file-type` | magic-byte detection for uploads (ADR 0019) |
   | `@opentelemetry/api` + OTLP exporter | traces and metrics (ADR 0020) |
   | `web-push` | VAPID signing and payload encryption for push (ADR 0014) |
+  | `rehype-highlight` | server-side code highlighting in the content pipeline (ADR 0007) |
+  | `@scalar/api-reference` (static bundle) | rendering the generated OpenAPI docs (ADR 0016) |
   | `fflate` | zipping GDPR exports and theme/plugin bundles (ADR 0012) |
   Infrastructure images: Postgres, Caddy, nsjail (in plugin-host).
 - **user-app ↔ user-api boundary**: user-app (Astro SSR) builds page view models
@@ -62,7 +64,9 @@ as several apps that share types, DB access and domain logic.
   the rendered-fragment LRU (ADR 0006) and invalidates it from NOTIFY like every other process.
   user-api serves JSON: mutations, overlay, SSE, auth, uploads and `/api/v1`. All writes go
   through user-api; user-app never calls user-api over HTTP to render a page.
-- **IDs and URLs**: all primary keys are `bigint GENERATED ALWAYS AS IDENTITY`. Public URLs
+- **IDs and URLs**: all entity primary keys are `bigint GENERATED ALWAYS AS IDENTITY`. Secrets
+  are never keys (sessions use a bigint ID plus a unique token hash), and only small registry
+  tables keyed by a code-defined name (feature flags, settings, cache tags) use a text key. Public URLs
   are `/<kind>/<id>-<slug>`: `/forum/12-general-discussion`, `/topic/345-welcome`,
   `/profile/77-jane`. Routes resolve **by numeric ID only**. A missing or outdated slug
   301-redirects to the current canonical URL. Paged topics use `/topic/345-welcome/page/2`,

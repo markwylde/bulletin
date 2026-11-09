@@ -54,8 +54,8 @@ Settings screens SHALL be rendered from declarative form definitions supporting 
 - **THEN** the form shows a translated inline error and does not submit
 
 ### Requirement: Dashboard
-The staff app home SHALL show board statistics (members, topics, posts, today's activity), pending moderation counts, recent admin log entries, and system health, limited to the sections the viewer can access.
+The staff app home SHALL be composed of registered widgets, each gated by an ACP permission. This change SHALL provide member statistics, recent admin log entries and system health; later changes register content statistics and moderation counts.
 
 #### Scenario: Moderator dashboard
 - **WHEN** a moderator without admin permissions opens the dashboard
-- **THEN** it shows moderation counts but not the system health panel
+- **THEN** the system health and admin log widgets are absent, and no request for their data succeeds

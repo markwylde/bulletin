@@ -13,7 +13,7 @@ ADR 0016. Webhooks are subscribers in the event relay (change `events-notificati
 ## Decisions
 
 - **Route schemas**: valibot schemas on each `/api/v1` route generate OpenAPI 3.1 at build
-  time. Docs are rendered with a static Scalar/Redoc bundle served from our origin.
+  time. Docs are rendered with the static `@scalar/api-reference` bundle served from our origin (ADR 0001).
 - **Keys**: format `blt_<8-char prefix>_<32 random bytes base64url>`. Stored as
   `sha256(pepper || key)`, indexed by prefix. `api_keys(id, prefix, hash, principal_member_id,
   scopes, expires_at, revoked_at, last_used_at)`. `last_used_at` is updated at most once per minute.
@@ -24,7 +24,8 @@ ADR 0016. Webhooks are subscribers in the event relay (change `events-notificati
 - **Webhooks**: `webhooks(id, url, secret, events, principal_member_id, content_fields,
   enabled)` and `webhook_deliveries(id, webhook_id, event_id, attempt, status, response_ms,
   created_at)`. Delivery runs as a pg-boss job with a backoff schedule. SSRF is checked at
-  config time and again at delivery after DNS resolution.
+  config time, and delivery uses `safeFetch` (ADR 0016), which connects to the pinned
+  resolved IP so DNS rebinding cannot redirect it.
 
 ## Risks / Trade-offs
 

@@ -13,7 +13,7 @@ arrives in change `rendering-and-caching`, so this change exposes the evaluated 
 
 ## Decisions
 
-- **Hashing**: bucket = `xxhash32(flagKey + ":" + memberId) % 10000`. On when
+- **Hashing**: bucket = `Bun.hash.xxHash32(flagKey + ":" + memberId) % 10000` (Bun built-in). On when
   `bucket < percent*100`. Increasing the percentage only adds buckets, which gives the
   monotonic scenario.
 - **Code registry**: `packages/flags/defaults.ts` exports `defineFlag({key, default,
@@ -29,3 +29,7 @@ arrives in change `rendering-and-caching`, so this change exposes the evaluated 
 ## Risks / Trade-offs
 
 - [Flag sprawl] → the staleness highlight, plus "flag removed" being part of a feature's definition of done.
+
+## Feature flags (ADR 0010)
+
+None: the flag system itself.

@@ -27,8 +27,11 @@ content pipeline (signatures, about) and caching (profile variants, overlay).
   and the guest beacon (ADR 0006), since cached and CDN pages never reach the server on render. Counts are a cached query with 60 s TTL
   (allowed to be eventual). Locations are filtered by the viewer's `read` bits in the full list.
 - **Leaderboards**: a nightly plus hourly job materialises `leaderboard_entries(period,
-  metric, member_id, value)` counting only posts in forums readable by Guests (computed via
-  the Guests snapshot). Tags are bumped in the same transaction.
+  metric, member_id, forum_id, value)` per forum. Reads sum only rows whose `forum_id` is
+  readable by Guests **now** (from the current Guests snapshot), and the fragment declares the
+  Guests read bits of those forums as deps, so making a forum private removes its contribution
+  on the next request, not at the next recompute (ADR 0006: visibility is never read from a
+  materialisation). Tags are bumped in the same transaction as each recompute.
 - **Badges**: `badges`, `badge_rules` and `member_badges(member_id, badge_id, awarded_by,
   reason, created_at, revoked_at)`. The rule evaluator subscribes to `post.approved`,
   `reaction.added`, `reputation.given` and `topic.created`, with a nightly sweep. It uses
@@ -57,6 +60,6 @@ content pipeline (signatures, about) and caching (profile variants, overlay).
 
 ## Feature flags (ADR 0010)
 
-`friends`, `leaderboards`, `badges`. Profiles and the member list are core.
+`friends`, `leaderboards`, `badges`, `member_directory` (member list), `whos_online`, `signatures`, `custom_profile_fields`, `ignore_list`. Profile pages are core reading, exempt under ADR 0010.
 
 Gating: server routes use `requireFlag(key)` (404 when off), templates use `{% if flags.<key> %}`, and islands use `useFlag(key)`. Flags marked `affectsRender` are part of the cache variant (ADR 0006, 0010).

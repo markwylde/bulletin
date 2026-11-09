@@ -47,6 +47,20 @@ member, or take the board down.
     - `plugin_<id>` is the runtime role. It has **DML only** (SELECT/INSERT/UPDATE/DELETE on
       the schema's tables, USAGE on its sequences): no CREATE, no ownership, and no grant
       option, so it cannot create objects or regrant privileges. DDL exists only in migrations.
+  - **Migrations** run over a dedicated login role `plugin_migrator` (`NOINHERIT`, member of
+    each `plugin_<id>_owner` only, nothing else), never from an owner or superuser session, so
+    `RESET ROLE` gains nothing. Migration SQL is parsed with `libpg-query` and rejects `SET`,
+    `RESET`, `SET ROLE`, `DO` blocks, `SECURITY DEFINER`, `ALTER ROLE`, `GRANT` outside the
+    schema, and calls to functions outside the allowlist.
+  - **Function calls**: migration `0001` revokes `EXECUTE` from `PUBLIC` on side-effecting
+    built-ins (`set_config`, `pg_notify`, advisory-lock functions, `pg_sleep`,
+    `pg_terminate_backend`, `pg_cancel_backend`, `dblink*`, `lo_*`, file and admin functions)
+    and grants them only to the core roles that need them. The broker also rejects any
+    `FuncCall` outside an allowlist of pure built-ins plus the plugin's own schema functions,
+    and plugin functions are validated by the same rules at migration.
+  - **Deadlines are enforced outside the session**: the broker cancels any statement past its
+    deadline from its own control connection, so changing settings inside the session cannot
+    extend it.
   - **Runtime role limits**: no access to `core`, `pii`, `pgboss`, `public` or other plugins;
     `CONNECTION LIMIT 2`; `statement_timeout 2s`; `idle_in_transaction_session_timeout 5s`;
     temp table quota. The broker rejects `LISTEN`, `NOTIFY`, `COPY … PROGRAM`, `SET ROLE`
@@ -74,7 +88,9 @@ member, or take the board down.
   - **Core data**: SDK calls (`posts.get`, `members.addBadge`…) go via the broker to the core APIs.
     - **In a viewer context** (enrichers, template-hook data, plugin routes serving a request,
       iframe bridge calls), the effective principal is **plugin capabilities ∩ current
-      viewer's permissions**. The broker attaches the viewer context, and core APIs check
+      viewer's permissions ∩ the plugin's service-principal access**. A plugin therefore can
+      never read through a privileged viewer anything its service principal couldn't read, so
+      it cannot copy staff-only content into its schema and later show it to guests. The broker attaches the viewer context, and core APIs check
       `can()` as the viewer. The visibility bits used are added to the fragment's deps
       (ADR 0005), so a privileged plugin can never expose to a viewer anything the viewer
       couldn't read.
@@ -104,7 +120,11 @@ member, or take the board down.
 - **Plugin client apps** are served from the plugin origin (`plugins.<host>`, ADR 0018) in
   `<iframe sandbox="allow-scripts allow-forms">`, without `allow-same-origin`, so they have no
   forum cookies and no ambient credentials.
-- They talk to the page through a **postMessage bridge**. The bridge has a small validated API
+- They talk to the page through a **postMessage bridge**. Sandboxed frames have an opaque
+  `"null"` origin, so origin checks cannot identify them. Instead the host creates a
+  `MessageChannel` per iframe and transfers one port to that frame's `contentWindow` after
+  load, together with a random per-instance token. Only messages on that port with that token
+  are accepted, and each port is bound to one plugin instance; `window` messages are ignored. The bridge has a small validated API
   (resize, read the view-model fields the hook was given, call the plugin's own server routes
   via the broker, open a link, show a toast). Any data from the bridge is scoped to what the
   hook already rendered.
@@ -138,6 +158,14 @@ member, or take the board down.
 - When called inside a broker DB transaction, the bump commits with that transaction.
   Otherwise it is immediate. Calls are rate-limited per plugin (default 50/s), and excess
   calls collapse into one bump.
+
+### Personal data in plugin schemas
+- The manifest declares which tables hold personal data and how they map to member IDs. The
+  core keeps this registry even when a plugin is disabled, failed or uninstalled with data kept.
+- Export and erasure call `gdpr.export` / `gdpr.erase` on active plugins. For a plugin that is
+  not running, the worker starts it in a **maintenance sandbox** (no hooks, routes or
+  egress; only its GDPR handlers). If that fails, the data request stays open and staff are
+  alerted; it cannot complete while retained plugin data is unprocessed.
 
 ### Disable and uninstall semantics
 - **Disable** takes effect on the next request:

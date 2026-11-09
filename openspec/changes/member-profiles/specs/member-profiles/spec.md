@@ -55,4 +55,4 @@ Members SHALL edit their about section, custom fields they may edit, signature a
 
 #### Scenario: Staff edit logged
 - **WHEN** a moderator edits a member's about text
-- **THEN** the change is saved and recorded in the moderation log
+- **THEN** the change is saved and recorded in the admin log (the moderation log adds it from `moderation`)

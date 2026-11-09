@@ -30,15 +30,35 @@ Guests, Members, Administrators, Banned). The full group system arrives in
   `core.members.name_skeleton`, with a unique index.
 - **Silent re-auth** (ADR 0018): Astro middleware detects `now() > reauth_at` on top-level
   HTML navigations only (`Sec-Fetch-Mode: navigate`) and redirects to
-  `/auth/refresh?return_to=…`. That creates a login challenge and redirects to DarkAuth with
-  `prompt=none`. The callback extends `reauth_at`; `login_required` revokes the session and
+  `/api/auth/refresh?return_to=…` on **user-api**. That creates a login challenge with a
+  server-held PKCE verifier and redirects to DarkAuth with `prompt=none`. `/api/auth/callback`
+  (user-api) exchanges the code and extends `reauth_at`; `login_required` revokes the session and
   returns to `return_to` as a guest. The user-api middleware allows non-navigation requests
   until `reauth_at + 2h`, then returns `401 {code:"reauth_required"}`. A shared client fetch
   wrapper handles that code: it stashes editor content (ADR 0014 local draft store) and shows
   the continue prompt.
 - **`return_to` validation**: only same-origin relative paths are accepted (no open redirect).
 - **Staff step-up**: `core.sessions.last_auth_at`. Sensitive endpoints check it is within
-  15 minutes; if not, they return 401 `step_up_required`, and the SPA starts the flow.
+  15 minutes; if not, they return 401 `step_up_required`, and the SPA starts a challenge with
+  `max_age=0`. The returned ID token's `auth_time` must be within 60 s of the challenge before
+  `last_auth_at` is updated (ADR 0018).
+- **Session IDs**: `bigint` identity primary key plus a unique `token_hash`; the raw token is
+  only in the cookie.
+- **Rotation**: group changes set `rotate_pending`; user-api issues the new token on the next
+  response and honours the old one for 60 s.
+- **CSRF token endpoint**: `GET /api/auth/session` on user-api and staff-api returns the
+  session's CSRF token, display name and flags the client needs; the overlay repeats it later.
+- **Pages**: this change ships no themed user-app pages. The login button and the
+  `/auth/callback` transit route are script-only (a translated "signing you in" message and
+  no content), so they need no template or cache contract. The display-name step and the
+  account page are built on the template stack in `rendering-and-caching`.
+- **Service members**: `core.members.is_service` (no identity, cannot log in, excluded from
+  member lists and leaderboards) is created here, so later changes (plugin service principals,
+  API key principals, multi-mod auto-replies) share one primitive.
+- **Test seams**: re-auth and step-up are tested against test-only endpoints
+  (`/api/test/protected`, `/api/test/sensitive`) enabled outside production, because drafts,
+  replies and the IP log arrive in later changes. The name-change limit is a constant until
+  `groups-permissions` replaces it with a group setting.
 
 ## Risks / Trade-offs
 
@@ -56,3 +76,7 @@ Guests, Members, Administrators, Banned). The full group system arrives in
 | Login IPs (`pii.ip_log`) | Restricted | abuse prevention | 90 days | `pii.record_login_ip` write-only; reads in `moderation` | included | deleted |
 | Display name, name skeleton, preferences (`core.members`) | Personal content | public identity | life of account | `can()`; public | included | anonymised to "Deleted member #n" |
 | Session token hash, `last_auth_at` (`core.sessions`) | Security record | authentication | until expiry + 7 days | the member's own sessions | not exported (secret) | deleted |
+
+## Feature flags (ADR 0010)
+
+None: login and sessions are core, exempt under ADR 0010.

@@ -32,8 +32,20 @@
   Receivers should reject timestamps older than 5 minutes.
 - Delivered by workers with retries and backoff, a per-webhook delivery log, manual
   redelivery, and auto-disable after sustained failure.
-- SSRF protection: resolve-then-check, no private or link-local ranges (except to `mocks/webhooks`
-  in dev), and no redirects.
+- SSRF protection: every delivery goes through `safeFetch` (below), with no redirects.
+
+### Outbound HTTP (all server-side fetches)
+Webhooks, unfurls, unfurl images, push delivery and the plugin egress proxy all use one client,
+`safeFetch` in `packages/domain/net`:
+- resolve the host once, reject loopback, RFC 1918, RFC 6598 (CGNAT), link-local
+  (`169.254.0.0/16`, `fe80::/10`), ULA (`fc00::/7`), IPv4-mapped IPv6, multicast and metadata
+  addresses, then **connect to that pinned IP** (TLS SNI and `Host` keep the name), so DNS
+  rebinding between check and connect is impossible;
+- HTTPS only in production; redirects off by default, and where allowed (unfurls, max 3)
+  each hop is re-resolved and re-checked;
+- size and time caps per caller;
+- local mocks are reachable only through an explicit per-caller allowlist in dev configuration
+  (`SAFE_FETCH_DEV_ALLOW`), which production config rejects (ADR 0002).
 
 ## Consequences
 - The API, webhooks and plugin events share one event catalog and schema source.

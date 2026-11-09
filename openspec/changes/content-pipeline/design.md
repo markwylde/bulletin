@@ -21,8 +21,11 @@ Plugins add extensions in change `plugin-platform`.
     that skips quote nodes.
   - Quote placeholders are emitted as `<bl-quote data-source="…" data-snapshot="…"></bl-quote>`.
     They are resolved at fragment build by the view-model layer (topic view in change `topics-posts`).
-- **Quote snapshots**: `quote_snapshots(id, source_post_id, body_html, created_at,
-  redacted_at)`. The quote extension validates the source context (forum post → forum post;
+- **Quote snapshots**: `quote_snapshots(id, source_post_id, source_author_id, body_md,
+  body_html, render_version, sanitiser_version, created_at, redacted_at)`. Snapshots are
+  re-rendered by the same job and on-read rules as posts, so sanitiser upgrades and
+  replace-word changes reach them (ADR 0007). The pipeline also writes
+  `quoted_forum_ids bigint[]` on the quoting post (ADR 0005). The quote extension validates the source context (forum post → forum post;
   message → same conversation) and `can(read)` for the author. A moderator edit with redaction
   sets `redacted_at` on all snapshots of the post and bumps `post:{id}:snapshots`, which every
   quoting fragment declares as a tag.
@@ -42,13 +45,15 @@ Plugins add extensions in change `plugin-platform`.
   `(member_id, context_key)`. The island debounces saves at 2 s. Drafts are delivered via the
   overlay (personal).
 - **Unfurls**:
-  - A worker resolves DNS, rejects private, link-local, loopback and CGNAT ranges (re-checked
-    on each redirect, max 3), caps responses at 1 MB and 5 s, and parses OpenGraph/oEmbed.
+  - A worker fetches through `safeFetch` (ADR 0016: pinned resolved IP, blocked ranges,
+    each redirect re-checked, max 3), caps responses at 1 MB and 5 s, and parses OpenGraph/oEmbed.
   - Images are fetched and stored via storage (change `attachments-avatars` provides the proxy; until then, cards
     are text-only).
   - Results go to `core.unfurls(url_hash, data, fetched_at)`, refreshed after 7 days.
-- **Write-pipeline hook points**: `beforeSave(content, ctx)` stages are registered in order:
-  bad words, link limits, spam (filled by `moderation`), then plugin filters (change `plugin-platform`).
+- **Write-pipeline hook points**: `beforeSave(content, ctx)` stages run in this order:
+  plugin transform filters (`plugin-platform`) first, then the core checks (bad words, link
+  limits, spam, filled by `moderation`), then plugin veto filters, then parse and sanitise. A
+  plugin can therefore never add content after the core checks have passed.
 
 ## Risks / Trade-offs
 

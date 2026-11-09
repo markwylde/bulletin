@@ -10,6 +10,8 @@
 - [ ] 2.2 Implement the broker (JSON-RPC, DB allowlist, role connections, rate and concurrency limits, egress proxy with SSRF rules, core API forwarding with viewer context) with tests for the network, core-read, runtime-DDL and undeclared-host scenarios
 - [ ] 2.3 Implement the storage quota monitor and write revocation, plus the shared-cluster warning, with an integration test
 - [ ] 2.4 Extend the malicious-plugin suite from `plugin-sandbox-spike` (iframe bridge escape, rate-limit and quota abuse, egress SSRF variants) and keep it running in CI on Docker and Podman
+- [ ] 2.5 SQL hardening: `plugin_migrator` NOINHERIT role, migration AST rules (no SET/RESET/SET ROLE/DO/SECURITY DEFINER/ALTER ROLE), `PUBLIC` revokes on side-effecting built-ins in migration `0001`, the broker `FuncCall` allowlist, and out-of-session deadline cancellation; malicious tests for `set_config`, `pg_notify`, advisory locks, `pg_sleep`, `RESET ROLE` in a migration and a plpgsql function calling a revoked built-in
+- [ ] 2.6 Lazy per-plugin connections with a 10 s idle close and the broker-wide semaphore; a test that 15 enabled plugins start and work under the default budget, and that exhaustion fails only the waiting plugin
 
 ## 3. SDK and hooks
 
@@ -21,6 +23,8 @@
 - [ ] 3.6 Plugin event subscribers via per-plugin queues, plus content extensions with core sanitisation; tests
 - [ ] 3.7 Plugin routes (themed pages and API), jobs, and registry entries (settings, forum actions, flags); test for the plugin forum action in the matrix
 - [ ] 3.8 Client apps on the plugin origin, sandboxed frames and the validated bridge; E2E tests for the bridge call and cookie-isolation scenarios
+- [ ] 3.9 Viewer-context principal = capabilities ∩ viewer ∩ service principal; a test that a Guests-level plugin serving an admin request cannot read staff-only content (privileged read → persist → guest read)
+- [ ] 3.10 Iframe bridge over a per-iframe `MessageChannel` with an instance token, ignoring `window` messages; E2E tests that a second sandboxed frame cannot spoof calls to another plugin's bridge
 
 ## 4. Lifecycle
 
@@ -28,6 +32,7 @@
 - [ ] 4.2 Install, upgrade (quiesce, single-transaction migrate, activate, resumable journal), disable and uninstall (export/erase hooks, keep or drop schema); tests for every lifecycle scenario
 - [ ] 4.3 Circuit breaker and auto-disable with admin notification, with a test
 - [ ] 4.4 Service principal defaulting to Guests, and elevated grants with a warning and admin log entry; tests
+- [ ] 4.5 Personal-data registry from manifests kept after disable/uninstall, and the maintenance sandbox that runs only GDPR handlers; tests that export and erasure reach a disabled plugin's retained data and that a failing handler keeps the request open
 
 ## 5. Staff integration
 

@@ -8,7 +8,7 @@ event stream (ADR 0011).
 
 ## What Changes
 
-- Transactional outbox (`core.events`), relay, per-subscriber delivery records, and the event catalog.
+- Notification, follow and digest subscribers on the outbox from `foundation-dev-environment`, plus the dead-letter screen.
 - Follows: topics, forums and members, with per-follow delivery preferences.
 - In-app notifications (bell, list, mark read), with authorisation rechecked at delivery.
 - Email notifications and daily/weekly digests, localised, sent via SMTP.
@@ -18,7 +18,7 @@ event stream (ADR 0011).
 ## Capabilities
 
 ### New Capabilities
-- `domain-events`: the event catalog and delivery guarantees for internal subscribers.
+- `domain-events` (modified): dead-letter visibility in the staff app.
 - `notifications`: in-app and email notifications, preferences and digests.
 - `follows`: following topics, forums and members.
 - `realtime-stream`: live updates to open pages.

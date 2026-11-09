@@ -12,7 +12,7 @@
 - **Job payloads carry IDs only** (no content, no PII). Workers load current state.
 
 ### Events: transactional outbox
-- Domain writes insert into `core.events(id bigserial, type, aggregate_type, aggregate_id,
+- Domain writes insert into `core.events(id bigint identity, type, aggregate_type, aggregate_id,
   aggregate_version, payload_ids, created_at)` **in the same transaction**.
 - A relay claims unpublished rows with `FOR UPDATE SKIP LOCKED`. For each subscriber (core
   handlers, each enabled plugin, each webhook), it inserts

@@ -39,8 +39,12 @@ Admins SHALL edit a theme's design tokens (colours, fonts, spacing, radii) for l
 Admins SHALL preview any theme on any page as themselves without affecting other viewers.
 
 #### Scenario: Preview
-- **WHEN** an admin previews an inactive theme
-- **THEN** only their session renders with it
+- **WHEN** an admin previews an inactive theme from the staff app
+- **THEN** only their user-app session renders with it, and those responses are never stored in a shared cache
+
+#### Scenario: Guest cookie names a restricted theme
+- **WHEN** a guest sets the `bp` cookie to a theme available only to VIPs
+- **THEN** the page renders with the default theme
 
 ### Requirement: Install and export
 Admins SHALL install themes from the marketplace or by uploading a signed theme bundle, and export any theme as a bundle. Installation SHALL run every template, CSS and island check and SHALL refuse a theme that fails any of them.

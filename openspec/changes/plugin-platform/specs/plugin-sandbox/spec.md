@@ -70,3 +70,17 @@ The project SHALL maintain a suite of malicious plugins that attempt each escape
 #### Scenario: Suite in CI
 - **WHEN** CI runs the malicious-plugin suite
 - **THEN** every attempt is blocked, and the build passes on both engines
+
+### Requirement: No privileged read-through
+A plugin acting for a viewer SHALL read only what both the viewer and the plugin's service principal may read.
+
+#### Scenario: Staff viewer, guest-level plugin
+- **WHEN** a plugin whose service principal is Guests serves an enricher during an admin's request for a staff-only topic
+- **THEN** the plugin receives none of the staff-only content
+
+### Requirement: Database side effects contained
+Plugin SQL SHALL NOT change session settings, signal other processes, take advisory locks, sleep, or exceed its deadline, whether directly, through built-in functions, or through functions it created.
+
+#### Scenario: Forged notification
+- **WHEN** a plugin runs `SELECT pg_notify('session_revoked', '1')`
+- **THEN** the statement is rejected and no notification is delivered

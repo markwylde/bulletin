@@ -21,6 +21,7 @@
 - [ ] 4.1 Editor upload UI (pick, drag, paste, mobile picker, progress) and the attachment extension in the content pipeline; E2E paste and upload at 360 and 1440
 - [ ] 4.2 Post rendering of inline images and the file list with download counts, with the cache variant harness applied; integration tests
 - [ ] 4.3 "My attachments" page with quota usage and deletion, plus moderator removal; tests including permission denial
+- [ ] 4.4 Attachment deletion (member or moderator) bumps the tags of referencing posts in the same transaction; integration test that the post stops showing it and its cached page is invalidated
 
 ## 5. Avatars
 
@@ -28,6 +29,7 @@
 - [ ] 5.2 Add the uploaded avatar to the `member:{id}:card` fragment, bumping `member:{id}` on avatar change or removal; invalidation test that post blocks are not re-rendered
 - [ ] 5.3 Initials fallback in the default theme templates, with a unit test for stable colour
 - [ ] 5.4 Staff avatar removal with block period, logged; integration test with permission denial
+- [ ] 5.5 Unfurl image proxy (fetch through the SSRF-safe client, re-encode with sharp, store under `unfurl/<hash>`, serve from the files origin) with a test for the preview-card image scenario
 
 ## 6. Settings, strings and seed
 

@@ -31,7 +31,7 @@
 | user-api | 10 | 1 | — |
 | staff-api | 5 | 1 | — |
 | workers | 5 | 1 | 10 |
-| plugin-host broker | 2 per plugin, max 20 total | — | 2 |
+| plugin-host broker | lazy, ≤ 2 per plugin, 20 total (semaphore) | — | 2 |
 
 These are configurable, and a startup check refuses to run if the sum across declared
 replicas exceeds `max_connections` minus a reserve.

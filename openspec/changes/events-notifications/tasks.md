@@ -2,10 +2,10 @@
 
 ## 1. Event pipeline
 
-- [ ] 1.1 Migrations for events, event_deliveries and job_cursors; implement the catalog and the `emit()` helper inside `runMutation`; integration test for the rolled-back scenario
-- [ ] 1.2 Implement the relay (claim, per-subscriber delivery rows, singleton enqueue, published marking), with tests for subscriber isolation and crash-between-steps deduplication
+- [ ] 1.1 Add the notification, follow and digest event types to the catalog (the outbox, relay and `emit()` exist from `foundation-dev-environment`)
+- [ ] 1.2 Dead-letter list and retry in the staff app, with tests for the retry scenario and permission denial
 - [ ] 1.3 Add the dead-letter list and retry in the staff app, with integration tests and permission denial
-- [ ] 1.4 Retrofit `topics-posts` mutations to emit events, with tests asserting payloads carry IDs only
+- [ ] 1.4 Subscribe notifications to the events `topics-posts` and `groups-permissions` already emit (`post.created`, `topic.created`, `member.promoted`), with tests asserting payloads carry IDs only and that a promotion notifies the member
 
 ## 2. Follows
 
@@ -31,6 +31,11 @@
 - [ ] 5.1 Add en/es/fr strings for notification texts, emails, digests, preferences and banners; verify completeness
 - [ ] 5.2 Seed follows, notifications (read and unread) and digest preferences for seeded members, and verify the bell shows counts after `docker compose up --watch`
 
-## 6. Feature flag
+## 6. Email
 
-- [ ] 6.1 Register `notifications`, `follows`, `digests`, `realtime` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle
+- [ ] 6.1 `core.delivery_intents` for notifications, digests and system mail, with `pii.delivery_target(intent_id, channel)`; tests for the digest-with-notifications-off scenario and that an erasing member gets nothing
+- [ ] 6.2 Unsubscribe confirmation page plus `POST /api/notifications/unsubscribe` with signed tokens and RFC 8058 headers; tests for the click-and-confirm and link-scanner scenarios
+
+## 7. Feature flag
+
+- [ ] 7.1 Register `notifications`, `follows`, `digests`, `realtime` with `defineFlag` (off in production defaults, on in the seed), gate routes with `requireFlag`, templates with `{% if flags.<key> %}` and islands with `useFlag`; tests that each surface is absent (404 or not rendered) when off, and a cache variant test for the flag toggle

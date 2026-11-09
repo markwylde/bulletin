@@ -64,7 +64,7 @@ the cache variant harness from their first commit.
 - **CDN**: a route flag `cdnCacheable`. The response helper sets headers based on session
   presence and unlock grants. A purge hook runs in the request path with a 300 ms timeout,
   then enqueues a job.
-- **Overlay**: `GET /api/me/overlay?ctx=forum:12` returns JSON with `private, no-cache` and an
+- **Overlay**: `POST /api/me/overlay` with `{ctx: "forum:12"}` (CSRF-exempt bootstrap per ADR 0018) returns JSON with `private, no-cache` and an
   ETag. A client script applies it to `data-overlay-*` hooks in templates.
 
 ## Risks / Trade-offs
@@ -87,3 +87,7 @@ Not applicable (greenfield). After the spike, update ADR 0008's status to Accept
 | Guest beacon cookie ID | Personal data (pseudonymous) | view counting, presence | cookie 30 days; buffer rows flushed each minute | none (aggregated) | excluded | not linkable to a member |
 | Presence and view buffers (UNLOGGED) | Derived | who's online, view counts | 15 minutes | aggregated only | excluded | deleted by expiry |
 | Shared fragment cache and CDN | Derived | performance | tag invalidation or TTL | per visibility key; never holds personal data (enforced by the no-personal-data test) | — | purged by invalidation |
+
+## Feature flags (ADR 0010)
+
+None: rendering and caching are core. The language switcher and account pages are core reading, exempt under ADR 0010.

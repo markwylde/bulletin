@@ -9,8 +9,7 @@
 ## 2. Locale resolution
 
 - [ ] 2.1 Implement member/guest locale resolution and the `bp` cookie codec, with unit tests for each fallback path
-- [ ] 2.2 Add `core.board_settings.default_locale` and `core.members.locale` (migration) with integration tests
-- [ ] 2.3 Add the language switcher island and the `Accept-Language` suggestion banner to the user app placeholder layout; E2E at all viewports for switching as guest and as member
+- [ ] 2.2 Add `core.board_settings.default_locale` (migration) with integration tests; member locale lands in `identity-sessions`
 
 ## 3. Overrides and runtime validation
 
@@ -25,4 +24,4 @@
 ## 5. Strings and seed
 
 - [ ] 5.1 Move the foundation placeholder strings into real en/es/fr catalogs and verify completeness passes
-- [ ] 5.2 Seed the board default locale and one es and one fr member preference, and verify the pages render accordingly after `docker compose up --watch`
+- [ ] 5.2 Seed the board default locale, and verify with an integration test that the resolver and formatter use it after `docker compose up --watch`
