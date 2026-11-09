@@ -1,0 +1,44 @@
+schema: spec-driven
+
+context: |
+  Binding architecture decisions live in docs/adr/ (index: docs/adr/README.md).
+  Product scope lives in docs/features.md. Every proposal and design must cite the ADRs it
+  relies on and must not contradict them; propose a superseding ADR instead.
+  Every change touching PII must include the ADR 0012 checklist.
+
+rules:
+  tasks:
+    - Include test tasks per ADR 0015 (unit, integration with permission-denial cases, cache invalidation/no-leak where relevant, Bun.WebView E2E at mobile and desktop)
+    - Include i18n tasks for en, es, fr strings
+    - Include seed data updates so the feature is visible after docker compose up --watch
+
+# Project context (optional)
+# Add only constraints that should guide OpenSpec artifacts and workflows.
+# Include constraints an agent cannot infer by reading the code.
+# Keep general project documentation and discoverable codebase facts out.
+# Example:
+#   context: |
+#     Designs and tasks must cover Windows, macOS, and Linux
+#     Write all artifacts in Spanish
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
