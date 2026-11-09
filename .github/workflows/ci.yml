@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: bun run check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+
+  integration:
+    name: Compose database/integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Run the test service
+        run: docker compose -f compose.yaml -f compose.test.yaml --profile test run --rm test
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f compose.yaml -f compose.test.yaml down -v
+
+  e2e:
+    name: Full-stack E2E (${{ matrix.engine }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [docker, podman]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+
+      - name: Install Podman and the Compose v2 provider
+        if: matrix.engine == 'podman'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          sudo curl -fsSL \
+            https://github.com/docker/compose/releases/download/v2.30.3/docker-compose-linux-x86_64 \
+            -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+          podman info
+
+      - name: Add local origins to /etc/hosts
+        run: |
+          echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
+            | sudo tee -a /etc/hosts
+
+      - name: Locate Chrome
+        run: |
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || true)"
+          if [ -n "$CHROME" ]; then
+            echo "BUN_CHROME_PATH=$CHROME" >> "$GITHUB_ENV"
+          fi
+
+      - name: Start the full stack
+        run: |
+          if [ "${{ matrix.engine }}" = "podman" ]; then
+            podman compose up -d --wait --wait-timeout 300
+          else
+            docker compose up -d --wait --wait-timeout 300
+          fi
+
+      - name: Run E2E smoke and locale tests
+        run: bun run test:e2e
+
+      - name: Collect logs
+        if: failure()
+        run: |
+          if [ "${{ matrix.engine }}" = "podman" ]; then
+            podman compose logs --no-color
+          else
+            docker compose logs --no-color
+          fi
+
+      - name: Stop the stack
+        if: always()
+        run: |
+          if [ "${{ matrix.engine }}" = "podman" ]; then
+            podman compose down -v
+          else
+            docker compose down -v
+          fi
