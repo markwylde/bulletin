@@ -1,4 +1,4 @@
-import { isLocale, type Locale } from "@bulletin/i18n";
+import { isLocale, type Locale, resolveRequestLocale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { NAME_CHANGE_INTERVAL_MS } from "./names.ts";
 
@@ -48,6 +48,22 @@ export async function readMember(sql: SQL, memberId: string): Promise<MemberReco
     displayName: row.display_name,
     locale: isLocale(row.locale) ? row.locale : null,
   };
+}
+
+/** Resolves a member's request locale: preference, then board default. */
+export async function resolveMemberLocale(sql: SQL, memberId: string): Promise<Locale> {
+  const [row] = (await sql`
+    SELECT m.locale AS member_locale, b.default_locale AS board_locale
+    FROM core.members m
+    LEFT JOIN core.board_settings b ON b.id = 1
+    WHERE m.id = ${memberId}
+  `) as Array<{ member_locale: string | null; board_locale: string | null }>;
+
+  return resolveRequestLocale({
+    audience: "member",
+    memberLocale: row?.member_locale ?? null,
+    boardDefaultLocale: row?.board_locale ?? null,
+  }).locale;
 }
 
 /**

@@ -8,6 +8,7 @@ import { clearStashedRequest } from "./fetch.ts";
 import { safeReturnTo } from "./return-to.ts";
 
 export {
+  type AuthFetch,
   clearStashedRequest,
   createAuthFetch,
   reauthUrl,
@@ -30,8 +31,11 @@ export interface BrowserChallenge {
 export interface BrowserSessionView {
   readonly authenticated: boolean;
   readonly csrfToken: string | null;
+  readonly memberId: string | null;
   readonly displayName: string | null;
   readonly displayNameRequired: boolean;
+  readonly locale: "en" | "es" | "fr" | null;
+  readonly reauthAt: string | null;
   readonly kind: "user" | "staff";
 }
 
@@ -210,11 +214,33 @@ export async function finishLoginAndRedirect(): Promise<void> {
   browser.location.replace(returnTo);
 }
 
+export class ReauthRequiredError extends Error {
+  constructor() {
+    super("Session re-authentication required");
+    this.name = "ReauthRequiredError";
+  }
+}
+
 export async function loadSession(): Promise<BrowserSessionView> {
   const response = await fetch("/api/auth/session", {
     credentials: "include",
     headers: { accept: "application/json" },
   });
+
+  if (response.status === 401) {
+    const payload = await response
+      .clone()
+      .json()
+      .catch(() => null);
+
+    if (
+      typeof payload === "object" &&
+      payload !== null &&
+      (payload as Record<string, unknown>).code === "reauth_required"
+    ) {
+      throw new ReauthRequiredError();
+    }
+  }
 
   if (!response.ok) {
     throw new Error("Could not read the session");

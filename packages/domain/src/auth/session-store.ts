@@ -20,6 +20,7 @@ export interface SessionRecord {
 export interface SessionLookup {
   find(kind: SessionKind, token: string): Promise<SessionRecord | null>;
   touch?(session: SessionRecord): Promise<void>;
+  rotate?(session: SessionRecord): Promise<{ readonly token: string } | null>;
   revoke?(sessionId: string): Promise<void>;
   invalidate?(): void;
 }

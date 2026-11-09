@@ -17,12 +17,16 @@ export interface StashedRequest {
   readonly method: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: StashedBody | null;
+  /** The member that owned the session when the request was stashed. */
+  readonly ownerMemberId: string | null;
 }
 
 export interface CreateAuthFetchOptions {
   readonly fetch?: AuthFetch;
   readonly storage?: AuthFetchStorage;
   readonly onReauthRequired?: (request: StashedRequest) => void;
+  /** Resolves the current member so a stash can never be reused by another account. */
+  readonly ownerId?: () => string | null | Promise<string | null>;
 }
 
 const STORAGE_KEY = "bulletin_reauth_request";
@@ -31,6 +35,24 @@ function defaultStorage(): AuthFetchStorage | null {
   try {
     const storage = (globalThis as unknown as { localStorage?: AuthFetchStorage }).localStorage;
     return storage ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function currentMemberId(): Promise<string | null> {
+  try {
+    const response = await fetch("/api/auth/session", {
+      credentials: "include",
+      headers: { accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const view = (await response.json()) as { readonly memberId?: string | null };
+    return typeof view.memberId === "string" ? view.memberId : null;
   } catch {
     return null;
   }
@@ -137,6 +159,7 @@ async function describeRequest(
   input: string | URL | Request,
   init: RequestInit | undefined,
   requestSnapshot: Request | null,
+  ownerMemberId: string | null,
 ): Promise<StashedRequest> {
   const request = input instanceof Request ? input : null;
   const headers = new Headers(init?.headers ?? request?.headers);
@@ -163,6 +186,7 @@ async function describeRequest(
     method: (init?.method ?? request?.method ?? "GET").toUpperCase(),
     headers: Object.fromEntries(headers.entries()),
     body,
+    ownerMemberId,
   };
 }
 
@@ -195,7 +219,9 @@ export function createAuthFetch(options: CreateAuthFetchOptions = {}): AuthFetch
       return response;
     }
 
-    const stashed = await describeRequest(input, init, requestSnapshot);
+    const ownerMemberId =
+      options.ownerId === undefined ? await currentMemberId() : await options.ownerId();
+    const stashed = await describeRequest(input, init, requestSnapshot, ownerMemberId ?? null);
     storage?.setItem(STORAGE_KEY, JSON.stringify(stashed));
     options.onReauthRequired?.(stashed);
 
@@ -233,7 +259,10 @@ function parseStashedBody(value: unknown): StashedBody | null {
   };
 }
 
-export function takeStashedRequest(storage = defaultStorage()): StashedRequest | null {
+export function takeStashedRequest(
+  ownerMemberId?: string | null,
+  storage = defaultStorage(),
+): StashedRequest | null {
   const stored = storage?.getItem(STORAGE_KEY);
 
   if (stored === null || stored === undefined) {
@@ -252,11 +281,19 @@ export function takeStashedRequest(storage = defaultStorage()): StashedRequest |
       return null;
     }
 
+    const owner = typeof value.ownerMemberId === "string" ? value.ownerMemberId : null;
+
+    if (ownerMemberId !== undefined && owner !== ownerMemberId) {
+      storage?.removeItem(STORAGE_KEY);
+      return null;
+    }
+
     return {
       url: value.url,
       method: value.method,
       headers: value.headers as Record<string, string>,
       body: parseStashedBody(value.body),
+      ownerMemberId: owner,
     };
   } catch {
     return null;

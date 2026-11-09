@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { resolveMemberLocale } from "@bulletin/db/i18n";
 import {
   type AuthService,
   type AuthServiceOptions,
@@ -9,7 +8,7 @@ import {
   hashToken,
   type SessionView,
 } from "@bulletin/domain/auth";
-import { displayNameSkeleton } from "@bulletin/domain/member";
+import { displayNameSkeleton, resolveMemberLocale } from "@bulletin/domain/member";
 import { can } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
@@ -424,6 +423,12 @@ integrationDescribe("silent re-auth and background grace", () => {
         expect(within.status).toBe(200);
         expect(await within.json()).toMatchObject({ ok: true, kind: "user" });
 
+        const sessionWithin = await call(service, "/api/auth/session", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(sessionWithin.status).toBe(200);
+        expect(await sessionWithin.json()).toMatchObject({ authenticated: true });
+
         await database.sql`
           UPDATE core.sessions SET reauth_at = now() - interval '3 hours'
           WHERE member_id = (SELECT member_id FROM pii.identities WHERE sub = 'grace-user')
@@ -433,6 +438,12 @@ integrationDescribe("silent re-auth and background grace", () => {
         });
         expect(after.status).toBe(401);
         expect(await after.json()).toEqual({ code: "reauth_required" });
+
+        const sessionAfter = await call(service, "/api/auth/session", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(sessionAfter.status).toBe(401);
+        expect(await sessionAfter.json()).toEqual({ code: "reauth_required" });
       } finally {
         await service.close();
         await sql.close();
@@ -734,7 +745,7 @@ integrationDescribe("silent re-auth and background grace", () => {
           `;
         });
 
-        const rotated = await call(service, "/api/test/protected", {
+        const rotated = await call(service, "/api/auth/session", {
           cookie: `bl_session=${firstLogin}`,
         });
         expect(rotated.status).toBe(200);
@@ -1220,6 +1231,14 @@ integrationDescribe("silent re-auth and background grace", () => {
         });
         expect(wrong.status).toBe(403);
         expect(await wrong.json()).toEqual({ code: "invalid_csrf" });
+
+        const malformed = await call(service, "/api/test/protected", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": "\u00e9".repeat(43) },
+        });
+        expect(malformed.status).toBe(403);
+        expect(await malformed.json()).toEqual({ code: "invalid_csrf" });
 
         const allowed = await call(service, "/api/test/protected", {
           method: "POST",

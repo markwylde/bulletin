@@ -1,6 +1,6 @@
-import { describe, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { Locale } from "@bulletin/i18n";
-import { waitForText, withPage } from "@bulletin/test-utils/e2e";
+import { loginAs, waitForText, withPage } from "@bulletin/test-utils/e2e";
 import staffEn from "../../apps/staff-app/i18n/en.json";
 import staffEs from "../../apps/staff-app/i18n/es.json";
 import staffFr from "../../apps/staff-app/i18n/fr.json";
@@ -42,3 +42,37 @@ for (const app of APPS) {
     }
   });
 }
+
+const USER_URL = Bun.env.BULLETIN_BASE_URL ?? "http://bulletin.localhost:8080";
+const STAFF_URL = Bun.env.BULLETIN_STAFF_BASE_URL ?? "http://staff.bulletin.localhost:8080";
+
+integrationDescribe("member locale", () => {
+  for (const viewport of ["mobile360", "desktop"] as const) {
+    test(`renders the saved member locale on ${viewport}`, async () => {
+      await withPage({ url: USER_URL, viewport }, async (view) => {
+        await loginAs(view, "member-fr");
+        await waitForText(view, userFr["user.placeholder.body"]);
+        expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
+      });
+    }, 120_000);
+  }
+
+  test("renders the member locale in the staff app too", async () => {
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "admin");
+      const session = await view.evaluate<{ readonly csrfToken: string | null }>(
+        "fetch('/api/auth/session').then((response) => response.json())",
+      );
+      const saved = await view.evaluate<boolean>(
+        `fetch('/api/me/locale', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', 'x-bulletin-csrf': ${JSON.stringify(session.csrfToken ?? "")} }, body: JSON.stringify({ locale: 'fr' }) }).then((response) => response.ok)`,
+      );
+      expect(saved).toBe(true);
+    });
+
+    await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "admin");
+      await waitForText(view, staffFr["staff.placeholder.body"]);
+      expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
+    });
+  }, 180_000);
+});

@@ -2,11 +2,12 @@
 import { createServerT } from "@bulletin/i18n";
 import { USER_CATALOGS } from "../../catalogs.ts";
 
-const t = createServerT("en", { shipped: USER_CATALOGS });
+const locale = Astro.locals.locale ?? "en";
+const t = createServerT(locale, { shipped: USER_CATALOGS });
 const nonce = Astro.locals.cspNonce;
 ---
 <!doctype html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

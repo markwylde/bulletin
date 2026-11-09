@@ -3,12 +3,13 @@ import { validateDisplayName } from "../member/names.ts";
 import {
   readMember,
   readNameHistory,
+  resolveMemberLocale,
   saveMemberLocale,
   updateDisplayName,
 } from "../member/store.ts";
 import { can } from "../permissions/can.ts";
 import type { AuthRouterOptions } from "./router.ts";
-import { createAuthRouter } from "./router.ts";
+import { createAuthRouter, guestView, sessionView } from "./router.ts";
 import { createSessionStore, type SessionRecord, type SessionStore } from "./session-store.ts";
 import {
   createCsrfToken,
@@ -406,6 +407,17 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
             return json({ code: "invalid_csrf" }, 403);
           }
         }
+      }
+
+      if (pathname === "/api/auth/session" && request.method === "GET") {
+        return withSession(request, async ({ session }) => {
+          if (session === null) {
+            return json(guestView(options.kind));
+          }
+
+          const locale = await resolveMemberLocale(options.sql, session.memberId);
+          return json(sessionView(options, session, locale));
+        });
       }
 
       const authResponse = await router(request);

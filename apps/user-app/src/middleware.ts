@@ -2,7 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
-import { closeSessionReadPool, currentSessionReauthAt } from "./session.ts";
+import { closeSessionReadPool, currentSessionContext } from "./session.ts";
 
 const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
 const authIssuer = process.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080";
@@ -66,12 +66,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
       isNavigation &&
       !NON_PAGE_PREFIXES.some((prefix) => context.url.pathname.startsWith(prefix))
     ) {
-      let reauthAt: string | null = null;
+      let sessionContext: Awaited<ReturnType<typeof currentSessionContext>> = null;
 
       try {
-        reauthAt = await currentSessionReauthAt(context.request.headers.get("cookie"));
+        sessionContext = await currentSessionContext(context.request.headers.get("cookie"));
       } catch {
-        reauthAt = null;
+        sessionContext = null;
+      }
+
+      if (sessionContext !== null) {
+        context.locals.locale = sessionContext.locale;
+        context.locals.localeSource = "member";
+      } else {
+        context.locals.localeSource = "guest";
       }
 
       if (
@@ -79,7 +86,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
           method: "GET",
           secFetchMode: "navigate",
           pathname: context.url.pathname,
-          reauthAt,
+          reauthAt: sessionContext?.reauthAt ?? null,
         })
       ) {
         return secure(

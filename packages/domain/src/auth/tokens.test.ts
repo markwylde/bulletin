@@ -26,6 +26,7 @@ describe("auth tokens and cookies", () => {
     expect(verifyCsrfToken(expected, expected)).toBe(true);
     expect(verifyCsrfToken(createCsrfToken("43", "secret"), expected)).toBe(false);
     expect(verifyCsrfToken("short", expected)).toBe(false);
+    expect(verifyCsrfToken("é".repeat(expected.length), expected)).toBe(false);
     expect(verifyCsrfToken(null, expected)).toBe(false);
   });
 

@@ -5,6 +5,7 @@ import {
   loadSession,
   logout,
 } from "@bulletin/domain/auth/browser";
+import type { Locale } from "@bulletin/i18n";
 import { I18nProvider, useT } from "@bulletin/ui";
 import { useEffect, useState } from "react";
 import { STAFF_CATALOGS } from "./catalogs.ts";
@@ -64,7 +65,7 @@ function LoginButton({ onError }: { readonly onError: () => void }) {
   );
 }
 
-function Content() {
+function Content({ onLocale }: { readonly onLocale: (locale: Locale) => void }) {
   const t = useT();
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
   const [sensitive, setSensitive] = useState<SensitiveState>("idle");
@@ -77,6 +78,10 @@ function Content() {
 
     void loadSession()
       .then((session) => {
+        if (session.authenticated && session.locale !== null) {
+          onLocale(session.locale);
+        }
+
         setAuth(
           session.authenticated
             ? { status: "authenticated", displayName: session.displayName }
@@ -84,7 +89,7 @@ function Content() {
         );
       })
       .catch(() => setAuth({ status: "error" }));
-  }, []);
+  }, [onLocale]);
 
   useEffect(() => {
     if (auth.status === "authenticated" && sessionStorage.getItem(STEP_UP_PENDING_KEY) === "1") {
@@ -131,11 +136,17 @@ function Content() {
 }
 
 export function App() {
-  const locale = localeFromRequest(window.location.search, document.cookie);
+  const [locale, setLocale] = useState<Locale>(() =>
+    localeFromRequest(window.location.search, document.cookie),
+  );
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   return (
     <I18nProvider locale={locale} messages={STAFF_CATALOGS[locale]}>
-      <Content />
+      <Content onLocale={setLocale} />
     </I18nProvider>
   );
 }

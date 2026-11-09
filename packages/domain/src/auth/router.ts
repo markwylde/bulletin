@@ -1,3 +1,4 @@
+import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { can } from "../permissions/can.ts";
 import { createJwks, type IdTokenClaims, IdTokenError, verifyIdToken } from "./jwt.ts";
@@ -21,6 +22,7 @@ import {
   createCsrfToken,
   createToken,
   parseCookieHeader,
+  REAUTH_GRACE_MS,
   SESSION_LIFETIMES,
   type SessionKind,
   safeReturnTo,
@@ -62,8 +64,10 @@ export interface ChallengeView {
 export interface SessionView {
   readonly authenticated: boolean;
   readonly csrfToken: string | null;
+  readonly memberId: string | null;
   readonly displayName: string | null;
   readonly displayNameRequired: boolean;
+  readonly locale: Locale | null;
   readonly reauthAt: string | null;
   readonly kind: SessionKind;
 }
@@ -100,12 +104,18 @@ async function readJson(request: Request): Promise<Record<string, unknown> | nul
   }
 }
 
-function sessionView(options: AuthRouterOptions, session: SessionRecord): SessionView {
+export function sessionView(
+  options: AuthRouterOptions,
+  session: SessionRecord,
+  locale: Locale | null = null,
+): SessionView {
   return {
     authenticated: true,
     csrfToken: createCsrfToken(session.id, options.sessionSecret),
+    memberId: session.memberId,
     displayName: session.displayName,
     displayNameRequired: session.displayName === null,
+    locale,
     reauthAt: session.reauthAt.toISOString(),
     kind: options.kind,
   };
@@ -114,13 +124,15 @@ function sessionView(options: AuthRouterOptions, session: SessionRecord): Sessio
 const GUEST_VIEW: SessionView = {
   authenticated: false,
   csrfToken: null,
+  memberId: null,
   displayName: null,
   displayNameRequired: false,
+  locale: null,
   reauthAt: null,
   kind: "user",
 };
 
-function guestView(kind: SessionKind): SessionView {
+export function guestView(kind: SessionKind): SessionView {
   return { ...GUEST_VIEW, kind };
 }
 
@@ -395,8 +407,30 @@ export function createAuthRouter(
       return json({ code: "forbidden" }, 403);
     }
 
+    if (options.kind === "user" && Date.now() > session.reauthAt.getTime() + REAUTH_GRACE_MS) {
+      return json({ code: "reauth_required" }, 401);
+    }
+
     await sessions.touch?.(session);
-    return json(sessionView(options, session));
+
+    const rotated =
+      session.rotatePending && sessions.rotate !== undefined
+        ? await sessions.rotate(session)
+        : null;
+
+    return json(
+      sessionView(options, session),
+      200,
+      rotated === null
+        ? []
+        : [
+            serializeCookie(sessionCookie, rotated.token, {
+              maxAge: sessionMaxAge,
+              secure,
+              httpOnly: true,
+            }),
+          ],
+    );
   }
 
   const tokenUrl = options.tokenUrl ?? `${options.issuer}/token`;

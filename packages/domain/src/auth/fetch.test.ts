@@ -25,9 +25,14 @@ class MemoryStorage implements AuthFetchStorage {
   }
 }
 
-function reauthFetch(storage: MemoryStorage, requests: StashedRequest[] = []) {
+function reauthFetch(
+  storage: MemoryStorage,
+  requests: StashedRequest[] = [],
+  owner: string | null = "member-1",
+) {
   return createAuthFetch({
     storage,
+    ownerId: () => owner,
     fetch: async () => Response.json({ code: "reauth_required" }, { status: 401 }),
     onReauthRequired(request) {
       requests.push(request);
@@ -58,11 +63,12 @@ describe("auth fetch wrapper", () => {
         value: '{"body":"unsent"}',
         contentType: "application/json",
       },
+      ownerMemberId: "member-1",
     });
-    expect(takeStashedRequest(storage)).toEqual(requests[0] ?? null);
+    expect(takeStashedRequest("member-1", storage)).toEqual(requests[0] ?? null);
 
     clearStashedRequest(storage);
-    expect(takeStashedRequest(storage)).toBeNull();
+    expect(takeStashedRequest("member-1", storage)).toBeNull();
   });
 
   test("preserves a Request body instead of dropping it", async () => {
@@ -76,13 +82,14 @@ describe("auth fetch wrapper", () => {
 
     await authFetch(request);
 
-    const stashed = takeStashedRequest(storage);
+    const stashed = takeStashedRequest("member-1", storage);
     expect(stashed?.url).toBe("http://bulletin.localhost/api/drafts/4");
     expect(stashed?.body).toEqual({
       kind: "text",
       value: '{"body":"from-request"}',
       contentType: "application/json",
     });
+    expect(stashed?.ownerMemberId).toBe("member-1");
     expect(stashedBodyInit(stashed?.body ?? null)).toBe('{"body":"from-request"}');
   });
 
@@ -96,7 +103,7 @@ describe("auth fetch wrapper", () => {
       headers: { "content-type": "application/octet-stream" },
       body: bytes,
     });
-    const binary = takeStashedRequest(storage);
+    const binary = takeStashedRequest("member-1", storage);
     expect(binary?.body?.kind).toBe("bytes");
     expect(stashedBodyInit(binary?.body ?? null)).toEqual(bytes);
 
@@ -104,17 +111,56 @@ describe("auth fetch wrapper", () => {
       method: "POST",
       body: new URLSearchParams({ name: "Ada" }),
     });
-    const form = takeStashedRequest(storage);
+    const form = takeStashedRequest("member-1", storage);
     expect(form?.body).toMatchObject({ kind: "text", value: "name=Ada" });
     expect(form?.headers["content-type"]).toContain("application/x-www-form-urlencoded");
 
     const multipart = new FormData();
     multipart.set("name", "Ada");
     await authFetch("/api/form", { method: "POST", body: multipart });
-    const uploaded = takeStashedRequest(storage);
+    const uploaded = takeStashedRequest("member-1", storage);
     expect(uploaded?.body?.kind).toBe("bytes");
     expect(uploaded?.headers["content-type"]).toContain("multipart/form-data");
     expect(stashedBodyInit(uploaded?.body ?? null)).toBeInstanceOf(Uint8Array);
+  });
+
+  test("does not let another member inherit a stashed request", async () => {
+    const storage = new MemoryStorage();
+    let owner = "member-a";
+    const authFetch = createAuthFetch({
+      storage,
+      ownerId: () => owner,
+      fetch: async () => Response.json({ code: "reauth_required" }, { status: 401 }),
+    });
+
+    await authFetch("/api/drafts/5", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"body":"private"}',
+    });
+
+    expect(takeStashedRequest("member-a", storage)).not.toBeNull();
+
+    owner = "member-b";
+    expect(takeStashedRequest("member-b", storage)).toBeNull();
+    expect(takeStashedRequest("member-a", storage)).toBeNull();
+  });
+
+  test("clears a stashed request when the session is revoked", async () => {
+    const storage = new MemoryStorage();
+    let owner: string | null = "member-a";
+    const authFetch = createAuthFetch({
+      storage,
+      ownerId: () => owner,
+      fetch: async () => Response.json({ code: "reauth_required" }, { status: 401 }),
+    });
+
+    await authFetch("/api/drafts/6", { method: "POST", body: "private" });
+    expect(takeStashedRequest("member-a", storage)).not.toBeNull();
+
+    owner = null;
+    expect(takeStashedRequest(null, storage)).toBeNull();
+    expect(takeStashedRequest("member-a", storage)).toBeNull();
   });
 
   test("passes normal and non-reauth failures through unchanged", async () => {
@@ -130,7 +176,7 @@ describe("auth fetch wrapper", () => {
       fetch: async () => Response.json({ code: "forbidden" }, { status: 401 }),
     });
     expect((await denied("/api/anything")).status).toBe(401);
-    expect(takeStashedRequest(storage)).toBeNull();
+    expect(takeStashedRequest("member-1", storage)).toBeNull();
   });
 
   test("builds a safe re-auth URL for same-origin paths only", () => {

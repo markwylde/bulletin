@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { hashToken } from "@bulletin/domain/auth";
 import { withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
-import { readSessionReauthAt } from "../../apps/user-app/src/session.ts";
+import { readSessionContext, readSessionReauthAt } from "../../apps/user-app/src/session.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -15,7 +15,7 @@ function roleUrl(databaseUrl: string, role: string): string {
 }
 
 integrationDescribe("user-app session read", () => {
-  test("reads reauth_at in-process without touching activity", async () => {
+  test("reads reauth_at and the DB-backed locale without touching activity", async () => {
     if (adminUrl === undefined) {
       return;
     }
@@ -31,17 +31,43 @@ integrationDescribe("user-app session read", () => {
         throw new Error("member missing");
       }
 
-      const token = "user-app-session-token";
       await sql`
-        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
-        VALUES (${member.id}, 'user', ${hashToken(token)}, now() + interval '24 hours')
+        INSERT INTO core.board_settings (id, board_name, default_locale)
+        VALUES (1, 'Bulletin', 'fr')
       `;
+
+      const firstToken = "user-app-session-token-1";
+      const secondToken = "user-app-session-token-2";
+
+      for (const token of [firstToken, secondToken]) {
+        await sql`
+          INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+          VALUES (${member.id}, 'user', ${hashToken(token)}, now() + interval '24 hours')
+        `;
+      }
 
       const appSql = new SQL(roleUrl(url, "user_app"));
 
       try {
-        const reauthAt = await readSessionReauthAt(appSql, `bl_session=${token}`, "test");
-        expect(reauthAt).not.toBeNull();
+        const first = await readSessionContext(appSql, `bl_session=${firstToken}`, "test");
+        expect(first).not.toBeNull();
+        expect(first?.locale).toBe("fr");
+
+        const second = await readSessionContext(appSql, `bl_session=${secondToken}`, "test");
+        expect(second?.locale).toBe("fr");
+
+        await sql`UPDATE core.members SET locale = 'es' WHERE id = ${member.id}`;
+
+        expect((await readSessionContext(appSql, `bl_session=${firstToken}`, "test"))?.locale).toBe(
+          "es",
+        );
+        expect(
+          (await readSessionContext(appSql, `bl_session=${secondToken}`, "test"))?.locale,
+        ).toBe("es");
+
+        expect(
+          await readSessionReauthAt(appSql, `bl_session=${firstToken}`, "test"),
+        ).not.toBeNull();
 
         const [after] = (await sql`
           SELECT last_active_at, previous_visit_at FROM core.members WHERE id = ${member.id}
@@ -50,9 +76,12 @@ integrationDescribe("user-app session read", () => {
         expect(after?.previous_visit_at?.toISOString()).toBe("2019-01-01T00:00:00.000Z");
 
         await sql`
-          UPDATE core.sessions SET revoked_at = now() WHERE token_hash = ${hashToken(token)}
+          UPDATE core.sessions SET revoked_at = now() WHERE token_hash = ${hashToken(firstToken)}
         `;
-        expect(await readSessionReauthAt(appSql, `bl_session=${token}`, "test")).toBeNull();
+        expect(await readSessionContext(appSql, `bl_session=${firstToken}`, "test")).toBeNull();
+        expect(
+          await readSessionContext(appSql, `bl_session=${secondToken}`, "test"),
+        ).not.toBeNull();
         expect(await readSessionReauthAt(appSql, null, "test")).toBeNull();
       } finally {
         await appSql.close();

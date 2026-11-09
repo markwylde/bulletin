@@ -42,11 +42,18 @@ export function createCsrfToken(sessionId: string, secret: string): string {
 
 /** Constant-time comparison of the submitted and expected CSRF tokens. */
 export function verifyCsrfToken(provided: string | null, expected: string): boolean {
-  if (provided === null || provided.length !== expected.length) {
+  if (provided === null) {
     return false;
   }
 
-  return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  const providedBytes = Buffer.from(provided);
+  const expectedBytes = Buffer.from(expected);
+
+  if (providedBytes.length !== expectedBytes.length) {
+    return false;
+  }
+
+  return timingSafeEqual(providedBytes, expectedBytes);
 }
 
 export const SESSION_LIFETIMES = {
