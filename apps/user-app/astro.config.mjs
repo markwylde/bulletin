@@ -29,5 +29,7 @@ const budgetGuard = {
 
 export default defineConfig({
   output: "static",
+  // The dev toolbar injects a nonce-less inline script, which the strict CSP blocks.
+  devToolbar: { enabled: false },
   integrations: [budgetGuard],
 });
