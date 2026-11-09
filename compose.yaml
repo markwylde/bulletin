@@ -137,6 +137,54 @@ services:
           path: ./mocks/Dockerfile
     restart: unless-stopped
 
+  mail:
+    build:
+      context: .
+      dockerfile: mocks/Dockerfile
+      target: dev
+      args:
+        MOCK_NAME: mail
+    environment:
+      PORT: "4002"
+      SMTP_PORT: "1025"
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - -e
+        - >-
+          fetch("http://127.0.0.1:4002/health")
+          .then((response) => process.exit(response.ok ? 0 : 1))
+          .catch(() => process.exit(1))
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    develop:
+      watch:
+        - action: sync
+          path: ./mocks/mail/src
+          target: /app/mocks/mail/src
+        - action: sync
+          path: ./mocks/shared/src
+          target: /app/mocks/shared/src
+        - action: sync+restart
+          path: ./mocks/mail/tsconfig.json
+          target: /app/mocks/mail/tsconfig.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./mocks/mail/package.json
+        - action: rebuild
+          path: ./mocks/shared/package.json
+        - action: rebuild
+          path: ./mocks/Dockerfile
+    restart: unless-stopped
+
   proxy:
     image: caddy:2.11.9-alpine
     ports:
@@ -157,6 +205,8 @@ services:
       darkauth-mock:
         condition: service_healthy
       s3:
+        condition: service_healthy
+      mail:
         condition: service_healthy
     healthcheck:
       test:

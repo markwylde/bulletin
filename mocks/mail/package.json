@@ -1,0 +1,17 @@
+{
+  "name": "@bulletin/mock-mail",
+  "private": true,
+  "type": "module",
+  "description": "Local SMTP listener and web inbox mock.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@bulletin/mock-ui": "workspace:*"
+  }
+}

@@ -14,6 +14,14 @@ http://bulletin.localhost:8080 {
 		redir * /_mocks/s3/ 308
 	}
 
+	handle_path /_mocks/mail/* {
+		reverse_proxy mail:4002
+	}
+
+	handle /_mocks/mail {
+		redir * /_mocks/mail/ 308
+	}
+
 	handle /api/* {
 		reverse_proxy user-api:3001
 	}

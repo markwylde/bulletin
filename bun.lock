@@ -45,6 +45,12 @@
     "apps/workers": {
       "name": "@bulletin/workers",
     },
+    "mocks/mail": {
+      "name": "@bulletin/mock-mail",
+      "dependencies": {
+        "@bulletin/mock-ui": "workspace:*",
+      },
+    },
     "mocks/s3": {
       "name": "@bulletin/mock-s3",
       "dependencies": {
@@ -203,6 +209,8 @@
     "@bulletin/flags": ["@bulletin/flags@workspace:packages/flags"],
 
     "@bulletin/i18n": ["@bulletin/i18n@workspace:packages/i18n"],
+
+    "@bulletin/mock-mail": ["@bulletin/mock-mail@workspace:mocks/mail"],
 
     "@bulletin/mock-s3": ["@bulletin/mock-s3@workspace:mocks/s3"],
 
