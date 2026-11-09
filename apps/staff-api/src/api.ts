@@ -7,7 +7,7 @@ import {
   isStaffScheme,
 } from "@bulletin/domain/permissions";
 import type { SQL } from "bun";
-import { type AdminLogEntry, listAdminLog, writeAdminLog } from "./admin-log.ts";
+import { listAdminLog, writeAdminLog } from "./admin-log.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import {
   listActiveOverrides,
@@ -113,6 +113,7 @@ async function saveScheme(context: StaffRouteContext): Promise<Response> {
   }
 
   await context.sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${`bulletin.staff_prefs:${context.session.memberId}`})::bigint)`;
     const [existing] = (await tx`
       SELECT staff_scheme
       FROM core.member_prefs
@@ -172,19 +173,33 @@ async function logEntries(context: StaffRouteContext): Promise<Response> {
   const params = context.url.searchParams;
   const from = dateFilter(params.get("from"));
   const to = dateFilter(params.get("to"));
+  const cursor = params.get("cursor");
+  const limitParam = params.get("limit");
 
   if (from === null || to === null) {
     return json({ code: "invalid_date" }, 400);
   }
 
-  const entries: AdminLogEntry[] = await listAdminLog(context.sql, {
+  if (cursor !== null && !/^\d+$/.test(cursor)) {
+    return json({ code: "invalid_cursor" }, 400);
+  }
+
+  const limit = limitParam === null ? undefined : Number(limitParam);
+
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100)) {
+    return json({ code: "invalid_limit" }, 400);
+  }
+
+  const page = await listAdminLog(context.sql, {
     actor: params.get("actor") ?? "",
     action: params.get("action") ?? "",
+    ...(cursor === null ? {} : { cursor }),
+    ...(limit === undefined ? {} : { limit }),
     ...(from === undefined ? {} : { from }),
     ...(to === undefined ? {} : { to }),
   });
 
-  return json({ entries });
+  return json(page);
 }
 
 async function overrideKeys(context: StaffRouteContext): Promise<Response> {
@@ -242,7 +257,7 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "GET",
     path: "/api/staff/dashboard/log",
     permission: "acp.log",
-    handler: async ({ sql }) => json({ entries: await listAdminLog(sql, { limit: 10 }) }),
+    handler: async ({ sql }) => json({ entries: (await listAdminLog(sql, { limit: 10 })).entries }),
   },
   {
     id: "dashboard.health",

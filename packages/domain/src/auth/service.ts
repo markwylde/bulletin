@@ -290,10 +290,12 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         await saveMemberLocale(options.sql, session.memberId, nextLocale);
       } else {
         await options.sql.begin(async (tx) => {
+          await tx`SELECT pg_advisory_xact_lock(hashtext(${`bulletin.staff_prefs:${session.memberId}`})::bigint)`;
+          const current = await readMember(tx, session.memberId);
           await saveMemberLocale(tx, session.memberId, nextLocale);
           await hook(tx, {
             memberId: session.memberId,
-            before: member.locale,
+            before: current?.locale ?? null,
             after: nextLocale,
           });
         });

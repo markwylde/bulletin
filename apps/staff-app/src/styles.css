@@ -756,6 +756,12 @@ textarea.form-input {
   gap: 0.5rem;
 }
 
+.log-load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
 .data-table-wrap pre,
 .data-card pre {
   margin: 0.35rem 0 0;

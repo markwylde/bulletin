@@ -1,4 +1,10 @@
-import { catalogEntry, DEFAULT_LOCALE, isLocale, type Locale } from "@bulletin/i18n";
+import {
+  catalogEntry,
+  DEFAULT_LOCALE,
+  isLocale,
+  type Locale,
+  localeFromBpCookie,
+} from "@bulletin/i18n";
 import { USER_CATALOGS } from "./catalogs.ts";
 
 export interface BoardState {
@@ -8,6 +14,10 @@ export interface BoardState {
   readonly offline: boolean;
   readonly offlineMessage: string;
   readonly canViewOffline: boolean;
+}
+
+interface BoardClientWindow extends Window {
+  __bulletinApplyLocale?: (locale: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -126,20 +136,30 @@ export function applyBoardState(doc: Document, state: BoardState | null): void {
     return;
   }
 
-  if (state.boardName.trim() !== "") {
-    doc.title = state.boardName;
+  if (state !== null) {
     const title = doc.querySelector("[data-board-name]");
 
-    if (title !== null) {
-      title.textContent = state.boardName;
+    if (title instanceof HTMLElement) {
+      if (state.boardName.trim() !== "") {
+        doc.title = state.boardName;
+        title.textContent = state.boardName;
+        title.dataset.boardConfigured = "";
+      } else {
+        delete title.dataset.boardConfigured;
+        title.textContent = messageFor(locale, "user.placeholder.title");
+      }
     }
-  }
 
-  if (state.boardDescription.trim() !== "") {
     const description = doc.querySelector("[data-board-description]");
 
-    if (description !== null) {
-      description.textContent = state.boardDescription;
+    if (description instanceof HTMLElement) {
+      if (state.boardDescription.trim() !== "") {
+        description.textContent = state.boardDescription;
+        description.dataset.boardConfigured = "";
+      } else {
+        delete description.dataset.boardConfigured;
+        description.textContent = messageFor(locale, "user.placeholder.body");
+      }
     }
   }
 
@@ -157,5 +177,27 @@ export function applyBoardState(doc: Document, state: BoardState | null): void {
       state.offlineMessage.trim() !== ""
         ? state.offlineMessage
         : messageFor(locale, "board.offline.defaultMessage");
+  }
+}
+
+/** Guests without a query/cookie locale fall back to the board default. */
+export function applyBoardDefaultLocale(doc: Document, state: BoardState): void {
+  if (doc.documentElement.dataset.localeSource === "member") {
+    return;
+  }
+
+  const location = doc.defaultView?.location;
+  const params = new URLSearchParams(location?.search ?? "");
+  const bp = /(?:^|;\s*)bp=([^;]+)/.exec(doc.cookie)?.[1];
+  const requested = params.get("lang");
+  const hasRequestedLocale = requested !== null && isLocale(requested);
+  const hasCookieLocale = localeFromBpCookie(bp) !== null;
+
+  if (hasRequestedLocale || hasCookieLocale || !isLocale(state.defaultLocale)) {
+    return;
+  }
+
+  if (state.defaultLocale !== doc.documentElement.lang) {
+    (doc.defaultView as BoardClientWindow | null)?.__bulletinApplyLocale?.(state.defaultLocale);
   }
 }

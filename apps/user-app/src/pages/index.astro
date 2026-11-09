@@ -210,6 +210,10 @@ const boardDescription =
           root.lang = locale;
 
           for (const element of document.querySelectorAll("[data-i18n]")) {
+            if (element.hasAttribute("data-board-configured")) {
+              continue;
+            }
+
             const key = element.getAttribute("data-i18n");
             const value = data[locale]?.[key] ?? data.en[key];
 
@@ -227,9 +231,13 @@ const boardDescription =
       })();
     </script>
     <script>
-      import { applyBoardState, fetchBoardState } from "../board-client.ts";
+      import { applyBoardDefaultLocale, applyBoardState, fetchBoardState } from "../board-client.ts";
 
       void fetchBoardState().then((state) => {
+        if (state !== null) {
+          applyBoardDefaultLocale(document, state);
+        }
+
         applyBoardState(document, state);
       });
     </script>
@@ -292,7 +300,10 @@ const boardDescription =
           currentMemberId = session.authenticated ? (session.memberId ?? null) : null;
 
           if (session.authenticated) {
+            document.documentElement.dataset.localeSource = "member";
+
             if (session.locale !== null) {
+              document.documentElement.dataset.serverLocale = session.locale;
               applyLocale?.(session.locale);
             }
 

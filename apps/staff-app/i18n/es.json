@@ -64,6 +64,7 @@
   "staff.log.filterTo": "Hasta",
   "staff.log.intro": "Cada cambio del personal se registra con su autor, objetivo y resumen.",
   "staff.log.loadError": "No se pudo cargar el registro de administración.",
+  "staff.log.loadMore": "Cargar más entradas",
   "staff.log.noTarget": "—",
   "staff.log.reset": "Restablecer",
   "staff.log.target": "Objetivo",

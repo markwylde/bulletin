@@ -1,7 +1,7 @@
 import { formatDate } from "@bulletin/i18n";
 import { useLocale, useT } from "@bulletin/ui";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { apiGet } from "../api.ts";
 
@@ -15,6 +15,11 @@ interface AdminLogEntry {
   readonly createdAt: string;
 }
 
+interface AdminLogPage {
+  readonly entries: readonly AdminLogEntry[];
+  readonly nextCursor: string | null;
+}
+
 interface LogFilters {
   readonly actor: string;
   readonly action: string;
@@ -24,13 +29,17 @@ interface LogFilters {
 
 const EMPTY_FILTERS: LogFilters = { actor: "", action: "", from: "", to: "" };
 
-function filterQuery(filters: LogFilters): string {
+function filterQuery(filters: LogFilters, cursor: string | null): string {
   const params = new URLSearchParams();
 
   for (const [key, value] of Object.entries(filters)) {
     if (value.trim() !== "") {
       params.set(key, value.trim());
     }
+  }
+
+  if (cursor !== null) {
+    params.set("cursor", cursor);
   }
 
   const query = params.toString();
@@ -42,10 +51,14 @@ export function AdminLogPage() {
   const locale = useLocale();
   const [draft, setDraft] = useState<LogFilters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<LogFilters>(EMPTY_FILTERS);
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: ["staff", "log", applied],
-    queryFn: () => apiGet<{ entries: AdminLogEntry[] }>(`/api/staff/log${filterQuery(applied)}`),
+    queryFn: ({ pageParam }) =>
+      apiGet<AdminLogPage>(`/api/staff/log${filterQuery(applied, pageParam)}`),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
+  const entries = query.data?.pages.flatMap((page) => page.entries) ?? [];
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
@@ -164,14 +177,28 @@ export function AdminLogPage() {
         </div>
       ) : null}
       {query.isSuccess ? (
-        <DataTable
-          rows={query.data.entries}
-          columns={columns}
-          getRowId={(entry) => entry.id}
-          getRowLabel={(entry) => `${entry.action} ${entry.actor ?? ""}`}
-          pageSize={20}
-          emptyKey="staff.log.empty"
-        />
+        <>
+          <DataTable
+            rows={entries}
+            columns={columns}
+            getRowId={(entry) => entry.id}
+            getRowLabel={(entry) => `${entry.action} ${entry.actor ?? ""}`}
+            pageSize={20}
+            emptyKey="staff.log.empty"
+          />
+          {query.hasNextPage ? (
+            <div className="log-load-more">
+              <button
+                type="button"
+                data-log-load-more
+                disabled={query.isFetchingNextPage}
+                onClick={() => void query.fetchNextPage()}
+              >
+                {query.isFetchingNextPage ? t("staff.widget.loading") : t("staff.log.loadMore")}
+              </button>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

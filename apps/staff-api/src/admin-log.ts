@@ -26,7 +26,14 @@ export interface AdminLogFilter {
   readonly from?: string;
   /** Inclusive `YYYY-MM-DD`. */
   readonly to?: string;
+  /** Return entries older than this audit id. */
+  readonly cursor?: string;
   readonly limit?: number;
+}
+
+export interface AdminLogPage {
+  readonly entries: readonly AdminLogEntry[];
+  readonly nextCursor: string | null;
 }
 
 function dateOrNull(value: string | undefined): string | null {
@@ -70,15 +77,13 @@ export async function auditStaffLocaleChange(sql: SQL, change: StaffLocaleChange
   });
 }
 
-export async function listAdminLog(
-  sql: SQL,
-  filter: AdminLogFilter = {},
-): Promise<AdminLogEntry[]> {
+export async function listAdminLog(sql: SQL, filter: AdminLogFilter = {}): Promise<AdminLogPage> {
   const actor = filter.actor?.trim() ?? "";
   const action = filter.action?.trim() ?? "";
   const from = dateOrNull(filter.from);
   const to = dateOrNull(filter.to);
-  const limit = Math.min(Math.max(filter.limit ?? 100, 1), 1_000);
+  const cursor = filter.cursor?.trim() === "" ? null : (filter.cursor ?? null);
+  const limit = Math.min(Math.max(filter.limit ?? 50, 1), 100);
 
   const rows = (await sql`
     SELECT
@@ -95,8 +100,9 @@ export async function listAdminLog(
       AND (${action} = '' OR a.action = ${action})
       AND (${from}::date IS NULL OR a.created_at >= ${from}::date)
       AND (${to}::date IS NULL OR a.created_at < ${to}::date + interval '1 day')
-    ORDER BY a.created_at DESC, a.id DESC
-    LIMIT ${limit}
+      AND (${cursor}::bigint IS NULL OR a.id < ${cursor}::bigint)
+    ORDER BY a.id DESC
+    LIMIT ${limit + 1}
   `) as Array<{
     id: string;
     actor: string | null;
@@ -107,7 +113,7 @@ export async function listAdminLog(
     created_at: Date;
   }>;
 
-  return rows.map((row) => ({
+  const entries = rows.slice(0, limit).map((row) => ({
     id: String(row.id),
     actor: row.actor,
     action: row.action,
@@ -116,4 +122,9 @@ export async function listAdminLog(
     summary: parseSummary(row.summary),
     createdAt: row.created_at.toISOString(),
   }));
+
+  return {
+    entries,
+    nextCursor: rows.length > limit ? (entries.at(-1)?.id ?? null) : null,
+  };
 }

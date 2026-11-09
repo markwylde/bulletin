@@ -618,6 +618,143 @@ integrationDescribe("staff API permission guard", () => {
     });
   }, 30_000);
 
+  test("paginates the admin log beyond the first hundred entries", async () => {
+    await withDb("staff_log_pagination", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Pagination Administrator", [
+          "administrators",
+        ]);
+        const admin = await createSession(database, adminId);
+
+        await database.sql`
+          INSERT INTO core.admin_log (actor_member_id, action, target_type, target_id, summary)
+          SELECT ${adminId}, 'bulk.test', 'bulk', g, '{}'::jsonb
+          FROM generate_series(1, 120) AS g
+        `;
+
+        const ids: string[] = [];
+        let cursor: string | null = null;
+
+        for (const expected of [50, 50, 20]) {
+          const query = `/api/staff/log?action=bulk.test&limit=50${cursor === null ? "" : `&cursor=${cursor}`}`;
+          const response = await callPath(api, admin, "GET", query);
+          expect(response.status).toBe(200);
+          const page = (await response.json()) as {
+            entries: Array<{ id: string }>;
+            nextCursor: string | null;
+          };
+
+          expect(page.entries).toHaveLength(expected);
+          ids.push(...page.entries.map((entry) => entry.id));
+
+          if (expected === 20) {
+            expect(page.nextCursor).toBeNull();
+          } else {
+            expect(page.nextCursor).not.toBeNull();
+          }
+
+          cursor = page.nextCursor;
+        }
+
+        expect(new Set(ids).size).toBe(120);
+        expect(BigInt(ids[0] ?? "0")).toBeGreaterThan(BigInt(ids[1] ?? "0"));
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("serializes concurrent scheme preferences before auditing", async () => {
+    await withDb("staff_scheme_concurrent", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Concurrent Scheme Admin", ["administrators"]);
+        const admin = await createSession(database, adminId);
+
+        const [first, second] = await Promise.all([
+          callRoute(api, route("preferences.scheme"), admin, { scheme: "dark" }),
+          callRoute(api, route("preferences.scheme"), admin, { scheme: "light" }),
+        ]);
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+
+        const entries = (await database.sql`
+          SELECT
+            summary->'before'->>'staffScheme' AS before_scheme,
+            summary->'after'->>'staffScheme' AS after_scheme
+          FROM core.admin_log
+          WHERE action = 'staff.preferences.update'
+          ORDER BY id
+        `) as Array<{ before_scheme: string | null; after_scheme: string | null }>;
+
+        expect(entries).toHaveLength(2);
+        expect(entries[0]?.before_scheme).toBe("system");
+        expect(entries[1]?.before_scheme).toBe(entries[0]?.after_scheme);
+
+        const [preference] = (await database.sql`
+          SELECT staff_scheme FROM core.member_prefs WHERE member_id = ${adminId}
+        `) as Array<{ staff_scheme: string }>;
+        expect(preference?.staff_scheme).toBe(entries[1]?.after_scheme);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("serializes concurrent locale preferences before auditing", async () => {
+    await withDb("staff_locale_concurrent", async (database) => {
+      const { auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Concurrent Locale Admin", ["administrators"]);
+        const admin = await createSession(database, adminId);
+        const setLocale = (locale: string) =>
+          auth.handle(
+            new Request("http://api.test/api/me/locale", {
+              method: "POST",
+              headers: {
+                cookie: `bl_staff=${admin.cookie}`,
+                origin: STAFF_ORIGIN,
+                "x-bulletin-csrf": createCsrfToken(admin.sessionId, SESSION_SECRET),
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ locale }),
+            }),
+          );
+
+        const [first, second] = await Promise.all([setLocale("es"), setLocale("fr")]);
+        expect(first?.status).toBe(200);
+        expect(second?.status).toBe(200);
+
+        const entries = (await database.sql`
+          SELECT
+            summary->'before'->>'locale' AS before_locale,
+            summary->'after'->>'locale' AS after_locale
+          FROM core.admin_log
+          WHERE action = 'staff.locale.update'
+          ORDER BY id
+        `) as Array<{ before_locale: string | null; after_locale: string | null }>;
+
+        expect(entries).toHaveLength(2);
+        expect(entries[0]?.before_locale).toBeNull();
+        expect(entries[1]?.before_locale).toBe(entries[0]?.after_locale);
+
+        const [member] = (await database.sql`
+          SELECT locale FROM core.members WHERE id = ${adminId}
+        `) as Array<{ locale: string | null }>;
+        expect(member?.locale).toBe(entries[1]?.after_locale);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
   test("serializes concurrent board updates so audit snapshots chain", async () => {
     await withDb("staff_board_concurrent", async (database) => {
       const { api, auth, sql } = await createStaffApiFor(database);

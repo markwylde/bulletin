@@ -65,6 +65,7 @@
   "staff.log.filterTo": "To",
   "staff.log.intro": "Every staff write is recorded with its actor, target and summary.",
   "staff.log.loadError": "Could not load the admin log.",
+  "staff.log.loadMore": "Load more entries",
   "staff.log.noTarget": "—",
   "staff.log.reset": "Reset",
   "staff.log.target": "Target",
