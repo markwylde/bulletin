@@ -372,4 +372,63 @@ integrationDescribe("silent re-auth and background grace", () => {
       }
     });
   }, 20_000);
+
+  test("rotates a marked session on the next response with a 60 s old-token overlap", async () => {
+    await withDb("auth_rotation", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const firstLogin = await login(service, "rotate-user");
+        const secondLogin = await login(service, "rotate-user");
+        expect(secondLogin).not.toBe(firstLogin);
+
+        const [row] = (await database.sql`
+          SELECT s.id, s.member_id
+          FROM core.sessions s
+          JOIN pii.identities i ON i.member_id = s.member_id
+          WHERE i.sub = 'rotate-user'
+          ORDER BY s.id
+          LIMIT 1
+        `) as Array<{ id: string; member_id: string }>;
+
+        if (row === undefined) {
+          throw new Error("session missing");
+        }
+
+        await service.sessions.markMemberSessionsForRotation(row.member_id);
+
+        const rotated = await call(service, "/api/test/protected", {
+          cookie: `bl_session=${firstLogin}`,
+        });
+        expect(rotated.status).toBe(200);
+        const newCookie = cookieValue(rotated, "bl_session");
+        expect(newCookie).toBeString();
+        expect(newCookie).not.toBe(firstLogin);
+
+        const oldWithinOverlap = await call(service, "/api/test/protected", {
+          cookie: `bl_session=${firstLogin}`,
+        });
+        expect(oldWithinOverlap.status).toBe(200);
+
+        const replacement = await call(service, "/api/test/protected", {
+          cookie: `bl_session=${newCookie ?? ""}`,
+        });
+        expect(replacement.status).toBe(200);
+
+        await database.sql`
+          UPDATE core.sessions
+          SET previous_token_expires_at = now() - interval '1 second'
+          WHERE id = ${row.id}
+        `;
+        const oldAfterOverlap = await call(service, "/api/test/protected", {
+          cookie: `bl_session=${firstLogin}`,
+        });
+        expect(oldAfterOverlap.status).toBe(401);
+        expect(await oldAfterOverlap.json()).toEqual({ code: "unauthenticated" });
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
 });
