@@ -11,11 +11,25 @@ afterEach(() => {
 
 function start(options?: { now?: () => number }) {
   let upstreamRequests = 0;
+  let releaseSlow: (() => void) | undefined;
+  const slowGate = new Promise<void>((resolve) => {
+    releaseSlow = resolve;
+  });
   const upstream = Bun.serve({
     port: 0,
-    fetch(request) {
+    async fetch(request) {
       upstreamRequests += 1;
       const url = new URL(request.url);
+
+      if (url.pathname === "/slow") {
+        await slowGate;
+      }
+
+      if (url.pathname.includes("evil.example")) {
+        return new Response(request.headers.get("host") ?? "", {
+          headers: { "cache-control": "public, s-maxage=60" },
+        });
+      }
 
       if (url.pathname === "/private") {
         return new Response("private", { headers: { "cache-control": "private, max-age=60" } });
@@ -53,6 +67,7 @@ function start(options?: { now?: () => number }) {
     cdn,
     base: `http://127.0.0.1:${server.port}`,
     upstreamRequests: () => upstreamRequests,
+    releaseSlow: () => releaseSlow?.(),
   };
 }
 
@@ -119,6 +134,36 @@ describe("CDN mock", () => {
 
     const afterPurge = await fetch(`${base}/page`, { headers: { cookie: "bp=en.1.light" } });
     expect(afterPurge.headers.get("x-cache")).toBe("MISS");
+  });
+
+  test("a purge during a blocked origin response cannot repopulate the entry", async () => {
+    const { base, cdn, releaseSlow } = start();
+
+    const pending = fetch(`${base}/slow`, { headers: { cookie: "bp=en.1.light" } });
+    await Bun.sleep(20);
+
+    await fetch(`${base}/purge`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ keys: ["forum:3"] }),
+    });
+    releaseSlow();
+
+    expect((await pending).headers.get("x-cache")).toBe("MISS");
+    expect(cdn.stats().entries).toBe(0);
+
+    const afterPurge = await fetch(`${base}/slow`, { headers: { cookie: "bp=en.1.light" } });
+    expect(afterPurge.headers.get("x-cache")).toBe("MISS");
+  });
+
+  test("does not let a double-slash pathname escape the upstream origin", async () => {
+    const { base } = start();
+
+    const response = await fetch(`${base}//evil.example/path`);
+    const body = await response.text();
+
+    expect(body).not.toContain("evil.example");
+    expect(body).toContain("127.0.0.1");
   });
 
   test("serves stale content within stale-while-revalidate", async () => {

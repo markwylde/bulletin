@@ -158,12 +158,22 @@ export function createCdn(options: CdnOptions): CdnMock {
   const maxEntries = options.maxEntries ?? 1000;
   const entries = new Map<string, CacheEntry>();
   const inFlight = new Set<string>();
+  let generation = 0;
   let hits = 0;
   let misses = 0;
   let stales = 0;
   let bypasses = 0;
 
-  const store = (key: string, response: Response, body: Uint8Array): void => {
+  const store = (
+    key: string,
+    response: Response,
+    body: Uint8Array,
+    requestGeneration: number,
+  ): void => {
+    if (requestGeneration !== generation) {
+      return;
+    }
+
     const policy = cachePolicy(response.headers);
 
     if (policy === null) {
@@ -191,9 +201,10 @@ export function createCdn(options: CdnOptions): CdnMock {
   };
 
   const fetchOrigin = async (request: Request, url: URL): Promise<Response> => {
-    const target = new URL(`${url.pathname}${url.search}`, options.origin).toString();
+    const origin = new URL(options.origin);
+    const target = `${origin.origin}${origin.pathname.replace(/\/$/, "")}${url.pathname}${url.search}`;
     const headers = copyRequestHeaders(request);
-    headers.set("host", options.upstreamHost ?? new URL(options.origin).host);
+    headers.set("host", options.upstreamHost ?? origin.host);
     const init: RequestInit = {
       method: request.method,
       headers,
@@ -212,11 +223,12 @@ export function createCdn(options: CdnOptions): CdnMock {
       return;
     }
 
+    const requestGeneration = generation;
     inFlight.add(entry.key);
     void fetchOrigin(request, url)
       .then(async (response) => {
         const body = new Uint8Array(await response.arrayBuffer());
-        store(entry.key, response, body);
+        store(entry.key, response, body, requestGeneration);
       })
       .catch(() => undefined)
       .finally(() => inFlight.delete(entry.key));
@@ -283,9 +295,10 @@ export function createCdn(options: CdnOptions): CdnMock {
     }
 
     misses += 1;
+    const requestGeneration = generation;
     const response = await fetchOrigin(request, url);
     const body = new Uint8Array(await response.arrayBuffer());
-    store(key, response, body);
+    store(key, response, body, requestGeneration);
     return withCacheHeaders(
       new Response(body, { status: response.status, headers: response.headers }),
       "MISS",
@@ -294,6 +307,10 @@ export function createCdn(options: CdnOptions): CdnMock {
   };
 
   const purge = (keys: readonly string[]): number => {
+    if (keys.length > 0) {
+      generation += 1;
+    }
+
     let purged = 0;
 
     for (const [key, entry] of entries) {

@@ -115,6 +115,7 @@ export function verifyRequestSignature(
   url: URL,
   credentials: S3Credentials,
   now = new Date(),
+  body?: Uint8Array,
 ): SignatureResult {
   const presignedSignature = url.searchParams.get("X-Amz-Signature");
   const authorization = request.headers.get("authorization");
@@ -213,5 +214,64 @@ export function verifyRequestSignature(
     return { ok: false, reason: "Signature mismatch" };
   }
 
+  if (payloadHash !== UNSIGNED_PAYLOAD) {
+    if (!/^[0-9a-f]{64}$/i.test(payloadHash)) {
+      return { ok: false, reason: "Unsupported payload hash" };
+    }
+
+    const actualHash = createHash("sha256")
+      .update(body ?? new Uint8Array())
+      .digest("hex");
+
+    if (!sameSignature(actualHash, payloadHash.toLowerCase())) {
+      return { ok: false, reason: "Payload hash mismatch" };
+    }
+  }
+
   return { ok: true };
+}
+
+/** Test helper: signs a concrete-payload request exactly as the mock verifier expects. */
+export function signRequestHeaders(input: {
+  readonly method: string;
+  readonly url: URL;
+  readonly body: Uint8Array;
+  readonly credentials: S3Credentials;
+  readonly date?: Date;
+}): Record<string, string> {
+  const date = input.date ?? new Date();
+  const amzDate = date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
+  const dateStamp = amzDate.slice(0, 8);
+  const payloadHash = createHash("sha256").update(input.body).digest("hex");
+  const host = input.url.host;
+  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const canonicalHeaders =
+    `host:${host}\n` + `x-amz-content-sha256:${payloadHash}\n` + `x-amz-date:${amzDate}\n`;
+  const canonical = [
+    input.method,
+    input.url.pathname || "/",
+    "",
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join("\n");
+  const scope = `${dateStamp}/${input.credentials.region}/${SERVICE}/aws4_request`;
+  const stringToSign = [ALGORITHM, amzDate, scope, sha256Hex(canonical)].join("\n");
+  const signature = createHmac(
+    "sha256",
+    signingKey(input.credentials.secretAccessKey, dateStamp, input.credentials.region, SERVICE),
+  )
+    .update(stringToSign)
+    .digest("hex");
+
+  return {
+    authorization:
+      `${ALGORITHM} Credential=${input.credentials.accessKeyId}/${scope}, ` +
+      `SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": amzDate,
+  };
 }

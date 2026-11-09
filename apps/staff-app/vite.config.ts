@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { createDrainController } from "@bulletin/config/drain";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
@@ -18,6 +19,15 @@ async function readiness(): Promise<{ status: number; body: unknown }> {
 }
 
 function healthPlugin(): Plugin {
+  const drain = createDrainController();
+
+  const tracker = (_request: IncomingMessage, response: ServerResponse, next: () => void): void => {
+    const finish = drain.track();
+    response.once("finish", finish);
+    response.once("close", finish);
+    next();
+  };
+
   const handler = (request: IncomingMessage, response: ServerResponse, next: () => void): void => {
     const path = request.url?.split("?")[0];
 
@@ -29,6 +39,13 @@ function healthPlugin(): Plugin {
     }
 
     if (path === "/health/ready") {
+      if (drain.draining) {
+        response.statusCode = 503;
+        response.setHeader("content-type", "application/json");
+        response.end(JSON.stringify({ status: "draining", checks: {} }));
+        return;
+      }
+
       void readiness().then(({ status, body }) => {
         response.statusCode = status;
         response.setHeader("content-type", "application/json");
@@ -43,9 +60,17 @@ function healthPlugin(): Plugin {
   return {
     name: "bulletin-health",
     configureServer(server) {
+      server.middlewares.use(tracker);
       server.middlewares.use(handler);
+
+      process.once("SIGTERM", () => {
+        void drain
+          .drain(Number(process.env.BULLETIN_DRAIN_TIMEOUT_MS ?? 25_000))
+          .finally(() => process.exit(0));
+      });
     },
     configurePreviewServer(server) {
+      server.middlewares.use(tracker);
       server.middlewares.use(handler);
     },
   };

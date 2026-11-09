@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import {
   createDatabaseCheck,
   createListenerCheck,
@@ -108,4 +109,43 @@ integrationDescribe("service health", () => {
       await sql.close();
     }
   });
+
+  test("user-app refuses to start when its declared replicas exceed the budget", async () => {
+    if (databaseUrl === undefined) {
+      return;
+    }
+
+    const userAppUrl = new URL(databaseUrl);
+    userAppUrl.username = "user_app";
+    userAppUrl.password = "";
+    const configUrl = new URL("../../apps/user-app/astro.config.mjs", import.meta.url).href;
+    const script = `
+      try {
+        const module = await import(${JSON.stringify(configUrl)});
+        await module.default.integrations[0].hooks["astro:config:setup"]({ command: "dev" });
+      } catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        process.exit(1);
+      }
+    `;
+
+    const child = Bun.spawn(["bun", "-e", script], {
+      cwd: fileURLToPath(new URL("../..", import.meta.url)),
+      env: {
+        ...Bun.env,
+        NODE_ENV: "development",
+        DATABASE_URL: userAppUrl.toString(),
+        BULLETIN_REPLICAS: "user-api=100",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const timer = setTimeout(() => child.kill(), 15_000);
+    const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+    clearTimeout(timer);
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Connection budget exceeded");
+  }, 20_000);
 });

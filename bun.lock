@@ -31,6 +31,7 @@
     "apps/staff-app": {
       "name": "@bulletin/staff-app",
       "dependencies": {
+        "@bulletin/config": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "react": "19.3.1",
         "react-dom": "19.3.1",
@@ -53,7 +54,6 @@
       "name": "@bulletin/user-app",
       "dependencies": {
         "@bulletin/config": "workspace:*",
-        "@bulletin/db": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "astro": "7.4.7",
       },

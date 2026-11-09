@@ -178,7 +178,11 @@ export function createS3Handler(options: S3MockOptions): (request: Request) => P
       );
     }
 
-    const signature = verifyRequestSignature(request, url, options.credentials, now());
+    const uploadBody =
+      request.method === "PUT" && request.headers.get("x-amz-copy-source") === null
+        ? new Uint8Array(await request.arrayBuffer())
+        : undefined;
+    const signature = verifyRequestSignature(request, url, options.credentials, now(), uploadBody);
 
     if (!signature.ok) {
       return s3Error("SignatureDoesNotMatch", signature.reason, 403);
@@ -262,7 +266,7 @@ export function createS3Handler(options: S3MockOptions): (request: Request) => P
         );
       }
 
-      const body = new Uint8Array(await request.arrayBuffer());
+      const body = uploadBody ?? new Uint8Array();
       const metadata: Record<string, string> = {};
 
       for (const [name, value] of request.headers.entries()) {

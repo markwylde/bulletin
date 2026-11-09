@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createS3Handler } from "./app.ts";
 import { createMemoryStore } from "./memory.ts";
+import { signRequestHeaders } from "./sigv4.ts";
 import type { ObjectStore } from "./types.ts";
 
 const credentials = {
@@ -106,6 +107,33 @@ describe("S3 mock", () => {
 
     const presigned = await fetch(`${endpoint}/bulletin/att/nope?X-Amz-Signature=deadbeef`);
     expect(presigned.status).toBe(403);
+  });
+
+  test("rejects a valid signature with a tampered concrete payload", async () => {
+    const { endpoint } = serverFor(createMemoryStore());
+    const url = new URL(`${endpoint}/bulletin/att/signed`);
+    const body = new TextEncoder().encode("original body");
+    const headers = signRequestHeaders({ method: "PUT", url, body, credentials });
+
+    const accepted = await fetch(url, { method: "PUT", headers, body });
+    expect(accepted.status).toBe(200);
+
+    const tampered = await fetch(url, {
+      method: "PUT",
+      headers,
+      body: new TextEncoder().encode("tampered body"),
+    });
+    expect(tampered.status).toBe(403);
+
+    const stored = await fetch(url, {
+      headers: signRequestHeaders({
+        method: "GET",
+        url,
+        body: new Uint8Array(),
+        credentials,
+      }),
+    });
+    expect(await stored.text()).toBe("original body");
   });
 
   test("survives a handler restart with the same store", async () => {

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "bun --bun astro dev",
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "astro check"
@@ -11,8 +11,7 @@
   "dependencies": {
     "astro": "7.4.7",
     "@bulletin/i18n": "workspace:*",
-    "@bulletin/config": "workspace:*",
-    "@bulletin/db": "workspace:*"
+    "@bulletin/config": "workspace:*"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12"

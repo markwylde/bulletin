@@ -1,52 +1,49 @@
 import { defineMiddleware } from "astro:middleware";
-import {
-  createDatabaseCheck,
-  createListenerCheck,
-  createServiceSql,
-} from "@bulletin/config/server";
-import { migrationsCurrent } from "@bulletin/db/migrate";
+import { createDrainController } from "@bulletin/config/drain";
 
-const databaseUrl = Bun.env.DATABASE_URL ?? "postgres://user_app@postgres:5432/bulletin";
-const sql = import.meta.env.DEV ? createServiceSql("user-app", databaseUrl) : null;
-const listener = sql === null ? null : createListenerCheck(sql);
-const databaseCheck = sql === null ? null : createDatabaseCheck(sql);
+const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
+const drain = import.meta.env.DEV ? createDrainController() : null;
+
+if (import.meta.env.DEV) {
+  process.once("SIGTERM", () => {
+    void drain
+      ?.drain(Number(process.env.BULLETIN_DRAIN_TIMEOUT_MS ?? 25_000))
+      .finally(() => process.exit(0));
+  });
+}
+
+async function readiness(): Promise<{ status: number; body: unknown }> {
+  try {
+    const response = await fetch(`${userApiUrl}/health/ready`);
+    const body: unknown = await response.json().catch(() => ({
+      status: response.ok ? "ok" : "unavailable",
+    }));
+
+    return { status: response.ok ? 200 : 503, body };
+  } catch {
+    return { status: 503, body: { status: "unavailable", checks: { userApi: false } } };
+  }
+}
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  if (context.url.pathname === "/health/live") {
-    return Response.json({ status: "ok", service: "user-app" });
+  const finish = drain?.track();
+
+  try {
+    if (context.url.pathname === "/health/live") {
+      return Response.json({ status: "ok", service: "user-app" });
+    }
+
+    if (context.url.pathname === "/health/ready") {
+      if (drain?.draining === true) {
+        return Response.json({ status: "draining", checks: {} }, { status: 503 });
+      }
+
+      const result = await readiness();
+      return Response.json(result.body, { status: result.status });
+    }
+
+    return await next();
+  } finally {
+    finish?.();
   }
-
-  if (context.url.pathname === "/health/ready") {
-    if (sql === null || databaseCheck === null || listener === null) {
-      return Response.json({ status: "ok", checks: {} });
-    }
-
-    const checks = { database: false, migrations: false, listener: false };
-
-    try {
-      checks.database = await databaseCheck.check();
-    } catch {
-      checks.database = false;
-    }
-
-    try {
-      checks.migrations = await migrationsCurrent(sql);
-    } catch {
-      checks.migrations = false;
-    }
-
-    try {
-      checks.listener = await (await listener).check();
-    } catch {
-      checks.listener = false;
-    }
-
-    const ready = Object.values(checks).every(Boolean);
-    return Response.json(
-      { status: ready ? "ok" : "unavailable", checks },
-      { status: ready ? 200 : 503 },
-    );
-  }
-
-  return next();
 });

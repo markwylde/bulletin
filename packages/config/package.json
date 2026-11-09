@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
-    "./connections": "./src/connections.ts"
+    "./connections": "./src/connections.ts",
+    "./drain": "./src/drain.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
