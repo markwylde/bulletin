@@ -29,6 +29,7 @@
     "@biomejs/biome": "2.6.6",
     "@bulletin/config": "workspace:*",
     "@bulletin/db": "workspace:*",
+    "@bulletin/domain": "workspace:*",
     "@bulletin/i18n": "workspace:*",
     "@bulletin/test-utils": "workspace:*",
     "@types/bun": "1.4.4",

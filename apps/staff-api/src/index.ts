@@ -7,6 +7,7 @@ import {
 } from "@bulletin/config/server";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
+import { createAuthRouter } from "@bulletin/domain/auth";
 
 const config = loadConfig();
 const logger = createLogger({ service: "staff-api", level: config.logLevel });
@@ -19,13 +20,23 @@ await runBaseSeed({ databaseUrl: migrationUrl, seed: config.seed, size: config.s
 
 const sql = createServiceSql("staff-api", databaseUrl);
 const listener = await createListenerCheck(sql);
+const auth = createAuthRouter({
+  sql,
+  kind: "staff",
+  issuer: config.authIssuer,
+  jwksUrl: config.authJwksUrl,
+  clientId: config.authStaffClientId,
+  origin: config.staffOrigin,
+  sessionSecret: config.sessionSecret,
+  nodeEnv: config.nodeEnv,
+});
 
 await startService({
   service: "staff-api",
   logger,
   port,
-  fetch() {
-    return Response.json({ service: "staff-api", status: "ok" });
+  async fetch(request) {
+    return (await auth(request)) ?? Response.json({ code: "not_found" }, { status: 404 });
   },
   checks: [
     createDatabaseCheck(sql),
@@ -37,9 +48,13 @@ await startService({
     service: "staff-api",
     replicas: parseReplicas(Bun.env.BULLETIN_REPLICAS),
   },
-  onShutdown: () => listener.close(),
+  async onShutdown() {
+    await listener.close();
+    await sql.close();
+  },
 }).catch(async (error: unknown) => {
   await listener.close();
+  await sql.close();
   throw error;
 });
 

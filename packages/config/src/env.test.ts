@@ -23,6 +23,13 @@ describe("loadConfig", () => {
     expect(config.sessionSecret).toBe(DEVELOPMENT_DEFAULTS.SESSION_SECRET);
     expect(config.seed).toBe(DEVELOPMENT_DEFAULTS.SEED);
     expect(config.seedSize).toBe(DEVELOPMENT_DEFAULTS.SEED_SIZE);
+    expect(config.authIssuer).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_ISSUER);
+    expect(config.authJwksUrl).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_JWKS_URL);
+    expect(config.authUserClientId).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_USER_CLIENT_ID);
+    expect(config.authStaffClientId).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_STAFF_CLIENT_ID);
+    expect(config.userOrigin).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_USER_ORIGIN);
+    expect(config.staffOrigin).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_STAFF_ORIGIN);
+    expect(config.bootstrapAdmins).toEqual([]);
   });
 
   test("reads explicit values", () => {
@@ -43,6 +50,40 @@ describe("loadConfig", () => {
     expect(config.sessionSecret).toBe("test-only-secret");
     expect(config.seed).toBe(7);
     expect(config.seedSize).toBe("large");
+  });
+
+  test("reads explicit auth values and bootstrap admins", () => {
+    const config = loadConfig({
+      BULLETIN_AUTH_ISSUER: "https://auth.example.test/",
+      BULLETIN_AUTH_USER_CLIENT_ID: "forum-user",
+      BULLETIN_AUTH_STAFF_CLIENT_ID: "forum-staff",
+      BULLETIN_USER_ORIGIN: "https://forum.example.test",
+      BULLETIN_STAFF_ORIGIN: "https://staff.example.test",
+      BULLETIN_BOOTSTRAP_ADMINS: "https://auth.example.test|admin, https://auth.example.test|owner",
+    });
+
+    expect(config.authIssuer).toBe("https://auth.example.test");
+    expect(config.authJwksUrl).toBe("https://auth.example.test/.well-known/jwks.json");
+    expect(config.authUserClientId).toBe("forum-user");
+    expect(config.authStaffClientId).toBe("forum-staff");
+    expect(config.userOrigin).toBe("https://forum.example.test");
+    expect(config.staffOrigin).toBe("https://staff.example.test");
+    expect(config.bootstrapAdmins).toEqual([
+      { issuer: "https://auth.example.test", sub: "admin" },
+      { issuer: "https://auth.example.test", sub: "owner" },
+    ]);
+  });
+
+  test("rejects malformed auth origins and bootstrap entries", () => {
+    const error = configError({
+      BULLETIN_AUTH_ISSUER: "/relative",
+      BULLETIN_USER_ORIGIN: "https://forum.example.test/path",
+      BULLETIN_BOOTSTRAP_ADMINS: "not-a-pair, https://auth.example.test|",
+    });
+
+    expect(error.message).toContain("BULLETIN_AUTH_ISSUER");
+    expect(error.message).toContain("BULLETIN_USER_ORIGIN");
+    expect(error.message).toContain("BULLETIN_BOOTSTRAP_ADMINS");
   });
 
   test("rejects the development database URL in production", () => {

@@ -9,6 +9,11 @@ export type SeedSize = (typeof SEED_SIZES)[number];
 /** Environment variables as a plain record, so tests never have to touch the process env. */
 export type Env = Readonly<Record<string, string | undefined>>;
 
+export interface BootstrapAdmin {
+  readonly issuer: string;
+  readonly sub: string;
+}
+
 export interface AppConfig {
   readonly nodeEnv: NodeEnv;
   readonly logLevel: LogLevel;
@@ -17,6 +22,13 @@ export interface AppConfig {
   readonly sessionSecret: string;
   readonly seed: number;
   readonly seedSize: SeedSize;
+  readonly authIssuer: string;
+  readonly authJwksUrl: string;
+  readonly authUserClientId: string;
+  readonly authStaffClientId: string;
+  readonly userOrigin: string;
+  readonly staffOrigin: string;
+  readonly bootstrapAdmins: readonly BootstrapAdmin[];
 }
 
 /**
@@ -30,6 +42,12 @@ export const DEVELOPMENT_DEFAULTS = {
   SESSION_SECRET: "bulletin-development-only-session-secret",
   SEED: 42,
   SEED_SIZE: "default",
+  BULLETIN_AUTH_ISSUER: "http://auth.bulletin.localhost:8080",
+  BULLETIN_AUTH_JWKS_URL: "http://auth.bulletin.localhost:8080/.well-known/jwks.json",
+  BULLETIN_AUTH_USER_CLIENT_ID: "bulletin-user",
+  BULLETIN_AUTH_STAFF_CLIENT_ID: "bulletin-staff",
+  BULLETIN_USER_ORIGIN: "http://bulletin.localhost:8080",
+  BULLETIN_STAFF_ORIGIN: "http://staff.bulletin.localhost:8080",
 } as const;
 
 const PORT_BOUNDS = { min: 1, max: 65_535 } as const;
@@ -150,6 +168,73 @@ function parseDatabaseUrl(env: Env, nodeEnv: NodeEnv, issues: string[]): string 
   return value;
 }
 
+function parseUrl(env: Env, key: string, fallback: string, issues: string[]): string {
+  const raw = (read(env, key) ?? fallback).replace(/\/+$/, "");
+
+  try {
+    const url = new URL(raw);
+
+    if (url.origin !== raw || (url.protocol !== "http:" && url.protocol !== "https:")) {
+      issues.push(`${key} must be an absolute http(s) origin without a path`);
+      return fallback;
+    }
+
+    return raw;
+  } catch {
+    issues.push(`${key} must be an absolute http(s) origin without a path`);
+    return fallback;
+  }
+}
+
+function parseOptionalUrl(env: Env, key: string, fallback: string, issues: string[]): string {
+  const raw = (read(env, key) ?? fallback).replace(/\/+$/, "");
+
+  try {
+    const url = new URL(raw);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      issues.push(`${key} must be an absolute http(s) URL`);
+      return fallback;
+    }
+
+    return raw;
+  } catch {
+    issues.push(`${key} must be an absolute http(s) URL`);
+    return fallback;
+  }
+}
+
+function parseBootstrapAdmins(env: Env, issues: string[]): readonly BootstrapAdmin[] {
+  const raw = read(env, "BULLETIN_BOOTSTRAP_ADMINS");
+
+  if (raw === undefined) {
+    return [];
+  }
+
+  const admins: BootstrapAdmin[] = [];
+
+  for (const entry of raw.split(",")) {
+    const trimmed = entry.trim();
+
+    if (trimmed === "") {
+      continue;
+    }
+
+    const separator = trimmed.indexOf("|");
+    const issuer = trimmed.slice(0, separator).trim().replace(/\/+$/, "");
+    const sub = trimmed.slice(separator + 1).trim();
+
+    if (separator <= 0 || issuer === "" || sub === "") {
+      issues.push("BULLETIN_BOOTSTRAP_ADMINS entries must be issuer|sub pairs");
+      continue;
+    }
+
+    admins.push({ issuer, sub });
+  }
+
+  return admins;
+}
+
 /**
  * Parses and validates the configuration for one process.
  *
@@ -187,6 +272,37 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     MIN_PRODUCTION_SECRET_LENGTH,
   );
 
+  const authIssuer = parseUrl(
+    env,
+    "BULLETIN_AUTH_ISSUER",
+    DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_ISSUER,
+    issues,
+  );
+  const authJwksUrl = parseOptionalUrl(
+    env,
+    "BULLETIN_AUTH_JWKS_URL",
+    `${authIssuer}/.well-known/jwks.json`,
+    issues,
+  );
+  const authUserClientId =
+    read(env, "BULLETIN_AUTH_USER_CLIENT_ID") ?? DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_USER_CLIENT_ID;
+  const authStaffClientId =
+    read(env, "BULLETIN_AUTH_STAFF_CLIENT_ID") ??
+    DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_STAFF_CLIENT_ID;
+  const userOrigin = parseUrl(
+    env,
+    "BULLETIN_USER_ORIGIN",
+    DEVELOPMENT_DEFAULTS.BULLETIN_USER_ORIGIN,
+    issues,
+  );
+  const staffOrigin = parseUrl(
+    env,
+    "BULLETIN_STAFF_ORIGIN",
+    DEVELOPMENT_DEFAULTS.BULLETIN_STAFF_ORIGIN,
+    issues,
+  );
+  const bootstrapAdmins = parseBootstrapAdmins(env, issues);
+
   if (issues.length > 0) {
     throw new ConfigError(issues);
   }
@@ -199,5 +315,12 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     sessionSecret,
     seed,
     seedSize,
+    authIssuer,
+    authJwksUrl,
+    authUserClientId,
+    authStaffClientId,
+    userOrigin,
+    staffOrigin,
+    bootstrapAdmins,
   };
 }

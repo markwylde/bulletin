@@ -5,10 +5,16 @@
   "description": "Framework-free business rules: permissions, posting, moderation and URL conventions.",
   "exports": {
     ".": "./src/index.ts",
+    "./auth": "./src/auth/index.ts",
+    "./auth/browser": "./src/auth/browser.ts",
     "./net": "./src/net/index.ts",
     "./urls": "./src/urls/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@darkauth/client": "1.32.0",
+    "jose": "6.2.16"
   }
 }
