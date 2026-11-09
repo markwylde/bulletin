@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --cwd ../.. run i18n:build && vite",
+    "dev": "bun ../../scripts/dev-i18n.ts -- vite",
     "build": "bun --cwd ../.. run i18n:build && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --cwd ../.. run i18n:build && bun --bun astro dev",
+    "dev": "bun ../../scripts/dev-i18n.ts -- bun --bun astro dev",
     "build": "bun --cwd ../.. run i18n:build && astro build",
     "preview": "astro preview",
     "typecheck": "astro check"

@@ -392,6 +392,11 @@ services:
           path: ./apps/user-app/src
           target: /app/apps/user-app/src
         - action: sync
+          path: ./apps/user-app/i18n
+          target: /app/apps/user-app/i18n
+          ignore:
+            - "**/merged/**"
+        - action: sync
           path: ./packages
           target: /app/packages
           ignore:
@@ -520,6 +525,11 @@ services:
         - action: sync
           path: ./apps/staff-app/src
           target: /app/apps/staff-app/src
+        - action: sync
+          path: ./apps/staff-app/i18n
+          target: /app/apps/staff-app/i18n
+          ignore:
+            - "**/merged/**"
         - action: sync
           path: ./apps/staff-app/index.html
           target: /app/apps/staff-app/index.html
