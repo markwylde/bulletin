@@ -127,7 +127,14 @@ EOF
 docker compose -f compose.yaml -f /tmp/bulletin-offline.yml up -d --pull never
 ```
 
-All services should become healthy and `http://bulletin.localhost:8080` should render.
+All services should become healthy; the stack makes no outbound requests. If your engine does
+not publish ports from internal networks (some Podman versions), check the proxy from inside
+the network:
+
+```bash
+docker compose -f compose.yaml -f /tmp/bulletin-offline.yml exec -T user-api \
+  bun -e 'const r = await fetch("http://proxy:8080/", { headers: { host: "bulletin.localhost" } }); console.log(r.status)'
+```
 
 ## Troubleshooting
 

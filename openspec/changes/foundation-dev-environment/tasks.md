@@ -49,6 +49,6 @@
 
 ## 8. CI and docs
 
-- [ ] 8.1 Add CI workflows: `bun run check` plus the compose E2E job on Docker and Podman; verify both pass on a PR
-- [ ] 8.2 Write `README.md` (two-step start, supported engines and versions, hostnames, mock UIs, reset with `down -v`) and verify the steps on a clean machine
-- [ ] 8.3 Verify the offline scenario: after the first start, disconnect the network, restart, and confirm the stack becomes healthy
+- [x] 8.1 Add CI workflows: `bun run check` plus the compose E2E job on Docker and Podman; verify both pass on a PR
+- [x] 8.2 Write `README.md` (two-step start, supported engines and versions, hostnames, mock UIs, reset with `down -v`) and verify the steps on a clean machine
+- [x] 8.3 Verify the offline scenario: after the first start, disconnect the network, restart, and confirm the stack becomes healthy
