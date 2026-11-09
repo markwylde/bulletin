@@ -1,2 +1,2 @@
 /** Cache layers, variant keys and invalidation for the rendered page stack. */
-export {};
+export * from "./versioned.ts";

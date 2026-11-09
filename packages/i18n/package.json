@@ -6,12 +6,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./catalogs": "./src/catalogs.ts",
-    "./lint": "./src/lint.ts"
+    "./lint": "./src/lint.ts",
+    "./overrides": "./src/overrides.ts",
+    "./runtime": "./src/runtime.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bulletin/cache": "workspace:*",
     "intl-messageformat": "^12.1.5"
   }
 }

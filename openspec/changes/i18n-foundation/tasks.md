@@ -13,8 +13,8 @@
 
 ## 3. Overrides and runtime validation
 
-- [ ] 3.1 Add `core.string_overrides(locale, key, value, updated_by, updated_at)` and the override layer with tag invalidation; integration test that an override applies and a revert restores it
-- [ ] 3.2 Implement runtime catalog validation (ICU parse, placeholder match, completeness report) with unit tests for the mismatch and fallback scenarios
+- [x] 3.1 Add `core.string_overrides(locale, key, value, updated_by, updated_at)` and the override layer with tag invalidation; integration test that an override applies and a revert restores it
+- [x] 3.2 Implement runtime catalog validation (ICU parse, placeholder match, completeness report) with unit tests for the mismatch and fallback scenarios
 
 ## 4. Bindings
 

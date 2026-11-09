@@ -131,6 +131,7 @@
       "name": "@bulletin/db",
       "dependencies": {
         "@bulletin/config": "workspace:*",
+        "@bulletin/i18n": "workspace:*",
         "pg-boss": "12.38.1",
       },
     },
@@ -143,6 +144,7 @@
     "packages/i18n": {
       "name": "@bulletin/i18n",
       "dependencies": {
+        "@bulletin/cache": "workspace:*",
         "intl-messageformat": "^12.1.5",
       },
     },

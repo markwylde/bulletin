@@ -1,6 +1,7 @@
 {
   "staff.placeholder.body": "La console de l'équipe est en préparation.",
   "staff.placeholder.title": "Équipe Bulletin",
+  "topic.reply.button": "Répondre",
   "topic.reply.count": "{count, plural, =0 {Aucune réponse} one {# réponse} other {# réponses}}",
   "user.placeholder.body": "La communauté Bulletin est en préparation.",
   "user.placeholder.title": "Bulletin"

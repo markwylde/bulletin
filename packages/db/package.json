@@ -8,13 +8,15 @@
     "./migrate": "./src/migrations/runner.ts",
     "./seed": "./src/seed/index.ts",
     "./events": "./src/events/index.ts",
-    "./jobs": "./src/jobs/index.ts"
+    "./jobs": "./src/jobs/index.ts",
+    "./i18n": "./src/i18n/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@bulletin/config": "workspace:*",
+    "@bulletin/i18n": "workspace:*",
     "pg-boss": "12.38.1"
   }
 }
