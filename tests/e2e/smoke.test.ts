@@ -31,7 +31,9 @@ for (const app of APPS) {
           await waitForSelector(view, "body");
 
           expect(await view.evaluate<string>("document.readyState")).toBe("complete");
-          expect(await view.evaluate<number>("window.innerWidth")).toBe(viewport.width);
+          expect(await view.evaluate<number>("document.documentElement.clientWidth")).toBe(
+            viewport.width,
+          );
           expect(new URL(view.url).origin).toBe(new URL(app.url).origin);
         });
       }, 90_000);

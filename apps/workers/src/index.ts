@@ -2,6 +2,7 @@ import { parseReplicas } from "@bulletin/config";
 import { createDatabaseCheck, startService } from "@bulletin/config/server";
 import { createPgBossQueue } from "@bulletin/db/events";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
+import { runBaseSeedFromEnv } from "@bulletin/db/seed";
 import { SQL } from "bun";
 
 const port = Number(Bun.env.PORT ?? 3003);
@@ -9,6 +10,7 @@ const databaseUrl = Bun.env.DATABASE_URL ?? "postgres://workers@postgres:5432/bu
 const migrationUrl = Bun.env.MIGRATION_DATABASE_URL ?? databaseUrl;
 
 await runMigrations({ databaseUrl: migrationUrl });
+await runBaseSeedFromEnv(migrationUrl);
 
 const sql = new SQL(databaseUrl);
 const boss = await createPgBossQueue({

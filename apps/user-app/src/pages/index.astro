@@ -1,11 +1,93 @@
 ---
-// Shell route only. The template stack (rendering-and-caching) replaces this page.
+import { CATALOGS, t } from "@bulletin/i18n";
+
+const messages = JSON.stringify(CATALOGS);
 ---
 <!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{t("en", "user.placeholder.title")}</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #f4f6f9;
+        color: #1c2430;
+      }
+
+      main {
+        width: min(100% - 2rem, 40rem);
+        padding: 1.5rem;
+        border: 1px solid #dce1e8;
+        border-radius: 0.75rem;
+        background: #ffffff;
+      }
+
+      h1 {
+        margin: 0 0 0.5rem;
+        font-size: 1.5rem;
+      }
+
+      p {
+        margin: 0;
+        color: #5c6878;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #141a22;
+          color: #e7ecf3;
+        }
+
+        main {
+          background: #1d2530;
+          border-color: #303b49;
+        }
+
+        p {
+          color: #93a0b1;
+        }
+      }
+    </style>
   </head>
-  <body></body>
+  <body>
+    <main>
+      <h1 data-i18n="user.placeholder.title">{t("en", "user.placeholder.title")}</h1>
+      <p data-i18n="user.placeholder.body">{t("en", "user.placeholder.body")}</p>
+    </main>
+    <script type="application/json" id="i18n-catalog" set:html={messages}></script>
+    <script is:inline>
+      (() => {
+        const data = JSON.parse(document.getElementById("i18n-catalog").textContent);
+        const params = new URLSearchParams(window.location.search);
+        const bp = /(?:^|;\s*)bp=([^;]+)/.exec(document.cookie)?.[1]?.split(".")[0];
+        const requested = params.get("lang") ?? bp;
+        const locale = ["en", "es", "fr"].includes(requested) ? requested : "en";
+
+        document.documentElement.lang = locale;
+
+        for (const element of document.querySelectorAll("[data-i18n]")) {
+          const key = element.getAttribute("data-i18n");
+          const value = data[locale]?.[key] ?? data.en[key];
+
+          if (value !== undefined) {
+            element.textContent = value;
+          }
+        }
+      })();
+    </script>
+  </body>
 </html>

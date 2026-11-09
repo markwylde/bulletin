@@ -44,8 +44,8 @@
 
 ## 7. i18n and seed placeholders
 
-- [ ] 7.1 Add placeholder en/es/fr strings for the placeholder pages via a minimal catalog file (replaced by change `i18n-foundation`) and verify the pages render in each locale
-- [ ] 7.2 Add the base seed module (board settings row only) and verify `docker compose up --watch` on an empty DB records a seed run
+- [x] 7.1 Add placeholder en/es/fr strings for the placeholder pages via a minimal catalog file (replaced by change `i18n-foundation`) and verify the pages render in each locale
+- [x] 7.2 Add the base seed module (board settings row only) and verify `docker compose up --watch` on an empty DB records a seed run
 
 ## 8. CI and docs
 

@@ -1,2 +1,1 @@
-/** Message catalogs and the ICU formatter. */
-export {};
+export * from "./catalog.ts";

@@ -9,7 +9,8 @@
     "typecheck": "astro check"
   },
   "dependencies": {
-    "astro": "7.4.7"
+    "astro": "7.4.7",
+    "@bulletin/i18n": "workspace:*"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12"

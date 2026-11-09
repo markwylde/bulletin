@@ -97,3 +97,21 @@ export async function screenshot(view: Bun.WebView, path: string): Promise<void>
 export async function pageText(view: Bun.WebView): Promise<string> {
   return view.evaluate<string>("document.body?.innerText ?? ''");
 }
+
+export async function waitForText(
+  view: Bun.WebView,
+  text: string,
+  timeoutMs = 10_000,
+): Promise<void> {
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    if ((await pageText(view)).includes(text)) {
+      return;
+    }
+
+    await Bun.sleep(50);
+  }
+
+  throw new Error(`Timed out waiting for text ${text}`);
+}

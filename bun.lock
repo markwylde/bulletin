@@ -8,6 +8,7 @@
         "@biomejs/biome": "2.6.6",
         "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
+        "@bulletin/i18n": "workspace:*",
         "@bulletin/test-utils": "workspace:*",
         "@types/bun": "1.4.4",
         "jose": "6.2.16",
@@ -30,6 +31,7 @@
     "apps/staff-app": {
       "name": "@bulletin/staff-app",
       "dependencies": {
+        "@bulletin/i18n": "workspace:*",
         "react": "19.3.1",
         "react-dom": "19.3.1",
       },
@@ -50,6 +52,7 @@
     "apps/user-app": {
       "name": "@bulletin/user-app",
       "dependencies": {
+        "@bulletin/i18n": "workspace:*",
         "astro": "7.4.7",
       },
       "devDependencies": {

@@ -11,7 +11,7 @@ import {
   runMigrations,
 } from "@bulletin/db";
 import { type EventSubscriber, emit, isStaleEvent, type JobQueue } from "@bulletin/db/events";
-import { runSeeds, type SeedModule, SeedRegistry } from "@bulletin/db/seed";
+import { baseSeedModule, runSeeds, type SeedModule, SeedRegistry } from "@bulletin/db/seed";
 import { SQL } from "bun";
 
 // Requires a Postgres server with the TEST_DATABASE_URL env var pointing at a maintenance
@@ -254,6 +254,32 @@ integrationDescribe("database lifecycle", () => {
         await firstSql.close();
         await secondSql.close();
       });
+    });
+  });
+
+  test("the base seed writes the board settings row once", async () => {
+    await withDatabase(async (databaseUrl) => {
+      await runMigrations({ databaseUrl });
+      const sql = new SQL(databaseUrl);
+      const registry = new SeedRegistry([baseSeedModule]);
+
+      expect(await runSeeds({ sql, registry })).toEqual({ ran: true, modules: ["base"] });
+      expect(await runSeeds({ sql, registry })).toEqual({ ran: false, modules: [] });
+
+      const settings = (await sql`
+        SELECT id, board_name FROM core.board_settings
+      `) as Array<{ id: number; board_name: string }>;
+      expect(settings).toEqual([{ id: 1, board_name: "Bulletin" }]);
+
+      const runs = (await sql`
+        SELECT name, seed, size FROM core.seed_runs
+      `) as Array<{ name: string; seed: number | string; size: string }>;
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.name).toBe("base");
+      expect(Number(runs[0]?.seed)).toBe(42);
+      expect(runs[0]?.size).toBe("default");
+
+      await sql.close();
     });
   });
 
