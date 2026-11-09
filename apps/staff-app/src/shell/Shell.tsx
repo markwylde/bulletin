@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
 import { apiPost } from "../api.ts";
+import { BlocksPage } from "../dev/BlocksPage.tsx";
 import { sectionElement } from "../section-routes.tsx";
 import {
   canAccessSection,
@@ -226,6 +227,7 @@ export function Shell() {
               element={<SectionRoute section={section} />}
             />
           ))}
+          {import.meta.env.DEV ? <Route path="/dev/blocks" element={<BlocksPage />} /> : null}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </main>

@@ -1,0 +1,16 @@
+{
+  "ui.table.actions": "Actions",
+  "ui.table.ascending": "Croissant",
+  "ui.table.bulkActions": "Actions groupées",
+  "ui.table.descending": "Décroissant",
+  "ui.table.empty": "Aucune ligne à afficher.",
+  "ui.table.next": "Page suivante",
+  "ui.table.page": "Page {page} sur {pages}",
+  "ui.table.previous": "Page précédente",
+  "ui.table.selectAll": "Sélectionner toutes les lignes de cette page",
+  "ui.table.selectRowLabel": "Sélectionner {row}",
+  "ui.table.selected": "{count, plural, one {# sélectionnée} other {# sélectionnées}}",
+  "ui.table.sort": "Trier par",
+  "ui.table.sortBy": "Trier par {column}",
+  "ui.table.sortNone": "Aucun tri"
+}

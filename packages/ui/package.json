@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Shared React components for user-app islands and the staff app.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./table": "./src/table/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
