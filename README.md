@@ -62,6 +62,8 @@ COMPOSE_PROJECT_NAME=bulletin-agent BULLETIN_HTTP_PORT=18080 docker compose up -
 ```
 
 Open `http://bulletin.localhost:18080`. The default stack on port 8080 keeps running unchanged.
+Browsers scope cookies by hostname, not port, so signing in to both stacks in one browser profile
+makes them share session cookies; use a separate profile (or private window) for the second stack.
 Tests and E2E read the same variable, so run them in the second checkout's shell with the
 variables exported:
 
