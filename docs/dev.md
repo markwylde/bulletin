@@ -116,8 +116,8 @@ container fallback is a production decision for `plugin-platform`, not a local w
   ```
 
   It covers core/pii reads, runtime DDL, `LISTEN`, TCP sockets, sibling bundles, environment
-  secrets, `/proc`, a fork bomb and memory exhaustion, and starts a benign sandbox after each
-  containment check.
+  secrets, `/proc`, an output flood, a fork bomb and memory exhaustion, and starts a benign
+  sandbox after each containment check.
 - The sandbox measurement is documented in
   [`apps/plugin-host/README.md`](../apps/plugin-host/README.md):
 

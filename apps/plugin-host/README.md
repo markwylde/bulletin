@@ -191,7 +191,7 @@ docker compose exec -T -e BULLETIN_SANDBOX_TESTS=1 plugin-host \
 ```
 
 Cases: read `core`, read `pii`, runtime DDL, `LISTEN`, TCP connect, sibling bundle/host paths,
-environment secrets, `/proc`, fork bomb and memory exhaustion. The fork and memory cases use
+environment secrets, `/proc`, output flood, fork bomb and memory exhaustion. The fork and memory cases use
 tighter limits (`pids/nproc=32`, memory 128 MiB) and also verify the cgroup pids count.
 
 The suite is skipped in the normal test image (no nsjail/capabilities). CI runs it on Docker
@@ -206,6 +206,8 @@ and rootless Podman after the E2E stack is healthy.
   then that delegated parent at startup and records which one it used.
 - Docker's default seccomp profile blocks `clone`/`unshare` with `CLONE_NEWUSER`, so the
   container needs `seccomp=unconfined`. The jail's own filter is the security boundary.
+- Bun's `Bun.spawn` helper uses `pidfd_open`. The profile allows it; omitting it kills the
+  helper thread and leaves the plugin hung in `Bun.spawn` while the main process stays alive.
 - The Kafel policy must be the bare `ALLOW { … }` form. A named `POLICY name { … }` block
   compiles but silently denies everything when passed with `--seccomp_string`.
 - Kafel's aarch64 table lacks several syscalls Bun uses (`uname`, `fstat`, `sysinfo`,

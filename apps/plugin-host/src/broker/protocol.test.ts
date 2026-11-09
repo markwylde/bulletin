@@ -34,6 +34,7 @@ describe("length-prefixed JSON-RPC framing", () => {
     expect(decoded).toEqual({
       kind: "message",
       value: { jsonrpc: "2.0", id: 1, result: { id: "9007199254740993" } },
+      bytes: new DataView(frame.buffer, frame.byteOffset, 4).getUint32(0, false),
     });
   });
 
@@ -80,9 +81,11 @@ describe("length-prefixed JSON-RPC framing", () => {
       kind: "invalid_json",
       message: "Broker frame is not valid JSON",
     });
-    expect(decoder.push(encodeFrame({ ok: true }))[0]).toEqual({
+    const okFrame = encodeFrame({ ok: true });
+    expect(decoder.push(okFrame)[0]).toEqual({
       kind: "message",
       value: { ok: true },
+      bytes: new DataView(okFrame.buffer, okFrame.byteOffset, 4).getUint32(0, false),
     });
   });
 

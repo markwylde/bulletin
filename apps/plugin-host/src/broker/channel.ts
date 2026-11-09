@@ -11,6 +11,8 @@ import {
   isRequest,
   JSON_RPC_ERRORS,
   type JsonRpcId,
+  type JsonRpcNotification,
+  type JsonRpcRequest,
   parseMessage,
   RpcError,
   success,
@@ -37,9 +39,26 @@ export interface BrokerChannelOptions {
   readonly handler?: BrokerHandler;
   /** Caps one plugin message and one broker response. */
   readonly maxFrameBytes?: number;
+  /** Concurrent plugin connections accepted on the broker socket. */
+  readonly maxConnections?: number;
+  /** In-flight plus queued requests per connection. */
+  readonly maxPendingRequests?: number;
+  /** In-flight plus queued decoded payload bytes per connection. */
+  readonly maxQueuedBytes?: number;
 }
 
 const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}$/;
+const DEFAULT_MAX_CONNECTIONS = 4;
+const DEFAULT_MAX_PENDING_REQUESTS = 8;
+const DEFAULT_MAX_QUEUED_BYTES = 2 * 1024 * 1024;
+
+function positiveInteger(value: number, name: string): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new TypeError(`${name} must be a positive integer`);
+  }
+
+  return value;
+}
 
 interface BrokerSocket {
   write(data: Uint8Array): void;
@@ -50,6 +69,8 @@ interface Connection {
   readonly decoder: FrameDecoder;
   pluginId: string | null;
   queue: Promise<void>;
+  pending: number;
+  queuedBytes: number;
 }
 
 function parseHello(params: unknown): PluginHello | undefined {
@@ -81,8 +102,12 @@ export class BrokerChannel {
   readonly #logger: Logger;
   readonly #handler: BrokerHandler | undefined;
   readonly #maxFrameBytes: number;
+  readonly #maxConnections: number;
+  readonly #maxPendingRequests: number;
+  readonly #maxQueuedBytes: number;
   #listener: { stop(closeActiveConnections?: boolean): void } | undefined;
   readonly #connections = new WeakMap<BrokerSocket, Connection>();
+  readonly #sockets = new Set<BrokerSocket>();
   #hello:
     | {
         resolve(hello: PluginHello): void;
@@ -96,6 +121,18 @@ export class BrokerChannel {
     this.#logger = options.logger;
     this.#handler = options.handler;
     this.#maxFrameBytes = options.maxFrameBytes ?? DEFAULT_MAX_FRAME_BYTES;
+    this.#maxConnections = positiveInteger(
+      options.maxConnections ?? DEFAULT_MAX_CONNECTIONS,
+      "maxConnections",
+    );
+    this.#maxPendingRequests = positiveInteger(
+      options.maxPendingRequests ?? DEFAULT_MAX_PENDING_REQUESTS,
+      "maxPendingRequests",
+    );
+    this.#maxQueuedBytes = positiveInteger(
+      options.maxQueuedBytes ?? DEFAULT_MAX_QUEUED_BYTES,
+      "maxQueuedBytes",
+    );
   }
 
   get listening(): boolean {
@@ -114,17 +151,29 @@ export class BrokerChannel {
       unix: this.socketPath,
       socket: {
         open: (socket) => {
+          if (this.#sockets.size >= this.#maxConnections) {
+            this.#logger.warn("broker.connection_rejected", {
+              connections: this.#sockets.size,
+            });
+            socket.end();
+            return;
+          }
+
           this.#logger.debug("broker.client_connected");
+          this.#sockets.add(socket);
           this.#connections.set(socket, {
             decoder: new FrameDecoder(this.#maxFrameBytes),
             pluginId: null,
             queue: Promise.resolve(),
+            pending: 0,
+            queuedBytes: 0,
           });
         },
         data: (socket, data) => {
           this.#onData(socket, data);
         },
         close: (socket) => {
+          this.#sockets.delete(socket);
           this.#connections.delete(socket);
 
           if (this.#hello !== undefined) {
@@ -176,6 +225,7 @@ export class BrokerChannel {
 
     this.#listener?.stop(true);
     this.#listener = undefined;
+    this.#sockets.clear();
     await unlink(this.socketPath).catch(() => undefined);
   }
 
@@ -209,22 +259,60 @@ export class BrokerChannel {
         continue;
       }
 
+      const message = parseMessage(frame.value);
+
+      if (message === undefined) {
+        this.#send(
+          socket,
+          failure(null, JSON_RPC_ERRORS.invalidRequest, "Invalid JSON-RPC request"),
+        );
+        continue;
+      }
+
+      if (
+        connection.pending >= this.#maxPendingRequests ||
+        connection.queuedBytes + frame.bytes > this.#maxQueuedBytes
+      ) {
+        this.#rejectBusy(socket, message);
+        continue;
+      }
+
+      connection.pending += 1;
+      connection.queuedBytes += frame.bytes;
       connection.queue = connection.queue
-        .then(() => this.#dispatch(socket, connection, frame.value))
+        .then(async () => {
+          if (!this.#connections.has(socket)) {
+            return;
+          }
+
+          await this.#dispatch(socket, connection, message);
+        })
         .catch((error: unknown) => {
           this.#logger.error("broker.dispatch_failed", { error });
+        })
+        .finally(() => {
+          connection.pending -= 1;
+          connection.queuedBytes -= frame.bytes;
         });
     }
   }
 
-  async #dispatch(socket: BrokerSocket, connection: Connection, value: unknown): Promise<void> {
-    const message = parseMessage(value);
+  #rejectBusy(socket: BrokerSocket, message: JsonRpcRequest | JsonRpcNotification): void {
+    this.#logger.warn("broker.request_rejected", { reason: "busy" });
 
-    if (message === undefined) {
-      this.#send(socket, failure(null, JSON_RPC_ERRORS.invalidRequest, "Invalid JSON-RPC request"));
-      return;
+    if (isRequest(message)) {
+      this.#send(
+        socket,
+        failure(message.id, JSON_RPC_ERRORS.denied, "Broker is busy", { reason: "busy" }),
+      );
     }
+  }
 
+  async #dispatch(
+    socket: BrokerSocket,
+    connection: Connection,
+    message: JsonRpcRequest | JsonRpcNotification,
+  ): Promise<void> {
     if (message.method === "hello") {
       this.#onHello(socket, connection, message.params, isRequest(message) ? message.id : null);
       return;

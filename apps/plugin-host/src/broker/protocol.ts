@@ -144,7 +144,7 @@ export class FrameError extends Error {
 }
 
 export type DecodedFrame =
-  | { readonly kind: "message"; readonly value: unknown }
+  | { readonly kind: "message"; readonly value: unknown; readonly bytes: number }
   | { readonly kind: "invalid_json"; readonly message: string };
 
 /**
@@ -200,6 +200,7 @@ export class FrameDecoder {
         frames.push({
           kind: "message",
           value: JSON.parse(new TextDecoder().decode(payload)),
+          bytes: payload.byteLength,
         });
       } catch {
         frames.push({ kind: "invalid_json", message: "Broker frame is not valid JSON" });

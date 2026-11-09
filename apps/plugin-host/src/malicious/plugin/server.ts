@@ -93,18 +93,24 @@ async function runCase(): Promise<Result> {
     }
 
     case "tcp-socket": {
+      const port = Number(process.argv[3]);
+
+      if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+        return { ok: false, detail: "missing listener port" };
+      }
+
       let error = "";
 
       try {
         await Promise.race([
           Bun.connect({
-            hostname: "1.1.1.1",
-            port: 80,
+            hostname: "127.0.0.1",
+            port,
             socket: { data() {}, error() {} },
           }).then(() => {
             throw new Error("connected");
           }),
-          Bun.sleep(1_500).then(() => {
+          Bun.sleep(1_000).then(() => {
             throw new Error("timed out");
           }),
         ]);
@@ -170,28 +176,40 @@ async function runCase(): Promise<Result> {
     }
 
     case "fork-bomb": {
-      const children: unknown[] = [];
-      let spawnError = "";
+      // Run the loop in a child so the parent can still report; the child shares the
+      // sandbox's cgroup and pids limit.
+      const bomberCode =
+        'const kids = []; for (let i = 0; i < 200; i += 1) { try { kids.push(Bun.spawn(["/bin/bun", "-e", "await new Promise(() => {})"], { stdout: "ignore", stderr: "ignore" })); } catch { break; } } await new Promise(() => {});';
+      const bomber = Bun.spawn(["/bin/bun", "-e", bomberCode], {
+        stdout: "ignore",
+        stderr: "ignore",
+      });
 
-      for (let index = 0; index < 200; index += 1) {
-        try {
-          children.push(
-            Bun.spawn(["/bin/bun", "-e", "await new Promise(() => {})"], {
-              stdout: "ignore",
-              stderr: "ignore",
-            }),
-          );
-        } catch (error) {
-          spawnError = errorMessage(error);
-          break;
-        }
+      await Bun.sleep(750);
+      return { ok: true, detail: "fork loop running", spawned: 1, bomberPid: bomber.pid };
+    }
+
+    case "output-flood": {
+      const chunk = "x".repeat(1024 * 1024);
+
+      for (let index = 0; index < 8; index += 1) {
+        process.stdout.write(chunk);
       }
 
-      return {
-        ok: children.length < 200,
-        detail: spawnError === "" ? "pids limit contained the loop" : spawnError,
-        spawned: children.length,
-      };
+      for (let index = 0; index < 2_000; index += 1) {
+        process.stdout.write(`stdout flood ${index}\n`);
+      }
+
+      for (let index = 0; index < 8; index += 1) {
+        process.stderr.write(chunk);
+      }
+
+      for (let index = 0; index < 2_000; index += 1) {
+        process.stderr.write(`stderr flood ${index}\n`);
+      }
+
+      await Bun.sleep(100);
+      return { ok: true, detail: "flood sent" };
     }
 
     case "memory-exhaustion": {
@@ -217,14 +235,23 @@ async function report(result: Result): Promise<void> {
     await client.call("log", {
       level: "info",
       message: "malicious-case",
-      fields: { case: caseName, ...result },
+      fields: { case: caseName, phase: "result", ...result },
     });
   } catch (error) {
     console.error(`could not report ${caseName}: ${errorMessage(error)}`);
   }
 }
 
+async function reportStarted(): Promise<void> {
+  await client.call("log", {
+    level: "info",
+    message: "malicious-case",
+    fields: { case: caseName, phase: "start" },
+  });
+}
+
 try {
+  await reportStarted();
   await report(await runCase());
 } catch (error) {
   await report({ ok: false, detail: errorMessage(error) });

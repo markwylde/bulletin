@@ -3,20 +3,27 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLogger } from "@bulletin/config";
-import { BrokerChannel, type BrokerHandler } from "./channel.ts";
+import { BrokerChannel, type BrokerChannelOptions, type BrokerHandler } from "./channel.ts";
 import { encodeFrame, FrameDecoder, RpcError } from "./protocol.ts";
 
 const logger = createLogger({ service: "broker-test", level: "error", sink: () => {} });
 const channels: BrokerChannel[] = [];
 const directories: string[] = [];
 
-async function createChannel(handler?: BrokerHandler): Promise<BrokerChannel> {
+async function createChannel(
+  handler?: BrokerHandler,
+  options: Pick<
+    BrokerChannelOptions,
+    "maxConnections" | "maxPendingRequests" | "maxQueuedBytes"
+  > = {},
+): Promise<BrokerChannel> {
   const directory = await mkdtemp(join(tmpdir(), "bulletin-broker-"));
   directories.push(directory);
   const channel = new BrokerChannel({
     socketPath: join(directory, "broker.sock"),
     logger,
     ...(handler === undefined ? {} : { handler }),
+    ...options,
   });
   await channel.start();
   channels.push(channel);
@@ -25,6 +32,7 @@ async function createChannel(handler?: BrokerHandler): Promise<BrokerChannel> {
 
 interface Client {
   readonly socket: { write(data: Uint8Array): void; end(): void };
+  readonly closed: Promise<void>;
   write(value: unknown): void;
   writeRaw(frame: Uint8Array): void;
   next(): Promise<unknown>;
@@ -33,6 +41,10 @@ interface Client {
 async function connect(socketPath: string): Promise<Client> {
   const decoder = new FrameDecoder();
   const messages: unknown[] = [];
+  let closeSocket: () => void = () => undefined;
+  const closed = new Promise<void>((resolve) => {
+    closeSocket = resolve;
+  });
   const socket = await Bun.connect({
     unix: socketPath,
     socket: {
@@ -43,12 +55,16 @@ async function connect(socketPath: string): Promise<Client> {
           }
         }
       },
+      close() {
+        closeSocket();
+      },
       error() {},
     },
   });
 
   return {
     socket,
+    closed,
     write(value) {
       socket.write(encodeFrame(value));
     },
@@ -317,5 +333,119 @@ describe("broker channel", () => {
 
     channel.cancelHello();
     await first.catch(() => undefined);
+  });
+
+  test("bounds queued requests while the handler is blocked", async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const handler: BrokerHandler = {
+      async handle() {
+        calls += 1;
+        await gate;
+        return null;
+      },
+    };
+    const channel = await createChannel(handler, { maxPendingRequests: 2 });
+    const hello = channel.waitForHello(2_000);
+    const client = await connect(channel.socketPath);
+
+    client.write(helloNotification());
+    await hello;
+
+    for (let id = 1; id <= 4; id += 1) {
+      client.write({ jsonrpc: "2.0", id, method: "log", params: { level: "info" } });
+    }
+
+    const busy = [await client.next(), await client.next()] as Array<{
+      id: number;
+      error: { code: number; message: string };
+    }>;
+    expect(busy.map((message) => message.id).sort()).toEqual([3, 4]);
+
+    for (const message of busy) {
+      expect(message.error).toMatchObject({ code: -32000, message: "Broker is busy" });
+    }
+
+    release();
+
+    const accepted = [await client.next(), await client.next()] as Array<{
+      id: number;
+      result: null;
+    }>;
+    expect(accepted.map((message) => message.id).sort()).toEqual([1, 2]);
+
+    for (const message of accepted) {
+      expect(message.result).toBeNull();
+    }
+
+    expect(calls).toBe(2);
+    client.socket.end();
+  });
+
+  test("rejects a message larger than the queued byte budget", async () => {
+    let calls = 0;
+    const channel = await createChannel(
+      {
+        async handle() {
+          calls += 1;
+          return null;
+        },
+      },
+      { maxQueuedBytes: 256 },
+    );
+    const hello = channel.waitForHello(2_000);
+    const client = await connect(channel.socketPath);
+
+    client.write(helloNotification());
+    await hello;
+    client.write({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "log",
+      params: { level: "info", message: "x".repeat(400) },
+    });
+
+    expect(await client.next()).toMatchObject({
+      id: 7,
+      error: { code: -32000, message: "Broker is busy" },
+    });
+    expect(calls).toBe(0);
+    client.socket.end();
+  });
+
+  test("rejects connections above the limit", async () => {
+    let calls = 0;
+    const channel = await createChannel(
+      {
+        async handle() {
+          calls += 1;
+          return null;
+        },
+      },
+      { maxConnections: 1 },
+    );
+    const hello = channel.waitForHello(2_000);
+    const first = await connect(channel.socketPath);
+
+    first.write(helloNotification());
+    await hello;
+
+    const second = await connect(channel.socketPath);
+    await Promise.race([
+      second.closed,
+      Bun.sleep(500).then(() => {
+        throw new Error("extra connection was not rejected");
+      }),
+    ]);
+
+    first.write({ jsonrpc: "2.0", id: 1, method: "log", params: { level: "info" } });
+    expect(await first.next()).toMatchObject({ id: 1, result: null });
+    expect(calls).toBe(1);
+
+    first.socket.end();
+    second.socket.end();
   });
 });

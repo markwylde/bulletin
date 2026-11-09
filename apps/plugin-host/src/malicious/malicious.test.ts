@@ -21,17 +21,32 @@ const sandboxDescribe = enabled ? describe : describe.skip;
 
 interface CaseOptions {
   readonly limits?: SandboxLimits;
-  /** Fork and memory cases may die before reporting. */
+  /** The probe may be terminated during the attack; accept no result for containment. */
   readonly allowFailure?: boolean;
   /** A contained fork bomb may also hang inside spawn(); accept no result. */
   readonly allowHungResult?: boolean;
   readonly resultTimeoutMs?: number;
+  /** Extra arguments after the case name, e.g. the controlled TCP listener port. */
+  readonly commandArgs?: readonly string[];
+}
+
+interface CgroupEvents {
+  readonly memoryOom: number;
+  readonly memoryOomKill: number;
+  readonly memoryMax: number;
+  readonly pidsMaxEvents: number;
+  readonly pidsCurrentMax: number;
+}
+
+interface CgroupMonitor {
+  snapshot(): CgroupEvents;
+  stop(): CgroupEvents;
 }
 
 interface CaseContext {
   readonly result: Record<string, unknown> | undefined;
   readonly supervisor: SandboxSupervisor;
-  readonly startError: unknown;
+  readonly monitor: CgroupMonitor;
 }
 
 interface LogRecord {
@@ -57,16 +72,38 @@ function parseLine(line: string): LogRecord | undefined {
   }
 }
 
-function findResult(caseName: string): Record<string, unknown> | undefined {
+function findLog(caseName: string, phase: "start" | "result"): Record<string, unknown> | undefined {
   for (const line of lines) {
     const record = parseLine(line);
 
-    if (record?.message === "plugin.log" && record.fields?.case === caseName) {
+    if (
+      record?.message === "plugin.log" &&
+      record.fields?.case === caseName &&
+      record.fields.phase === phase
+    ) {
       return record.fields;
     }
   }
 
   return undefined;
+}
+
+async function waitForStarted(caseName: string, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (findLog(caseName, "start") !== undefined) {
+      return;
+    }
+
+    await Bun.sleep(10);
+  }
+
+  throw new Error(
+    `Timed out waiting for malicious case ${caseName} to start. Last logs:\n${lines
+      .slice(-8)
+      .join("\n")}`,
+  );
 }
 
 async function waitForResult(
@@ -78,7 +115,7 @@ async function waitForResult(
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
-    const result = findResult(caseName);
+    const result = findLog(caseName, "result");
 
     if (result !== undefined) {
       return result;
@@ -102,19 +139,79 @@ async function waitForResult(
   );
 }
 
-async function readCgroupPids(supervisor: SandboxSupervisor): Promise<number | undefined> {
+function parseCounters(text: string | undefined): Map<string, number> {
+  const counters = new Map<string, number>();
+
+  for (const line of (text ?? "").split("\n")) {
+    const [name, raw] = line.trim().split(/\s+/);
+
+    if (name !== undefined && raw !== undefined && /^\d+$/.test(raw)) {
+      counters.set(name, Number(raw));
+    }
+  }
+
+  return counters;
+}
+
+/** Samples cgroup counters while the attack runs, so the event survives cgroup removal. */
+function startCgroupMonitor(supervisor: SandboxSupervisor): CgroupMonitor {
   const childPid = supervisor.status().childPid;
+  const directory = childPid === null ? undefined : join(cgroupRoot, `NSJAIL.${childPid}`);
+  const events = {
+    memoryOom: 0,
+    memoryOomKill: 0,
+    memoryMax: 0,
+    pidsMaxEvents: 0,
+    pidsCurrentMax: 0,
+  };
+  let stopped = false;
 
-  if (childPid === null) {
-    return undefined;
-  }
+  const sample = async (): Promise<void> => {
+    if (directory === undefined) {
+      return;
+    }
 
-  try {
-    const text = await Bun.file(join(cgroupRoot, `NSJAIL.${childPid}`, "pids.current")).text();
-    return Number(text.trim());
-  } catch {
-    return undefined;
-  }
+    const [memoryText, pidsText, currentText] = await Promise.all([
+      Bun.file(join(directory, "memory.events"))
+        .text()
+        .catch(() => undefined),
+      Bun.file(join(directory, "pids.events"))
+        .text()
+        .catch(() => undefined),
+      Bun.file(join(directory, "pids.current"))
+        .text()
+        .catch(() => undefined),
+    ]);
+    const memory = parseCounters(memoryText);
+    const pids = parseCounters(pidsText);
+
+    events.memoryOom = Math.max(events.memoryOom, memory.get("oom") ?? 0);
+    events.memoryOomKill = Math.max(events.memoryOomKill, memory.get("oom_kill") ?? 0);
+    events.memoryMax = Math.max(events.memoryMax, memory.get("max") ?? 0);
+    events.pidsMaxEvents = Math.max(events.pidsMaxEvents, pids.get("max") ?? 0);
+
+    if (currentText !== undefined && /^\d+$/.test(currentText.trim())) {
+      events.pidsCurrentMax = Math.max(events.pidsCurrentMax, Number(currentText.trim()));
+    }
+  };
+
+  void (async () => {
+    while (!stopped) {
+      await sample();
+
+      if (!stopped) {
+        await Bun.sleep(2);
+      }
+    }
+  })();
+
+  return {
+    snapshot: () => ({ ...events }),
+    stop: () => {
+      stopped = true;
+      return { ...events };
+    },
+  };
 }
 
 async function killCgroup(supervisor: SandboxSupervisor): Promise<void> {
@@ -157,33 +254,35 @@ async function withCase(
     channel,
     logger,
     readyTimeoutMs: 10_000,
-    command: ["/bin/bun", "/plugin/server.ts", caseName],
+    command: ["/bin/bun", "/plugin/server.ts", caseName, ...(options.commandArgs ?? [])],
   });
 
-  try {
-    let startError: unknown;
+  let monitor: CgroupMonitor | undefined;
 
+  try {
     try {
       await supervisor.start();
     } catch (error) {
-      if (options.allowFailure !== true) {
-        throw new Error(
-          `${error instanceof Error ? error.message : String(error)}\nLast logs:\n${lines
-            .slice(-12)
-            .join("\n")}`,
-        );
-      }
-
-      startError = error;
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}\nLast logs:\n${lines
+          .slice(-12)
+          .join("\n")}`,
+      );
     }
 
-    const result =
-      supervisor.ready || options.allowFailure !== true
-        ? await waitForResult(caseName, supervisor, options, options.resultTimeoutMs ?? 15_000)
-        : undefined;
+    monitor = startCgroupMonitor(supervisor);
+    await waitForStarted(caseName);
 
-    await run({ result, supervisor, startError });
+    const result = await waitForResult(
+      caseName,
+      supervisor,
+      options,
+      options.resultTimeoutMs ?? 15_000,
+    );
+
+    await run({ result, supervisor, monitor });
   } finally {
+    monitor?.stop();
     await supervisor.stop().catch(() => undefined);
     await channel.close();
     await killCgroup(supervisor);
@@ -292,11 +391,39 @@ sandboxDescribe("malicious plugin cases", () => {
     });
   }, 30_000);
 
-  test("cannot open a TCP socket from the empty network namespace", async () => {
-    await withCase("tcp-socket", {}, async ({ result }) => {
-      expect(result?.ok).toBe(true);
-      expect(String(result?.detail)).not.toBe("connected");
+  test("cannot reach a plugin-host TCP listener from the empty network namespace", async () => {
+    let accepted = 0;
+    const listener = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        open(socket) {
+          accepted += 1;
+          socket.end();
+        },
+        data() {},
+        error() {},
+      },
     });
+
+    try {
+      const control = await Bun.connect({
+        hostname: "127.0.0.1",
+        port: listener.port,
+        socket: { data() {}, error() {} },
+      });
+      await Bun.sleep(20);
+      expect(accepted).toBe(1);
+      control.end();
+
+      await withCase("tcp-socket", { commandArgs: [String(listener.port)] }, async ({ result }) => {
+        expect(result?.ok).toBe(true);
+        expect(String(result?.detail)).not.toBe("connected");
+        expect(accepted).toBe(1);
+      });
+    } finally {
+      listener.stop(true);
+    }
   }, 30_000);
 
   test("cannot read a sibling bundle or host paths", async () => {
@@ -319,8 +446,23 @@ sandboxDescribe("malicious plugin cases", () => {
     });
   }, 30_000);
 
-  test("contains a fork bomb and keeps the supervisor healthy", async () => {
-    const limits = { ...config.limits, pids: 32, nproc: 32 };
+  test("contains an output flood and keeps the supervisor responsive", async () => {
+    await withCase("output-flood", {}, async ({ result, supervisor }) => {
+      expect(result?.ok).toBe(true);
+      expect(supervisor.ready).toBe(true);
+    });
+
+    await expectBenignSandbox();
+  }, 40_000);
+
+  test("contains a fork bomb at the pids limit and keeps the supervisor healthy", async () => {
+    const limits = {
+      ...config.limits,
+      // Keep the cgroup pids limit lower than RLIMIT_NPROC so the cgroup event is the cause.
+      pids: 32,
+      nproc: 64,
+      memoryBytes: 512 * 1024 * 1024,
+    };
 
     await withCase(
       "fork-bomb",
@@ -330,35 +472,33 @@ sandboxDescribe("malicious plugin cases", () => {
         allowHungResult: true,
         resultTimeoutMs: 5_000,
       },
-      async ({ result, supervisor }) => {
-        if (result === undefined) {
-          expect(["ready", "failed"]).toContain(supervisor.status().state);
-          const pids = await readCgroupPids(supervisor);
+      async ({ result, supervisor, monitor }) => {
+        const events = monitor.snapshot();
+        expect(events.pidsMaxEvents).toBeGreaterThan(0);
+        expect(events.pidsCurrentMax).toBeLessThanOrEqual(limits.pids);
 
-          if (pids !== undefined) {
-            expect(pids).toBeLessThanOrEqual(limits.pids);
-          }
-        } else {
-          expect(result.ok).toBe(true);
-          expect(Number(result.spawned)).toBeLessThanOrEqual(limits.pids);
-        }
+        expect(result?.ok).toBe(true);
+        expect(supervisor.status().state).toBe("ready");
       },
     );
 
     await expectBenignSandbox();
   }, 40_000);
 
-  test("contains memory exhaustion and keeps the supervisor healthy", async () => {
+  test("hits the memory cgroup limit and keeps the supervisor healthy", async () => {
     const limits = { ...config.limits, memoryBytes: 128 * 1024 * 1024 };
 
     await withCase(
       "memory-exhaustion",
       { limits, allowFailure: true },
-      async ({ result, supervisor }) => {
-        if (result === undefined) {
-          expect(supervisor.status().state).toBe("failed");
-        } else {
+      async ({ result, supervisor, monitor }) => {
+        const events = monitor.snapshot();
+        expect(events.memoryOom + events.memoryOomKill + events.memoryMax).toBeGreaterThan(0);
+
+        if (result !== undefined) {
           expect(result.ok).toBe(false);
+        } else {
+          expect(["failed", "ready"]).toContain(supervisor.status().state);
         }
       },
     );

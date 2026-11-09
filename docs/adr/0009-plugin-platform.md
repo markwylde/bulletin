@@ -226,7 +226,8 @@ policy passed with `--seccomp_string`:
   perf, keyring and handle syscalls, `userfaultfd`, `setuid`/`setgid`/`capset`, reboot, swap,
   syslog and other host-administration calls.
 - `socket` stays allowed for the broker's AF_UNIX socket; the empty network namespace is the
-  network boundary.
+  network boundary. `pidfd_open` is allowed because Bun's process-spawn helper uses it;
+  omitting it kills that helper thread and leaves `Bun.spawn` hanging.
 - The jail sets `BUN_RUNTIME_TRANSPILER_CACHE_PATH=0`: Bun's transpiler cache otherwise adds
   file syscalls outside the profile, killing the plugin with a silent `SIGSYS`.
 
@@ -245,9 +246,9 @@ process tree's RSS over-counts shared pages (~38 MiB) and is only a cross-check.
 roles, role settings, the DML-only AST allowlist (own schema, pure/plugin functions, result
 caps), and the egress host allowlist/private-address/redirect rules are covered by unit tests
 and real-Postgres integration tests. The malicious suite proves core/pii reads, runtime DDL,
-`LISTEN`, TCP connect, sibling/host reads, environment secrets and `/proc` are denied; a fork
-bomb and memory exhaustion are contained and the supervisor can start a benign sandbox
-afterwards.
+`LISTEN`, TCP connect, sibling/host reads, environment secrets and `/proc` are denied; an
+output flood, a fork bomb and memory exhaustion are contained and the supervisor can start a
+benign sandbox afterwards.
 
 **Container caveat.** A fresh procfs cannot be mounted under locked container mounts, so the
 jail uses `--disable_proc --tmpfsmount /proc`; this also makes `/proc` unreadable. The broker

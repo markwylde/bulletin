@@ -42,6 +42,10 @@ export interface SandboxSupervisorOptions {
 const DEFAULT_READY_TIMEOUT_MS = 10_000;
 const DEFAULT_STOP_TIMEOUT_MS = 5_000;
 const MAX_REMEMBERED_STDERR_LINES = 20;
+/** One plugin output line is truncated to this many characters before it is logged. */
+const MAX_OUTPUT_LINE_CHARS = 8 * 1024;
+/** Caps supervisor log throughput per sandbox so a noisy plugin cannot flood the host. */
+const MAX_OUTPUT_LINES_PER_SECOND = 40;
 const JAIL_COMMAND = ["/bin/bun", `${JAIL_BUNDLE_PATH}/server.ts`] as const;
 
 type StartOutcome =
@@ -82,6 +86,10 @@ export class SandboxSupervisor {
   readonly #spawn: SpawnSandbox;
   readonly #now: () => number;
   readonly #stderrLines: string[] = [];
+  #logWindowStartedAt = 0;
+  #logLinesThisWindow = 0;
+  #suppressedLogLines = 0;
+  #truncatedLogLines = 0;
 
   #state: SandboxState = "idle";
   #process: SandboxProcess | undefined;
@@ -165,6 +173,10 @@ export class SandboxSupervisor {
     this.#memoryBytes = null;
     this.#cgroup = null;
     this.#stderrLines.length = 0;
+    this.#logWindowStartedAt = Date.now();
+    this.#logLinesThisWindow = 0;
+    this.#suppressedLogLines = 0;
+    this.#truncatedLogLines = 0;
     this.#startedAt = new Date().toISOString();
     const startedAt = this.#now();
 
@@ -331,6 +343,37 @@ export class SandboxSupervisor {
       const reader = stream.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let truncated = false;
+
+      const consume = (text: string): void => {
+        let index = 0;
+
+        while (index < text.length) {
+          const newline = text.indexOf("\n", index);
+          const end = newline === -1 ? text.length : newline;
+          const segment = text.slice(index, end);
+
+          if (!truncated) {
+            const room = MAX_OUTPUT_LINE_CHARS - buffer.length;
+
+            if (segment.length <= room) {
+              buffer += segment;
+            } else {
+              buffer += segment.slice(0, Math.max(0, room));
+              truncated = true;
+            }
+          }
+
+          if (newline === -1) {
+            break;
+          }
+
+          this.#logSandboxLine(level, buffer, truncated);
+          buffer = "";
+          truncated = false;
+          index = newline + 1;
+        }
+      };
 
       try {
         while (true) {
@@ -340,37 +383,90 @@ export class SandboxSupervisor {
             break;
           }
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-
-          for (const line of lines) {
-            this.#logSandboxLine(level, line);
-          }
+          consume(decoder.decode(value, { stream: true }));
         }
 
-        if (buffer !== "") {
-          this.#logSandboxLine(level, buffer);
+        consume(decoder.decode());
+
+        if (buffer !== "" || truncated) {
+          this.#logSandboxLine(level, buffer, truncated);
         }
       } catch (error) {
         this.#logger.debug("sandbox.log_stream_failed", { error });
+      } finally {
+        this.#flushLogBudget();
       }
     })();
   }
 
-  #logSandboxLine(level: "warn" | "debug", line: string): void {
+  #logSandboxLine(level: "warn" | "debug", line: string, truncated: boolean): void {
     if (line.trim() === "") {
       return;
     }
 
+    const safeLine =
+      line.length > MAX_OUTPUT_LINE_CHARS
+        ? `${line.slice(0, MAX_OUTPUT_LINE_CHARS)}…`
+        : truncated
+          ? `${line}…`
+          : line;
+
+    if (truncated) {
+      this.#truncatedLogLines += 1;
+    }
+
     if (level === "warn") {
-      this.#stderrLines.push(line);
+      this.#stderrLines.push(safeLine);
 
       if (this.#stderrLines.length > MAX_REMEMBERED_STDERR_LINES) {
         this.#stderrLines.shift();
       }
     }
 
-    this.#logger[level]("sandbox.output", { line });
+    if (!this.#takeLogBudget()) {
+      this.#suppressedLogLines += 1;
+      return;
+    }
+
+    this.#logger[level]("sandbox.output", {
+      line: safeLine,
+      ...(truncated ? { truncated: true } : {}),
+    });
+  }
+
+  #takeLogBudget(): boolean {
+    const now = Date.now();
+
+    if (now - this.#logWindowStartedAt >= 1_000) {
+      this.#reportSuppressedOutput();
+      this.#logWindowStartedAt = now;
+      this.#logLinesThisWindow = 0;
+    }
+
+    if (this.#logLinesThisWindow >= MAX_OUTPUT_LINES_PER_SECOND) {
+      return false;
+    }
+
+    this.#logLinesThisWindow += 1;
+    return true;
+  }
+
+  #flushLogBudget(): void {
+    this.#reportSuppressedOutput();
+    this.#logWindowStartedAt = Date.now();
+    this.#logLinesThisWindow = 0;
+  }
+
+  #reportSuppressedOutput(): void {
+    if (this.#suppressedLogLines === 0 && this.#truncatedLogLines === 0) {
+      return;
+    }
+
+    this.#logger.warn("sandbox.output_suppressed", {
+      lines: this.#suppressedLogLines,
+      truncatedLines: this.#truncatedLogLines,
+    });
+    this.#suppressedLogLines = 0;
+    this.#truncatedLogLines = 0;
   }
 }
