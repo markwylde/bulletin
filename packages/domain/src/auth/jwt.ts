@@ -62,6 +62,7 @@ export async function verifyIdToken(
       issuer: expected.issuer,
       audience: expected.clientId,
       algorithms: ["EdDSA", "RS256", "ES256"],
+      requiredClaims: ["exp"],
     });
     payload = verified.payload as Record<string, unknown>;
   } catch (error) {

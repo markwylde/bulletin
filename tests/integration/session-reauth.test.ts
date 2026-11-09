@@ -110,6 +110,8 @@ async function signToken(options: {
   readonly name?: string;
   readonly clientId?: string;
   readonly authTime?: number;
+  /** `null` omits the exp claim entirely. */
+  readonly expiresIn?: string | null;
 }): Promise<string> {
   const payload: Record<string, unknown> = { nonce: options.nonce };
 
@@ -125,14 +127,18 @@ async function signToken(options: {
     payload.auth_time = options.authTime;
   }
 
-  return new SignJWT(payload)
+  const token = new SignJWT(payload)
     .setProtectedHeader({ alg: "EdDSA", kid: "test-key" })
     .setIssuer(ISSUER)
     .setAudience(options.clientId ?? USER_CLIENT)
     .setSubject(options.sub)
-    .setIssuedAt()
-    .setExpirationTime("5m")
-    .sign(privateKey);
+    .setIssuedAt();
+
+  if (options.expiresIn !== null) {
+    token.setExpirationTime(options.expiresIn ?? "5m");
+  }
+
+  return token.sign(privateKey);
 }
 
 async function login(
@@ -434,6 +440,35 @@ integrationDescribe("silent re-auth and background grace", () => {
     });
   }, 20_000);
 
+  test("rejects an ID token without an exp claim", async () => {
+    await withDb("auth_missing_exp", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const challengeResponse = await call(service, "/api/auth/challenge", { body: {} });
+        expect(challengeResponse.status).toBe(200);
+        const challenge = (await challengeResponse.json()) as ChallengeView;
+        const challengeCookie = cookieValue(challengeResponse, "bl_login");
+
+        const response = await call(service, "/api/auth/session", {
+          body: {
+            idToken: await signToken({
+              sub: "no-expiry",
+              nonce: challenge.nonce,
+              expiresIn: null,
+            }),
+          },
+          cookie: `bl_login=${challengeCookie ?? ""}`,
+        });
+        expect(response.status).toBe(401);
+        expect(await response.json()).toEqual({ code: "invalid_token" });
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
   test("completes silent re-auth and extends reauth_at", async () => {
     await withDb("auth_reauth_success", async (database) => {
       const { service, sql } = await serviceFor(database);
@@ -665,7 +700,7 @@ integrationDescribe("silent re-auth and background grace", () => {
     });
   }, 20_000);
 
-  test("rotates a marked session on the next response with a 60 s old-token overlap", async () => {
+  test("rotates a promoted member's session on the next response with a 60 s old-token overlap", async () => {
     await withDb("auth_rotation", async (database) => {
       const { service, sql } = await serviceFor(database);
 
@@ -687,7 +722,17 @@ integrationDescribe("silent re-auth and background grace", () => {
           throw new Error("session missing");
         }
 
-        await service.sessions.markMemberSessionsForRotation(row.member_id);
+        await database.sql.begin(async (tx) => {
+          await tx`
+            UPDATE core.member_groups SET is_primary = false
+            WHERE member_id = ${row.member_id}
+          `;
+          await tx`
+            INSERT INTO core.member_groups (member_id, group_id, is_primary)
+            SELECT ${row.member_id}, id, true
+            FROM core.groups WHERE key = 'administrators'
+          `;
+        });
 
         const rotated = await call(service, "/api/test/protected", {
           cookie: `bl_session=${firstLogin}`,
@@ -908,6 +953,68 @@ integrationDescribe("silent re-auth and background grace", () => {
         expect(await can(database.sql, regular.memberId, "sessions.revoke")).toBe(false);
         expect(await can(database.sql, adminId, "members.view_name_history")).toBe(true);
         expect(await can(database.sql, regular.memberId, "members.view_name_history")).toBe(false);
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("marks sessions for rotation on membership insert, update and delete", async () => {
+    await withDb("auth_group_rotation_trigger", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        await login(service, "trigger-user");
+        const memberId = await memberIdFor(database, "trigger-user");
+        const [session] = (await database.sql`
+          SELECT id FROM core.sessions WHERE member_id = ${memberId}
+        `) as Array<{ id: string }>;
+
+        if (session === undefined) {
+          throw new Error("session missing");
+        }
+
+        const banned = (await database.sql`
+          SELECT id FROM core.groups WHERE key = 'banned'
+        `) as Array<{ id: string }>;
+        const bannedId = banned[0]?.id;
+
+        if (bannedId === undefined) {
+          throw new Error("banned group missing");
+        }
+
+        await database.sql`
+          INSERT INTO core.member_groups (member_id, group_id, is_primary)
+          VALUES (${memberId}, ${bannedId}, false)
+        `;
+        const [inserted] = (await database.sql`
+          SELECT rotate_pending FROM core.sessions WHERE id = ${session.id}
+        `) as Array<{ rotate_pending: boolean }>;
+        expect(inserted?.rotate_pending).toBe(true);
+
+        await database.sql`
+          UPDATE core.sessions SET rotate_pending = false WHERE id = ${session.id}
+        `;
+        await database.sql`
+          DELETE FROM core.member_groups
+          WHERE member_id = ${memberId} AND group_id = ${bannedId}
+        `;
+        const [deleted] = (await database.sql`
+          SELECT rotate_pending FROM core.sessions WHERE id = ${session.id}
+        `) as Array<{ rotate_pending: boolean }>;
+        expect(deleted?.rotate_pending).toBe(true);
+
+        await database.sql`
+          UPDATE core.sessions SET rotate_pending = false WHERE id = ${session.id}
+        `;
+        await database.sql`
+          UPDATE core.member_groups SET is_primary = is_primary WHERE member_id = ${memberId}
+        `;
+        const [updated] = (await database.sql`
+          SELECT rotate_pending FROM core.sessions WHERE id = ${session.id}
+        `) as Array<{ rotate_pending: boolean }>;
+        expect(updated?.rotate_pending).toBe(true);
       } finally {
         await service.close();
         await sql.close();

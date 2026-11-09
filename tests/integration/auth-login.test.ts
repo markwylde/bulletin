@@ -712,4 +712,45 @@ integrationDescribe("login flow", () => {
       }
     });
   }, 20_000);
+
+  test("bypasses the session cache when listener health fails", async () => {
+    await withDb("auth_session_cache_health", async (database) => {
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name) VALUES ('Unhealthy Cache User') RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined) {
+        throw new Error("member missing");
+      }
+
+      const token = "unhealthy-cache-token";
+      const [session] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${member.id}, 'user', ${hashToken(token)}, now() + interval '24 hours')
+        RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (session === undefined) {
+        throw new Error("session missing");
+      }
+
+      const sql = new SQL(roleUrl(database.url, "user_api"));
+      const store = await createSessionStore({ sql, cacheTtlMs: 60_000 });
+
+      try {
+        expect(await store.find("user", token)).not.toBeNull();
+
+        await database.sql`
+          UPDATE core.sessions SET revoked_at = now() WHERE id = ${session.id}
+        `;
+        expect(await store.find("user", token)).not.toBeNull();
+
+        store.setListenerHealthy(false);
+        expect(await store.find("user", token)).toBeNull();
+      } finally {
+        await store.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
 });

@@ -2,6 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
+import { closeSessionReadPool, currentSessionReauthAt } from "./session.ts";
 
 const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
 const authIssuer = process.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080";
@@ -12,9 +13,10 @@ const NON_PAGE_PREFIXES = ["/api/", "/health/", "/auth/", "/_", "/@", "/src/"];
 
 if (import.meta.env.DEV) {
   process.once("SIGTERM", () => {
-    void drain
-      ?.drain(Number(process.env.BULLETIN_DRAIN_TIMEOUT_MS ?? 25_000))
-      .finally(() => process.exit(0));
+    void drain?.drain(Number(process.env.BULLETIN_DRAIN_TIMEOUT_MS ?? 25_000)).finally(() => {
+      void closeSessionReadPool();
+      process.exit(0);
+    });
   });
 }
 
@@ -28,37 +30,6 @@ async function readiness(): Promise<{ status: number; body: unknown }> {
     return { status: response.ok ? 200 : 503, body };
   } catch {
     return { status: 503, body: { status: "unavailable", checks: { userApi: false } } };
-  }
-}
-
-interface SessionProbe {
-  readonly authenticated?: boolean;
-  readonly reauthAt?: string | null;
-}
-
-async function navigationNeedsReauth(pathname: string, cookie: string | null): Promise<boolean> {
-  try {
-    const response = await fetch(`${userApiUrl}/api/auth/session`, {
-      headers: {
-        accept: "application/json",
-        ...(cookie === null ? {} : { cookie }),
-      },
-    });
-
-    if (!response.ok) {
-      return false;
-    }
-
-    const session = (await response.json()) as SessionProbe;
-
-    return shouldRedirectToReauth({
-      method: "GET",
-      secFetchMode: "navigate",
-      pathname,
-      reauthAt: session.authenticated === true ? (session.reauthAt ?? null) : null,
-    });
-  } catch {
-    return false;
   }
 }
 
@@ -95,8 +66,21 @@ export const onRequest = defineMiddleware(async (context, next) => {
       isNavigation &&
       !NON_PAGE_PREFIXES.some((prefix) => context.url.pathname.startsWith(prefix))
     ) {
+      let reauthAt: string | null = null;
+
+      try {
+        reauthAt = await currentSessionReauthAt(context.request.headers.get("cookie"));
+      } catch {
+        reauthAt = null;
+      }
+
       if (
-        await navigationNeedsReauth(context.url.pathname, context.request.headers.get("cookie"))
+        shouldRedirectToReauth({
+          method: "GET",
+          secFetchMode: "navigate",
+          pathname: context.url.pathname,
+          reauthAt,
+        })
       ) {
         return secure(
           context.redirect(reauthRedirectUrl(`${context.url.pathname}${context.url.search}`), 303),

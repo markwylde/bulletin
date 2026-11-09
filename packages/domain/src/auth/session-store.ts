@@ -33,8 +33,8 @@ export interface SessionStore extends SessionLookup {
   revoke(sessionId: string): Promise<void>;
   /** Revokes every session of a member; returns how many were active. */
   revokeMemberSessions(memberId: string): Promise<number>;
-  /** Marks a member's sessions for rotation on their next response. */
-  markMemberSessionsForRotation(memberId: string): Promise<void>;
+  /** Test/ops seam: when unhealthy the cache is bypassed until the listener recovers. */
+  setListenerHealthy(healthy: boolean): void;
   invalidate(): void;
   close(): Promise<void>;
 }
@@ -58,6 +58,8 @@ interface SessionRow {
 
 const CACHE_TTL_MS = 5_000;
 const ROTATION_OVERLAP_MS = 60_000;
+const HEALTH_CHANNEL = "session_cache_health";
+const HEALTH_INTERVAL_MS = 5_000;
 
 function toDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
@@ -156,15 +158,46 @@ export async function createSessionStore(
   const now = options.now ?? (() => new Date());
   const ttlMs = options.cacheTtlMs ?? CACHE_TTL_MS;
   const cache = new Map<string, { readonly record: SessionRecord; readonly expiresAt: number }>();
-  const subscription = await options.sql.listen("session_revoked", () => {
-    cache.clear();
-  });
+  let listenerHealthy = false;
+  const subscription = await options.sql.listen(
+    "session_revoked",
+    () => {
+      cache.clear();
+    },
+    () => {
+      listenerHealthy = true;
+    },
+  );
+  const healthSubscription = await options.sql.listen(
+    HEALTH_CHANNEL,
+    () => {
+      listenerHealthy = true;
+    },
+    () => {
+      listenerHealthy = true;
+    },
+  );
+  listenerHealthy = true;
+
+  const healthTimer = setInterval(() => {
+    listenerHealthy = false;
+    void options.sql.notify(HEALTH_CHANNEL, createToken()).catch(() => {
+      listenerHealthy = false;
+    });
+  }, HEALTH_INTERVAL_MS);
+
+  healthTimer.unref?.();
 
   function keyFor(kind: SessionKind, token: string): string {
     return `${kind}:${Buffer.from(hashToken(token)).toString("hex")}`;
   }
 
   async function find(kind: SessionKind, token: string): Promise<SessionRecord | null> {
+    if (!listenerHealthy) {
+      cache.clear();
+      return loadSession(options.sql, kind, token, now());
+    }
+
     const key = keyFor(kind, token);
     const cached = cache.get(key);
 
@@ -250,27 +283,25 @@ export async function createSessionStore(
     return rows.length;
   }
 
-  async function markMemberSessionsForRotation(memberId: string): Promise<void> {
-    await options.sql`
-      UPDATE core.sessions SET rotate_pending = true
-      WHERE member_id = ${memberId} AND revoked_at IS NULL
-    `;
-    // The cache carries `rotate_pending`; wake it so the next response rotates promptly.
-    await options.sql`SELECT pg_notify('session_revoked', ${memberId})`;
-    cache.clear();
-  }
-
   return {
     find,
     touch,
     rotate,
     revoke,
     revokeMemberSessions,
-    markMemberSessionsForRotation,
+    setListenerHealthy(healthy: boolean) {
+      listenerHealthy = healthy;
+
+      if (!healthy) {
+        cache.clear();
+      }
+    },
     invalidate: () => cache.clear(),
     async close() {
+      clearInterval(healthTimer);
       cache.clear();
       await subscription.unlisten();
+      await healthSubscription.unlisten();
     },
   };
 }
