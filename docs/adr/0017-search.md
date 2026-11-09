@@ -7,7 +7,9 @@
   (set from the forum language or detected at write time; `english`, `spanish`, `french` or
   `simple`). They also have a **generated** column
   `tsv tsvector GENERATED ALWAYS AS (to_tsvector(lang, title/body_text)) STORED` with a GIN
-  index. `body_text` is plain text produced by the content pipeline (ADR 0007).
+  index. `body_text` is plain text produced by the content pipeline (ADR 0007). It **excludes
+  quote snapshots**, so quoted text from other posts is never searchable or highlighted through
+  the quoting post.
 - **Querying**: `websearch_to_tsquery` is run against both the viewer's locale config and
   `simple`, ORed together, so mixed-language content still matches. Results are ranked with
   `ts_rank_cd` plus recency. `pg_trgm` is used for member names and title fuzzy matching.

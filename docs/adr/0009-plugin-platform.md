@@ -18,12 +18,18 @@ member, or take the board down.
   review capabilities → approve → verify signature and checksum → store in S3 → run migrations
   → start the sandbox → bump `pluginsGeneration`.
 - **Lifecycle states**: `installing → active → disabled → uninstalled`, plus `failed`.
-- **Upgrades are all-or-nothing**:
-  - All pending migrations for an upgrade run in **one transaction** in the plugin's schema.
-    Non-transactional statements (`CREATE INDEX CONCURRENTLY`, `VACUUM`, …) are rejected at
-    bundle validation.
-  - On failure, everything rolls back and the **old version stays active, unchanged**.
-  - On success, the new code is activated and `pluginsGeneration` is bumped.
+- **Upgrades: old code never runs against a new schema.** The steps are recorded in
+  `core.plugin_operations`, so a crash resumes from the last completed step.
+  1. **Quiesce**: the state becomes `upgrading`. Its hooks are skipped (as if disabled), its
+     routes return 503, the broker stops dispatching its jobs and events (they stay queued),
+     and the old sandbox stops after in-flight calls finish (≤ 10 s, then killed).
+  2. **Migrate**: all pending migrations run in **one transaction**. Non-transactional
+     statements are rejected at bundle validation. On failure, everything rolls back, the old
+     sandbox restarts and the state returns to `active` at the old version.
+  3. **Activate**: the new sandbox starts and must pass a health check. On success, the
+     state becomes `active`, `pluginsGeneration` bumps and queues resume. On failure, the
+     state becomes `failed` (behaves as disabled) at the new schema. The admin can retry or
+     uninstall. The old code is not restarted.
   - Downgrades are not supported. Restoring a previous version means uninstall plus a data
     export/import that the plugin provides.
 
@@ -35,8 +41,13 @@ member, or take the board down.
   - cgroup CPU, memory and pids limits, plus a wall-clock watchdog that kills it,
   - no environment secrets. Its broker token is passed over the socket at start.
 - **Everything goes through the broker**, which enforces the plugin's approved capabilities:
-  - **DB**: SQL runs as role `plugin_<id>` with: USAGE/CREATE only on schema `plugin_<id>`;
-    no access to `core`, `pii`, `pgboss`, `public` or other plugins;
+  - **DB roles**: two roles per plugin.
+    - `plugin_<id>_owner` (NOLOGIN) owns schema `plugin_<id>` and every object in it. It is
+      used **only by the installer during migrations**.
+    - `plugin_<id>` is the runtime role. It has **DML only** (SELECT/INSERT/UPDATE/DELETE on
+      the schema's tables, USAGE on its sequences): no CREATE, no ownership, and no grant
+      option, so it cannot create objects or regrant privileges. DDL exists only in migrations.
+  - **Runtime role limits**: no access to `core`, `pii`, `pgboss`, `public` or other plugins;
     `CONNECTION LIMIT 2`; `statement_timeout 2s`; `idle_in_transaction_session_timeout 5s`;
     temp table quota. The broker rejects `LISTEN`, `NOTIFY`, `COPY … PROGRAM`, `SET ROLE`
     and other session-level commands.
@@ -45,9 +56,16 @@ member, or take the board down.
     - the role has `work_mem`, `temp_file_limit` and `statement_timeout` set, plus
       `maintenance_work_mem` caps,
     - the broker limits each plugin to 2 concurrent statements and a statements/second rate,
-    - **storage quota**: a worker measures `pg_total_relation_size` for the plugin schema every
-      5 minutes. Over quota (default 1 GB, admin-configurable), the plugin's
-      INSERT/UPDATE grants are revoked and admins are alerted,
+    - **storage quota**: Postgres has no hard per-schema quota, so growth is bounded rather than
+      prevented:
+      - Only DML can allocate space at runtime, because the runtime role cannot CREATE.
+      - The broker caps statements per second, and `statement_timeout` caps work per statement.
+      - A worker measures the schema size every 60 s. Over quota (default 1 GB), it revokes
+        INSERT/UPDATE from the runtime role, which sticks because the role isn't the owner, and
+        alerts admins.
+      - The maximum overshoot is therefore one minute of rate-limited writes.
+      - **Hard isolation** of core availability needs a separate plugin cluster (below).
+        The staff app shows a warning when untrusted plugins share the core cluster in production.
     - `CREATE EXTENSION`, untrusted languages, `CREATE FUNCTION … SECURITY DEFINER`, and
       triggers on anything outside its schema are disallowed (`plpgsql` only),
     - production may point all plugin schemas at a **separate Postgres cluster**
@@ -62,8 +80,17 @@ member, or take the board down.
       couldn't read.
     - **In a background context** (event subscribers, jobs), calls use the plugin's
       **service principal**, a service member in normal groups plus capability scopes.
-      Background output can only reach viewers by writing back through core APIs, which
-      re-apply `can()` on read.
+    - **Confidentiality contract**: a plugin can store anything its service principal reads,
+      in its schema or memory, and may later show it to any viewer. Enforcing per-datum
+      provenance inside arbitrary plugin code is infeasible, so we bound the risk instead:
+      - **A plugin's service principal defaults to the Guests group**, so background access is
+        public content only.
+      - Granting a plugin access beyond Guests is an explicit admin step at install or later.
+        It uses a red warning naming the forums: "this plugin can read X and may display or
+        repost it to anyone".
+      - The guarantee is therefore: **a plugin can only disclose what an admin explicitly let
+        its service principal read.** Viewer-context intersection still prevents a plugin from
+        using a privileged viewer's request to read more.
     - PII requires an explicit audited capability (ADR 0012).
   - **HTTP egress**: through the broker's proxy, allowed only to manifest-declared hosts, with
     SSRF rules.
