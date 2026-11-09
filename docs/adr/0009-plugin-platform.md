@@ -1,6 +1,6 @@
 # 0009 — Plugin platform
 
-**Status:** Accepted, pending spike S2 (revised after review)
+**Status:** Accepted (spike S2 findings recorded below; revised after review)
 
 ## Context
 Admins install plugins from **our marketplace** at runtime, with no rebuild. Plugins are
@@ -191,12 +191,82 @@ member, or take the board down.
 - Health, timings and logs are visible in the staff app.
 - The SDK is semver'd, with compatibility shims for one major version.
 
-### Spike S2 (before feature work)
-Runs as change `plugin-sandbox-spike`, straight after the foundation.
-Prove the nsjail sandbox inside rootless Podman and Docker: the broker socket, DB role
-restrictions and egress proxy. Include a **malicious-plugin test suite**: read `core`/`pii`,
-`LISTEN`, open sockets, fork-bomb, exhaust memory, read sibling bundles, read env and
-`/proc`, and escape via the iframe bridge. Record required container capabilities here.
+### Spike S2 findings (plugin-sandbox-spike)
+Ran as change `plugin-sandbox-spike`, straight after the foundation. Outcome: the brokered
+nsjail model is **accepted**; no superseding ADR is needed. The prototype is in
+`apps/plugin-host`; `plugin-platform` hardens it. Raw measurements, reproduction commands and
+the day-to-day notes are in `apps/plugin-host/README.md` and `docs/dev.md`.
+
+**Engines.** Verified end-to-end on rootful Podman 6.1.4 and rootless Podman 6.1.4 (Linux
+7.2.7, cgroup v2, aarch64) with Bun 1.4.0 and nsjail 3.4: sandbox spawn and handshake, broker
+DB roles and statement allowlist, egress proxy, and the malicious-plugin suite. The local
+environment had no Docker Engine (its `docker` CLI points at Podman); the CI E2E matrix runs
+the same compose contract and malicious suite on Docker and on rootless Podman.
+
+**Required container capabilities.** Only the plugin-host container is privileged:
+- Engine default capabilities stay in place, plus `SYS_ADMIN`. Dropping everything and
+  re-adding a smaller set breaks nsjail's namespace and mount setup in this image.
+- `seccomp=unconfined` on the outer container: Docker's default profile rejects
+  `CLONE_NEWUSER`. The jail installs its own filter, which is the security boundary.
+  `label=disable` is needed on SELinux hosts.
+- `cgroup: host` and a writable `/sys/fs/cgroup`. Rootful engines can write the host cgroup
+  root; rootless Podman needs the systemd-delegated `user.slice` parent, discovered at
+  startup. No per-plugin container fallback is required.
+- nsjail maps the per-plugin UID and also maps UID 0 for its own mount/cgroup setup; the
+  plugin process runs as the per-plugin UID (verified via `/proc/<pid>/status`).
+
+**Seccomp profile.** `apps/plugin-host/src/sandbox/seccomp.ts` builds a default-deny Kafel
+policy passed with `--seccomp_string`:
+- It must be the bare `ALLOW { … }` form; a named `POLICY` block compiles but is ignored by
+  nsjail 3.4, denying everything.
+- The allowlist covers the syscalls a broker-connected Bun needs. Kafel's aarch64 table lacks
+  some (`uname`, `fstat`, `sysinfo`, `close_range`, `epoll_pwait2`, `sched_setscheduler`,
+  …), so they are added through numeric aliases chosen per architecture.
+- Denied: `ptrace`, `mount`/`unshare`/`setns`/`pivot_root`/`chroot`, module, BPF, kexec,
+  perf, keyring and handle syscalls, `userfaultfd`, `setuid`/`setgid`/`capset`, reboot, swap,
+  syslog and other host-administration calls.
+- `socket` stays allowed for the broker's AF_UNIX socket; the empty network namespace is the
+  network boundary.
+- The jail sets `BUN_RUNTIME_TRANSPILER_CACHE_PATH=0`: Bun's transpiler cache otherwise adds
+  file syscalls outside the profile, killing the plugin with a silent `SIGSYS`.
+
+**Measured overhead.** Default limits: 256 MiB, 64 pids, 500 ms CPU per second.
+
+| Metric | Rootful Podman | Rootless Podman |
+|---|---|---|
+| Spawn → handshake | median 20 ms, mean 22 ms, p95 31 ms | median 25 ms, mean 25 ms, p95 33 ms |
+| Sandbox `memory.current`, warm | mean 3.6 MiB | mean 3.5 MiB |
+| Anonymous memory, warm | mean 3.0 MiB | mean 3.0 MiB |
+
+A cold first sandbox is ~20 MiB; ~17 MiB of that is shared Bun/loader page cache. The nsjail
+process tree's RSS over-counts shared pages (~38 MiB) and is only a cross-check.
+
+**Broker and egress evidence.** Framed JSON-RPC, the `plugin_<id>` / `plugin_<id>_owner`
+roles, role settings, the DML-only AST allowlist (own schema, pure/plugin functions, result
+caps), and the egress host allowlist/private-address/redirect rules are covered by unit tests
+and real-Postgres integration tests. The malicious suite proves core/pii reads, runtime DDL,
+`LISTEN`, TCP connect, sibling/host reads, environment secrets and `/proc` are denied; a fork
+bomb and memory exhaustion are contained and the supervisor can start a benign sandbox
+afterwards.
+
+**Container caveat.** A fresh procfs cannot be mounted under locked container mounts, so the
+jail uses `--disable_proc --tmpfsmount /proc`; this also makes `/proc` unreadable. The broker
+socket is a shared 0666 socket in the spike; per-plugin sockets and broker tokens belong to
+`plugin-platform`.
+
+**Follow-ups owned by `plugin-platform`** (no `docs/roadmap.md` scope change):
+- Out-of-session statement deadline cancellation; the spike relies on the role's
+  `statement_timeout = '2s'` (`plugin-platform` task 2.5).
+- Primary DNS pinning for egress: every resolved address is checked, but `fetch` resolves
+  again, leaving a rebinding window (`plugin-platform` task 2.4).
+- Installer credentials (`plugin_migrator`) instead of the local administrator, per-install
+  role credentials, per-plugin sockets/tokens, the supervisor pool/restart/backoff, and
+  cluster-wide vs per-database role settings.
+- Iframe bridge escape is not covered here because client apps are a non-goal of this spike;
+  it belongs to `plugin-platform` tasks 2.4/3.10.
+- At the pids limit, Bun 1.4.0 `Bun.spawn` can block instead of throwing. The cgroup contains
+  it (`pids.current <= pids.max`) and the supervisor kills the sandbox, but supervisor
+  hardening must treat a blocked plugin as unhealthy.
 
 ## Consequences
 - The plugin-host, broker and SDK are first-class products.
