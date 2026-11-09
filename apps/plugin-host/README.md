@@ -179,6 +179,24 @@ Notes:
   `/proc/self/cgroup`; the Docker row is produced by the E2E CI job, which runs this command
   on Docker and rootless Podman.
 
+## Malicious-plugin suite (task 3)
+
+`src/malicious/malicious.test.ts` spawns a probe bundle (`src/malicious/plugin`) under nsjail
+once per case. The probe reports through the broker; the tests assert denial/containment and
+then start a benign demo sandbox to prove the supervisor and broker still work.
+
+```bash
+docker compose exec -T -e BULLETIN_SANDBOX_TESTS=1 plugin-host \
+  bun test apps/plugin-host/src/malicious/malicious.test.ts
+```
+
+Cases: read `core`, read `pii`, runtime DDL, `LISTEN`, TCP connect, sibling bundle/host paths,
+environment secrets, `/proc`, fork bomb and memory exhaustion. The fork and memory cases use
+tighter limits (`pids/nproc=32`, memory 128 MiB) and also verify the cgroup pids count.
+
+The suite is skipped in the normal test image (no nsjail/capabilities). CI runs it on Docker
+and rootless Podman after the E2E stack is healthy.
+
 ## nsjail / container caveats found
 
 - nsjail 3.4 needs **CAP_SYS_ADMIN** and cgroupns=host to create one cgroup per sandbox.
@@ -196,6 +214,12 @@ Notes:
 - A fresh procfs cannot be mounted inside locked container mounts (`mount('/proc')` gets
   `EPERM` and nsjail refuses when the outer `/proc` has masked paths). The jail uses
   `--disable_proc --tmpfsmount /proc`, which is also what makes `/proc` unreadable.
+- Bun writes its runtime transpiler cache by default. Inside the jail that adds file syscalls
+  outside the default-deny profile; the process died with a silent `SIGSYS` while executing a
+  larger fixture. The jail sets `BUN_RUNTIME_TRANSPILER_CACHE_PATH=0`.
+- At the cgroup pids limit, `Bun.spawn` can block instead of throwing in Bun 1.4.0. The
+  sandbox is still contained: the malicious fork case verifies `pids.current <= pids.max` and
+  the supervisor can start a benign sandbox after killing it.
 - The plugin UID must be mapped alongside UID 0 (`--user <id>:<id>:1 --user 0:0:1`) or
   nsjail cannot perform the mount setup after entering the user namespace. The process itself
   runs as the plugin UID (verified via `/proc/<pid>/status`).

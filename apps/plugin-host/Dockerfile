@@ -19,7 +19,7 @@ RUN mkdir -p /opt/plugin-rootfs/bin /opt/plugin-rootfs/lib /opt/plugin-rootfs/us
 WORKDIR /app
 COPY . .
 RUN bun install --frozen-lockfile \
- && chmod -R a+rX /app/apps/plugin-host/src/spike/plugin
+ && chmod -R a+rX /app/apps/plugin-host/src/spike/plugin /app/apps/plugin-host/src/malicious/plugin
 
 FROM deps AS dev
 

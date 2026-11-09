@@ -101,6 +101,7 @@ describe("nsjail arguments", () => {
     expect(valuesOf(args, "--env")).toEqual([
       "HOME=/tmp",
       "TMPDIR=/tmp",
+      "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0",
       "PLUGIN_ID=sandbox-demo",
       `PLUGIN_SOCKET=${JAIL_SOCKET_PATH}`,
     ]);

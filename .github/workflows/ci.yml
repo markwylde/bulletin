@@ -100,6 +100,16 @@ jobs:
               plugin-host bun apps/plugin-host/src/spike/measure.ts
           fi
 
+      - name: Run malicious-plugin suite
+        run: |
+          if [ "${{ matrix.engine }}" = "podman" ]; then
+            podman compose exec -T -e BULLETIN_SANDBOX_TESTS=1 plugin-host \
+              bun test apps/plugin-host/src/malicious/malicious.test.ts
+          else
+            docker compose exec -T -e BULLETIN_SANDBOX_TESTS=1 plugin-host \
+              bun test apps/plugin-host/src/malicious/malicious.test.ts
+          fi
+
       - name: Run full-stack integration suites
         run: bun run test:integration
 

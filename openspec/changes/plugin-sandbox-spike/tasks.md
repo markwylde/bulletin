@@ -12,8 +12,8 @@
 
 ## 3. Malicious cases
 
-- [ ] 3.1 Write the malicious-plugin cases (read `core`/`pii`, runtime DDL, `LISTEN`, TCP socket, fork bomb, memory exhaustion, sibling bundle, env and `/proc`) as `bun test` integration tests that assert denial and a healthy supervisor
-- [ ] 3.2 Run the cases in CI on Docker and rootless Podman
+- [x] 3.1 Write the malicious-plugin cases (read `core`/`pii`, runtime DDL, `LISTEN`, TCP socket, fork bomb, memory exhaustion, sibling bundle, env and `/proc`) as `bun test` integration tests that assert denial and a healthy supervisor
+- [x] 3.2 Run the cases in CI on Docker and rootless Podman
 
 ## 4. Decision
 

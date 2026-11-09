@@ -142,6 +142,8 @@ export function buildNsjailArgs(sandbox: NsjailSandbox): string[] {
     "--env",
     "TMPDIR=/tmp",
     "--env",
+    "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0",
+    "--env",
     `PLUGIN_ID=${sandbox.pluginId}`,
     "--env",
     `PLUGIN_SOCKET=${JAIL_SOCKET_PATH}`,

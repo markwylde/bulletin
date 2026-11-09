@@ -31,6 +31,8 @@ export interface SandboxSupervisorOptions {
   /** Time allowed for nsjail + Bun + the broker handshake. */
   readonly readyTimeoutMs?: number;
   readonly stopTimeoutMs?: number;
+  /** Jail command; defaults to the demo plugin. Tests use a different fixture entry. */
+  readonly command?: readonly string[];
   readonly spawn?: SpawnSandbox;
   /** Test seam: finds nsjail's clone target. Defaults to reading `/proc`. */
   readonly resolveChildPid?: (pid: number) => Promise<number | undefined>;
@@ -145,7 +147,7 @@ export class SandboxSupervisor {
         cgroupV2Mount: this.#options.cgroupV2Mount,
         seccompPolicy: this.#options.seccompPolicy,
         limits: this.#options.limits,
-        command: JAIL_COMMAND,
+        command: this.#options.command ?? JAIL_COMMAND,
       });
     } catch (error) {
       this.#state = "failed";
