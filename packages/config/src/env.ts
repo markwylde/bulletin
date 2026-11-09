@@ -32,6 +32,11 @@ export interface AppConfig {
   readonly bootstrapAdmins: readonly BootstrapAdmin[];
 }
 
+/** Port published by the local proxy when `BULLETIN_HTTP_PORT` is unset (ADR 0002). */
+export const DEFAULT_HTTP_PORT = 8080;
+
+const DEFAULT_AUTH_ORIGIN = `http://auth.bulletin.localhost:${DEFAULT_HTTP_PORT}`;
+
 /**
  * Development-only defaults. Every value here must work without a `.env` file.
  * Secrets in this table are rejected when `NODE_ENV=production` (ADR 0002).
@@ -43,17 +48,14 @@ export const DEVELOPMENT_DEFAULTS = {
   SESSION_SECRET: "bulletin-development-only-session-secret",
   SEED: 42,
   SEED_SIZE: "default",
-  BULLETIN_AUTH_ISSUER: "http://auth.bulletin.localhost:8080",
-  BULLETIN_AUTH_JWKS_URL: "http://auth.bulletin.localhost:8080/.well-known/jwks.json",
-  BULLETIN_AUTH_TOKEN_URL: "http://auth.bulletin.localhost:8080/token",
+  BULLETIN_AUTH_ISSUER: DEFAULT_AUTH_ORIGIN,
+  BULLETIN_AUTH_JWKS_URL: `${DEFAULT_AUTH_ORIGIN}/.well-known/jwks.json`,
+  BULLETIN_AUTH_TOKEN_URL: `${DEFAULT_AUTH_ORIGIN}/token`,
   BULLETIN_AUTH_USER_CLIENT_ID: "bulletin-user",
   BULLETIN_AUTH_STAFF_CLIENT_ID: "bulletin-staff",
-  BULLETIN_USER_ORIGIN: "http://bulletin.localhost:8080",
-  BULLETIN_STAFF_ORIGIN: "http://staff.bulletin.localhost:8080",
+  BULLETIN_USER_ORIGIN: `http://bulletin.localhost:${DEFAULT_HTTP_PORT}`,
+  BULLETIN_STAFF_ORIGIN: `http://staff.bulletin.localhost:${DEFAULT_HTTP_PORT}`,
 } as const;
-
-/** Port published by the local proxy when `BULLETIN_HTTP_PORT` is unset (ADR 0002). */
-export const DEFAULT_HTTP_PORT = 8080;
 
 const PORT_BOUNDS = { min: 1, max: 65_535 } as const;
 const SEED_BOUNDS = { min: 0, max: 0xff_ff_ff_ff } as const;
