@@ -1,0 +1,7 @@
+{
+  "staff.placeholder.body": "The staff console is being prepared.",
+  "staff.placeholder.title": "Bulletin staff",
+  "topic.reply.count": "{count, plural, =0 {No replies} one {# reply} other {# replies}}",
+  "user.placeholder.body": "The Bulletin community is being prepared.",
+  "user.placeholder.title": "Bulletin"
+}

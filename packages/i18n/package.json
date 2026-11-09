@@ -4,9 +4,14 @@
   "type": "module",
   "description": "Message catalogs and the ICU formatter.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./catalogs": "./src/catalogs.ts",
+    "./lint": "./src/lint.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "intl-messageformat": "^12.1.5"
   }
 }
