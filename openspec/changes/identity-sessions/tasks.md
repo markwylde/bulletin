@@ -24,7 +24,7 @@
 ## 4. CSRF and headers
 
 - [x] 4.1 Implement Origin and CSRF middleware for all non-GET app API routes with the named ADR 0018 exemptions (challenge, session, beacon, overlay, signed unsubscribe) as an explicit allowlist, with tests for missing/invalid token, wrong Origin, and that no other route can be exempted
-- [ ] 4.2 Implement security headers (CSP nonce plumbing for Astro and the staff app) and verify with header tests on representative routes
+- [x] 4.2 Implement security headers (CSP nonce plumbing for Astro and the staff app) and verify with header tests on representative routes
 
 ## 5. Display names
 

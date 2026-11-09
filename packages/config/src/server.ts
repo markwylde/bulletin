@@ -9,6 +9,7 @@ import {
   type ServiceName,
 } from "./connections.ts";
 import { createLogger, type Logger } from "./log.ts";
+import { applySecurityHeaders, createCspNonce, type SecurityHeadersConfig } from "./security.ts";
 
 export interface HealthCheck {
   readonly name: string;
@@ -37,6 +38,8 @@ export interface StartServiceOptions {
   readonly budget?: ConnectionBudgetConfig;
   readonly onShutdown?: () => Promise<void>;
   readonly logger?: Logger;
+  /** App-origin security headers, applied to every response. */
+  readonly security?: SecurityHeadersConfig;
 }
 
 export interface RunningService {
@@ -275,6 +278,20 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
     );
   };
 
+  const secure = (response: Response): Response => {
+    if (options.security === undefined) {
+      return response;
+    }
+
+    return applySecurityHeaders(response, {
+      nonce: createCspNonce(),
+      nodeEnv: options.security.nodeEnv,
+      ...(options.security.connectSrc === undefined
+        ? {}
+        : { connectSrc: options.security.connectSrc }),
+    });
+  };
+
   const server = Bun.serve({
     port: options.port,
     ...(options.hostname === undefined ? {} : { hostname: options.hostname }),
@@ -282,11 +299,11 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       const url = new URL(request.url);
 
       if (url.pathname === "/health/live") {
-        return Response.json({ status: "ok", service: options.service });
+        return secure(Response.json({ status: "ok", service: options.service }));
       }
 
       if (url.pathname === "/health/ready") {
-        return readiness();
+        return secure(await readiness());
       }
 
       active += 1;
@@ -301,7 +318,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
         requestLogger.info("request.started");
         const response = await options.fetch(request);
         requestLogger.info("request.completed", { status: response.status });
-        return trackResponse(response);
+        return trackResponse(secure(response));
       } catch (error) {
         requestLogger.error("request.failed", { error });
         finishRequest();

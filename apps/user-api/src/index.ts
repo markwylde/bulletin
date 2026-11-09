@@ -51,6 +51,7 @@ await startService({
     service: "user-api",
     replicas: parseReplicas(Bun.env.BULLETIN_REPLICAS),
   },
+  security: { nodeEnv: config.nodeEnv, connectSrc: [config.authIssuer] },
   async onShutdown() {
     await auth.close();
     await listener.close();

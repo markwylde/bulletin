@@ -1,8 +1,11 @@
 import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
+import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
 
 const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
+const authIssuer = process.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080";
+const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const drain = import.meta.env.DEV ? createDrainController() : null;
 
 const NON_PAGE_PREFIXES = ["/api/", "/health/", "/auth/", "/_", "/@", "/src/"];
@@ -61,19 +64,27 @@ async function navigationNeedsReauth(pathname: string, cookie: string | null): P
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const finish = drain?.track();
+  const nonce = createCspNonce();
+  context.locals.cspNonce = nonce;
+  const secure = (response: Response): Response =>
+    applySecurityHeaders(response, {
+      nonce,
+      nodeEnv,
+      connectSrc: [authIssuer],
+    });
 
   try {
     if (context.url.pathname === "/health/live") {
-      return Response.json({ status: "ok", service: "user-app" });
+      return secure(Response.json({ status: "ok", service: "user-app" }));
     }
 
     if (context.url.pathname === "/health/ready") {
       if (drain?.draining === true) {
-        return Response.json({ status: "draining", checks: {} }, { status: 503 });
+        return secure(Response.json({ status: "draining", checks: {} }, { status: 503 }));
       }
 
       const result = await readiness();
-      return Response.json(result.body, { status: result.status });
+      return secure(Response.json(result.body, { status: result.status }));
     }
 
     const isNavigation =
@@ -87,14 +98,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
       if (
         await navigationNeedsReauth(context.url.pathname, context.request.headers.get("cookie"))
       ) {
-        return context.redirect(
-          reauthRedirectUrl(`${context.url.pathname}${context.url.search}`),
-          303,
+        return secure(
+          context.redirect(reauthRedirectUrl(`${context.url.pathname}${context.url.search}`), 303),
         );
       }
     }
 
-    return await next();
+    return secure(await next());
   } finally {
     finish?.();
   }

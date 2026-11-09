@@ -4,6 +4,7 @@ import { USER_CATALOGS } from "../catalogs.ts";
 
 const messages = JSON.stringify(USER_CATALOGS);
 const t = createServerT("en", { shipped: USER_CATALOGS });
+const nonce = Astro.locals.cspNonce;
 ---
 <!doctype html>
 <html lang="en">
@@ -11,7 +12,7 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{t("common.siteName")}</title>
-    <style>
+    <style nonce={nonce}>
       :root {
         color-scheme: light dark;
         font-family: system-ui, sans-serif;
@@ -158,7 +159,7 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
       </div>
     </main>
     <script type="application/json" id="i18n-catalog" set:html={messages}></script>
-    <script is:inline>
+    <script is:inline nonce={nonce}>
       (() => {
         const data = JSON.parse(document.getElementById("i18n-catalog").textContent);
         const params = new URLSearchParams(window.location.search);

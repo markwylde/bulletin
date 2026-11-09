@@ -385,6 +385,7 @@ services:
       PORT: "4321"
       DATABASE_URL: postgres://user_app@postgres:5432/bulletin
       USER_API_INTERNAL_URL: http://user-api:3001
+      BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
@@ -523,6 +524,7 @@ services:
       <<: *app-environment
       PORT: "5173"
       STAFF_API_INTERNAL_URL: http://staff-api:3002
+      BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres

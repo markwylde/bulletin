@@ -1,9 +1,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createDrainController } from "@bulletin/config/drain";
+import { createCspNonce, securityHeaders } from "@bulletin/config/security";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 
 const staffApiUrl = process.env.STAFF_API_INTERNAL_URL ?? "http://staff-api:3002";
+const authIssuer = process.env.BULLETIN_AUTH_ISSUER ?? "http://auth.bulletin.localhost:8080";
+const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
+const cspNonce = createCspNonce();
 
 async function readiness(): Promise<{ status: number; body: unknown }> {
   try {
@@ -16,6 +20,40 @@ async function readiness(): Promise<{ status: number; body: unknown }> {
   } catch {
     return { status: 503, body: { status: "unavailable", checks: { staffApi: false } } };
   }
+}
+
+function cspPlugin(): Plugin {
+  const headers = securityHeaders({
+    nonce: cspNonce,
+    nodeEnv,
+    connectSrc: [authIssuer],
+  });
+  const applyHeaders = (
+    _request: IncomingMessage,
+    response: ServerResponse,
+    next: () => void,
+  ): void => {
+    for (const [name, value] of headers) {
+      response.setHeader(name, value);
+    }
+    next();
+  };
+
+  return {
+    name: "bulletin-csp",
+    transformIndexHtml: {
+      order: "post",
+      handler(html) {
+        return html.replace(/<(script|style)(?![^>]*\bnonce=)/gi, `<$1 nonce="${cspNonce}"`);
+      },
+    },
+    configureServer(server) {
+      server.middlewares.use(applyHeaders);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(applyHeaders);
+    },
+  };
 }
 
 function healthPlugin(): Plugin {
@@ -77,5 +115,5 @@ function healthPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), healthPlugin()],
+  plugins: [react(), cspPlugin(), healthPlugin()],
 });

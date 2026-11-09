@@ -1,7 +1,9 @@
 ---
 import { createServerT } from "@bulletin/i18n";
+import { USER_CATALOGS } from "../../catalogs.ts";
 
-const t = createServerT("en");
+const t = createServerT("en", { shipped: USER_CATALOGS });
+const nonce = Astro.locals.cspNonce;
 ---
 <!doctype html>
 <html lang="en">
@@ -10,7 +12,7 @@ const t = createServerT("en");
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <title>{t("auth.signingIn")}</title>
-    <style>
+    <style nonce={nonce}>
       :root {
         color-scheme: light dark;
         font-family: system-ui, sans-serif;
