@@ -1,5 +1,6 @@
 import type { SQL } from "bun";
-import { createJwks, verifyIdToken } from "./jwt.ts";
+import { createJwks, type IdTokenClaims, verifyIdToken } from "./jwt.ts";
+import { exchangeAuthorizationCode } from "./oidc.ts";
 import { directSessionLookup, type SessionLookup, type SessionRecord } from "./session-store.ts";
 import {
   assignDefaultGroups,
@@ -14,7 +15,9 @@ import {
   CHALLENGE_MAX_AGE_SECONDS,
   challengeCookieName,
   clientIp,
+  codeChallengeS256,
   createCsrfToken,
+  createToken,
   parseCookieHeader,
   SESSION_LIFETIMES,
   type SessionKind,
@@ -35,6 +38,8 @@ export interface AuthRouterOptions {
   readonly nodeEnv: AuthNodeEnv;
   readonly bootstrapAdmins?: readonly AuthBootstrapAdmin[];
   readonly sessions?: SessionLookup;
+  readonly tokenUrl?: string;
+  readonly oidcFetch?: (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 }
 
 export interface AuthBootstrapAdmin {
@@ -146,7 +151,7 @@ export function createAuthRouter(
     }
 
     const returnTo = typeof body.returnTo === "string" ? safeReturnTo(body.returnTo) : null;
-    const created = await createChallenge(options.sql, options.kind, returnTo);
+    const created = await createChallenge(options.sql, options.kind, { returnTo });
     const view: ChallengeView = {
       state: created.state,
       nonce: created.nonce,
@@ -273,6 +278,187 @@ export function createAuthRouter(
     return json(sessionView(options, session));
   }
 
+  const tokenUrl = options.tokenUrl ?? `${options.issuer}/token`;
+  const callbackUrl = `${options.origin}/api/auth/callback`;
+
+  function redirect(location: string, cookies: readonly string[] = []): Response {
+    const headers = new Headers({ location, "cache-control": "no-store" });
+
+    for (const cookie of cookies) {
+      headers.append("set-cookie", cookie);
+    }
+
+    return new Response(null, { status: 303, headers });
+  }
+
+  function withAuthError(returnTo: string): string {
+    const url = new URL(returnTo, "https://bulletin.invalid");
+    url.searchParams.set("auth_error", "1");
+    return `${url.pathname}${url.search}${url.hash}`;
+  }
+
+  function clearSessionCookies(): string[] {
+    return [
+      serializeCookie(sessionCookie, "", { maxAge: 0, secure, httpOnly: true }),
+      serializeCookie(challengeCookie, "", { maxAge: 0, secure, httpOnly: true }),
+    ];
+  }
+
+  async function revokeSession(sessionId: string): Promise<void> {
+    if (sessions.revoke !== undefined) {
+      await sessions.revoke(sessionId);
+      return;
+    }
+
+    await options.sql`
+      UPDATE core.sessions SET revoked_at = now()
+      WHERE id = ${sessionId} AND revoked_at IS NULL
+    `;
+    await options.sql`SELECT pg_notify('session_revoked', ${sessionId})`;
+  }
+
+  /** Starts the silent top-level re-auth through DarkAuth with `prompt=none` (ADR 0018). */
+  async function refresh(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const returnTo = safeReturnTo(url.searchParams.get("return_to")) ?? "/";
+    const token = parseCookieHeader(request.headers.get("cookie"))[sessionCookie];
+    const session = token === undefined ? null : await sessions.find("user", token);
+
+    if (session === null) {
+      return redirect(withAuthError(returnTo), clearSessionCookies());
+    }
+
+    const verifier = createToken();
+    const created = await createChallenge(options.sql, "user", {
+      returnTo,
+      sessionId: session.id,
+      codeVerifier: verifier,
+    });
+    const authorizeUrl = new URL(`${options.issuer}/authorize`);
+    authorizeUrl.searchParams.set("client_id", options.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", callbackUrl);
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("scope", "openid profile email");
+    authorizeUrl.searchParams.set("state", created.state);
+    authorizeUrl.searchParams.set("nonce", created.nonce);
+    authorizeUrl.searchParams.set("code_challenge", codeChallengeS256(verifier));
+    authorizeUrl.searchParams.set("code_challenge_method", "S256");
+    authorizeUrl.searchParams.set("prompt", "none");
+
+    return redirect(authorizeUrl.toString(), [
+      serializeCookie(challengeCookie, created.id, {
+        maxAge: CHALLENGE_MAX_AGE_SECONDS,
+        secure,
+        httpOnly: true,
+      }),
+    ]);
+  }
+
+  /** Completes the server-side code exchange and extends `reauth_at`. */
+  async function callback(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const challengeId = parseCookieHeader(request.headers.get("cookie"))[challengeCookie];
+
+    if (challengeId === undefined) {
+      return redirect(withAuthError("/"), clearSessionCookies());
+    }
+
+    const stored = await findChallenge(options.sql, "user", challengeId);
+
+    if (
+      stored === null ||
+      stored.expired ||
+      stored.used ||
+      stored.sessionId === null ||
+      stored.codeVerifier === null
+    ) {
+      return redirect(withAuthError(stored?.returnTo ?? "/"), [
+        serializeCookie(challengeCookie, "", { maxAge: 0, secure, httpOnly: true }),
+      ]);
+    }
+
+    const returnTo = safeReturnTo(stored.returnTo) ?? "/";
+    const state = url.searchParams.get("state");
+
+    if (state === null || state !== stored.state) {
+      return redirect(withAuthError(returnTo), [
+        serializeCookie(challengeCookie, "", { maxAge: 0, secure, httpOnly: true }),
+      ]);
+    }
+
+    if (url.searchParams.has("error")) {
+      await revokeSession(stored.sessionId);
+      return redirect(withAuthError(returnTo), clearSessionCookies());
+    }
+
+    const code = url.searchParams.get("code");
+
+    if (code === null) {
+      await revokeSession(stored.sessionId);
+      return redirect(withAuthError(returnTo), clearSessionCookies());
+    }
+
+    let identity: IdTokenClaims;
+
+    try {
+      const exchanged = await exchangeAuthorizationCode({
+        tokenUrl,
+        clientId: options.clientId,
+        code,
+        redirectUri: callbackUrl,
+        codeVerifier: stored.codeVerifier,
+        ...(options.oidcFetch === undefined ? {} : { fetch: options.oidcFetch }),
+      });
+      identity = await verifyIdToken(
+        jwks,
+        { issuer: options.issuer, clientId: options.clientId, nonce: stored.nonce },
+        exchanged.idToken,
+      );
+    } catch {
+      await revokeSession(stored.sessionId);
+      return redirect(withAuthError(returnTo), clearSessionCookies());
+    }
+
+    const result = await options.sql.begin(async (tx) => {
+      if (!(await consumeChallenge(tx, "user", challengeId))) {
+        return null;
+      }
+
+      const [row] = (await tx`
+        SELECT member_id FROM core.sessions
+        WHERE id = ${stored.sessionId} AND kind = 'user' AND revoked_at IS NULL
+      `) as Array<{ member_id: string }>;
+
+      if (row === undefined) {
+        return null;
+      }
+
+      const member = await resolveMember(tx, identity);
+
+      if (member.id !== row.member_id) {
+        return null;
+      }
+
+      await tx`
+        UPDATE core.sessions
+        SET reauth_at = now() + make_interval(hours => ${SESSION_LIFETIMES.user.reauthHours})
+        WHERE id = ${stored.sessionId}
+      `;
+
+      return { memberId: member.id };
+    });
+
+    if (result === null) {
+      await revokeSession(stored.sessionId);
+      return redirect(withAuthError(returnTo), clearSessionCookies());
+    }
+
+    sessions.invalidate?.();
+    return redirect(returnTo, [
+      serializeCookie(challengeCookie, "", { maxAge: 0, secure, httpOnly: true }),
+    ]);
+  }
+
   return async (request) => {
     const { pathname } = new URL(request.url);
 
@@ -294,6 +480,22 @@ export function createAuthRouter(
       }
 
       return json({ code: "method_not_allowed" }, 405);
+    }
+
+    if (options.kind === "user" && pathname === "/api/auth/refresh") {
+      if (request.method !== "GET") {
+        return json({ code: "method_not_allowed" }, 405);
+      }
+
+      return refresh(request);
+    }
+
+    if (options.kind === "user" && pathname === "/api/auth/callback") {
+      if (request.method !== "GET") {
+        return json({ code: "method_not_allowed" }, 405);
+      }
+
+      return callback(request);
     }
 
     return null;

@@ -11,6 +11,20 @@ const TOKEN_BYTES = 32;
 /** Matches `core.login_challenges.expires_at` (10 minutes). */
 export const CHALLENGE_MAX_AGE_SECONDS = 10 * 60;
 
+/** Background requests keep working for two hours after the re-auth point (ADR 0018). */
+export const REAUTH_GRACE_MS = 2 * 60 * 60 * 1_000;
+
+/** Sensitive staff actions need an authentication within 15 minutes (ADR 0018). */
+export const STEP_UP_WINDOW_MS = 15 * 60 * 1_000;
+
+/** A step-up token's `auth_time` must be within 60 s of its challenge. */
+export const AUTH_TIME_SKEW_MS = 60 * 1_000;
+
+/** PKCE S256 challenge for a server-held verifier. */
+export function codeChallengeS256(verifier: string): string {
+  return createHash("sha256").update(verifier).digest("base64url");
+}
+
 /** A 256-bit secret, base64url encoded, as the browser sees it in a cookie. */
 export function createToken(): string {
   return randomBytes(TOKEN_BYTES).toString("base64url");

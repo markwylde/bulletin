@@ -24,6 +24,7 @@ export interface AppConfig {
   readonly seedSize: SeedSize;
   readonly authIssuer: string;
   readonly authJwksUrl: string;
+  readonly authTokenUrl: string;
   readonly authUserClientId: string;
   readonly authStaffClientId: string;
   readonly userOrigin: string;
@@ -44,6 +45,7 @@ export const DEVELOPMENT_DEFAULTS = {
   SEED_SIZE: "default",
   BULLETIN_AUTH_ISSUER: "http://auth.bulletin.localhost:8080",
   BULLETIN_AUTH_JWKS_URL: "http://auth.bulletin.localhost:8080/.well-known/jwks.json",
+  BULLETIN_AUTH_TOKEN_URL: "http://auth.bulletin.localhost:8080/token",
   BULLETIN_AUTH_USER_CLIENT_ID: "bulletin-user",
   BULLETIN_AUTH_STAFF_CLIENT_ID: "bulletin-staff",
   BULLETIN_USER_ORIGIN: "http://bulletin.localhost:8080",
@@ -284,6 +286,12 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     `${authIssuer}/.well-known/jwks.json`,
     issues,
   );
+  const authTokenUrl = parseOptionalUrl(
+    env,
+    "BULLETIN_AUTH_TOKEN_URL",
+    `${authIssuer}/token`,
+    issues,
+  );
   const authUserClientId =
     read(env, "BULLETIN_AUTH_USER_CLIENT_ID") ?? DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_USER_CLIENT_ID;
   const authStaffClientId =
@@ -317,6 +325,7 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     seedSize,
     authIssuer,
     authJwksUrl,
+    authTokenUrl,
     authUserClientId,
     authStaffClientId,
     userOrigin,

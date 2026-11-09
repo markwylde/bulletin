@@ -1,6 +1,9 @@
 {
+  "auth.continue": "Continue",
   "auth.login": "Log in",
   "auth.loginError": "Sign-in failed. Please try again.",
+  "auth.reauthPrompt": "Your session needs a quick refresh before you can continue.",
+  "auth.resume": "Resume",
   "auth.signedIn": "Signed in",
   "auth.signingIn": "Signing you in…",
   "user.placeholder.body": "The Bulletin community is being prepared.",

@@ -57,7 +57,8 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
         min-height: 2.75rem;
       }
 
-      .auth button {
+      .auth button,
+      .reauth button {
         min-height: 2.75rem;
         padding: 0.6rem 1.1rem;
         border: 0;
@@ -69,14 +70,30 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
         cursor: pointer;
       }
 
-      .auth button:disabled {
+      .auth button:disabled,
+      .reauth button:disabled {
         opacity: 0.6;
         cursor: progress;
       }
 
-      .auth button:focus-visible {
+      .auth button:focus-visible,
+      .reauth button:focus-visible {
         outline: 3px solid #93a7ea;
         outline-offset: 2px;
+      }
+
+      .reauth {
+        margin-top: 1rem;
+        padding: 0.9rem;
+        border: 1px solid #dce1e8;
+        border-radius: 0.5rem;
+      }
+
+      .reauth-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 0.75rem;
       }
 
       .auth [data-auth-error] {
@@ -125,6 +142,17 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
         </p>
         <p data-auth-error data-i18n="auth.loginError" hidden>{t("auth.loginError")}</p>
       </div>
+      <div class="reauth" data-reauth hidden>
+        <p data-i18n="auth.reauthPrompt">{t("auth.reauthPrompt")}</p>
+        <div class="reauth-actions">
+          <button type="button" data-reauth-continue data-i18n="auth.continue"
+            >{t("auth.continue")}</button
+          >
+          <button type="button" data-resume data-i18n="auth.resume" hidden
+            >{t("auth.resume")}</button
+          >
+        </div>
+      </div>
     </main>
     <script type="application/json" id="i18n-catalog" set:html={messages}></script>
     <script is:inline>
@@ -148,19 +176,47 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
       })();
     </script>
     <script>
-      import { beginLogin, loadSession } from "@bulletin/domain/auth/browser";
+      import {
+        beginLogin,
+        clearStashedRequest,
+        createAuthFetch,
+        loadSession,
+        reauthUrl,
+        takeStashedRequest,
+      } from "@bulletin/domain/auth/browser";
 
       const root = document.querySelector<HTMLElement>("[data-auth]");
       const loginButton = document.querySelector<HTMLButtonElement>("[data-login]");
       const signedIn = document.querySelector<HTMLElement>("[data-signed-in]");
       const displayName = document.querySelector<HTMLElement>("[data-display-name]");
       const error = document.querySelector<HTMLElement>("[data-auth-error]");
+      const reauthBox = document.querySelector<HTMLElement>("[data-reauth]");
+      const continueButton = document.querySelector<HTMLButtonElement>("[data-reauth-continue]");
+      const resumeButton = document.querySelector<HTMLButtonElement>("[data-resume]");
 
       const showError = (): void => {
         if (error !== null) {
           error.hidden = false;
         }
       };
+
+      const updateReauthPrompt = (authenticated: boolean): void => {
+        const stashed = takeStashedRequest();
+
+        if (reauthBox !== null) {
+          reauthBox.hidden = stashed === null;
+        }
+
+        if (resumeButton !== null) {
+          resumeButton.hidden = !(authenticated && stashed !== null);
+        }
+      };
+
+      const authFetch = createAuthFetch({
+        onReauthRequired: () => {
+          updateReauthPrompt(false);
+        },
+      });
 
       async function refresh(): Promise<void> {
         try {
@@ -181,6 +237,7 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
               displayName.textContent = session.displayName ?? "";
             }
 
+            updateReauthPrompt(true);
             return;
           }
 
@@ -189,6 +246,8 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
           if (loginButton !== null) {
             loginButton.hidden = false;
           }
+
+          updateReauthPrompt(false);
         } catch {
           root?.setAttribute("data-auth-state", "error");
           showError();
@@ -202,6 +261,39 @@ const t = createServerT("en", { shipped: USER_CATALOGS });
             showError();
             loginButton.disabled = false;
           });
+        });
+      }
+
+      if (continueButton !== null) {
+        continueButton.addEventListener("click", () => {
+          window.location.assign(reauthUrl(`${window.location.pathname}${window.location.search}`));
+        });
+      }
+
+      if (resumeButton !== null) {
+        resumeButton.addEventListener("click", () => {
+          const stashed = takeStashedRequest();
+
+          if (stashed === null) {
+            return;
+          }
+
+          clearStashedRequest();
+          resumeButton.disabled = true;
+          void authFetch(stashed.url, {
+            method: stashed.method,
+            headers: stashed.headers,
+            body: stashed.body,
+          })
+            .then((response) => {
+              if (response.ok) {
+                window.location.reload();
+              }
+            })
+            .finally(() => {
+              resumeButton.disabled = false;
+              updateReauthPrompt(true);
+            });
         });
       }
 

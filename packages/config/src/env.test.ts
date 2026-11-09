@@ -25,6 +25,7 @@ describe("loadConfig", () => {
     expect(config.seedSize).toBe(DEVELOPMENT_DEFAULTS.SEED_SIZE);
     expect(config.authIssuer).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_ISSUER);
     expect(config.authJwksUrl).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_JWKS_URL);
+    expect(config.authTokenUrl).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_TOKEN_URL);
     expect(config.authUserClientId).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_USER_CLIENT_ID);
     expect(config.authStaffClientId).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_AUTH_STAFF_CLIENT_ID);
     expect(config.userOrigin).toBe(DEVELOPMENT_DEFAULTS.BULLETIN_USER_ORIGIN);
@@ -64,6 +65,7 @@ describe("loadConfig", () => {
 
     expect(config.authIssuer).toBe("https://auth.example.test");
     expect(config.authJwksUrl).toBe("https://auth.example.test/.well-known/jwks.json");
+    expect(config.authTokenUrl).toBe("https://auth.example.test/token");
     expect(config.authUserClientId).toBe("forum-user");
     expect(config.authStaffClientId).toBe("forum-staff");
     expect(config.userOrigin).toBe("https://forum.example.test");

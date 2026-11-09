@@ -455,6 +455,7 @@ services:
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
       BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
       BULLETIN_AUTH_JWKS_URL: http://darkauth-mock:3020/.well-known/jwks.json
+      BULLETIN_AUTH_TOKEN_URL: http://darkauth-mock:3020/token
       BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:8080|admin"
     healthcheck: *service-healthcheck
     restart: unless-stopped
@@ -595,6 +596,7 @@ services:
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
       BULLETIN_AUTH_ISSUER: http://auth.bulletin.localhost:8080
       BULLETIN_AUTH_JWKS_URL: http://darkauth-mock:3020/.well-known/jwks.json
+      BULLETIN_AUTH_TOKEN_URL: http://darkauth-mock:3020/token
       BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:8080|admin"
     healthcheck: *service-healthcheck
     restart: unless-stopped

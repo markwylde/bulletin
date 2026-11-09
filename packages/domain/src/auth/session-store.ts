@@ -19,6 +19,8 @@ export interface SessionRecord {
 export interface SessionLookup {
   find(kind: SessionKind, token: string): Promise<SessionRecord | null>;
   touch?(session: SessionRecord): Promise<void>;
+  revoke?(sessionId: string): Promise<void>;
+  invalidate?(): void;
 }
 
 export interface SessionStore extends SessionLookup {

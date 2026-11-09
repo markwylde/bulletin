@@ -6,6 +6,15 @@ import {
 } from "@darkauth/client";
 import { safeReturnTo } from "./return-to.ts";
 
+export {
+  clearStashedRequest,
+  createAuthFetch,
+  reauthUrl,
+  type StashedRequest,
+  takeStashedRequest,
+} from "./fetch.ts";
+export { reauthRedirectUrl, shouldRedirectToReauth } from "./silent.ts";
+
 export interface BrowserChallenge {
   readonly state: string;
   readonly nonce: string;

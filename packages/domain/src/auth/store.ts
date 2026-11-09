@@ -10,9 +10,22 @@ export interface CreatedChallenge {
 
 export interface StoredChallenge {
   readonly id: string;
+  readonly state: string;
   readonly nonce: string;
+  readonly returnTo: string | null;
+  readonly sessionId: string | null;
+  readonly codeVerifier: string | null;
+  readonly maxAge: number | null;
+  readonly createdAt: Date;
   readonly expired: boolean;
   readonly used: boolean;
+}
+
+export interface ChallengeInput {
+  readonly returnTo?: string | null;
+  readonly sessionId?: string | null;
+  readonly codeVerifier?: string | null;
+  readonly maxAge?: number | null;
 }
 
 export interface ResolvedMember {
@@ -36,13 +49,18 @@ function newChallengeSecret(): string {
 export async function createChallenge(
   sql: SQL,
   kind: SessionKind,
-  returnTo: string | null,
+  input: ChallengeInput = {},
 ): Promise<CreatedChallenge> {
   const state = newChallengeSecret();
   const nonce = newChallengeSecret();
   const [row] = (await sql`
-    INSERT INTO core.login_challenges (kind, state, nonce, return_to)
-    VALUES (${kind}, ${state}, ${nonce}, ${returnTo})
+    INSERT INTO core.login_challenges (
+      kind, state, nonce, return_to, session_id, code_verifier, max_age
+    )
+    VALUES (
+      ${kind}, ${state}, ${nonce}, ${input.returnTo ?? null},
+      ${input.sessionId ?? null}, ${input.codeVerifier ?? null}, ${input.maxAge ?? null}
+    )
     RETURNING id
   `) as Array<{ id: string }>;
 
@@ -67,12 +85,39 @@ export async function findChallenge(
   }
 
   const [row] = (await sql`
-    SELECT id, nonce, expires_at <= now() AS expired, used_at IS NOT NULL AS used
+    SELECT id, state, nonce, return_to, session_id, code_verifier, max_age, created_at,
+           expires_at <= now() AS expired, used_at IS NOT NULL AS used
     FROM core.login_challenges
     WHERE id = ${id} AND kind = ${kind}
-  `) as Array<{ id: string; nonce: string; expired: boolean; used: boolean }>;
+  `) as Array<{
+    id: string;
+    state: string;
+    nonce: string;
+    return_to: string | null;
+    session_id: string | null;
+    code_verifier: string | null;
+    max_age: number | null;
+    created_at: Date | string;
+    expired: boolean;
+    used: boolean;
+  }>;
 
-  return row ?? null;
+  if (row === undefined) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    state: row.state,
+    nonce: row.nonce,
+    returnTo: row.return_to,
+    sessionId: row.session_id,
+    codeVerifier: row.code_verifier,
+    maxAge: row.max_age,
+    createdAt: new Date(row.created_at),
+    expired: row.expired,
+    used: row.used,
+  };
 }
 
 /** Marks the challenge used. Zero rows means it was consumed, expired or missing. */

@@ -1,6 +1,9 @@
 {
+  "auth.continue": "Continuar",
   "auth.login": "Iniciar sesión",
   "auth.loginError": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+  "auth.reauthPrompt": "Tu sesión necesita actualizarse antes de continuar.",
+  "auth.resume": "Reanudar",
   "auth.signedIn": "Sesión iniciada",
   "auth.signingIn": "Te estamos iniciando sesión…",
   "user.placeholder.body": "La comunidad de Bulletin se está preparando.",
