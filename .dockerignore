@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+.git
+.gitignore
+**/dist
+**/.astro
+**/*.log
+.env
+.claude
+.omp
+openspec
+docs
+tests
+README.md

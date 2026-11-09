@@ -1,0 +1,242 @@
+name: bulletin
+
+x-app-environment: &app-environment
+  NODE_ENV: development
+  LOG_LEVEL: info
+
+x-healthcheck: &healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 30
+  start_period: 30s
+
+x-bun-healthcheck: &bun-healthcheck
+  <<: *healthcheck
+  test:
+    - CMD
+    - bun
+    - -e
+    - >-
+      fetch("http://127.0.0.1:" + (process.env.PORT ?? "3000") + "/")
+      .then((response) => process.exit(response.ok ? 0 : 1))
+      .catch(() => process.exit(1))
+
+services:
+  user-app:
+    build:
+      context: .
+      dockerfile: apps/user-app/Dockerfile
+      target: dev
+    environment:
+      <<: *app-environment
+      PORT: "4321"
+    healthcheck: *bun-healthcheck
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/user-app/src
+          target: /app/apps/user-app/src
+        - action: sync
+          path: ./packages
+          target: /app/packages
+          ignore:
+            - "**/node_modules/**"
+            - "**/dist/**"
+        - action: sync+restart
+          path: ./apps/user-app/astro.config.mjs
+          target: /app/apps/user-app/astro.config.mjs
+        - action: sync+restart
+          path: ./apps/user-app/tsconfig.json
+          target: /app/apps/user-app/tsconfig.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./apps/user-app/package.json
+        - action: rebuild
+          path: ./apps/user-app/Dockerfile
+
+  user-api:
+    build:
+      context: .
+      dockerfile: apps/user-api/Dockerfile
+      target: dev
+    environment:
+      <<: *app-environment
+      PORT: "3001"
+    healthcheck: *bun-healthcheck
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/user-api/src
+          target: /app/apps/user-api/src
+        - action: sync
+          path: ./packages
+          target: /app/packages
+          ignore:
+            - "**/node_modules/**"
+            - "**/dist/**"
+        - action: sync+restart
+          path: ./apps/user-api/tsconfig.json
+          target: /app/apps/user-api/tsconfig.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./apps/user-api/package.json
+        - action: rebuild
+          path: ./apps/user-api/Dockerfile
+
+  staff-app:
+    build:
+      context: .
+      dockerfile: apps/staff-app/Dockerfile
+      target: dev
+    environment:
+      <<: *app-environment
+      PORT: "5173"
+    healthcheck: *bun-healthcheck
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/staff-app/src
+          target: /app/apps/staff-app/src
+        - action: sync
+          path: ./apps/staff-app/index.html
+          target: /app/apps/staff-app/index.html
+        - action: sync
+          path: ./packages
+          target: /app/packages
+          ignore:
+            - "**/node_modules/**"
+            - "**/dist/**"
+        - action: sync+restart
+          path: ./apps/staff-app/vite.config.ts
+          target: /app/apps/staff-app/vite.config.ts
+        - action: sync+restart
+          path: ./apps/staff-app/tsconfig.json
+          target: /app/apps/staff-app/tsconfig.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./apps/staff-app/package.json
+        - action: rebuild
+          path: ./apps/staff-app/Dockerfile
+
+  staff-api:
+    build:
+      context: .
+      dockerfile: apps/staff-api/Dockerfile
+      target: dev
+    environment:
+      <<: *app-environment
+      PORT: "3002"
+    healthcheck: *bun-healthcheck
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/staff-api/src
+          target: /app/apps/staff-api/src
+        - action: sync
+          path: ./packages
+          target: /app/packages
+          ignore:
+            - "**/node_modules/**"
+            - "**/dist/**"
+        - action: sync+restart
+          path: ./apps/staff-api/tsconfig.json
+          target: /app/apps/staff-api/tsconfig.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./apps/staff-api/package.json
+        - action: rebuild
+          path: ./apps/staff-api/Dockerfile
+
+  workers:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+      target: dev
+    environment:
+      <<: *app-environment
+      PORT: "3003"
+    healthcheck: *bun-healthcheck
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/workers/src
+          target: /app/apps/workers/src
+        - action: sync
+          path: ./packages
+          target: /app/packages
+          ignore:
+            - "**/node_modules/**"
+            - "**/dist/**"
+        - action: sync+restart
+          path: ./apps/workers/tsconfig.json
+          target: /app/apps/workers/tsconfig.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./apps/workers/package.json
+        - action: rebuild
+          path: ./apps/workers/Dockerfile
+
+  plugin-host:
+    build:
+      context: .
+      dockerfile: apps/plugin-host/Dockerfile
+      target: dev
+    environment:
+      <<: *app-environment
+      PORT: "3004"
+    healthcheck: *bun-healthcheck
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/plugin-host/src
+          target: /app/apps/plugin-host/src
+        - action: sync
+          path: ./packages
+          target: /app/packages
+          ignore:
+            - "**/node_modules/**"
+            - "**/dist/**"
+        - action: sync+restart
+          path: ./apps/plugin-host/tsconfig.json
+          target: /app/apps/plugin-host/tsconfig.json
+        - action: rebuild
+          path: ./package.json
+        - action: rebuild
+          path: ./bun.lock
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./apps/plugin-host/package.json
+        - action: rebuild
+          path: ./apps/plugin-host/Dockerfile
