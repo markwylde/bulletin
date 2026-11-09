@@ -672,4 +672,62 @@ integrationDescribe("silent re-auth and background grace", () => {
       }
     });
   }, 20_000);
+
+  test("rolls last_active_at into previous_visit_at after thirty minutes", async () => {
+    await withDb("auth_activity", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const sessionCookie = await login(service, "activity-user");
+
+        await database.sql`
+          UPDATE core.members
+          SET last_active_at = now() - interval '31 minutes',
+              previous_visit_at = now() - interval '10 days'
+          WHERE id = (SELECT member_id FROM pii.identities WHERE sub = 'activity-user')
+        `;
+        const [before] = (await database.sql`
+          SELECT last_active_at FROM core.members
+          WHERE id = (SELECT member_id FROM pii.identities WHERE sub = 'activity-user')
+        `) as Array<{ last_active_at: Date }>;
+
+        const active = await call(service, "/api/test/protected", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(active.status).toBe(200);
+
+        const [after] = (await database.sql`
+          SELECT previous_visit_at, last_active_at, last_active_at > previous_visit_at AS advanced
+          FROM core.members
+          WHERE id = (SELECT member_id FROM pii.identities WHERE sub = 'activity-user')
+        `) as Array<{
+          previous_visit_at: Date;
+          last_active_at: Date;
+          advanced: boolean;
+        }>;
+        expect(after?.previous_visit_at).toEqual(before?.last_active_at);
+        expect(after?.advanced).toBe(true);
+
+        await database.sql`
+          UPDATE core.members
+          SET last_active_at = now() - interval '5 minutes',
+              previous_visit_at = '2020-01-01T00:00:00Z'
+          WHERE id = (SELECT member_id FROM pii.identities WHERE sub = 'activity-user')
+        `;
+        await call(service, "/api/test/protected", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+
+        const [recent] = (await database.sql`
+          SELECT previous_visit_at
+          FROM core.members
+          WHERE id = (SELECT member_id FROM pii.identities WHERE sub = 'activity-user')
+        `) as Array<{ previous_visit_at: Date }>;
+        expect(recent?.previous_visit_at?.toISOString()).toBe("2020-01-01T00:00:00.000Z");
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
 });
