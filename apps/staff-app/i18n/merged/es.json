@@ -65,6 +65,9 @@
   "staff.widget.error": "Este panel no se pudo cargar.",
   "staff.widget.loading": "Cargando…",
   "staff.widget.retry": "Recargar",
+  "ui.dialog.cancel": "Cancelar",
+  "ui.dialog.confirm": "Confirmar",
+  "ui.dialog.working": "Procesando…",
   "ui.form.choose": "Elige…",
   "ui.form.error.invalid": "Introduce un valor válido.",
   "ui.form.error.max": "Debe ser como máximo {max}.",
@@ -95,5 +98,6 @@
   "ui.table.selectRowLabel": "Seleccionar {row}",
   "ui.table.sort": "Ordenar por",
   "ui.table.sortBy": "Ordenar por {column}",
-  "ui.table.sortNone": "Sin ordenar"
+  "ui.table.sortNone": "Sin ordenar",
+  "ui.toast.dismiss": "Descartar notificación"
 }

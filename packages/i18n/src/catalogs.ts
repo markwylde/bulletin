@@ -381,7 +381,11 @@ function typescriptReferences(source: string, file: string): Set<string> {
         node.name.text === "descriptionKey" ||
         node.name.text === "helpKey" ||
         node.name.text === "placeholderKey" ||
-        node.name.text === "submitLabelKey")
+        node.name.text === "submitLabelKey" ||
+        node.name.text === "bodyKey" ||
+        node.name.text === "confirmLabelKey" ||
+        node.name.text === "cancelLabelKey" ||
+        node.name.text === "messageKey")
     ) {
       const key = stringValue(node.initializer);
 

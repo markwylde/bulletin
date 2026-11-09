@@ -17,6 +17,9 @@
   "displayName.save": "Enregistrer le nom",
   "displayName.taken": "Ce nom est déjà pris.",
   "displayName.title": "Choisissez un nom d'affichage",
+  "ui.dialog.cancel": "Annuler",
+  "ui.dialog.confirm": "Confirmer",
+  "ui.dialog.working": "Traitement…",
   "ui.form.choose": "Choisir…",
   "ui.form.error.invalid": "Saisissez une valeur valide.",
   "ui.form.error.max": "Doit être au plus {max}.",
@@ -48,6 +51,7 @@
   "ui.table.sort": "Trier par",
   "ui.table.sortBy": "Trier par {column}",
   "ui.table.sortNone": "Aucun tri",
+  "ui.toast.dismiss": "Fermer la notification",
   "user.placeholder.body": "La communauté Bulletin est en préparation.",
   "user.placeholder.title": "Bulletin"
 }

@@ -17,6 +17,9 @@
   "displayName.save": "Guardar nombre",
   "displayName.taken": "Ese nombre ya está en uso.",
   "displayName.title": "Elige un nombre visible",
+  "ui.dialog.cancel": "Cancelar",
+  "ui.dialog.confirm": "Confirmar",
+  "ui.dialog.working": "Procesando…",
   "ui.form.choose": "Elige…",
   "ui.form.error.invalid": "Introduce un valor válido.",
   "ui.form.error.max": "Debe ser como máximo {max}.",
@@ -48,6 +51,7 @@
   "ui.table.sort": "Ordenar por",
   "ui.table.sortBy": "Ordenar por {column}",
   "ui.table.sortNone": "Sin ordenar",
+  "ui.toast.dismiss": "Descartar notificación",
   "user.placeholder.body": "La comunidad de Bulletin se está preparando.",
   "user.placeholder.title": "Bulletin"
 }

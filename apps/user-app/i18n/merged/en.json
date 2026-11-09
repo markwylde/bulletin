@@ -17,6 +17,9 @@
   "displayName.save": "Save display name",
   "displayName.taken": "That name is already taken.",
   "displayName.title": "Choose a display name",
+  "ui.dialog.cancel": "Cancel",
+  "ui.dialog.confirm": "Confirm",
+  "ui.dialog.working": "Working…",
   "ui.form.choose": "Choose…",
   "ui.form.error.invalid": "Enter a valid value.",
   "ui.form.error.max": "Must be at most {max}.",
@@ -48,6 +51,7 @@
   "ui.table.sort": "Sort by",
   "ui.table.sortBy": "Sort by {column}",
   "ui.table.sortNone": "No sorting",
+  "ui.toast.dismiss": "Dismiss notification",
   "user.placeholder.body": "The Bulletin community is being prepared.",
   "user.placeholder.title": "Bulletin"
 }
