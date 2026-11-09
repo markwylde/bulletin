@@ -2,6 +2,7 @@
   "auth.login": "Iniciar sesión",
   "auth.loginError": "No se pudo iniciar sesión. Inténtalo de nuevo.",
   "auth.logout": "Cerrar sesión",
+  "auth.logoutError": "No se pudo cerrar sesión. Inténtalo de nuevo.",
   "auth.sensitiveCheck": "Comprobar acceso sensible",
   "auth.sensitiveError": "No se pudo verificar el acceso sensible.",
   "auth.sensitiveOk": "Acceso sensible concedido.",

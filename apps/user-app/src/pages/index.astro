@@ -100,7 +100,8 @@ const nonce = Astro.locals.cspNonce;
         margin-top: 0.75rem;
       }
 
-      .auth [data-auth-error] {
+      .auth [data-auth-error],
+      .auth [data-logout-error] {
         color: #a02a2a;
       }
 
@@ -123,7 +124,8 @@ const nonce = Astro.locals.cspNonce;
           color: #93a0b1;
         }
 
-        .auth [data-auth-error] {
+        .auth [data-auth-error],
+        .auth [data-logout-error] {
           color: #ff9d9d;
         }
       }
@@ -148,6 +150,7 @@ const nonce = Astro.locals.cspNonce;
           >{t("auth.logout")}</button
         >
         <p data-auth-error data-i18n="auth.loginError" hidden>{t("auth.loginError")}</p>
+        <p data-logout-error data-i18n="auth.logoutError" hidden>{t("auth.logoutError")}</p>
       </div>
       <div class="reauth" data-reauth hidden>
         <p data-i18n="auth.reauthPrompt">{t("auth.reauthPrompt")}</p>
@@ -207,6 +210,7 @@ const nonce = Astro.locals.cspNonce;
       const signedIn = document.querySelector<HTMLElement>("[data-signed-in]");
       const displayName = document.querySelector<HTMLElement>("[data-display-name]");
       const error = document.querySelector<HTMLElement>("[data-auth-error]");
+      const logoutError = document.querySelector<HTMLElement>("[data-logout-error]");
       const reauthBox = document.querySelector<HTMLElement>("[data-reauth]");
       const continueButton = document.querySelector<HTMLButtonElement>("[data-reauth-continue]");
       const resumeButton = document.querySelector<HTMLButtonElement>("[data-resume]");
@@ -313,7 +317,15 @@ const nonce = Astro.locals.cspNonce;
       if (logoutButton !== null) {
         logoutButton.addEventListener("click", () => {
           logoutButton.disabled = true;
-          void logout();
+          void logout().then((ok) => {
+            if (!ok) {
+              if (logoutError !== null) {
+                logoutError.hidden = false;
+              }
+
+              logoutButton.disabled = false;
+            }
+          });
         });
       }
 

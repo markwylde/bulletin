@@ -1,6 +1,7 @@
 {
   "auth.login": "Se connecter",
   "auth.loginError": "La connexion a échoué. Réessayez.",
+  "auth.logoutError": "La déconnexion a échoué. Réessayez.",
   "auth.logout": "Se déconnecter",
   "auth.sensitiveCheck": "Vérifier l'accès sensible",
   "auth.sensitiveError": "Impossible de vérifier l'accès sensible.",

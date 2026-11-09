@@ -111,7 +111,11 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
   const cookieName = sessionCookieName(options.kind, options.nodeEnv);
   const sessionMaxAge = Math.trunc(SESSION_LIFETIMES[options.kind].absoluteMs / 1_000);
 
-  async function withSession(request: Request, next: AuthNext): Promise<Response> {
+  async function withSession(
+    request: Request,
+    next: AuthNext,
+    hooks: { readonly onReauthRequired?: (session: SessionRecord) => Response } = {},
+  ): Promise<Response> {
     const token = parseCookieHeader(request.headers.get("cookie"))[cookieName];
     const session = token === undefined ? null : await sessions.find(options.kind, token);
 
@@ -124,7 +128,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
     }
 
     if (options.kind === "user" && Date.now() > session.reauthAt.getTime() + REAUTH_GRACE_MS) {
-      return json({ code: "reauth_required" }, 401);
+      return hooks.onReauthRequired?.(session) ?? json({ code: "reauth_required" }, 401);
     }
 
     await sessions.touch(session);
@@ -410,14 +414,29 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       }
 
       if (pathname === "/api/auth/session" && request.method === "GET") {
-        return withSession(request, async ({ session }) => {
-          if (session === null) {
-            return json(guestView(options.kind));
-          }
+        return withSession(
+          request,
+          async ({ session }) => {
+            if (session === null) {
+              return json(guestView(options.kind));
+            }
 
-          const locale = await resolveMemberLocale(options.sql, session.memberId);
-          return json(sessionView(options, session, locale));
-        });
+            const locale = await resolveMemberLocale(options.sql, session.memberId);
+            return json(sessionView(options, session, locale));
+          },
+          {
+            onReauthRequired: (session) =>
+              json(
+                {
+                  code: "reauth_required",
+                  csrfToken: createCsrfToken(session.id, options.sessionSecret),
+                  memberId: session.memberId,
+                  kind: options.kind,
+                },
+                401,
+              ),
+          },
+        );
       }
 
       const authResponse = await router(request);

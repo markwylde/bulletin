@@ -3,6 +3,7 @@
   "auth.login": "Se connecter",
   "auth.loginError": "La connexion a échoué. Réessayez.",
   "auth.logout": "Se déconnecter",
+  "auth.logoutError": "La déconnexion a échoué. Réessayez.",
   "auth.reauthPrompt": "Votre session doit être actualisée avant de continuer.",
   "auth.resume": "Reprendre",
   "auth.signedIn": "Connecté",

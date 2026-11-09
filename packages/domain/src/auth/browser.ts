@@ -4,7 +4,7 @@ import {
   setConfig,
   sha256,
 } from "@darkauth/client";
-import { clearStashedRequest } from "./fetch.ts";
+import { type AuthFetch, clearStashedRequest } from "./fetch.ts";
 import { safeReturnTo } from "./return-to.ts";
 
 export {
@@ -48,6 +48,7 @@ const STATE_KEY = "oauth_state";
 const VERIFIER_KEY = "pkce_verifier";
 const CONFIG_KEY = "bulletin_auth_config";
 const RETURN_TO_KEY = "bulletin_return_to";
+export const CSRF_STORAGE_KEY = "bulletin_csrf_token";
 
 interface BrowserGlobals {
   readonly location: {
@@ -207,7 +208,6 @@ export async function submitIdToken(idToken: string): Promise<void> {
   }
 }
 
-/** The callback transit route: exchange, post the ID token, then return to the page. */
 let loginCompletion: Promise<void> | undefined;
 
 /**
@@ -249,6 +249,12 @@ export async function loadSession(): Promise<BrowserSessionView> {
       payload !== null &&
       (payload as Record<string, unknown>).code === "reauth_required"
     ) {
+      const csrfToken = (payload as Record<string, unknown>).csrfToken;
+
+      if (typeof csrfToken === "string") {
+        browser.sessionStorage.setItem(CSRF_STORAGE_KEY, csrfToken);
+      }
+
       throw new ReauthRequiredError();
     }
   }
@@ -257,28 +263,104 @@ export async function loadSession(): Promise<BrowserSessionView> {
     throw new Error("Could not read the session");
   }
 
-  return (await response.json()) as BrowserSessionView;
+  const session = (await response.json()) as BrowserSessionView;
+
+  if (session.csrfToken !== null) {
+    browser.sessionStorage.setItem(CSRF_STORAGE_KEY, session.csrfToken);
+  } else {
+    browser.sessionStorage.removeItem(CSRF_STORAGE_KEY);
+  }
+
+  return session;
 }
 
-/** Logout revokes the server session and tells the client to drop local data (ADR 0018). */
-export async function logout(): Promise<void> {
-  const session = (await fetch("/api/auth/session", {
-    credentials: "include",
-    headers: { accept: "application/json" },
-  })
-    .then((response) => (response.ok ? response.json() : null))
-    .catch(() => null)) as BrowserSessionView | null;
+export interface LogoutStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
 
-  await fetch("/api/auth/logout", {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "content-type": "application/json",
-      ...(session?.csrfToken === null || session?.csrfToken === undefined
-        ? {}
-        : { "x-bulletin-csrf": session.csrfToken }),
-    },
+export interface LogoutDependencies {
+  readonly fetch: AuthFetch;
+  readonly storage: LogoutStorage;
+  readonly redirect: (url: string) => void;
+  readonly clearStashed: () => void;
+}
+
+/**
+ * Revokes the server session, using the CSRF token seen on the last authenticated response.
+ * The session bootstrap may already be 401 after the re-auth grace, but the token remains
+ * valid for this session; the 401 body repeats it when a fresh tab has no cached copy.
+ */
+export async function performLogout(dependencies: LogoutDependencies): Promise<boolean> {
+  let csrfToken = dependencies.storage.getItem(CSRF_STORAGE_KEY);
+
+  try {
+    const sessionResponse = await dependencies.fetch("/api/auth/session", {
+      credentials: "include",
+      headers: { accept: "application/json" },
+    });
+
+    if (sessionResponse.status === 401) {
+      const payload = await sessionResponse
+        .clone()
+        .json()
+        .catch(() => null);
+      const provided =
+        typeof payload === "object" && payload !== null
+          ? (payload as Record<string, unknown>).csrfToken
+          : null;
+
+      if (typeof provided === "string") {
+        csrfToken = provided;
+        dependencies.storage.setItem(CSRF_STORAGE_KEY, provided);
+      }
+    } else if (sessionResponse.ok) {
+      const session = (await sessionResponse.json()) as BrowserSessionView;
+
+      if (session.csrfToken !== null) {
+        csrfToken = session.csrfToken;
+        dependencies.storage.setItem(CSRF_STORAGE_KEY, session.csrfToken);
+      }
+    }
+  } catch {
+    // Keep the cached token; the logout POST below decides the outcome.
+  }
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+
+  if (csrfToken !== null) {
+    headers["x-bulletin-csrf"] = csrfToken;
+  }
+
+  let response: Response;
+
+  try {
+    response = await dependencies.fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      headers,
+    });
+  } catch {
+    return false;
+  }
+
+  if (!response.ok) {
+    return false;
+  }
+
+  dependencies.storage.removeItem(CSRF_STORAGE_KEY);
+  dependencies.clearStashed();
+  dependencies.redirect("/");
+  return true;
+}
+
+/** Logout clears local data only after the server has confirmed revocation (ADR 0018). */
+export function logout(): Promise<boolean> {
+  return performLogout({
+    fetch,
+    storage: browser.sessionStorage,
+    redirect: (url) => browser.location.replace(url),
+    clearStashed: () => clearStashedRequest(),
   });
-  clearStashedRequest();
-  browser.location.replace("/");
 }

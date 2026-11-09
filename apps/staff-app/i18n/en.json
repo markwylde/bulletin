@@ -1,6 +1,7 @@
 {
   "auth.login": "Log in",
   "auth.loginError": "Sign-in failed. Please try again.",
+  "auth.logoutError": "Sign-out failed. Please try again.",
   "auth.logout": "Log out",
   "auth.sensitiveCheck": "Check sensitive access",
   "auth.sensitiveError": "Sensitive access could not be verified.",

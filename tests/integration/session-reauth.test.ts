@@ -443,7 +443,11 @@ integrationDescribe("silent re-auth and background grace", () => {
           cookie: `bl_session=${sessionCookie}`,
         });
         expect(sessionAfter.status).toBe(401);
-        expect(await sessionAfter.json()).toEqual({ code: "reauth_required" });
+        expect(await sessionAfter.json()).toMatchObject({
+          code: "reauth_required",
+          csrfToken: expect.any(String),
+          kind: "user",
+        });
       } finally {
         await service.close();
         await sql.close();
@@ -815,6 +819,65 @@ integrationDescribe("silent re-auth and background grace", () => {
           FROM core.sessions s
           JOIN pii.identities i ON i.member_id = s.member_id
           WHERE i.sub = 'logout-user'
+        `) as Array<{ revoked_at: Date | null }>;
+        expect(session?.revoked_at).not.toBeNull();
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("logout still revokes after the re-auth grace expires", async () => {
+    await withDb("auth_logout_grace", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const sessionCookie = await login(service, "logout-grace");
+        const before = await call(service, "/api/auth/session", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(before.status).toBe(200);
+        const beforeView = (await before.json()) as SessionView;
+        expect(beforeView.csrfToken).toBeString();
+
+        await database.sql`
+          UPDATE core.sessions SET reauth_at = now() - interval '3 hours'
+          WHERE member_id = (SELECT member_id FROM pii.identities WHERE sub = 'logout-grace')
+        `;
+
+        const afterGrace = await call(service, "/api/auth/session", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(afterGrace.status).toBe(401);
+        const afterGraceBody = (await afterGrace.json()) as {
+          code: string;
+          csrfToken: string;
+        };
+        expect(afterGraceBody.code).toBe("reauth_required");
+        expect(afterGraceBody.csrfToken).toBeString();
+
+        const loggedOut = await call(service, "/api/auth/logout", {
+          method: "POST",
+          cookie: `bl_session=${sessionCookie}`,
+          headers: { "x-bulletin-csrf": afterGraceBody.csrfToken },
+        });
+        expect(loggedOut.status).toBe(200);
+        expect(await loggedOut.json()).toEqual({
+          code: "logged_out",
+          clearLocalData: true,
+        });
+
+        const read = await call(service, "/api/auth/session", {
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(((await read.json()) as SessionView).authenticated).toBe(false);
+
+        const [session] = (await database.sql`
+          SELECT s.revoked_at
+          FROM core.sessions s
+          JOIN pii.identities i ON i.member_id = s.member_id
+          WHERE i.sub = 'logout-grace'
         `) as Array<{ revoked_at: Date | null }>;
         expect(session?.revoked_at).not.toBeNull();
       } finally {

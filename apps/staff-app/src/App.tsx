@@ -69,6 +69,7 @@ function Content({ onLocale }: { readonly onLocale: (locale: Locale) => void }) 
   const t = useT();
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
   const [sensitive, setSensitive] = useState<SensitiveState>("idle");
+  const [logoutFailed, setLogoutFailed] = useState(false);
   const callbackStarted = useRef(false);
 
   useEffect(() => {
@@ -122,7 +123,17 @@ function Content({ onLocale }: { readonly onLocale: (locale: Locale) => void }) 
         </p>
       ) : null}
       {auth.status === "authenticated" ? (
-        <button type="button" data-logout onClick={() => void logout()}>
+        <button
+          type="button"
+          data-logout
+          onClick={() => {
+            void logout().then((ok) => {
+              if (!ok) {
+                setLogoutFailed(true);
+              }
+            });
+          }}
+        >
           {t("auth.logout")}
         </button>
       ) : null}
@@ -131,6 +142,7 @@ function Content({ onLocale }: { readonly onLocale: (locale: Locale) => void }) 
           {t("auth.sensitiveCheck")}
         </button>
       ) : null}
+      {logoutFailed ? <p data-logout-error>{t("auth.logoutError")}</p> : null}
       {sensitive === "ok" ? <p data-sensitive-result="ok">{t("auth.sensitiveOk")}</p> : null}
       {sensitive === "error" ? <p data-sensitive-error>{t("auth.sensitiveError")}</p> : null}
       {auth.status === "guest" || auth.status === "error" ? (

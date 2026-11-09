@@ -7,14 +7,14 @@ import {
 } from "@bulletin/domain/auth";
 import { resolveMemberLocale } from "@bulletin/domain/member";
 import type { Locale } from "@bulletin/i18n";
-import { SQL } from "bun";
+import type { SQL } from "bun";
 
 const nodeEnv: AuthNodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 
 let pool: SQL | undefined;
 
 function sessionSql(): SQL {
-  pool ??= new SQL(process.env.DATABASE_URL ?? "postgres://user_app@localhost:5432/bulletin", {
+  pool ??= new Bun.SQL(process.env.DATABASE_URL ?? "postgres://user_app@localhost:5432/bulletin", {
     max: 1,
     connectionTimeout: 5,
   });

@@ -29,6 +29,8 @@ const budgetGuard = {
 
 export default defineConfig({
   output: "static",
+  // Bun's SQL client is a runtime global in the SSR build; never bundle it.
+  vite: { ssr: { external: ["bun"] } },
   // The dev toolbar injects a nonce-less inline script, which the strict CSP blocks.
   devToolbar: { enabled: false },
   integrations: [budgetGuard],

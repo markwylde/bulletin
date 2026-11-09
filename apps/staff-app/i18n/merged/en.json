@@ -2,6 +2,7 @@
   "auth.login": "Log in",
   "auth.loginError": "Sign-in failed. Please try again.",
   "auth.logout": "Log out",
+  "auth.logoutError": "Sign-out failed. Please try again.",
   "auth.sensitiveCheck": "Check sensitive access",
   "auth.sensitiveError": "Sensitive access could not be verified.",
   "auth.sensitiveOk": "Sensitive access granted.",
