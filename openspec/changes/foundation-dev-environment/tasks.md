@@ -19,7 +19,7 @@
 - [x] 3.3 Build `mocks/push`, `mocks/webhooks` (with signature verification display) and `mocks/oembed`, each with a UI and capture tests
 - [x] 3.4 Build `mocks/cdn` (cache honouring `Cache-Control`, `bp`-cookie keying, surrogate-key purge, `X-Cache` header) and verify the purge-by-key scenario
 - [x] 3.5 Build `mocks/marketplace` as a stub registry serving a signed empty catalog, and verify the signature validates with the dev public key
-- [ ] 3.6 Add the architecture test that fails if app code references mock-only flags or hostnames, and verify it catches a planted violation
+- [x] 3.6 Add the architecture test that fails if app code references mock-only flags or hostnames, and verify it catches a planted violation
 - [ ] 3.7 Implement the basic `packages/storage` client over `Bun.S3Client` (put, get, delete, presign GET/PUT, opaque keys) against `mocks/s3`, with contract tests; the upload state machine is added in `attachments-avatars`
 - [ ] 3.8 Implement `safeFetch` in `packages/domain/net` (resolve once, block ranges per ADR 0016, connect to the pinned IP, HTTPS-only in production, redirect policy, caps, dev allowlist rejected in production) with tests for each blocked range, a DNS-rebinding test, and the redirect re-check
 
