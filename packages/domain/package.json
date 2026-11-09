@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/domain",
+  "private": true,
+  "type": "module",
+  "description": "Framework-free business rules: permissions, posting, moderation and URL conventions.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

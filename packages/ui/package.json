@@ -1,0 +1,18 @@
+{
+  "name": "@bulletin/ui",
+  "private": true,
+  "type": "module",
+  "description": "Shared React components for user-app islands and the staff app.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  }
+}

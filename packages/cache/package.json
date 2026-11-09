@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/cache",
+  "private": true,
+  "type": "module",
+  "description": "Cache layers, variant keys and invalidation for the rendered page stack.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

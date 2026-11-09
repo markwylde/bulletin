@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/content",
+  "private": true,
+  "type": "module",
+  "description": "Markdown to sanitised HTML pipeline.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

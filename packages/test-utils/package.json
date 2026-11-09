@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/test-utils",
+  "private": true,
+  "type": "module",
+  "description": "Fixtures, seed builders and Bun.WebView helpers.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

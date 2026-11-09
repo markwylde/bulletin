@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/db",
+  "private": true,
+  "type": "module",
+  "description": "SQL migrations, the migration runner and typed query helpers.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

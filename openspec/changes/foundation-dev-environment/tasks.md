@@ -3,7 +3,7 @@
 ## 1. Workspace scaffolding
 
 - [x] 1.1 Create the Bun workspace root (`package.json` with workspaces and `packageManager` pinning Bun, `tsconfig.base.json` strict, Biome config) and verify `bun install` succeeds
-- [ ] 1.2 Create shells for `apps/{user-app,user-api,staff-app,staff-api,workers,plugin-host}` and `packages/{db,domain,cache,content,templates,plugin-sdk,i18n,flags,storage,ui,config,test-utils}` and verify `bun run check` (typecheck + lint + tests) passes
+- [x] 1.2 Create shells for `apps/{user-app,user-api,staff-app,staff-api,workers,plugin-host}` and `packages/{db,domain,cache,content,templates,plugin-sdk,i18n,flags,storage,ui,config,test-utils}` and verify `bun run check` (typecheck + lint + tests) passes
 - [ ] 1.3 Implement `packages/config` env parsing with dev defaults, production rejection of dev defaults, and a log redaction helper; verify with unit tests for rejection and redaction
 
 ## 2. Compose stack and proxy

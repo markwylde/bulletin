@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/config",
+  "private": true,
+  "type": "module",
+  "description": "Environment parsing and structured logging.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

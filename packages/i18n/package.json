@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/i18n",
+  "private": true,
+  "type": "module",
+  "description": "Message catalogs and the ICU formatter.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

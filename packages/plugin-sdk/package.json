@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/plugin-sdk",
+  "private": true,
+  "type": "module",
+  "description": "Public, versioned SDK that plugins compile against.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

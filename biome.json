@@ -6,7 +6,17 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/.astro"]
+    "includes": [
+      "package.json",
+      "tsconfig.base.json",
+      "biome.json",
+      "apps/**",
+      "packages/**",
+      "tests/**",
+      "!**/dist",
+      "!**/node_modules",
+      "!**/.astro"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -24,7 +34,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "suspicious": {
         "noExplicitAny": "error"
       }

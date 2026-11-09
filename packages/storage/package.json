@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/storage",
+  "private": true,
+  "type": "module",
+  "description": "Bun.S3Client wrapper for opaque keys and presigned URLs.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

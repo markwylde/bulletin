@@ -1,0 +1,12 @@
+{
+  "name": "@bulletin/templates",
+  "private": true,
+  "type": "module",
+  "description": "Liquid template engine, view-model contracts and hook points.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}
