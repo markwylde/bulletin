@@ -164,6 +164,24 @@ async function login(
   return sessionCookie;
 }
 
+async function csrfFor(
+  service: AuthService,
+  sessionCookie: string,
+  kind: "user" | "staff" = "user",
+): Promise<string> {
+  const cookieName = kind === "staff" ? "bl_staff" : "bl_session";
+  const response = await call(service, "/api/auth/session", {
+    cookie: `${cookieName}=${sessionCookie}`,
+  });
+  const view = (await response.json()) as SessionView;
+
+  if (view.csrfToken === null) {
+    throw new Error("CSRF token missing");
+  }
+
+  return view.csrfToken;
+}
+
 /** Drives the refresh redirect and its callback through the real service handlers. */
 async function silentReauth(
   service: AuthService,
@@ -479,9 +497,19 @@ integrationDescribe("silent re-auth and background grace", () => {
 
       try {
         const sessionCookie = await login(service, "logout-user");
+        const csrfToken = await csrfFor(service, sessionCookie);
+
+        const missing = await call(service, "/api/auth/logout", {
+          method: "POST",
+          cookie: `bl_session=${sessionCookie}`,
+        });
+        expect(missing.status).toBe(403);
+        expect(await missing.json()).toEqual({ code: "invalid_csrf" });
+
         const response = await call(service, "/api/auth/logout", {
           method: "POST",
           cookie: `bl_session=${sessionCookie}`,
+          headers: { "x-bulletin-csrf": csrfToken },
         });
 
         expect(response.status).toBe(200);
@@ -515,6 +543,8 @@ integrationDescribe("silent re-auth and background grace", () => {
         const adminCookie = await login(service, "admin", "staff");
         const targetCookie = await login(service, "target-member", "staff");
         const regularCookie = await login(service, "regular-staff", "staff");
+        const adminCsrf = await csrfFor(service, adminCookie, "staff");
+        const regularCsrf = await csrfFor(service, regularCookie, "staff");
 
         const [target] = (await database.sql`
           SELECT member_id FROM pii.identities WHERE sub = 'target-member'
@@ -527,7 +557,12 @@ integrationDescribe("silent re-auth and background grace", () => {
         const denied = await call(
           service,
           `/api/staff/members/${target.member_id}/sessions/revoke`,
-          { method: "POST", cookie: `bl_staff=${regularCookie}` },
+          {
+            method: "POST",
+            cookie: `bl_staff=${regularCookie}`,
+            origin: STAFF_ORIGIN,
+            headers: { "x-bulletin-csrf": regularCsrf },
+          },
         );
         expect(denied.status).toBe(403);
         expect(await denied.json()).toEqual({ code: "forbidden" });
@@ -540,7 +575,12 @@ integrationDescribe("silent re-auth and background grace", () => {
         const revoked = await call(
           service,
           `/api/staff/members/${target.member_id}/sessions/revoke`,
-          { method: "POST", cookie: `bl_staff=${adminCookie}` },
+          {
+            method: "POST",
+            cookie: `bl_staff=${adminCookie}`,
+            origin: STAFF_ORIGIN,
+            headers: { "x-bulletin-csrf": adminCsrf },
+          },
         );
         expect(revoked.status).toBe(200);
         expect(await revoked.json()).toEqual({ revoked: 1 });
@@ -724,6 +764,96 @@ integrationDescribe("silent re-auth and background grace", () => {
           WHERE id = (SELECT member_id FROM pii.identities WHERE sub = 'activity-user')
         `) as Array<{ previous_visit_at: Date }>;
         expect(recent?.previous_visit_at?.toISOString()).toBe("2020-01-01T00:00:00.000Z");
+      } finally {
+        await service.close();
+        await sql.close();
+      }
+    });
+  }, 20_000);
+
+  test("requires Origin and CSRF for non-GET routes with only the named exemptions", async () => {
+    await withDb("auth_csrf", async (database) => {
+      const { service, sql } = await serviceFor(database);
+
+      try {
+        const sessionCookie = await login(service, "csrf-user");
+        const csrfToken = await csrfFor(service, sessionCookie);
+        const cookie = `bl_session=${sessionCookie}`;
+
+        const missing = await call(service, "/api/test/protected", {
+          method: "POST",
+          cookie,
+        });
+        expect(missing.status).toBe(403);
+        expect(await missing.json()).toEqual({ code: "invalid_csrf" });
+
+        const wrong = await call(service, "/api/test/protected", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": "wrong-token" },
+        });
+        expect(wrong.status).toBe(403);
+        expect(await wrong.json()).toEqual({ code: "invalid_csrf" });
+
+        const allowed = await call(service, "/api/test/protected", {
+          method: "POST",
+          cookie,
+          headers: { "x-bulletin-csrf": csrfToken },
+        });
+        expect(allowed.status).toBe(200);
+
+        const wrongOrigin = await call(service, "/api/test/protected", {
+          method: "POST",
+          cookie,
+          origin: "http://evil.test",
+          headers: { "x-bulletin-csrf": csrfToken },
+        });
+        expect(wrongOrigin.status).toBe(403);
+        expect(await wrongOrigin.json()).toEqual({ code: "invalid_origin" });
+
+        const noSession = await call(service, "/api/test/protected", {
+          method: "POST",
+        });
+        expect(noSession.status).toBe(401);
+        expect(await noSession.json()).toEqual({ code: "unauthenticated" });
+
+        const challenge = await call(service, "/api/auth/challenge", { body: {} });
+        expect(challenge.status).toBe(200);
+
+        const session = await call(service, "/api/auth/session", { body: {} });
+        expect(session.status).toBe(400);
+        expect(await session.json()).toEqual({ code: "invalid_request" });
+
+        for (const path of ["/api/beacon", "/api/me/overlay", "/api/notifications/unsubscribe"]) {
+          const raw = await service.handle(
+            new Request(`http://api.test${path}`, {
+              method: "POST",
+              headers: { origin: USER_ORIGIN, cookie },
+            }),
+          );
+          expect(raw).toBeNull();
+        }
+
+        const unknown = await service.handle(
+          new Request("http://api.test/api/not-a-route", {
+            method: "POST",
+            headers: { origin: USER_ORIGIN, cookie },
+          }),
+        );
+        expect(unknown?.status).toBe(403);
+        expect(await unknown?.json()).toEqual({ code: "invalid_csrf" });
+
+        const unknownWithToken = await service.handle(
+          new Request("http://api.test/api/not-a-route", {
+            method: "POST",
+            headers: {
+              origin: USER_ORIGIN,
+              cookie,
+              "x-bulletin-csrf": csrfToken,
+            },
+          }),
+        );
+        expect(unknownWithToken).toBeNull();
       } finally {
         await service.close();
         await sql.close();

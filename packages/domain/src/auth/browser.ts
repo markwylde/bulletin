@@ -224,10 +224,22 @@ export async function loadSession(): Promise<BrowserSessionView> {
 
 /** Logout revokes the server session and tells the client to drop local data (ADR 0018). */
 export async function logout(): Promise<void> {
+  const session = (await fetch("/api/auth/session", {
+    credentials: "include",
+    headers: { accept: "application/json" },
+  })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null)) as BrowserSessionView | null;
+
   await fetch("/api/auth/logout", {
     method: "POST",
     credentials: "include",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(session?.csrfToken === null || session?.csrfToken === undefined
+        ? {}
+        : { "x-bulletin-csrf": session.csrfToken }),
+    },
   });
   clearStashedRequest();
   browser.location.replace("/");

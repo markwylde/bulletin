@@ -7,6 +7,7 @@ import {
   safeReturnTo,
   serializeCookie,
   sessionCookieName,
+  verifyCsrfToken,
 } from "./tokens.ts";
 
 describe("auth tokens and cookies", () => {
@@ -17,6 +18,15 @@ describe("auth tokens and cookies", () => {
 
     expect(createCsrfToken("42", "secret")).toBe(createCsrfToken("42", "secret"));
     expect(createCsrfToken("42", "secret")).not.toBe(createCsrfToken("43", "secret"));
+  });
+
+  test("compares CSRF tokens in constant time and rejects missing or wrong values", () => {
+    const expected = createCsrfToken("42", "secret");
+
+    expect(verifyCsrfToken(expected, expected)).toBe(true);
+    expect(verifyCsrfToken(createCsrfToken("43", "secret"), expected)).toBe(false);
+    expect(verifyCsrfToken("short", expected)).toBe(false);
+    expect(verifyCsrfToken(null, expected)).toBe(false);
   });
 
   test("uses host-only prefixed cookies in production", () => {

@@ -1,4 +1,4 @@
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 
 export { safeReturnTo } from "./return-to.ts";
@@ -38,6 +38,15 @@ export function hashToken(token: string): Uint8Array {
 /** A per-session CSRF token: HMAC-SHA-256 of the session ID with the server key. */
 export function createCsrfToken(sessionId: string, secret: string): string {
   return createHmac("sha256", secret).update(`session:${sessionId}`).digest("base64url");
+}
+
+/** Constant-time comparison of the submitted and expected CSRF tokens. */
+export function verifyCsrfToken(provided: string | null, expected: string): boolean {
+  if (provided === null || provided.length !== expected.length) {
+    return false;
+  }
+
+  return timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
 }
 
 export const SESSION_LIFETIMES = {

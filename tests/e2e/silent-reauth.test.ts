@@ -15,8 +15,11 @@ integrationDescribe("silent re-auth", () => {
     await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "member-1");
 
+      const session = await view.evaluate<{ readonly csrfToken: string | null }>(
+        "fetch('/api/auth/session', { credentials: 'include' }).then((response) => response.json())",
+      );
       const aged = await view.evaluate<boolean>(
-        "fetch('/api/test/age-reauth', { method: 'POST', credentials: 'include' }).then((response) => response.ok)",
+        `fetch('/api/test/age-reauth', { method: 'POST', credentials: 'include', headers: { 'x-bulletin-csrf': ${JSON.stringify(session.csrfToken ?? "")} } }).then((response) => response.ok)`,
       );
       expect(aged).toBe(true);
 

@@ -10,7 +10,21 @@ import {
   STEP_UP_WINDOW_MS,
   serializeCookie,
   sessionCookieName,
+  verifyCsrfToken,
 } from "./tokens.ts";
+
+/** The ADR 0018 exemptions, by exact method and path. Nothing else bypasses CSRF. */
+const CSRF_EXEMPT = new Set([
+  "POST /api/auth/challenge",
+  "POST /api/auth/session",
+  "POST /api/beacon",
+  "POST /api/me/overlay",
+  "POST /api/notifications/unsubscribe",
+]);
+
+export function isCsrfExempt(method: string, pathname: string): boolean {
+  return CSRF_EXEMPT.has(`${method.toUpperCase()} ${pathname}`);
+}
 
 export interface AuthServiceOptions extends AuthRouterOptions {
   readonly cacheTtlMs?: number;
@@ -216,13 +230,37 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
   return {
     sessions,
     async handle(request, next) {
+      const { pathname } = new URL(request.url);
+
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        if (request.headers.get("origin") !== options.origin) {
+          return json({ code: "invalid_origin" }, 403);
+        }
+
+        if (!isCsrfExempt(request.method, pathname)) {
+          const token = parseCookieHeader(request.headers.get("cookie"))[cookieName];
+          const session = token === undefined ? null : await sessions.find(options.kind, token);
+
+          if (session === null) {
+            return json({ code: "unauthenticated" }, 401);
+          }
+
+          if (
+            !verifyCsrfToken(
+              request.headers.get("x-bulletin-csrf"),
+              createCsrfToken(session.id, options.sessionSecret),
+            )
+          ) {
+            return json({ code: "invalid_csrf" }, 403);
+          }
+        }
+      }
+
       const authResponse = await router(request);
 
       if (authResponse !== null) {
         return authResponse;
       }
-
-      const { pathname } = new URL(request.url);
 
       if (options.kind === "staff") {
         const match = /^\/api\/staff\/members\/(\d+)\/sessions\/revoke$/.exec(pathname);
