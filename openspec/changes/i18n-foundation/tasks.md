@@ -24,4 +24,4 @@
 ## 5. Strings and seed
 
 - [x] 5.1 Move the foundation placeholder strings into real en/es/fr catalogs and verify completeness passes
-- [ ] 5.2 Seed the board default locale, and verify with an integration test that the resolver and formatter use it after `docker compose up --watch`
+- [x] 5.2 Seed the board default locale, and verify with an integration test that the resolver and formatter use it after `docker compose up --watch`

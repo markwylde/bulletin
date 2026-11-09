@@ -6,8 +6,8 @@ export const baseSeedModule: SeedModule = {
   name: "base",
   async run({ sql }) {
     await sql`
-      INSERT INTO core.board_settings (id, board_name, board_description)
-      VALUES (1, 'Bulletin', '')
+      INSERT INTO core.board_settings (id, board_name, board_description, default_locale)
+      VALUES (1, 'Bulletin', '', 'en')
       ON CONFLICT (id) DO NOTHING
     `;
   },

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readBoardDefaultLocale } from "@bulletin/db/i18n";
+import { baseSeedModule, runSeeds, SeedRegistry } from "@bulletin/db/seed";
+import { createServerT, resolveRequestLocale } from "@bulletin/i18n";
 import { withTestDatabase } from "@bulletin/test-utils/database";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -40,6 +43,38 @@ integrationDescribe("board default locale", () => {
 
       expect(error).toBeInstanceOf(Error);
       expect(String(error)).toContain("board_settings_default_locale_check");
+    });
+  }, 15_000);
+
+  test("the seeded board default drives locale resolution and formatting", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "i18n_seed_locale" }, async ({ sql }) => {
+      await runSeeds({ sql, registry: new SeedRegistry([baseSeedModule]) });
+
+      const seeded = await readBoardDefaultLocale(sql);
+      expect(seeded).toBe("en");
+
+      const guest = resolveRequestLocale({
+        audience: "guest",
+        boardDefaultLocale: seeded,
+        acceptLanguage: "es",
+      });
+      expect(guest.locale).toBe("en");
+      expect(guest.suggestion).toBe("es");
+      expect(createServerT(seeded)("topic.reply.button")).toBe("Reply");
+
+      await sql`
+        UPDATE core.board_settings SET default_locale = 'es' WHERE id = 1
+      `;
+      const updated = await readBoardDefaultLocale(sql);
+      expect(updated).toBe("es");
+      expect(resolveRequestLocale({ audience: "guest", boardDefaultLocale: updated }).locale).toBe(
+        "es",
+      );
+      expect(createServerT(updated)("topic.reply.button")).toBe("Responder");
     });
   }, 15_000);
 
