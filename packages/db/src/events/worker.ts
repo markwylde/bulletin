@@ -1,3 +1,4 @@
+import type { Logger } from "@bulletin/config";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { loadEvent, type StoredEvent } from "./events.ts";
@@ -14,6 +15,7 @@ export interface EventWorkerOptions {
   readonly sql: SQL;
   readonly handlers: Readonly<Record<string, EventHandler>>;
   readonly queueName?: string;
+  readonly logger?: Logger;
 }
 
 export interface EventWorker {
@@ -27,15 +29,27 @@ export async function createEventWorker(options: EventWorkerOptions): Promise<Ev
   await options.boss.work<EventJob>(queueName, async (jobs) => {
     for (const job of jobs) {
       const handler = options.handlers[job.data.subscriber];
+      const jobLogger = options.logger?.child({
+        jobId: job.id,
+        subscriber: job.data.subscriber,
+      });
 
       if (handler === undefined) {
+        jobLogger?.error("event.job.failed", { reason: "no handler" });
         throw new Error(`No event handler registered for ${job.data.subscriber}`);
       }
 
       const event = await loadEvent(options.sql, BigInt(job.data.eventId));
 
       if (event !== null) {
-        await handler(event);
+        try {
+          jobLogger?.info("event.job.started");
+          await handler(event);
+          jobLogger?.info("event.job.completed");
+        } catch (error) {
+          jobLogger?.error("event.job.failed", { error });
+          throw error;
+        }
       }
     }
   });

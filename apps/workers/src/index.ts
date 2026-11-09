@@ -35,7 +35,12 @@ const boss = await createPgBossQueue({
 // outbox never accumulates unpublished events silently.
 const subscribers: EventSubscriber[] = [];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
-const eventWorker = await createEventWorker({ boss: boss.boss, sql, handlers: {} });
+const eventWorker = await createEventWorker({
+  boss: boss.boss,
+  sql,
+  handlers: {},
+  logger,
+});
 
 let relayInFlight: Promise<void> | undefined;
 const relayTimer = setInterval(() => {
