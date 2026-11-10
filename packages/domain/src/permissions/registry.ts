@@ -39,6 +39,8 @@ export interface GroupSettingDefinition {
   readonly labelKey: string;
   /** Allowed values for `enum` settings. */
   readonly values?: readonly string[];
+  /** Display unit for `duration` settings. */
+  readonly unit?: "seconds" | "minutes";
 }
 
 const SECTION_LABELS = [
@@ -237,6 +239,7 @@ const VALUE_SETTING_DEFINITIONS = [
     merge: "max",
     defaultValue: 0,
     section: "posting",
+    unit: "minutes",
     labelKey: "staff.groups.setting.editWindowMinutes",
   },
   {
@@ -246,6 +249,7 @@ const VALUE_SETTING_DEFINITIONS = [
     merge: "min",
     defaultValue: 15,
     section: "posting",
+    unit: "seconds",
     labelKey: "staff.groups.setting.floodControlSeconds",
   },
   {
@@ -381,6 +385,7 @@ const VALUE_SETTING_DEFINITIONS = [
     merge: "min",
     defaultValue: 5,
     section: "members",
+    unit: "seconds",
     labelKey: "staff.groups.setting.searchFloodSeconds",
   },
   {

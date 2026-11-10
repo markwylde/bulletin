@@ -1,5 +1,5 @@
 import type { HealthCheck } from "@bulletin/config/server";
-import type { AuthService, SessionRecord } from "@bulletin/domain/auth";
+import { type AuthService, type SessionRecord, STEP_UP_WINDOW_MS } from "@bulletin/domain/auth";
 import {
   type AcpPermission,
   can,
@@ -65,6 +65,8 @@ export interface StaffRoute {
   readonly path: string;
   /** Section permission; `acp.access` is also checked for every route. */
   readonly permission: AcpPermission;
+  /** Sensitive permission mutations need fresh authentication (ADR 0018). */
+  readonly requiresStepUp?: boolean;
   readonly handler: (context: StaffRouteContext) => Promise<Response> | Response;
 }
 
@@ -544,6 +546,7 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "POST",
     path: "/api/staff/groups",
     permission: "acp.groups",
+    requiresStepUp: true,
     handler: groupsMutate,
   },
   {
@@ -565,6 +568,7 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "POST",
     path: "/api/staff/groups/member",
     permission: "acp.members.groups",
+    requiresStepUp: true,
     handler: memberGroupsSave,
   },
   {
@@ -579,6 +583,7 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "POST",
     path: "/api/staff/masks",
     permission: "acp.permissions",
+    requiresStepUp: true,
     handler: masksMutate,
   },
   {
@@ -593,6 +598,7 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "POST",
     path: "/api/staff/moderators",
     permission: "acp.members",
+    requiresStepUp: true,
     handler: moderatorsMutate,
   },
   {
@@ -607,6 +613,7 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "POST",
     path: "/api/staff/promotions",
     permission: "acp.groups",
+    requiresStepUp: true,
     handler: promotionsMutate,
   },
 ];
@@ -633,6 +640,13 @@ export async function authorizeStaffRoute(
     !(await can(context.sql, context.session.memberId, route.permission))
   ) {
     return forbidden();
+  }
+
+  if (
+    route.requiresStepUp === true &&
+    Date.now() - context.session.lastAuthAt.getTime() > STEP_UP_WINDOW_MS
+  ) {
+    return json({ code: "step_up_required" }, 401);
   }
 
   return route.handler(context);

@@ -143,7 +143,7 @@ export function MasksPage() {
         <>
           <section className="admin-panel" data-mask-list aria-labelledby="mask-list-title">
             <h2 id="mask-list-title">{t("staff.masks.list.title")}</h2>
-            <div className="matrix-scroll">
+            <div className="matrix-scroll" data-matrix-scroll>
               <table className="matrix-table">
                 <thead>
                   <tr>
@@ -159,9 +159,9 @@ export function MasksPage() {
                       <th scope="row">
                         <span className="log-action">{mask.key}</span>
                       </th>
-                      <td>{mask.title}</td>
-                      <td>{mask.description}</td>
-                      <td>
+                      <td data-label={t("staff.masks.name")}>{mask.title}</td>
+                      <td data-label={t("staff.masks.description")}>{mask.description}</td>
+                      <td data-label={t("staff.masks.actions")}>
                         <button
                           type="button"
                           data-mask-edit={mask.key}
@@ -362,7 +362,7 @@ export function MasksPage() {
               </div>
 
               <h3>{t("staff.masks.matrix.title")}</h3>
-              <div className="matrix-scroll">
+              <div className="matrix-scroll" data-matrix-scroll>
                 <table className="matrix-table" data-mask-matrix={selected.key}>
                   <thead>
                     <tr>
@@ -400,7 +400,7 @@ export function MasksPage() {
                               row !== undefined &&
                               (row.effectiveActions & capabilityBitMask(action)) !== 0;
                             return (
-                              <td key={action}>
+                              <td key={action} data-label={t(actionLabelKey(action))}>
                                 <button
                                   type="button"
                                   className={allowed ? "matrix-toggle is-on" : "matrix-toggle"}

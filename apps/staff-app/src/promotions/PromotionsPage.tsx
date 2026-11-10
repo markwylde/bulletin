@@ -119,7 +119,7 @@ export function PromotionsPage() {
         <>
           <section className="admin-panel" aria-labelledby="promotions-list-title">
             <h2 id="promotions-list-title">{t("staff.promotions.list.title")}</h2>
-            <div className="matrix-scroll">
+            <div className="matrix-scroll" data-matrix-scroll>
               <table className="matrix-table">
                 <thead>
                   <tr>
@@ -134,10 +134,10 @@ export function PromotionsPage() {
                 <tbody>
                   {query.data.rules.map((rule) => (
                     <tr key={rule.id} data-promotion-row={rule.id}>
-                      <td>{rule.position}</td>
-                      <td>{rule.fromGroupKey}</td>
-                      <td>{rule.toGroupKey}</td>
-                      <td>
+                      <td data-label={t("staff.promotions.order")}>{rule.position}</td>
+                      <td data-label={t("staff.promotions.from")}>{rule.fromGroupKey}</td>
+                      <td data-label={t("staff.promotions.to")}>{rule.toGroupKey}</td>
+                      <td data-label={t("staff.promotions.criteria")}>
                         {Object.entries(rule.criteria)
                           .map(([key, value]) => {
                             const labelKey = query.data.criteria.find(
@@ -147,12 +147,12 @@ export function PromotionsPage() {
                           })
                           .join(", ")}
                       </td>
-                      <td>
+                      <td data-label={t("staff.promotions.enabled")}>
                         {rule.enabled
                           ? t("staff.promotions.enabled.yes")
                           : t("staff.promotions.enabled.no")}
                       </td>
-                      <td>
+                      <td data-label={t("staff.promotions.actions")}>
                         <button
                           type="button"
                           data-promotion-edit={rule.id}

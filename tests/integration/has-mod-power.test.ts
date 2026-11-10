@@ -11,12 +11,13 @@ import {
 import { displayNameSkeleton } from "@bulletin/domain/member";
 import {
   can,
+  capabilityAnswer,
   createForumTree,
   forumActionMask,
-  loadModeratorContext,
+  loadPermissionSnapshot,
   MODERATOR_POWERS,
   type ModeratorPower,
-  moderatorPowerAllowed,
+  type PermissionSnapshot,
 } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 
@@ -113,6 +114,38 @@ async function addToGroup(
   `;
 }
 
+async function grantRead(
+  database: TestDatabase,
+  groupKey: string,
+  forumIds: readonly string[],
+): Promise<void> {
+  const [mask] = (await database.sql`
+    INSERT INTO core.masks (key, title)
+    VALUES ('test_read', 'Test Read')
+    ON CONFLICT (key) DO UPDATE SET title = EXCLUDED.title
+    RETURNING id
+  `) as Array<{ id: string }>;
+
+  if (mask === undefined) {
+    throw new Error("Could not create the read mask");
+  }
+
+  await database.sql`
+    INSERT INTO core.group_masks (group_id, mask_id)
+    SELECT g.id, ${mask.id} FROM core.groups g WHERE g.key = ${groupKey}
+    ON CONFLICT DO NOTHING
+  `;
+
+  for (const forumId of forumIds) {
+    await database.sql`
+      INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+      VALUES (${forumId}, ${mask.id}, ${forumActionMask(["show", "read"])}, false)
+      ON CONFLICT (forum_id, mask_id) DO UPDATE
+        SET actions = EXCLUDED.actions, inherits = EXCLUDED.inherits
+    `;
+  }
+}
+
 async function assignment(
   database: TestDatabase,
   values: {
@@ -203,6 +236,7 @@ integrationDescribe("core.has_mod_power", () => {
       const root = category?.id ?? "";
       const memberId = await createMember(database, "Limited Moderator");
       await addToGroup(database, memberId, "members", true);
+      await grantRead(database, "members", [root, forum, child]);
 
       await assignment(database, {
         forumId: forum,
@@ -245,6 +279,7 @@ integrationDescribe("core.has_mod_power", () => {
 
       const memberId = await createMember(database, "Group Moderator");
       await addToGroup(database, memberId, "members", true);
+      await grantRead(database, "members", [forumId, child?.id ?? ""]);
 
       await assignment(database, {
         forumId,
@@ -273,6 +308,7 @@ integrationDescribe("core.has_mod_power", () => {
       const superMod = await createMember(database, "Global Moderator");
       await addToGroup(database, superMod, "members", true);
       await addToGroup(database, superMod, "super_moderators", false);
+      await grantRead(database, "members", [forumId]);
 
       await database.sql`
         INSERT INTO core.group_settings (group_id, key, value)
@@ -357,8 +393,8 @@ integrationDescribe("core.has_mod_power", () => {
       `) as Array<{ id: string; key: string }>;
       const forumIds = tree.ids;
 
-      // Give every group read/show on every fixture forum so the app-level `can()` (which
-      // gates moderator powers on read) and the lower-level SQL mirror can be compared.
+      // A partial read matrix: some forums are readable, some are hidden or inherit a hidden
+      // parent. The property test must exercise both allowed and denied forums.
       const [readMask] = (await database.sql`
         INSERT INTO core.masks (key, title)
         VALUES ('property_read', 'Property Read')
@@ -377,10 +413,20 @@ integrationDescribe("core.has_mod_power", () => {
       `;
 
       for (const forumId of forumIds) {
-        await database.sql`
-          INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
-          VALUES (${forumId}, ${readMask.id}, ${forumActionMask(["show", "read"])}, false)
-        `;
+        const roll = rng();
+
+        if (roll < 0.6) {
+          await database.sql`
+            INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+            VALUES (${forumId}, ${readMask.id}, ${forumActionMask(["show", "read"])}, false)
+          `;
+        } else if (roll < 0.8) {
+          await database.sql`
+            INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+            VALUES (${forumId}, ${readMask.id}, 0, false)
+          `;
+        }
+        // The remaining forums inherit from their parent (or default to no access at a root).
       }
 
       const usedAssignments = new Set<string>();
@@ -434,10 +480,13 @@ integrationDescribe("core.has_mod_power", () => {
       }
 
       const powerList = `ARRAY[${MODERATOR_POWERS.map((power) => `'${power}'`).join(",")}]::text[]`;
-      const contexts = new Map<string, Awaited<ReturnType<typeof loadModeratorContext>>>();
+      const snapshots = new Map<string, PermissionSnapshot>();
 
       for (const member of members) {
-        contexts.set(member.id, await loadModeratorContext(database.sql, member.id, tree));
+        snapshots.set(
+          member.id,
+          await loadPermissionSnapshot(database.sql, member.id, { tree, sessionId: null }),
+        );
       }
 
       const mismatches: Array<{
@@ -460,7 +509,7 @@ integrationDescribe("core.has_mod_power", () => {
           ORDER BY f.id, p.power
         `)) as Array<{ forum_id: string; power: string; allowed: boolean }>;
 
-        const context = contexts.get(member.id);
+        const snapshot = snapshots.get(member.id);
 
         for (const row of rows) {
           if (row.allowed) {
@@ -470,8 +519,8 @@ integrationDescribe("core.has_mod_power", () => {
           }
 
           const typeScript =
-            context !== undefined &&
-            moderatorPowerAllowed(context, row.forum_id, row.power as ModeratorPower);
+            snapshot !== undefined &&
+            capabilityAnswer(snapshot, row.forum_id, row.power as ModeratorPower);
 
           if (typeScript !== row.allowed) {
             mismatches.push({

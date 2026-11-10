@@ -127,6 +127,7 @@
   "staff.groups.merge.min": "minimum",
   "staff.groups.merge.primary": "groupe principal",
   "staff.groups.merge.restrictAny": "la restriction gagne",
+  "staff.groups.minutes": "minutes",
   "staff.groups.moveDown": "Descendre",
   "staff.groups.moveUp": "Monter",
   "staff.groups.order": "Ordre",

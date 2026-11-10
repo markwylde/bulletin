@@ -21,6 +21,27 @@ integrationDescribe("staff group settings", () => {
       await waitForSelector(view, '[data-page="group-settings"]');
       await waitForSelector(view, CELL, 20_000);
 
+      // The edit-window cell is measured in minutes, not seconds.
+      expect(
+        await view.evaluate<string>(
+          `document.querySelector('[data-setting-cell="members:posting.edit_window_minutes"]')?.closest('.setting-cell')?.querySelector('[data-duration-unit]')?.getAttribute('data-duration-unit') ?? ''`,
+        ),
+      ).toBe("minutes");
+      expect(
+        await view.evaluate<string>(
+          `document.querySelector(${JSON.stringify(CELL)})?.closest('.setting-cell')?.querySelector('[data-duration-unit]')?.getAttribute('data-duration-unit') ?? ''`,
+        ),
+      ).toBe("seconds");
+
+      // The matrix uses cards at 360px and never overflows its own container.
+      expect(
+        await view.evaluate<boolean>(
+          `[...document.querySelectorAll('[data-matrix-scroll]')].every(
+            (element) => element.scrollWidth <= element.clientWidth + 1
+          )`,
+        ),
+      ).toBe(true);
+
       await setInputValue(view, CELL, "20");
       await clickSelector(view, SAVE);
       await waitForSelector(view, '[data-toast-tone="success"]');

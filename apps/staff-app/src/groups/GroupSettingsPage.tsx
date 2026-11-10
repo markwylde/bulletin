@@ -8,6 +8,7 @@ import { useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import { displayedSettingValue, durationUnitKey, parsedSettingValue } from "./settings.ts";
 
 interface GroupSettings {
   readonly groups: ReadonlyArray<{
@@ -31,33 +32,6 @@ function mergeLabelKey(merge: GroupSettingDefinition["merge"]): string {
   return MERGE_LABELS[merge].labelKey;
 }
 
-function displayValue(definition: GroupSettingDefinition, value: unknown): string | boolean {
-  if (definition.type === "bool") {
-    return value === true;
-  }
-
-  if (typeof value === "number" || typeof value === "string") {
-    return String(value);
-  }
-
-  return String(definition.defaultValue);
-}
-
-function parsedValue(
-  definition: GroupSettingDefinition,
-  raw: string | boolean,
-): boolean | number | string {
-  if (definition.type === "bool") {
-    return raw === true;
-  }
-
-  if (definition.type === "int" || definition.type === "duration") {
-    return Number(raw);
-  }
-
-  return String(raw);
-}
-
 function SettingCell({
   definition,
   group,
@@ -70,10 +44,13 @@ function SettingCell({
   readonly onSave: (value: boolean | number | string) => void;
 }) {
   const t = useT();
-  const [draft, setDraft] = useState<string | boolean>(() => displayValue(definition, value));
+  const unitKey = durationUnitKey(definition);
+  const [draft, setDraft] = useState<string | boolean>(() =>
+    displayedSettingValue(definition, value),
+  );
 
   useEffect(() => {
-    setDraft(displayValue(definition, value));
+    setDraft(displayedSettingValue(definition, value));
   }, [definition, value]);
 
   const input =
@@ -109,13 +86,15 @@ function SettingCell({
   return (
     <span className="setting-cell">
       {input}
-      {definition.type === "duration" ? (
-        <span className="widget-muted">{t("staff.groups.seconds")}</span>
-      ) : null}
+      {unitKey === null ? null : (
+        <span className="widget-muted" data-duration-unit={definition.unit ?? "seconds"}>
+          {t(unitKey)}
+        </span>
+      )}
       <button
         type="button"
         data-setting-save={`${group.key}:${definition.key}`}
-        onClick={() => onSave(parsedValue(definition, draft))}
+        onClick={() => onSave(parsedSettingValue(definition, draft))}
       >
         {t("staff.groups.cellSave")}
       </button>
@@ -175,7 +154,7 @@ export function GroupSettingsPage() {
               aria-labelledby={`settings-section-${section}`}
             >
               <h2 id={`settings-section-${section}`}>{t(SECTION_LABEL_KEYS[section])}</h2>
-              <div className="matrix-scroll">
+              <div className="matrix-scroll" data-matrix-scroll>
                 <table className="matrix-table">
                   <thead>
                     <tr>
@@ -197,7 +176,7 @@ export function GroupSettingsPage() {
                           </span>
                         </th>
                         {query.data.groups.map((group) => (
-                          <td key={group.id}>
+                          <td key={group.id} data-label={group.title}>
                             <SettingCell
                               definition={definition}
                               group={group}

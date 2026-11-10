@@ -102,6 +102,28 @@ export async function unlockForum(
       return { kind: "forbidden" } as const;
     }
 
+    const [lockout] = (await tx`
+      SELECT locked_until
+      FROM core.forum_unlock_lockouts
+      WHERE session_id = ${options.sessionId} AND forum_id = ${options.forumId}
+    `) as Array<{ locked_until: Date | string }>;
+
+    if (lockout !== undefined) {
+      const lockedUntil = new Date(lockout.locked_until);
+
+      if (lockedUntil.getTime() > now.getTime()) {
+        return {
+          kind: "throttled",
+          retryAfterMs: lockedUntil.getTime() - now.getTime(),
+        } as const;
+      }
+
+      await tx`
+        DELETE FROM core.forum_unlock_lockouts
+        WHERE session_id = ${options.sessionId} AND forum_id = ${options.forumId}
+      `;
+    }
+
     const cutoff = new Date(now.getTime() - UNLOCK_WINDOW_MS);
 
     // Keep the attempt log bounded; expired failures no longer affect the throttle.
@@ -121,16 +143,16 @@ export async function unlockForum(
       ORDER BY attempted_at DESC
     `) as AttemptRow[];
 
+    // Legacy rows (or a concurrent write) may already have five failures without a deadline.
     if (failures.length >= UNLOCK_FAILURE_LIMIT) {
-      const fifth = failures[UNLOCK_FAILURE_LIMIT - 1];
-
-      if (fifth !== undefined) {
-        const retryAt = new Date(fifth.attempted_at).getTime() + UNLOCK_WINDOW_MS;
-
-        if (retryAt > now.getTime()) {
-          return { kind: "throttled", retryAfterMs: retryAt - now.getTime() } as const;
-        }
-      }
+      const lockedUntil = new Date(now.getTime() + UNLOCK_WINDOW_MS);
+      await tx`
+        INSERT INTO core.forum_unlock_lockouts (session_id, forum_id, locked_until)
+        VALUES (${options.sessionId}, ${options.forumId}, ${lockedUntil})
+        ON CONFLICT (session_id, forum_id) DO UPDATE
+          SET locked_until = EXCLUDED.locked_until
+      `;
+      return { kind: "throttled", retryAfterMs: UNLOCK_WINDOW_MS } as const;
     }
 
     const matched = await verifyPassword(options.password, forum.password_hash);
@@ -141,11 +163,33 @@ export async function unlockForum(
     `;
 
     if (!matched) {
+      const [count] = (await tx`
+        SELECT count(*)::int AS failures
+        FROM core.forum_unlock_attempts
+        WHERE session_id = ${options.sessionId}
+          AND forum_id = ${options.forumId}
+          AND attempted_at > ${cutoff}
+      `) as Array<{ failures: number }>;
+
+      if ((count?.failures ?? 0) >= UNLOCK_FAILURE_LIMIT) {
+        const lockedUntil = new Date(now.getTime() + UNLOCK_WINDOW_MS);
+        await tx`
+          INSERT INTO core.forum_unlock_lockouts (session_id, forum_id, locked_until)
+          VALUES (${options.sessionId}, ${options.forumId}, ${lockedUntil})
+          ON CONFLICT (session_id, forum_id) DO UPDATE
+            SET locked_until = EXCLUDED.locked_until
+        `;
+      }
+
       return { kind: "wrong_password" } as const;
     }
 
     await tx`
       DELETE FROM core.forum_unlock_attempts
+      WHERE session_id = ${options.sessionId} AND forum_id = ${options.forumId}
+    `;
+    await tx`
+      DELETE FROM core.forum_unlock_lockouts
       WHERE session_id = ${options.sessionId} AND forum_id = ${options.forumId}
     `;
 

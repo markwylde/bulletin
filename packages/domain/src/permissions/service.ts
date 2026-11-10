@@ -1,5 +1,5 @@
 import type { SQL } from "bun";
-import { hasCapabilityBit, isForumAction, isModeratorPower } from "./actions.ts";
+import { isForumAction, isModeratorPower } from "./actions.ts";
 import { can, type PermissionAction, type PermissionScope } from "./can.ts";
 import { memberBanned } from "./moderator.ts";
 import { mergeGroupSettings } from "./registry.ts";
@@ -87,7 +87,7 @@ export function createPermissionService(options: PermissionServiceOptions): Perm
 
         const compiled =
           scope.snapshot ?? (await snapshot(memberId, { sessionId: scope.sessionId ?? null }));
-        return hasCapabilityBit(compiled.bits.get(scope.forumId) ?? 0, action);
+        return capabilityAnswer(compiled, scope.forumId, action);
       }
 
       if (isForumAction(action)) {

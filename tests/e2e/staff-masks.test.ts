@@ -20,6 +20,13 @@ integrationDescribe("staff permission masks", () => {
       await waitForSelector(view, '[data-page="masks"]');
       await waitForSelector(view, "[data-mask-create]", 20_000);
       await waitForExpression(view, "!document.querySelector('[data-matrix-disabled]')", 20_000);
+      expect(
+        await view.evaluate<boolean>(
+          `[...document.querySelectorAll('[data-matrix-scroll]')].every(
+            (element) => element.scrollWidth <= element.clientWidth + 1
+          )`,
+        ),
+      ).toBe(true);
 
       const stamp = Date.now();
       const key = `e2e_mask_${stamp}`;

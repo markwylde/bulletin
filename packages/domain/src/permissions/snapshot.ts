@@ -374,6 +374,12 @@ export function capabilityAnswer(
     return false;
   }
 
+  // Moderator controls are useless when the viewer cannot read the forum. The session unlock
+  // is part of effective readability, so a locked password forum denies every mod power.
+  if (isModeratorPower(bit) && !capabilityAnswer(snapshot, forumId, "read")) {
+    return false;
+  }
+
   const base = hasCapabilityBit(snapshot.bits.get(forumId) ?? 0, bit);
 
   if (bit === "read" && node.passwordProtected) {

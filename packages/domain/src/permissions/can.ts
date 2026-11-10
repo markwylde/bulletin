@@ -1,15 +1,12 @@
 import type { SQL } from "bun";
 import {
   type ForumAction,
-  hasCapabilityBit,
   isForumAction,
   isModeratorPower,
   type ModeratorPower,
 } from "./actions.ts";
-import { moderatorPowerAllowed } from "./moderator.ts";
 import { isPermissionKey, type PermissionKey } from "./registry.ts";
 import { capabilityAnswer, loadPermissionSnapshot, type PermissionSnapshot } from "./snapshot.ts";
-import { loadModeratorContext } from "./store.ts";
 import type { ForumTree } from "./tree.ts";
 
 /**
@@ -48,7 +45,7 @@ export async function can(
         sessionId: scope.sessionId ?? null,
       }));
 
-    return hasCapabilityBit(snapshot.bits.get(scope.forumId) ?? 0, action);
+    return capabilityAnswer(snapshot, scope.forumId, action);
   }
 
   if (isForumAction(action)) {
@@ -81,19 +78,4 @@ export async function can(
   `) as unknown[];
 
   return rows.length > 0;
-}
-
-/**
- * The lower-level moderator check that mirrors `core.has_mod_power` (ADR 0005, 0012): it does
- * not apply mask-based `read`. Application checks use `can()`, which requires the effective
- * read bit; `pii` definer functions use the SQL mirror after establishing access.
- */
-export async function canModerate(
-  sql: SQL,
-  memberId: string,
-  power: ModeratorPower,
-  scope: PermissionScope,
-): Promise<boolean> {
-  const context = await loadModeratorContext(sql, memberId, scope.tree);
-  return moderatorPowerAllowed(context, scope.forumId, power);
 }

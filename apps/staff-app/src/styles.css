@@ -1357,7 +1357,62 @@ textarea.form-input {
     grid-template-columns: 1fr;
   }
 
+  /* ADR 0014: matrices become cards at phone widths, never a horizontal scroll. */
+  .matrix-scroll {
+    overflow: visible;
+    border: 0;
+  }
+
   .matrix-table {
-    min-width: 560px;
+    display: block;
+    min-width: 0;
+  }
+
+  .matrix-table thead {
+    display: none;
+  }
+
+  .matrix-table tbody,
+  .matrix-table tr,
+  .matrix-table th,
+  .matrix-table td {
+    display: block;
+    width: auto;
+  }
+
+  .matrix-table tr {
+    margin-block: 0.5rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--surface);
+  }
+
+  .matrix-table th,
+  .matrix-table td {
+    padding: 0.2rem 0;
+    border: 0;
+  }
+
+  .matrix-table th[scope="row"] {
+    font-weight: 600;
+  }
+
+  .matrix-table td {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .matrix-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.8rem;
+  }
+
+  .setting-cell {
+    width: 100%;
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { forumActionMask } from "./actions.ts";
+import { capabilityBitMask, forumActionMask } from "./actions.ts";
 import { announcementAudience, CapabilityView, UndeclaredCapabilityError } from "./capability.ts";
 import { FIXTURE_FORUM_TREE, FIXTURE_PASSWORD_FORUM_ID } from "./fixtures.ts";
 
@@ -45,6 +45,19 @@ describe("CapabilityView password unlocks", () => {
 
     expect(locked.has(FIXTURE_PASSWORD_FORUM_ID, "show")).toBe(true);
     expect(locked.has(FIXTURE_PASSWORD_FORUM_ID, "reply")).toBe(false);
+  });
+
+  test("moderator powers require effective readability of a password forum", () => {
+    const pin = capabilityBitMask("pin");
+    const bits = { [FIXTURE_PASSWORD_FORUM_ID]: READ_AND_SHOW | pin };
+    const locked = view({ bits });
+    const unlocked = view({ bits, unlocked: [FIXTURE_PASSWORD_FORUM_ID] });
+    const expired = view({ bits });
+
+    expect(locked.has(FIXTURE_PASSWORD_FORUM_ID, "pin")).toBe(false);
+    expect(unlocked.has(FIXTURE_PASSWORD_FORUM_ID, "pin")).toBe(true);
+    // An ended session has no unlock grant and therefore no moderator control.
+    expect(expired.has(FIXTURE_PASSWORD_FORUM_ID, "pin")).toBe(false);
   });
 
   test("denies every bit for an unknown forum", () => {

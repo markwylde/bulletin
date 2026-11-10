@@ -1,4 +1,9 @@
-import { type CapabilityBit, capabilityBitIndex, hasCapabilityBit } from "./actions.ts";
+import {
+  type CapabilityBit,
+  capabilityBitIndex,
+  hasCapabilityBit,
+  isModeratorPower,
+} from "./actions.ts";
 import type { ForumTree } from "./tree.ts";
 
 /**
@@ -118,6 +123,20 @@ export class CapabilityView {
       throw new UndeclaredCapabilityError(this.viewName, forumId, bit);
     }
 
+    if (isModeratorPower(bit)) {
+      const read = this.resolve(forumId, "read");
+      this.record(forumId, "read", read);
+
+      if (!read.allowed) {
+        this.record(forumId, bit, {
+          allowed: false,
+          unlockDependent: read.unlockDependent,
+          unlocked: read.unlocked,
+        });
+        return false;
+      }
+    }
+
     const resolution = this.resolve(forumId, bit);
     this.record(forumId, bit, resolution);
     return resolution.allowed;
@@ -147,10 +166,17 @@ export class CapabilityView {
 
       for (const dep of [...unique.values()].sort(compareDeps)) {
         const resolution = this.resolve(dep.forumId, dep.bit);
-        parts.push(`${dep.forumId}|${capabilityBitIndex(dep.bit)}|${resolution.allowed ? 1 : 0}`);
+        const read = isModeratorPower(dep.bit) ? this.resolve(dep.forumId, "read") : null;
+        const allowed = read !== null && !read.allowed ? false : resolution.allowed;
+
+        parts.push(`${dep.forumId}|${capabilityBitIndex(dep.bit)}|${allowed ? 1 : 0}`);
 
         if (resolution.unlockDependent) {
           parts.push(`${dep.forumId}|unlock|${resolution.unlocked ? 1 : 0}`);
+        }
+
+        if (read?.unlockDependent === true) {
+          parts.push(`${dep.forumId}|read-unlock|${read.unlocked ? 1 : 0}`);
         }
       }
     } else {

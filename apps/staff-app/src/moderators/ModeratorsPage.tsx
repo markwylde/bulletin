@@ -104,7 +104,7 @@ export function ModeratorsPage() {
           ) : null}
           <section className="admin-panel" aria-labelledby="moderators-list-title">
             <h2 id="moderators-list-title">{t("staff.moderators.list.title")}</h2>
-            <div className="matrix-scroll">
+            <div className="matrix-scroll" data-matrix-scroll>
               <table className="matrix-table">
                 <thead>
                   <tr>
@@ -119,14 +119,18 @@ export function ModeratorsPage() {
                   {query.data.assignments.map((assignment) => (
                     <tr key={assignment.id} data-moderator-row={assignment.id}>
                       <th scope="row">{`#${assignment.forumId}`}</th>
-                      <td>{assignment.memberName ?? assignment.groupKey ?? ""}</td>
-                      <td>{assignment.powers.join(", ")}</td>
-                      <td>
+                      <td data-label={t("staff.moderators.assignee")}>
+                        {assignment.memberName ?? assignment.groupKey ?? ""}
+                      </td>
+                      <td data-label={t("staff.moderators.powers")}>
+                        {assignment.powers.join(", ")}
+                      </td>
+                      <td data-label={t("staff.moderators.scope")}>
                         {assignment.thisForumOnly
                           ? t("staff.moderators.thisForumOnly")
                           : t("staff.moderators.inherited")}
                       </td>
-                      <td>
+                      <td data-label={t("staff.moderators.actions")}>
                         <button
                           type="button"
                           data-moderator-edit={assignment.id}

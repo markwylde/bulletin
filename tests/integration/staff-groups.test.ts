@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createAuthService, createCsrfToken, hashToken } from "@bulletin/domain/auth";
 import { displayNameSkeleton } from "@bulletin/domain/member";
-import { readPermVersion } from "@bulletin/domain/permissions";
+import { forumActionMask, readPermVersion } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { authIssuer, staffOrigin } from "@bulletin/test-utils/urls";
 import { SQL } from "bun";
@@ -224,6 +224,49 @@ integrationDescribe("staff group and permission screens", () => {
         expect((await call(api, superSession, "masks.list")).status).toBe(403);
         expect((await call(api, superSession, "groups.member.get")).status).toBe(403);
         expect((await call(api, superSession, "promotions.list")).status).toBe(403);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("requires fresh authentication for permission mutations", async () => {
+    await withDb("staff_groups_step_up", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const admin = await createMember(database, "Step Up Admin", ["administrators"]);
+        const stale = await createSession(database, admin);
+        await database.sql`
+          UPDATE core.sessions
+          SET last_auth_at = now() - interval '16 minutes'
+          WHERE id = ${stale.sessionId}
+        `;
+
+        for (const routeId of [
+          "groups.update",
+          "groups.member.update",
+          "masks.update",
+          "moderators.update",
+          "promotions.update",
+        ]) {
+          const response = await call(api, stale, routeId, { action: "invalid" });
+          expect(response.status).toBe(401);
+          expect(await response.json()).toEqual({ code: "step_up_required" });
+        }
+
+        // Reading the screen is not a sensitive mutation and still works.
+        expect((await call(api, stale, "groups.list")).status).toBe(200);
+
+        const fresh = await createSession(database, admin);
+        const allowed = await call(api, fresh, "groups.update", {
+          action: "create",
+          key: `step_up_fresh_${Date.now()}`,
+          title: "Fresh Step Up",
+          displayOrder: 100,
+        });
+        expect(allowed.status).toBe(200);
       } finally {
         await auth.close();
         await sql.close();
@@ -474,6 +517,27 @@ integrationDescribe("staff group and permission screens", () => {
         const moderator = await createMember(database, "Limited Moderator", ["members"]);
         const forum = await createForum(database);
         const child = await createForum(database, forum);
+        const members = await groupId(database, "members");
+        const [readMask] = (await database.sql`
+          INSERT INTO core.masks (key, title) VALUES ('test_read', 'Test Read')
+          RETURNING id
+        `) as Array<{ id: string }>;
+
+        if (readMask === undefined) {
+          throw new Error("Could not create the read mask");
+        }
+
+        await database.sql`
+          INSERT INTO core.group_masks (group_id, mask_id)
+          VALUES (${members}, ${readMask.id})
+        `;
+
+        for (const forumId of [forum, child]) {
+          await database.sql`
+            INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+            VALUES (${forumId}, ${readMask.id}, ${forumActionMask(["show", "read"])}, false)
+          `;
+        }
 
         const saved = await call(api, session, "moderators.update", {
           action: "save",

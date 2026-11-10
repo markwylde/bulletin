@@ -299,6 +299,70 @@ integrationDescribe("permission snapshot", () => {
     });
   }, 30_000);
 
+  test("password locks gate moderator powers until the session unlocks", async () => {
+    await withDb("snapshot_mod_unlocks", async (database) => {
+      const passwordHash = await Bun.password.hash("let-me-in");
+      const forum = await createForum(database, null, passwordHash);
+      const maskId = await createMask(database, "standard");
+      const groups = (await database.sql`
+        SELECT key, id FROM core.groups WHERE key IN ('members', 'super_moderators')
+      `) as Array<{ key: string; id: string }>;
+      const membersGroup = groups.find((group) => group.key === "members")?.id;
+      const superModerators = groups.find((group) => group.key === "super_moderators")?.id;
+
+      if (membersGroup === undefined || superModerators === undefined) {
+        throw new Error("Missing built-in groups");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_masks (group_id, mask_id) VALUES (${membersGroup}, ${maskId})
+      `;
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${superModerators}, 'moderation.pin', 'true'::jsonb)
+      `;
+      await setMatrix(database, forum, maskId, ["show", "read"]);
+
+      const member = await createMember(database, "Locked Moderator", [
+        "members",
+        "super_moderators",
+      ]);
+      const [session] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (
+          ${member}, 'user', sha256(convert_to(${crypto.randomUUID()}, 'UTF8')),
+          now() + interval '24 hours'
+        )
+        RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (session === undefined) {
+        throw new Error("Could not create session");
+      }
+
+      const tree = await loadForumTree(database.sql);
+      const service = createPermissionService({ sql: database.sql });
+
+      expect(
+        await service.can(member, "pin", { forumId: forum, tree, sessionId: session.id }),
+      ).toBe(false);
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${session.id}, 'forum_password', ${forum})
+      `;
+
+      expect(
+        await service.can(member, "pin", { forumId: forum, tree, sessionId: session.id }),
+      ).toBe(true);
+
+      await database.sql`DELETE FROM core.sessions WHERE id = ${session.id}`;
+      expect(
+        await service.can(member, "pin", { forumId: forum, tree, sessionId: session.id }),
+      ).toBe(false);
+    });
+  }, 30_000);
+
   test("folds session unlocks into read and removes them with the session", async () => {
     await withDb("snapshot_unlocks", async (database) => {
       const passwordHash = await Bun.password.hash("let-me-in");

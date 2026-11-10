@@ -146,25 +146,29 @@ integrationDescribe("forum password unlocks", () => {
       const member = await createMember(database, "Throttled Member", "members");
       const session = await createSession(database, member);
       const start = new Date("2026-11-10T12:00:00Z");
+      const attemptTimes = [0, 2, 4, 6, 9].map(
+        (minutes) => new Date(start.getTime() + minutes * 60_000),
+      );
 
-      for (let attempt = 0; attempt < 5; attempt += 1) {
+      for (const at of attemptTimes) {
         expect(
           await unlockForum(database.sql, {
             sessionId: session,
             memberId: member,
             forumId: forum,
             password: "wrong",
-            now: start,
+            now: at,
           }),
         ).toEqual({ kind: "wrong_password" });
       }
 
+      const fifth = attemptTimes[attemptTimes.length - 1] as Date;
       const throttled = await unlockForum(database.sql, {
         sessionId: session,
         memberId: member,
         forumId: forum,
         password: "let-me-in",
-        now: start,
+        now: fifth,
       });
       expect(throttled.kind).toBe("throttled");
 
@@ -173,17 +177,20 @@ integrationDescribe("forum password unlocks", () => {
         expect(throttled.retryAfterMs).toBeLessThanOrEqual(UNLOCK_WINDOW_MS);
       }
 
+      // One minute after the fifth failure the lockout is still active; the pre-fix
+      // oldest-of-five calculation would have unlocked it already.
+      const oneMinuteLater = new Date(fifth.getTime() + 60_000);
       expect(
         await unlockForum(database.sql, {
           sessionId: session,
           memberId: member,
           forumId: forum,
-          password: "wrong",
-          now: start,
+          password: "let-me-in",
+          now: oneMinuteLater,
         }),
       ).toMatchObject({ kind: "throttled" });
 
-      const later = new Date(start.getTime() + UNLOCK_WINDOW_MS + 1);
+      const later = new Date(fifth.getTime() + UNLOCK_WINDOW_MS + 1);
       expect(
         await unlockForum(database.sql, {
           sessionId: session,

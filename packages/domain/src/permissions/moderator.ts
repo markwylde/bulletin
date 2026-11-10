@@ -61,9 +61,9 @@ function assignmentAppliesTo(
 }
 
 /**
- * The TypeScript reference for `core.has_mod_power` (ADR 0005): banned members have no powers,
- * group super-moderator settings grant a power on every forum, and member or group assignments
- * reach sub-forums unless they are "this forum only".
+ * The assignment and global-power half of `core.has_mod_power` (ADR 0005). Visibility is a
+ * separate condition: the SQL mirror applies `core.can_read_forum`, and the app-level `can()`
+ * applies effective readability (including password unlocks).
  */
 export function moderatorPowerAllowed(
   context: ModeratorContext,
