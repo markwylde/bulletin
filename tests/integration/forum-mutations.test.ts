@@ -371,6 +371,90 @@ integrationDescribe("forum mutations invalidate the index and affected pages", (
     });
   }, 30_000);
 
+  test("moving a moderator assignment invalidates both the old and new forum pages", async () => {
+    await withSeededDb(async (database) => {
+      const [admin] = (await database.sql`
+        SELECT member_id::text AS id FROM pii.identities WHERE sub = 'admin'
+      `) as Array<{ id: string }>;
+
+      if (admin === undefined) {
+        throw new Error("Missing admin");
+      }
+
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const viewer = await memberSession(database, "member-1");
+        const moderator = await memberSession(database, "member-2");
+        const pages = harness(database, viewer, versions);
+        const oldRef = "/forum/10-bug-reports";
+        const newRef = "/forum/8-help-questions";
+
+        const created = await saveModerator(database.sql, admin.id, {
+          forumId: "10",
+          assigneeKind: "member",
+          assigneeId: moderator.memberId,
+          powers: ["see_unapproved"],
+          thisForumOnly: true,
+        });
+        expect(created.ok).toBe(true);
+        await versions.refresh();
+
+        const [assignment] = (await database.sql`
+          SELECT id::text AS id
+          FROM core.moderators
+          WHERE forum_id = 10 AND member_id = ${moderator.memberId}
+        `) as Array<{ id: string }>;
+
+        if (assignment === undefined) {
+          throw new Error("Moderator assignment was not stored");
+        }
+
+        const warmOld = await pages.forum(oldRef);
+        await pages.forum(newRef);
+        expect(await forumCache(pages, oldRef)).toBe("hit");
+        expect(await forumCache(pages, newRef)).toBe("hit");
+
+        if (warmOld.kind === "page") {
+          expect(warmOld.html).toContain("Regular Member Two");
+        }
+
+        const moved = await saveModerator(database.sql, admin.id, {
+          id: assignment.id,
+          forumId: "8",
+          assigneeKind: "member",
+          assigneeId: moderator.memberId,
+          powers: ["see_unapproved"],
+          thisForumOnly: true,
+        });
+        expect(moved.ok).toBe(true);
+        await versions.refresh();
+
+        const oldForum = await pages.forum(oldRef);
+        const newForum = await pages.forum(newRef);
+
+        expect(oldForum.kind).toBe("page");
+        expect(newForum.kind).toBe("page");
+
+        if (oldForum.kind === "page") {
+          expect(oldForum.cache).toBe("miss");
+          expect(oldForum.html).not.toContain("Regular Member Two");
+        }
+
+        if (newForum.kind === "page") {
+          expect(newForum.cache).toBe("miss");
+          expect(newForum.html).toContain("Regular Member Two");
+        }
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
   test("reloads forum settings after the cache captures tag versions", async () => {
     await withSeededDb(async (database) => {
       const [admin] = (await database.sql`

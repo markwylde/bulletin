@@ -125,11 +125,25 @@ export async function saveModerator(
 
   const id = typeof input.id === "string" ? input.id : null;
   const thisForumOnly = input.thisForumOnly === true;
-  const forums = await affectedForumIds(sql, input.forumId);
+  const destination = await affectedForumIds(sql, input.forumId);
 
-  if (forums === null) {
+  if (destination === null) {
     return { ok: false, code: "invalid_forum" };
   }
+
+  // Moving an existing assignment removes it from its previous forum, so that subtree's
+  // cached moderator lists must be invalidated too.
+  const [previous] =
+    id === null
+      ? []
+      : ((await sql`
+          SELECT forum_id FROM core.moderators WHERE id = ${id}
+        `) as Array<{ forum_id: string }>);
+  const source =
+    previous === undefined || previous.forum_id === input.forumId
+      ? []
+      : ((await affectedForumIds(sql, previous.forum_id)) ?? [previous.forum_id]);
+  const forums = [...new Set([...destination, ...source])];
 
   return runMutation({
     sql,
