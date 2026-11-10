@@ -18,6 +18,9 @@
     {% if isModerator %}
       <p class="bl-note" data-topic-mod-note>{% t "topic.modNote" %}</p>
     {% endif %}
+    {% if canHardDeleteTopic %}
+      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-topic-action="hard" data-topic-id="{{ topicId }}" data-confirm="{% t "topic.confirmDelete" %}">{% t "topic.delete" %}</button>
+    {% endif %}
   </header>
 
   {% if posts.size > 0 %}
@@ -31,7 +34,35 @@
               {% if post.unapproved %}<span class="bl-badge bl-badge--danger" data-post-unapproved>{% t "post.unapproved" %}</span>{% endif %}
               {% if post.editedMarker %}<span class="bl-muted" data-post-edited>{{ post.editedMarker }}</span>{% endif %}
               <a class="bl-muted" href="{{ post.href }}" data-post-link="{{ post.id }}">{% t "post.permalink" %}</a>
+              <button class="bl-button bl-button--quiet bl-button--small" type="button" data-quote-post="{{ post.id }}" aria-pressed="false">{% t "post.quote" %}</button>
+              {% if post.canViewHistory %}
+                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-history="{{ post.id }}">{% t "post.history" %}</button>
+              {% endif %}
+              {% if post.canDelete %}
+                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-action="soft" data-post-id="{{ post.id }}" data-confirm="{% t "post.confirmDelete" %}">{% t "post.delete" %}</button>
+              {% endif %}
+              {% if post.canRestore %}
+                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-action="restore" data-post-id="{{ post.id }}">{% t "post.restore" %}</button>
+              {% endif %}
+              {% if post.canHardDelete %}
+                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-action="hard" data-post-id="{{ post.id }}" data-confirm="{% t "post.confirmHardDelete" %}">{% t "post.hardDelete" %}</button>
+              {% endif %}
             </div>
+            {% if post.canEdit %}
+              <details class="bl-post__edit" data-post-edit="{{ post.id }}">
+                <summary>{% t "post.edit" %}</summary>
+                <form class="bl-topic-form" data-edit-form data-post-id="{{ post.id }}">
+                  <label class="bl-label" for="edit-body-{{ post.id }}">{% t "post.body" %}</label>
+                  <textarea class="bl-input" id="edit-body-{{ post.id }}" name="bodyMd" rows="6" required>{{ post.editBody }}</textarea>
+                  {% if post.canRedact %}
+                    <label class="bl-check"><input type="checkbox" name="redact" checked /> {% t "post.redact" %}</label>
+                  {% endif %}
+                  <button class="bl-button" type="submit" data-edit-submit>{% t "post.save" %}</button>
+                  <p class="bl-error-text" data-form-error hidden>{% t "post.editFailed" %}</p>
+                </form>
+              </details>
+            {% endif %}
+            <div class="bl-post__history" data-post-history-panel="{{ post.id }}" hidden></div>
             {% if post.deleted %}
               <details class="bl-post__deleted" data-post-deleted>
                 <summary>{% t "post.deleted" %}</summary>
@@ -57,6 +88,17 @@
     {% endif %}
   {% else %}
     {{ emptyState }}
+  {% endif %}
+
+  {% if canReply and editor %}
+    <section class="bl-card" data-reply-section>
+      <button class="bl-button" type="button" data-reply-toggle>{% t "post.reply" %}</button>
+      <form class="bl-topic-form" data-reply-form data-topic-id="{{ topicId }}" hidden>
+        {% island "Editor" editor %}
+        <button class="bl-button" type="submit" data-reply-submit>{% t "post.submitReply" %}</button>
+        <p class="bl-error-text" data-form-error hidden>{% t "topic.postFailed" %}</p>
+      </form>
+    </section>
   {% endif %}
 </main>
 {{ footer }}

@@ -144,6 +144,27 @@ async function memberStats(sql: SQL): Promise<MemberStats> {
   };
 }
 
+interface TopicStats {
+  readonly topics: number;
+  readonly posts: number;
+  readonly postsToday: number;
+}
+
+async function topicStats(sql: SQL): Promise<TopicStats> {
+  const [row] = (await sql`
+    SELECT
+      (SELECT count(*)::int FROM core.topics) AS topics,
+      (SELECT count(*)::int FROM core.posts) AS posts,
+      (SELECT count(*)::int FROM core.posts WHERE created_at >= current_date) AS posts_today
+  `) as Array<{ topics: number; posts: number; posts_today: number }>;
+
+  return {
+    topics: row?.topics ?? 0,
+    posts: row?.posts ?? 0,
+    postsToday: row?.posts_today ?? 0,
+  };
+}
+
 async function systemHealth(checks: readonly HealthCheck[]): Promise<{
   readonly status: "ok" | "degraded";
   readonly checks: Readonly<Record<string, boolean>>;
@@ -690,6 +711,13 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/dashboard/members",
     permission: "acp.members",
     handler: async ({ sql }) => json(await memberStats(sql)),
+  },
+  {
+    id: "dashboard.topics",
+    method: "GET",
+    path: "/api/staff/dashboard/topics",
+    permission: "acp.members",
+    handler: async ({ sql }) => json(await topicStats(sql)),
   },
   {
     id: "dashboard.log",

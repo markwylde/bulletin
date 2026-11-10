@@ -266,6 +266,19 @@ integrationDescribe("staff API permission guard", () => {
         expect(members.status).toBe(200);
         expect(await members.json()).toMatchObject({ total: expect.any(Number) });
 
+        const topics = await callRoute(api, route("dashboard.topics"), moderator);
+        expect(topics.status).toBe(200);
+        expect(await topics.json()).toMatchObject({
+          topics: expect.any(Number),
+          posts: expect.any(Number),
+          postsToday: expect.any(Number),
+        });
+
+        const plainMemberId = await createMember(database, "Plain Dashboard Member", ["members"]);
+        const plainMember = await createSession(database, plainMemberId);
+        const deniedTopics = await callRoute(api, route("dashboard.topics"), plainMember);
+        expect(deniedTopics.status).toBe(403);
+
         const deniedLog = await callRoute(api, route("dashboard.log"), moderator);
         expect(deniedLog.status).toBe(403);
         expect(await deniedLog.json()).toEqual({ code: "forbidden" });

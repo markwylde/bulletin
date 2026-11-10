@@ -61,6 +61,15 @@ const TOPICS: readonly SeedTopic[] = [
     authorSub: "member-1",
     replies: [],
   },
+  {
+    forumSlug: "off-topic",
+    title: "Long running discussion",
+    authorSub: "member-1",
+    replies: Array.from({ length: 22 }, (_value, index) => ({
+      sub: index % 2 === 0 ? "member-2" : "member-es",
+      body: `Reply number ${index + 1} to the long running discussion.`,
+    })),
+  },
 ];
 
 async function memberIds(sql: SQL): Promise<Map<string, string>> {

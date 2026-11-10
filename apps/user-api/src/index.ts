@@ -21,6 +21,14 @@ import { createUserApiFlags } from "./flag-guard.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 import { memberSuggestResponse } from "./members.ts";
 import { redirectCountsResponse } from "./redirects.ts";
+import {
+  createTopicResponse,
+  editPostResponse,
+  postDeleteResponse,
+  postHistoryResponse,
+  replyResponse,
+  topicDeleteResponse,
+} from "./topics.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
@@ -120,6 +128,90 @@ await startService({
           rateLimitSecret: config.sessionSecret,
         }),
       );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const createTopicMatch = /^\/api\/forums\/(\d+)\/topics$/.exec(pathname);
+
+    if (request.method === "POST" && createTopicMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return createTopicResponse(sql, session, createTopicMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const replyMatch = /^\/api\/topics\/(\d+)\/replies$/.exec(pathname);
+
+    if (request.method === "POST" && replyMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return replyResponse(sql, session, replyMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const topicDeleteMatch = /^\/api\/topics\/(\d+)\/delete$/.exec(pathname);
+
+    if (request.method === "POST" && topicDeleteMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return topicDeleteResponse(sql, session, topicDeleteMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const editPostMatch = /^\/api\/posts\/(\d+)\/edit$/.exec(pathname);
+
+    if (request.method === "POST" && editPostMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return editPostResponse(sql, session, editPostMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const postHistoryMatch = /^\/api\/posts\/(\d+)\/history$/.exec(pathname);
+
+    if (request.method === "GET" && postHistoryMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return postHistoryResponse(sql, session, postHistoryMatch[1] ?? "");
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const postDeleteMatch = /^\/api\/posts\/(\d+)\/delete$/.exec(pathname);
+
+    if (request.method === "POST" && postDeleteMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return postDeleteResponse(sql, session, postDeleteMatch[1] ?? "", request);
+      });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

@@ -32,6 +32,8 @@ export interface EditorLabels {
 
 export interface EditorProps {
   readonly contextKey: string;
+  /** Form field name for the hidden markdown input, when the editor is inside a form. */
+  readonly name?: string | undefined;
   readonly initialMarkdown: string;
   readonly emoticons: readonly EditorEmoticon[];
   readonly labels: EditorLabels;

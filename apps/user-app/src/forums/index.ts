@@ -13,6 +13,7 @@ import {
   loadPermissionSnapshot,
   nextAnnouncementTransitionMs,
 } from "@bulletin/domain/permissions";
+import { type LatestReadablePost, latestReadablePost } from "@bulletin/domain/topics";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
@@ -122,6 +123,40 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
     readable.set(row.id, answer);
   }
 
+  const latestPosts = new Map<string, LatestReadablePost | null>();
+
+  await Promise.all(
+    rows
+      .filter(
+        (row) =>
+          readable.get(row.id) === true && row.type !== "category" && row.type !== "redirect",
+      )
+      .map(async (forum) => {
+        const seeUnapproved = await can(input.sql, principal, "see_unapproved", {
+          forumId: forum.id,
+          tree,
+          sessionId,
+          snapshot,
+        });
+        view.track(forum.id, "see_unapproved", seeUnapproved);
+        const seeDeleted = await can(input.sql, principal, "see_deleted", {
+          forumId: forum.id,
+          tree,
+          sessionId,
+          snapshot,
+        });
+        view.track(forum.id, "see_deleted", seeDeleted);
+        latestPosts.set(
+          forum.id,
+          await latestReadablePost(input.sql, {
+            forumId: forum.id,
+            seeUnapproved,
+            seeDeleted,
+          }),
+        );
+      }),
+  );
+
   const link = (forum: ForumRecord): BoardIndexLink => ({
     id: forum.id,
     title: forum.title,
@@ -130,11 +165,12 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
 
   const forumView = (forum: ForumRecord): BoardIndexForum => {
     const canRead = readable.get(forum.id) === true;
+    const latest = latestPosts.get(forum.id) ?? null;
     const lastPost =
-      canRead && forum.lastPostAt !== null
+      canRead && latest !== null
         ? {
-            date: formatDate(input.locale, forum.lastPostAt),
-            memberName: forum.lastPostMemberName,
+            date: formatDate(input.locale, latest.createdAt),
+            memberName: latest.memberName,
           }
         : null;
     const redirect =

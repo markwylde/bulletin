@@ -62,6 +62,7 @@ const editorLabelsSchema = v.strictObject({
 });
 
 export const editorSchema = v.strictObject({
+  name: v.optional(v.pipe(v.string(), v.regex(/^[a-z][a-zA-Z0-9_-]{0,63}$/))),
   contextKey: v.pipe(v.string(), v.regex(/^[a-z0-9][a-z0-9:._-]{0,119}$/)),
   initialMarkdown: v.pipe(v.string(), v.maxLength(100_000)),
   emoticons: v.array(editorEmoticonSchema),

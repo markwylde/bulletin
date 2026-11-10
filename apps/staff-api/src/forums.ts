@@ -446,12 +446,15 @@ export async function deleteForum(
     }
   }
 
-  const affected = affectedIds(tree, forumId, row.parent_id);
+  const affected = [
+    ...affectedIds(tree, forumId, row.parent_id),
+    ...(moveToForumId === null ? [] : affectedIds(tree, moveToForumId)),
+  ];
 
   await runMutation({
     sql,
     mutation: forumTreeMutation,
-    input: { affectedForumIds: affected },
+    input: { affectedForumIds: [...new Set(affected)] },
     apply: async (tx) => {
       const before = (await tx`
         SELECT parent_id, title FROM core.forums WHERE id = ${forumId} FOR UPDATE
@@ -461,11 +464,76 @@ export async function deleteForum(
         throw new Error("Forum disappeared during deletion");
       }
 
-      // Sub-forums move up one level and keep their settings. Topics arrive in `topics-posts`;
-      // until then the counter is zero, but the validated choice is recorded for that change.
+      // Sub-forums move up one level and keep their settings.
       await tx`
         UPDATE core.forums SET parent_id = ${before[0].parent_id} WHERE parent_id = ${forumId}
       `;
+
+      if (topicAction === "move" && moveToForumId !== null) {
+        const [counts] = (await tx`
+          SELECT
+            count(*) FILTER (WHERE moved_to IS NULL)::int AS topics,
+            (
+              SELECT count(*)::int
+              FROM core.posts p
+              JOIN core.topics t ON t.id = p.topic_id
+              WHERE t.forum_id = ${forumId} AND p.visibility = 'visible'
+            ) AS posts
+          FROM core.topics
+          WHERE forum_id = ${forumId}
+        `) as Array<{ topics: number; posts: number }>;
+
+        await tx`UPDATE core.topics SET forum_id = ${moveToForumId} WHERE forum_id = ${forumId}`;
+        await tx`
+          UPDATE core.forums
+          SET topic_count = topic_count + ${counts?.topics ?? 0},
+              post_count = post_count + ${counts?.posts ?? 0},
+              updated_at = now()
+          WHERE id = ${moveToForumId}
+        `;
+        await tx`
+          UPDATE core.forums f
+          SET last_topic_id = (
+                SELECT t.id FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+                WHERE t.forum_id = f.id AND p.visibility = 'visible'
+                ORDER BY p.created_at DESC, p.id DESC LIMIT 1
+              ),
+              last_post_id = (
+                SELECT p.id FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+                WHERE t.forum_id = f.id AND p.visibility = 'visible'
+                ORDER BY p.created_at DESC, p.id DESC LIMIT 1
+              ),
+              last_post_member_id = (
+                SELECT p.author_id FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+                WHERE t.forum_id = f.id AND p.visibility = 'visible'
+                ORDER BY p.created_at DESC, p.id DESC LIMIT 1
+              ),
+              last_post_at = (
+                SELECT p.created_at FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+                WHERE t.forum_id = f.id AND p.visibility = 'visible'
+                ORDER BY p.created_at DESC, p.id DESC LIMIT 1
+              )
+          WHERE f.id = ${moveToForumId}
+        `;
+      } else if (topicAction === "delete") {
+        const authors = (await tx`
+          SELECT p.author_id::text AS author_id, count(*)::int AS count
+          FROM core.posts p
+          JOIN core.topics t ON t.id = p.topic_id
+          WHERE t.forum_id = ${forumId} AND p.visibility = 'visible' AND p.author_id IS NOT NULL
+          GROUP BY p.author_id
+        `) as Array<{ author_id: string; count: number }>;
+
+        await tx`DELETE FROM core.topics WHERE forum_id = ${forumId}`;
+
+        for (const author of authors) {
+          await tx`
+            UPDATE core.members SET post_count = GREATEST(0, post_count - ${author.count})
+            WHERE id = ${author.author_id}
+          `;
+        }
+      }
+
       await tx`DELETE FROM core.forums WHERE id = ${forumId}`;
       await resequence(tx, before[0].parent_id);
 

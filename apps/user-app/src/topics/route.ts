@@ -325,6 +325,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
             perPage: freshSettings.postsPerPage,
             quotedForumIds,
             mentionsEnabled: flags.values.mentions === true,
+            publicEditHistory: freshSettings.publicEditHistory,
           });
         }
       }

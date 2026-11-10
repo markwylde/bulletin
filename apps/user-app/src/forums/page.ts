@@ -23,6 +23,7 @@ import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
+import { buildEditorView, type EditorView } from "../editor.ts";
 import { forumCapabilityDeps } from "./capability.ts";
 
 export interface ForumPageAnnouncement {
@@ -89,6 +90,9 @@ export interface ForumPageView {
   readonly children: readonly ForumPageChild[];
   readonly topics: readonly ForumPageTopic[];
   readonly pagination: ForumPagePagination;
+  readonly canStart: boolean;
+  readonly prefixRequired: boolean;
+  readonly editor: EditorView | null;
   readonly flags: Readonly<Record<string, boolean>>;
 }
 
@@ -225,6 +229,9 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         children: [],
         topics: [],
         pagination: { page: 1, pageCount: 1, previousHref: null, nextHref: null },
+        canStart: false,
+        prefixRequired: false,
+        editor: null,
         flags: { announcements: announcementsEnabled },
       },
       visibilityKey,
@@ -254,6 +261,20 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     snapshot: input.snapshot,
   });
   view.track(input.forum.id, "see_deleted", seeDeleted);
+  const canStart = await can(input.sql, input.principal, "start", {
+    forumId: input.forum.id,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.forum.id, "start", canStart);
+  const editor = canStart
+    ? await buildEditorView(input.sql, input.translate, {
+        contextKey: `topic:new:${input.forum.id}`,
+        mentions: mentionsEnabled,
+        name: "bodyMd",
+      })
+    : null;
 
   const prefixId =
     activePrefix === null
@@ -407,6 +428,9 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         previousHref: topicPage > 1 ? pageHref(topicPage - 1) : null,
         nextHref: topicPage < pageCount ? pageHref(topicPage + 1) : null,
       },
+      canStart: canStart && !locked,
+      prefixRequired: input.forum.prefixMode === "required",
+      editor,
       flags: { announcements: announcementsEnabled },
     },
     visibilityKey,

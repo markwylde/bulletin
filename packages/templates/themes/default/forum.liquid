@@ -71,6 +71,28 @@
             {% endfor %}
           </nav>
         {% endif %}
+        {% if canStart and editor %}
+          <details class="bl-card" data-new-topic>
+            <summary class="bl-card__title">{% t "topic.new" %}</summary>
+            <form class="bl-topic-form" data-new-topic-form data-forum-id="{{ forumId }}">
+              <label class="bl-label" for="new-topic-title">{% t "topic.title" %}</label>
+              <input class="bl-input" id="new-topic-title" name="title" type="text" minlength="3" maxlength="150" required />
+              {% if prefixes.size > 0 %}
+                <label class="bl-label" for="new-topic-prefix">{% t "topic.prefix" %}</label>
+                <select class="bl-input" id="new-topic-prefix" name="prefixId"{% if prefixRequired %} required{% endif %}>
+                  <option value="">{% t "topic.choosePrefix" %}</option>
+                  {% for prefix in prefixes %}
+                    <option value="{{ prefix.id }}">{{ prefix.label }}</option>
+                  {% endfor %}
+                </select>
+              {% endif %}
+              {% island "Editor" editor %}
+              <button class="bl-button" type="submit" data-new-topic-submit>{% t "topic.create" %}</button>
+              <p class="bl-error-text" data-form-error hidden>{% t "topic.postFailed" %}</p>
+            </form>
+          </details>
+        {% endif %}
+
         {% if topics.size > 0 %}
           <ol class="bl-topic-list" data-topic-list data-topic-page="{{ pagination.page }}">
             {% for topic in topics %}

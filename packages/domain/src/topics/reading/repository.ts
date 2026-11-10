@@ -56,6 +56,7 @@ export interface TopicPostRow {
   readonly id: string;
   readonly authorId: string | null;
   readonly authorName: string | null;
+  readonly bodyMd: string;
   readonly bodyHtml: string;
   readonly bodyText: string;
   readonly renderVersion: number;
@@ -96,6 +97,20 @@ export interface QuoteSourceRecord {
   readonly forumId: string;
   readonly visibility: TopicPostVisibility;
   readonly authorId: string | null;
+}
+
+export interface PostHistoryContext {
+  readonly id: string;
+  readonly topicId: string;
+  readonly topicSlug: string;
+  readonly forumId: string;
+  readonly authorId: string | null;
+  readonly bodyMd: string;
+  readonly bodyHtml: string;
+  readonly visibility: TopicPostVisibility;
+  readonly createdAt: Date;
+  readonly editedAt: Date | null;
+  readonly editedByName: string | null;
 }
 
 export interface PostRevisionRow {
@@ -338,6 +353,7 @@ interface TopicPostRowSql {
   readonly id: string;
   readonly author_id: string | null;
   readonly author_name: string | null;
+  readonly body_md: string;
   readonly body_html: string;
   readonly body_text: string;
   readonly render_version: number;
@@ -356,6 +372,7 @@ function toTopicPost(row: TopicPostRowSql): TopicPostRow {
     id: row.id,
     authorId: row.author_id,
     authorName: row.author_name,
+    bodyMd: row.body_md,
     bodyHtml: row.body_html,
     bodyText: row.body_text,
     renderVersion: row.render_version,
@@ -404,7 +421,7 @@ export async function readTopicPostPage(
 ): Promise<TopicPostPage> {
   const rows = (await sql`
     SELECT
-      p.id, p.author_id, author.display_name AS author_name, p.body_html, p.body_text,
+      p.id, p.author_id, author.display_name AS author_name, p.body_md, p.body_html, p.body_text,
       p.render_version, p.sanitiser_version, p.visibility, p.position,
       p.quoted_forum_ids::text[] AS quoted_forum_ids, p.created_at, p.edited_at,
       p.edited_by, editor.display_name AS edited_by_name
@@ -558,6 +575,58 @@ export async function readQuotedForumIds(
   return rows.map((row) => row.forum_id);
 }
 
+export interface LatestReadablePost {
+  readonly postId: string;
+  readonly topicId: string;
+  readonly topicSlug: string;
+  readonly createdAt: Date;
+  readonly memberName: string | null;
+}
+
+/** The latest post in one forum the viewer may read; null when every post is hidden. */
+export async function latestReadablePost(
+  sql: SQL,
+  input: {
+    readonly forumId: string;
+    readonly seeUnapproved: boolean;
+    readonly seeDeleted: boolean;
+  },
+): Promise<LatestReadablePost | null> {
+  const rows = (await sql`
+    SELECT
+      p.id, p.created_at, t.id AS topic_id, t.slug AS topic_slug,
+      member.display_name AS member_name
+    FROM core.posts p
+    JOIN core.topics t ON t.id = p.topic_id
+    LEFT JOIN core.members member ON member.id = p.author_id
+    WHERE t.forum_id = ${input.forumId}
+      AND (
+        p.visibility = 'visible'
+        OR (${input.seeUnapproved} AND p.visibility = 'unapproved')
+        OR (${input.seeDeleted} AND p.visibility = 'soft_deleted')
+      )
+    ORDER BY p.created_at DESC, p.id DESC
+    LIMIT 1
+  `) as Array<{
+    id: string;
+    created_at: Date;
+    topic_id: string;
+    topic_slug: string;
+    member_name: string | null;
+  }>;
+  const row = rows[0];
+
+  return row === undefined
+    ? null
+    : {
+        postId: row.id,
+        topicId: row.topic_id,
+        topicSlug: row.topic_slug,
+        createdAt: row.created_at,
+        memberName: row.member_name,
+      };
+}
+
 export async function loadQuoteSources(
   sql: SQL,
   postIds: readonly string[],
@@ -630,6 +699,77 @@ export async function loadMemberCards(
         joinedAt: row.joined_at,
       },
     ]),
+  );
+}
+
+export async function readPostContext(
+  sql: SQL,
+  postId: string,
+): Promise<PostHistoryContext | null> {
+  if (!/^\d+$/.test(postId)) {
+    return null;
+  }
+
+  const rows = (await sql`
+    SELECT
+      p.id, p.topic_id, t.slug AS topic_slug, t.forum_id, p.author_id, p.body_md,
+      p.body_html, p.visibility, p.created_at, p.edited_at,
+      editor.display_name AS edited_by_name
+    FROM core.posts p
+    JOIN core.topics t ON t.id = p.topic_id
+    LEFT JOIN core.members editor ON editor.id = p.edited_by
+    WHERE p.id = ${postId}
+  `) as Array<{
+    id: string;
+    topic_id: string;
+    topic_slug: string;
+    forum_id: string;
+    author_id: string | null;
+    body_md: string;
+    body_html: string;
+    visibility: TopicPostVisibility;
+    created_at: Date;
+    edited_at: Date | null;
+    edited_by_name: string | null;
+  }>;
+  const row = rows[0];
+
+  return row === undefined
+    ? null
+    : {
+        id: row.id,
+        topicId: row.topic_id,
+        topicSlug: row.topic_slug,
+        forumId: row.forum_id,
+        authorId: row.author_id,
+        bodyMd: row.body_md,
+        bodyHtml: row.body_html,
+        visibility: row.visibility,
+        createdAt: row.created_at,
+        editedAt: row.edited_at,
+        editedByName: row.edited_by_name,
+      };
+}
+
+export async function viewerCanReadPostHistory(
+  sql: SQL,
+  input: {
+    readonly viewerId: string | null;
+    readonly forumId: string;
+    readonly tree: ForumTree;
+    readonly publicHistory: boolean;
+  },
+): Promise<boolean> {
+  if (input.publicHistory) {
+    return true;
+  }
+
+  return (
+    input.viewerId !== null &&
+    (await can(sql, input.viewerId, "view_edit_history", {
+      forumId: input.forumId,
+      tree: input.tree,
+    }))
   );
 }
 

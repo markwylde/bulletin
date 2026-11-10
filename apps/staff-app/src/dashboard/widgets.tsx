@@ -18,6 +18,12 @@ interface MemberStats {
   readonly joinedLast7Days: number;
 }
 
+interface TopicStats {
+  readonly topics: number;
+  readonly posts: number;
+  readonly postsToday: number;
+}
+
 interface AdminLogEntry {
   readonly id: string;
   readonly actor: string | null;
@@ -93,6 +99,36 @@ function MemberStatsWidget() {
       <div>
         <dt>{t("staff.dashboard.members.new")}</dt>
         <dd>{formatNumber(query.data.joinedLast7Days, locale)}</dd>
+      </div>
+    </dl>
+  );
+}
+
+function TopicStatsWidget() {
+  const t = useT();
+  const locale = useLocale();
+  const query = useQuery({
+    queryKey: ["staff", "dashboard", "topics"],
+    queryFn: () => apiGet<TopicStats>("/api/staff/dashboard/topics"),
+  });
+
+  if (query.isPending || query.isError) {
+    return <WidgetState error={query.isError} retry={() => void query.refetch()} />;
+  }
+
+  return (
+    <dl className="stat-grid" data-widget-body="topics">
+      <div>
+        <dt>{t("staff.dashboard.topics.topics")}</dt>
+        <dd>{formatNumber(query.data.topics, locale)}</dd>
+      </div>
+      <div>
+        <dt>{t("staff.dashboard.topics.posts")}</dt>
+        <dd>{formatNumber(query.data.posts, locale)}</dd>
+      </div>
+      <div>
+        <dt>{t("staff.dashboard.topics.today")}</dt>
+        <dd>{formatNumber(query.data.postsToday, locale)}</dd>
       </div>
     </dl>
   );
@@ -185,6 +221,12 @@ export const DASHBOARD_WIDGETS: readonly DashboardWidget[] = [
     permission: "acp.members",
     titleKey: "staff.dashboard.members.title",
     component: MemberStatsWidget,
+  },
+  {
+    id: "topics",
+    permission: "acp.members",
+    titleKey: "staff.dashboard.topics.title",
+    component: TopicStatsWidget,
   },
   {
     id: "log",

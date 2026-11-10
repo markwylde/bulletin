@@ -427,4 +427,52 @@ integrationDescribe("forum topic list and topic view", () => {
       }
     });
   }, 45_000);
+
+  test("shows author and moderator post controls with redaction on by default", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+      const other = await memberSession(database, "member-2");
+      const moderator = await memberSession(database, "super-mod");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Controls topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const render = (session: UserAppSessionContext) =>
+          topicCache(database, session, `${topic.topicId}-controls-topic`, cache, versions);
+
+        const authorPage = await render(author);
+        const authorHtml = authorPage.kind === "page" ? authorPage.html : "";
+        expect(authorHtml).toContain(`data-post-edit="${topic.postId}"`);
+        expect(authorHtml).toContain(`data-post-action="soft"`);
+        expect(authorHtml).not.toContain('name="redact"');
+
+        const moderatorPage = await render(moderator);
+        const moderatorHtml = moderatorPage.kind === "page" ? moderatorPage.html : "";
+        expect(moderatorHtml).toContain('name="redact" checked');
+        expect(moderatorHtml).toContain("data-post-history");
+        expect(moderatorHtml).toContain("data-topic-action");
+
+        await database.sql`UPDATE core.board_settings SET public_edit_history = true WHERE id = 1`;
+        const publicPage = await render(other);
+        const publicHtml = publicPage.kind === "page" ? publicPage.html : "";
+        expect(publicHtml).toContain("data-post-history");
+        expect(publicHtml).not.toContain('name="redact"');
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 45_000);
 });

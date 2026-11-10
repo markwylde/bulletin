@@ -105,8 +105,31 @@ export const daysSinceJoiningCriterion: PromotionCriterion = {
   },
 };
 
+interface ApprovedPostsRow {
+  readonly count: number;
+}
+
+/** The criterion contributed by `topics-posts`; approved means a visible post. */
+export const approvedPostsCriterion: PromotionCriterion = {
+  key: "approved_posts",
+  labelKey: "staff.groups.promotionCriterion.approvedPosts",
+  async read({ sql, memberId }) {
+    const [row] = (await sql`
+      SELECT count(*)::int AS count
+      FROM core.posts
+      WHERE author_id = ${memberId}
+        AND visibility = 'visible'
+    `) as ApprovedPostsRow[];
+
+    return row?.count ?? 0;
+  },
+};
+
 /** The process-wide registry. Later changes call `registerPromotionCriterion`. */
-export const promotionCriteria = createPromotionCriteriaRegistry([daysSinceJoiningCriterion]);
+export const promotionCriteria = createPromotionCriteriaRegistry([
+  daysSinceJoiningCriterion,
+  approvedPostsCriterion,
+]);
 
 export function registerPromotionCriterion(criterion: PromotionCriterion): void {
   promotionCriteria.register(criterion);

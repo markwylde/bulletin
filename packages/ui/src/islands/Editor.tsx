@@ -61,12 +61,13 @@ export function Editor(props: EditorProps) {
   );
 }
 
-function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: EditorProps) {
+function EditorContent({ contextKey, name, initialMarkdown, emoticons, labels }: EditorProps) {
   const mentionsEnabled = useFlag("mentions");
   const [mode, setMode] = useState<EditorMode>("source");
   const [markdown, setMarkdown] = useState(initialMarkdown);
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<SaveStatus>("idle");
+  const [ready, setReady] = useState(false);
   const [draft, setDraft] = useState<EditorDraft | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [emoticonOpen, setEmoticonOpen] = useState(false);
@@ -145,7 +146,43 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
   // Start in WYSIWYG when JavaScript works; the server-rendered source mode is the fallback.
   useEffect(() => {
     setMode("wysiwyg");
+    setReady(true);
   }, []);
+  // Multi-quote inserts its directives into whichever mode is active (task 3.2).
+  useEffect(() => {
+    const insert = (event: Event): void => {
+      const text = (event as CustomEvent<{ readonly text?: unknown }>).detail?.text;
+
+      if (typeof text !== "string" || text === "") {
+        return;
+      }
+
+      if (mode === "wysiwyg" && controller.current !== null) {
+        controller.current.insertMarkdown(text);
+        const current = controller.current.getMarkdown();
+
+        if (current !== undefined) {
+          markdownRef.current = current;
+          setMarkdown(current);
+          dirtyRef.current = true;
+          setDirty(true);
+        }
+
+        return;
+      }
+
+      const next = `${markdownRef.current}${text}`;
+      markdownRef.current = next;
+      setMarkdown(next);
+      dirtyRef.current = true;
+      setDirty(true);
+    };
+
+    window.addEventListener("bulletin:insert-markdown", insert);
+    return () => {
+      window.removeEventListener("bulletin:insert-markdown", insert);
+    };
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== "wysiwyg") {
@@ -460,7 +497,13 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
           : "";
 
   return (
-    <div className="bl-editor" data-editor data-draft-context={contextKey}>
+    <div
+      className="bl-editor"
+      data-editor
+      data-draft-context={contextKey}
+      {...(ready ? { "data-editor-ready": "true" } : {})}
+    >
+      {name === undefined ? null : <input type="hidden" name={name} value={markdown} />}
       <fieldset className="bl-editor__modes" aria-label={labels.editor}>
         <button
           className="bl-button bl-button--quiet bl-button--small"

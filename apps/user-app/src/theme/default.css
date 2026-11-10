@@ -893,3 +893,49 @@ fieldset.bl-editor__modes {
   color: var(--bl-muted);
   font-size: 0.875rem;
 }
+
+.bl-topic-form {
+  display: grid;
+  gap: var(--bl-space-small);
+  margin-top: var(--bl-space-small);
+}
+
+.bl-check {
+  display: flex;
+  align-items: center;
+  gap: var(--bl-space-small);
+  min-height: var(--bl-touch);
+}
+
+.bl-post__edit summary {
+  min-height: var(--bl-touch);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--bl-muted);
+}
+
+.bl-post__history {
+  display: grid;
+  gap: var(--bl-space-small);
+  padding: var(--bl-space-small);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-small);
+  background: var(--bl-surface-muted);
+}
+
+.bl-diff {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.8125rem;
+}
+
+.bl-diff ins {
+  background: var(--bl-accent-soft);
+  text-decoration: none;
+}
+
+.bl-diff del {
+  color: var(--bl-danger);
+}

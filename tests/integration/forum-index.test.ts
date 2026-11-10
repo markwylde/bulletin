@@ -121,12 +121,43 @@ integrationDescribe("board index view model", () => {
         INSERT INTO core.forums (parent_id, title, slug, topic_count, post_count)
         VALUES (${announcements}, 'Archive', 'archive', 4, 9)
       `;
+      const [latestTopic] = (await database.sql`
+        INSERT INTO core.topics (forum_id, title, slug, starter_id, last_post_at)
+        VALUES (${announcements}, 'Latest seeded topic', 'latest-seeded-topic', ${member.id},
+          now() - interval '5 minutes')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (latestTopic === undefined) {
+        throw new Error("Could not create the latest topic");
+      }
+
+      const [latestPost] = (await database.sql`
+        INSERT INTO core.posts (
+          topic_id, author_id, body_md, body_html, body_text, render_version,
+          sanitiser_version, position, created_at
+        )
+        VALUES (
+          ${latestTopic.id}, ${member.id}, 'Latest post', '<p>Latest post</p>', 'Latest post',
+          1, 1, 1, now() - interval '5 minutes'
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (latestPost === undefined) {
+        throw new Error("Could not create the latest post");
+      }
+
+      await database.sql`
+        UPDATE core.topics SET first_post_id = ${latestPost.id}, last_post_id = ${latestPost.id}
+        WHERE id = ${latestTopic.id}
+      `;
       await database.sql`
         UPDATE core.forums
         SET topic_count = 4,
             post_count = 9,
             last_post_at = now() - interval '5 minutes',
-            last_post_id = 99,
+            last_post_id = ${latestPost.id},
             last_post_member_id = ${member.id}
         WHERE id = ${announcements}
       `;

@@ -20,6 +20,7 @@ import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
+import { buildEditorView, type EditorView } from "../editor.ts";
 import { topicCapabilityDeps } from "./capability.ts";
 
 export interface TopicPagePost {
@@ -32,6 +33,13 @@ export interface TopicPagePost {
   readonly unapproved: boolean;
   readonly createdAt: string;
   readonly editedMarker: string | null;
+  readonly canEdit: boolean;
+  readonly editBody: string | null;
+  readonly canRedact: boolean;
+  readonly canDelete: boolean;
+  readonly canRestore: boolean;
+  readonly canHardDelete: boolean;
+  readonly canViewHistory: boolean;
 }
 
 export interface TopicPageView {
@@ -54,6 +62,9 @@ export interface TopicPageView {
   readonly viewsSlot: SafeHtml;
   readonly readMarkerAt: string | null;
   readonly readMarkerPostId: string | null;
+  readonly canReply: boolean;
+  readonly canHardDeleteTopic: boolean;
+  readonly editor: EditorView | null;
   readonly flags: Readonly<Record<string, boolean>>;
 }
 
@@ -69,6 +80,7 @@ export interface TopicPageInput {
   readonly perPage: number;
   readonly quotedForumIds: readonly string[];
   readonly mentionsEnabled?: boolean;
+  readonly publicEditHistory?: boolean;
 }
 
 export interface TopicPageData {
@@ -149,6 +161,51 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
   });
   view.track(input.topic.forumId, "vote", vote);
   const isModerator = seeUnapproved;
+  const canEditMod = await can(input.sql, input.principal, "edit", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "edit", canEditMod);
+  const canSoftDelete = await can(input.sql, input.principal, "soft_delete", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "soft_delete", canSoftDelete);
+  const canRestore = await can(input.sql, input.principal, "restore", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "restore", canRestore);
+  const canHardDelete = await can(input.sql, input.principal, "hard_delete", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "hard_delete", canHardDelete);
+  const canViewHistory = await can(input.sql, input.principal, "view_edit_history", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "view_edit_history", canViewHistory);
+  const canLock = await can(input.sql, input.principal, "lock", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "lock", canLock);
+  const editWindow = Number(input.snapshot.settings["posting.edit_window_minutes"] ?? 0);
+  const canDeleteOwn = input.snapshot.settings["posting.can_delete_own"] === true;
+  const viewerId = principalMemberId(input.principal);
 
   const total = await countTopicPosts(input.sql, {
     topicId: input.topic.id,
@@ -291,6 +348,18 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
         unapproved: post.visibility === "unapproved",
         createdAt: formatDate(input.locale, post.createdAt),
         editedMarker: editedMarker(input, post),
+        ...postActions({
+          post,
+          viewerId,
+          canEditMod,
+          canSoftDelete,
+          canRestore,
+          canHardDelete,
+          canViewHistory,
+          publicEditHistory: input.publicEditHistory === true,
+          editWindow,
+          canDeleteOwn,
+        }),
       })),
       pagination: {
         page,
@@ -304,8 +373,56 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
           ? null
           : (posts.rows[posts.rows.length - 1]?.createdAt.toISOString() ?? null),
       readMarkerPostId: posts.rows[posts.rows.length - 1]?.id ?? null,
+      canReply: reply && (!input.topic.locked || canLock),
+      canHardDeleteTopic: canHardDelete,
+      editor:
+        reply && (!input.topic.locked || canLock)
+          ? await buildEditorView(input.sql, input.translate, {
+              contextKey: `reply:topic:${input.topic.id}`,
+              mentions: mentionsEnabled,
+              name: "bodyMd",
+            })
+          : null,
       flags: { mentions: mentionsEnabled },
     },
+  };
+}
+
+function postActions(input: {
+  readonly post: TopicPostRow;
+  readonly viewerId: string | null;
+  readonly canEditMod: boolean;
+  readonly canSoftDelete: boolean;
+  readonly canRestore: boolean;
+  readonly canHardDelete: boolean;
+  readonly canViewHistory: boolean;
+  readonly publicEditHistory: boolean;
+  readonly editWindow: number;
+  readonly canDeleteOwn: boolean;
+}): Pick<
+  TopicPagePost,
+  | "canEdit"
+  | "editBody"
+  | "canRedact"
+  | "canDelete"
+  | "canRestore"
+  | "canHardDelete"
+  | "canViewHistory"
+> {
+  const isAuthor = input.post.authorId !== null && input.post.authorId === input.viewerId;
+  const ageMinutes = (Date.now() - input.post.createdAt.getTime()) / 60_000;
+  const withinWindow = input.editWindow <= 0 || ageMinutes <= input.editWindow;
+  const canEdit = (isAuthor && withinWindow) || input.canEditMod;
+  const visible = input.post.visibility === "visible";
+
+  return {
+    canEdit,
+    editBody: canEdit ? input.post.bodyMd : null,
+    canRedact: input.canEditMod && !isAuthor,
+    canDelete: visible && ((isAuthor && input.canDeleteOwn) || input.canSoftDelete),
+    canRestore: !visible && input.canRestore,
+    canHardDelete: input.canHardDelete && input.post.position !== 1,
+    canViewHistory: input.canViewHistory || input.publicEditHistory,
   };
 }
 

@@ -16,15 +16,15 @@
 
 ## 3. Posting
 
-- [ ] 3.1 Start-topic and reply flows with the editor island, prefixes, flood control and permission checks; integration tests for 403 and flood scenarios; E2E posting at 360 and 1440
-- [ ] 3.2 Multi-quote selection across pages, with an E2E test
-- [ ] 3.3 Edit with edit window, "edited by" marker, revisions, and the history/diff view with permission gating; integration tests for the window-expired and history-denied scenarios
-- [ ] 3.4 Moderator edit form with "Redact earlier versions in quotes" (default on), wired to snapshot redaction; integration test for the default-redaction scenario
-- [ ] 3.5 Soft delete, restore and hard delete UI and API, with integration tests for visibility and counts, and permission-denial tests
-- [ ] 3.6 Permalinks with position-based paging, with an integration test
-- [ ] 3.7 Register the `approved_posts` promotion criterion and evaluate promotion after each approved post; integration test that a member's 100th approved post promotes them once
-- [ ] 3.8 Register the topics/posts/today's-activity dashboard widget, with a permission test
-- [ ] 3.9 Latest-readable-post on the index, required prefixes and prefix filters on topic lists, and the move-or-delete choice when deleting a forum with topics; integration tests for each scenario in the `forums` delta
+- [x] 3.1 Start-topic and reply flows with the editor island, prefixes, flood control and permission checks; integration tests for 403 and flood scenarios; E2E posting at 360 and 1440
+- [x] 3.2 Multi-quote selection across pages, with an E2E test
+- [x] 3.3 Edit with edit window, "edited by" marker, revisions, and the history/diff view with permission gating; integration tests for the window-expired and history-denied scenarios
+- [x] 3.4 Moderator edit form with "Redact earlier versions in quotes" (default on), wired to snapshot redaction; integration test for the default-redaction scenario
+- [x] 3.5 Soft delete, restore and hard delete UI and API, with integration tests for visibility and counts, and permission-denial tests
+- [x] 3.6 Permalinks with position-based paging, with an integration test
+- [x] 3.7 Register the `approved_posts` promotion criterion and evaluate promotion after each approved post; integration test that a member's 100th approved post promotes them once
+- [x] 3.8 Register the topics/posts/today's-activity dashboard widget, with a permission test
+- [x] 3.9 Latest-readable-post on the index, required prefixes and prefix filters on topic lists, and the move-or-delete choice when deleting a forum with topics; integration tests for each scenario in the `forums` delta
 
 ## 4. Polls
 
