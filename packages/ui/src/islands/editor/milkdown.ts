@@ -27,10 +27,26 @@ export interface PreprocessedMarkdown {
  * The comments round-trip through Milkdown's HTML node, then the original block is restored
  * on every read, so unrelated edits never rewrite unsupported syntax (ADR 0007).
  */
+/**
+ * A random per-document nonce that does not already occur in the markdown, so literal text
+ * that happens to look like a placeholder is never mistaken for one on restore.
+ */
+function placeholderNonce(markdown: string): string {
+  for (;;) {
+    const bytes = crypto.getRandomValues(new Uint8Array(8));
+    const nonce = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+
+    if (!markdown.includes(nonce)) {
+      return nonce;
+    }
+  }
+}
+
 export function preprocessRawBlocks(markdown: string): PreprocessedMarkdown {
   const raw = new Map<string, string>();
+  const nonce = placeholderNonce(markdown);
   const next = markdown.replace(RAW_BLOCK, (block) => {
-    const token = `⟦raw-block-${raw.size}⟧`;
+    const token = `⟦raw-block-${nonce}-${raw.size}⟧`;
     raw.set(token, block);
     return token;
   });

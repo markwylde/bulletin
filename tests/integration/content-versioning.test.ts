@@ -5,6 +5,7 @@ import {
   ensureCurrentRendering,
   SANITISER_VERSION,
 } from "@bulletin/content";
+import { syncFlagDefinitions } from "@bulletin/db/flags";
 import {
   CONTENT_RERENDER_CRON,
   CONTENT_RERENDER_QUEUE,
@@ -19,6 +20,7 @@ import {
   saveEmoticonSet,
   updateQuoteSnapshotRendering,
 } from "@bulletin/domain/content";
+import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import type { PgBoss } from "pg-boss";
 
@@ -31,6 +33,16 @@ async function withDb(run: (database: TestDatabase) => Promise<void>): Promise<v
   }
 
   await withTestDatabase({ adminUrl, prefix: "content_versioning" }, run);
+}
+
+/** Re-renders follow the site-wide mentions flag, so tests set it explicitly. */
+async function setMentionsFlag(database: TestDatabase, enabled: boolean): Promise<void> {
+  await syncFlagDefinitions(database.sql, CODE_FLAG_DEFINITIONS);
+  await database.sql`
+    UPDATE core.feature_flags
+    SET default_value = ${enabled}, rules = '[]'::jsonb, updated_at = now()
+    WHERE key = 'mentions'
+  `;
 }
 
 async function createMember(database: TestDatabase, name = "Version Author"): Promise<string> {
@@ -139,6 +151,7 @@ integrationDescribe("content versioning (ADR 0007)", () => {
 
   test("an upgrade re-render keeps mentions and emoticons", async () => {
     await withDb(async (database) => {
+      await setMentionsFlag(database, true);
       const author = await createMember(database);
       const jane = await createMember(database, "Jane");
       const set = await saveEmoticonSet(database.sql, {
@@ -186,6 +199,33 @@ integrationDescribe("content versioning (ADR 0007)", () => {
       expect(stored?.bodyHtml).toContain('class="emoticon"');
       expect(stored?.bodyHtml).toContain('alt="Smile"');
       expect(stored?.bodyHtml).not.toContain("@Jane, enjoy :smile:");
+      expect(stored?.renderVersion).toBe(currentContentVersions().renderVersion);
+    });
+  });
+
+  test("an upgrade re-render leaves @names as text while mentions are disabled", async () => {
+    await withDb(async (database) => {
+      await setMentionsFlag(database, false);
+      const author = await createMember(database);
+      await createMember(database, "Joanna");
+
+      const id = await insertQuoteSnapshot(
+        database.sql,
+        draft(author, {
+          bodyMd: "Hello @Joanna",
+          bodyHtml: "<p>Hello @Joanna</p>",
+          renderVersion: 1,
+          sanitiserVersion: 2,
+        }),
+      );
+
+      const result = await runContentRerenderJob(database.sql);
+      expect(result.rerendered).toBe(1);
+
+      const stored = await loadQuoteSnapshot(database.sql, id);
+
+      expect(stored?.bodyHtml).toContain("Hello @Joanna");
+      expect(stored?.bodyHtml).not.toContain("/profile/");
       expect(stored?.renderVersion).toBe(currentContentVersions().renderVersion);
     });
   });

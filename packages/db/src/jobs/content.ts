@@ -13,9 +13,11 @@ import {
   loadContentRenderDependencies,
   quoteSnapshotTags,
 } from "@bulletin/domain/content";
+import { evaluateFlag, GUEST_VIEWER } from "@bulletin/flags";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
+import { loadStoredFlags } from "../flags/index.ts";
 
 /** Re-render every stale content row in id order, resuming from a durable cursor (ADR 0007). */
 export const CONTENT_RERENDER_QUEUE = "content.rerender";
@@ -45,6 +47,17 @@ export interface ContentRenderOptions {
 }
 
 /**
+ * Background re-renders have no author, so flag-gated extensions follow the flag's site-wide
+ * value (the guest evaluation). Partial rollouts therefore fail closed: a re-render never
+ * turns `@name` into a profile link unless mentions are on for everyone (ADR 0010).
+ */
+async function siteWideFlag(sql: SQL, key: string): Promise<boolean> {
+  const definition = (await loadStoredFlags(sql)).find((flag) => flag.key === key);
+
+  return definition !== undefined && evaluateFlag(definition, GUEST_VIEWER);
+}
+
+/**
  * Fills in the rendering dependencies the worker does not receive at startup. Tests and
  * callers that already hold them keep their explicit values.
  */
@@ -60,12 +73,16 @@ async function renderOptionsFor(
     return options;
   }
 
-  const dependencies = await loadContentRenderDependencies(sql);
+  const [dependencies, mentionsEnabled] = await Promise.all([
+    loadContentRenderDependencies(sql),
+    siteWideFlag(sql, "mentions"),
+  ]);
+  const mentions = options.mentions ?? (mentionsEnabled ? dependencies.mentions : undefined);
 
   return {
     ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
     emoticons: options.emoticons ?? dependencies.emoticons,
-    mentions: options.mentions ?? dependencies.mentions,
+    ...(mentions === undefined ? {} : { mentions }),
     embeds: options.embeds ?? dependencies.embeds,
   };
 }

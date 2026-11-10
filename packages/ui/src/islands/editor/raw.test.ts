@@ -17,4 +17,13 @@ describe("raw block preservation", () => {
 
     expect(restoreRawBlocks(edited, processed.raw)).toContain(original);
   });
+
+  test("leaves literal placeholder-looking text untouched", () => {
+    const original = "Literal ⟦raw-block-0⟧ text\n\n:::disabled-plugin\nraw\n:::";
+    const processed = preprocessRawBlocks(original);
+    const restored = restoreRawBlocks(processed.markdown, processed.raw);
+
+    expect(restored).toBe(original);
+    expect(restored.match(/:::disabled-plugin/g)?.length).toBe(1);
+  });
 });
