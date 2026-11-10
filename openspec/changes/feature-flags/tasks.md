@@ -4,7 +4,7 @@
 
 - [x] 1.1 Implement `packages/flags` (definitions, rule evaluation, stable bucketing, guest rule for `affectsRender`) with unit tests for targeting, stability, monotonic increase and guests
 - [x] 1.2 Add the `core.feature_flags` migration, the code-registry upsert on startup, and cached loading with tag invalidation; integration test for promptness (≤ 1 s)
-- [ ] 1.3 Implement `requireFlag` middleware and accessors (server, template tag, React hook, client-visible export) with tests including the 404 scenario
+- [x] 1.3 Implement `requireFlag` middleware and accessors (server, template tag, React hook, client-visible export) with tests including the 404 scenario
 
 ## 2. Staff UI
 
