@@ -23,6 +23,8 @@ export interface DemoRouteInput {
   readonly session: UserAppSessionContext | null;
   readonly forumId: string;
   readonly showDeleted: boolean;
+  /** Benchmark-only variant input: a unique value forces a cold render (task 7.1). */
+  readonly bench?: number;
   readonly pluginsGeneration: number;
   readonly colourScheme: ColorScheme;
   readonly theme: LoadedTheme | null;
@@ -101,7 +103,11 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
 
   const variant = variantKey({
     route: demoContract.route,
-    params: { id: input.forumId, deleted: outcome.showDeleted ? "1" : "0" },
+    params: {
+      id: input.forumId,
+      deleted: outcome.showDeleted ? "1" : "0",
+      ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
+    },
     visibilityKey: outcome.visibilityKey,
     themeId: input.theme?.theme.id ?? "0",
     themeVersion: input.theme?.theme.version ?? 0,

@@ -180,6 +180,30 @@ stackDescribe("beacon and overlay endpoints", () => {
     await resetRateBuckets();
   }, 30_000);
 
+  test("the benchmark session endpoint issues a working member session", async () => {
+    const response = await fetch(`${ORIGIN}/api/test/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ sub: "member-1" }),
+    });
+
+    expect(response.status).toBe(200);
+
+    const cookie = (response.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+    expect(cookie).toMatch(/^(?:__Host-)?bl_session=/);
+
+    const member = await fetch(`${ORIGIN}/_demo/2`, { headers: { cookie } });
+    expect(member.headers.get("cache-control")).toBe("private, no-store");
+    expect(await member.text()).toContain('data-visitor="member"');
+
+    const noOrigin = await fetch(`${ORIGIN}/api/test/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sub: "member-1" }),
+    });
+    expect(noOrigin.status).toBe(403);
+  });
+
   test("the overlay requires its header, a session and the right origin", async () => {
     const missingHeader = await fetch(`${ORIGIN}/api/me/overlay`, {
       method: "POST",

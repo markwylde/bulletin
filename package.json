@@ -24,7 +24,8 @@
     "test:watch": "bun test --watch",
     "test:integration": "BULLETIN_INTEGRATION=1 bun test tests/integration",
     "test:e2e": "bun scripts/run-e2e.ts",
-    "test:db": "bun test tests/harness"
+    "test:db": "bun test tests/harness",
+    "benchmark": "bun scripts/benchmark.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",

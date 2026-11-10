@@ -113,6 +113,9 @@ jobs:
       - name: Run full-stack integration suites
         run: bun run test:integration
 
+      - name: Latency benchmark (ADR 0006)
+        run: bun run benchmark
+
       - name: Run E2E smoke and locale tests
         run: bun run test:e2e
 

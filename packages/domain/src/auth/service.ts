@@ -19,7 +19,9 @@ import { memberViewerKey, parseTopicIds, parseVisitContext, recordVisit } from "
 import type { AuthRouterOptions, SessionCapabilities } from "./router.ts";
 import { createAuthRouter, guestView, sessionView } from "./router.ts";
 import { createSessionStore, type SessionRecord, type SessionStore } from "./session-store.ts";
+import { issueSession } from "./store.ts";
 import {
+  clientIp,
   createCsrfToken,
   parseCookieHeader,
   REAUTH_GRACE_MS,
@@ -27,6 +29,7 @@ import {
   STEP_UP_WINDOW_MS,
   serializeCookie,
   sessionCookieName,
+  userAgent,
   verifyCsrfToken,
 } from "./tokens.ts";
 
@@ -491,6 +494,57 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       });
     }
 
+    if (options.kind === "user" && pathname === "/api/test/session") {
+      if (request.method !== "POST") {
+        return Promise.resolve(json({ code: "method_not_allowed" }, 405));
+      }
+
+      // Test-only (development): mint a member session over HTTP so the latency benchmark
+      // needs no browser. Identity mapping still goes through pii.resolve_identity.
+      return (async () => {
+        const body = await readJsonBody(request);
+        const sub = body?.sub;
+
+        if (typeof sub !== "string" || sub === "") {
+          return json({ code: "invalid_request" }, 400);
+        }
+
+        const issued = await options.sql.begin(async (tx) => {
+          const rows = (await tx`
+            SELECT pii.resolve_identity(${options.issuer}, ${sub}, '', '') AS member_id
+          `) as Array<{ member_id: string }>;
+          const memberId = rows[0]?.member_id;
+
+          if (memberId === undefined) {
+            return null;
+          }
+
+          const session = await issueSession(tx, {
+            kind: "user",
+            memberId,
+            ip: clientIp(request),
+            userAgent: userAgent(request),
+            authTime: new Date(),
+          });
+
+          return { memberId, token: session.token };
+        });
+
+        if (issued === null) {
+          return json({ code: "not_found" }, 404);
+        }
+
+        return withSetCookie(
+          json({ ok: true, memberId: issued.memberId }),
+          serializeCookie(cookieName, issued.token, {
+            maxAge: sessionMaxAge,
+            secure,
+            httpOnly: true,
+          }),
+        );
+      })();
+    }
+
     if (options.kind === "user" && pathname === "/api/test/reset-rate-buckets") {
       if (request.method !== "POST") {
         return Promise.resolve(json({ code: "method_not_allowed" }, 405));
@@ -575,10 +629,12 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           return json({ code: "invalid_origin" }, 403);
         }
 
-        const resetRateBuckets =
-          options.testEndpoints === true && pathname === "/api/test/reset-rate-buckets";
+        const devTestPost =
+          options.testEndpoints === true &&
+          options.kind === "user" &&
+          (pathname === "/api/test/session" || pathname === "/api/test/reset-rate-buckets");
 
-        if (!isCsrfExempt(request.method, pathname) && !resetRateBuckets) {
+        if (!isCsrfExempt(request.method, pathname) && !devTestPost) {
           const token = parseCookieHeader(request.headers.get("cookie"))[cookieName];
           const session = token === undefined ? null : await sessions.find(options.kind, token);
 

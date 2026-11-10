@@ -41,7 +41,7 @@
 
 ## 7. Performance
 
-- [ ] 7.1 Add the latency benchmark against the seeded stack (cached guest, member and cold) on the demo route, with an extension point for later routes to register and wire it into CI; verify the thresholds pass
+- [x] 7.1 Add the latency benchmark against the seeded stack (cached guest, member and cold) on the demo route, with an extension point for later routes to register and wire it into CI; verify the thresholds pass
 
 ## 8. Strings and seed
 
