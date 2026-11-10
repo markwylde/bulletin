@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createRenderCache, createTagVersions } from "@bulletin/cache";
 import {
   baseSeedModule,
+  flagsSeedModule,
   groupsSeedModule,
   membersSeedModule,
   moderatorAssignmentsSeedModule,
@@ -14,6 +15,7 @@ import { type ForumAction, forumActionMask } from "@bulletin/domain/permissions"
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { saveAnnouncement } from "../../apps/staff-api/src/announcements.ts";
 import { deleteForum } from "../../apps/staff-api/src/forums.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { buildBoardIndex } from "../../apps/user-app/src/forums/index.ts";
@@ -34,6 +36,7 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
       sql: database.sql,
       registry: new SeedRegistry([
         baseSeedModule,
+        flagsSeedModule,
         permissionFixtureSeedModule,
         groupsSeedModule,
         membersSeedModule,
@@ -387,6 +390,75 @@ integrationDescribe("board index view model", () => {
           report.variants.get("announcements without read"),
         );
         expect(report.variants.get("member")).not.toBe(report.variants.get("announcements hidden"));
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("gates stored mention links in announcements by the viewer's flag and cache variant", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.feature_flags SET default_value = true WHERE key = 'mentions'
+      `;
+      const admin = await memberSession(database, "admin");
+      const name = admin.displayName ?? "Admin";
+
+      expect(
+        await saveAnnouncement(database.sql, admin.memberId, {
+          title: "Mention notice",
+          body: `Hello @${name}`,
+          scope: "global",
+          startsAt: new Date(Date.now() - 60_000).toISOString(),
+          endsAt: null,
+          dismissible: true,
+          targets: [],
+          groupIds: [],
+        }),
+      ).toEqual({ ok: true });
+
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const member = await memberSession(database, "member-1");
+        const renderIndex = () =>
+          renderHomeRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: member,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+
+        const on = await renderIndex();
+        expect(on.cache).toBe("miss");
+        expect(on.html).toContain('data-mention="');
+        expect(on.html).toContain(`@${name}`);
+
+        await database.sql`
+          UPDATE core.feature_flags SET default_value = false WHERE key = 'mentions'
+        `;
+        const off = await renderIndex();
+
+        expect(off.cache).toBe("miss");
+        expect(off.variant).not.toBe(on.variant);
+        expect(off.html).toContain(`@${name}`);
+        expect(off.html).not.toContain("data-mention");
+        expect(off.html).not.toContain('href="/profile/');
+
+        // A warm flag-off cache keeps serving plain text for the flag-off variant only.
+        const warmOff = await renderIndex();
+        expect(warmOff.cache).toBe("hit");
+        expect(warmOff.variant).toBe(off.variant);
+        expect(warmOff.html).not.toContain("data-mention");
       } finally {
         await versions.close();
       }

@@ -538,7 +538,9 @@ integrationDescribe("staff forum structure", () => {
       expect(announcement.body_html).toContain(
         'src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"',
       );
-      expect(announcement.body_html).toContain("<bl-unfurl");
+      // Rules and announcements never render unfurl cards; a standalone URL stays a link.
+      expect(announcement.body_html).toContain('href="https://example.com/article"');
+      expect(announcement.body_html).not.toContain("<bl-unfurl");
 
       const settings = await call(harness.api, harness.admin, "forums.mutate", {
         action: "settings",
@@ -560,10 +562,12 @@ integrationDescribe("staff forum structure", () => {
       expect(rules.rules_html).toContain('alt="Smile"');
       expect(rules.rules_html).toContain('href="/profile/');
       expect(rules.rules_html).toContain('data-bl-embed="youtube"');
-      expect(rules.rules_html).toContain("<bl-unfurl");
+      expect(rules.rules_html).toContain('href="https://example.com/article"');
+      expect(rules.rules_html).not.toContain("<bl-unfurl");
 
-      // Flags are evaluated for the author: turning them off reverts mentions and preview
-      // cards to ordinary text and links, while emoticons and embeds stay core (ADR 0010).
+      // Flags are evaluated for the author: turning mentions off reverts them to plain text,
+      // while emoticons, embeds and ordinary links stay core (ADR 0010). Standalone URLs in
+      // staff content are never unfurled, whatever the `unfurls` flag says.
       await harness.database.sql`
         UPDATE core.feature_flags SET default_value = false WHERE key IN ('mentions', 'unfurls')
       `;
@@ -586,6 +590,7 @@ integrationDescribe("staff forum structure", () => {
 
       expect(plainRules.rules_html).toContain('alt="Smile"');
       expect(plainRules.rules_html).toContain('data-bl-embed="youtube"');
+      expect(plainRules.rules_html).toContain('href="https://example.com/article"');
       expect(plainRules.rules_html).not.toContain('href="/profile/');
       expect(plainRules.rules_html).not.toContain("<bl-unfurl");
     });

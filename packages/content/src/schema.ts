@@ -1,6 +1,6 @@
 import type { Options } from "rehype-sanitize";
 import { defaultSchema } from "rehype-sanitize";
-import type { ContentProfile } from "./types.ts";
+import { type ContentProfile, MENTION_ATTRIBUTE } from "./types.ts";
 
 type Schema = Options;
 
@@ -9,7 +9,7 @@ const HLJS_CLASS = /^hljs(?:-[a-z0-9-]+)?$/i;
 
 /** Attributes every profile keeps on top of the GitHub-style defaults. */
 const COMMON_ATTRIBUTES: NonNullable<Schema["attributes"]> = {
-  a: ["href", "rel", "title"],
+  a: ["href", "rel", "title", MENTION_ATTRIBUTE],
   img: ["src", "alt", "title", ["className", "emoticon"]],
   code: [["className", CODE_CLASS, "hljs"]],
   pre: [["className", "hljs"]],

@@ -80,6 +80,8 @@ export interface ForumPageInput {
   readonly prefix: string | null;
   readonly now: Date;
   readonly announcementsEnabled?: boolean;
+  /** The viewer's evaluated `mentions` flag; off unwraps stored mention links (ADR 0010). */
+  readonly mentionsEnabled?: boolean;
 }
 
 export interface ForumPageBreadcrumb {
@@ -132,6 +134,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
   const locked = input.forum.passwordProtected && !readable;
 
   const announcementsEnabled = input.announcementsEnabled !== false;
+  const mentionsEnabled = input.mentionsEnabled !== false;
   const allAnnouncements = announcementsEnabled
     ? await loadAnnouncements(input.sql, input.now)
     : [];
@@ -226,7 +229,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
       renderVersion: input.forum.rulesRenderVersion,
       sanitiserVersion: input.forum.rulesSanitiserVersion,
     },
-    { profile: "rules", embedProviders },
+    { profile: "rules", embedProviders, mentions: mentionsEnabled },
   );
   const announcementViews = await Promise.all(
     blocks.map(async (announcement) => ({
@@ -238,7 +241,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
           renderVersion: announcement.renderVersion,
           sanitiserVersion: announcement.sanitiserVersion,
         },
-        { profile: "rules", embedProviders },
+        { profile: "rules", embedProviders, mentions: mentionsEnabled },
       ),
     })),
   );

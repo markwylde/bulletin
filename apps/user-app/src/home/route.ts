@@ -64,6 +64,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
         translate: input.translate,
         session: input.session ?? null,
         announcementsEnabled: flags.values.announcements === true,
+        mentionsEnabled: flags.values.mentions === true,
         ...(input.now === undefined ? {} : { now: input.now }),
       });
       const boardName = boardNameFrom(settings.boardName, input.translate);

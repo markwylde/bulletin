@@ -73,6 +73,8 @@ export interface BoardIndexInput {
   readonly session: UserAppSessionContext | null;
   /** The `announcements` flag; direct builder tests default to on. */
   readonly announcementsEnabled?: boolean;
+  /** The viewer's evaluated `mentions` flag; off unwraps stored mention links (ADR 0010). */
+  readonly mentionsEnabled?: boolean;
   /** Test seam for announcement transitions. */
   readonly now?: Date;
 }
@@ -162,6 +164,7 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
     .map(forumView);
   const now = input.now ?? new Date();
   const announcementsEnabled = input.announcementsEnabled !== false;
+  const mentionsEnabled = input.mentionsEnabled !== false;
   const allAnnouncements = announcementsEnabled ? await loadAnnouncements(input.sql, now) : [];
   const announcements = await filterVisibleAnnouncements(input.sql, principal, allAnnouncements, {
     tree,
@@ -179,7 +182,7 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
           renderVersion: announcement.renderVersion,
           sanitiserVersion: announcement.sanitiserVersion,
         },
-        { profile: "rules", embedProviders },
+        { profile: "rules", embedProviders, mentions: mentionsEnabled },
       ),
     })),
   );

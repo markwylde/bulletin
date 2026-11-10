@@ -3,6 +3,7 @@ import { createRenderCache, createTagVersions, type TagVersionSource } from "@bu
 import { forumRulesRerenderSource, runContentRerenderJob } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
+  flagsSeedModule,
   groupsSeedModule,
   membersSeedModule,
   moderatorAssignmentsSeedModule,
@@ -37,6 +38,7 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
       sql: database.sql,
       registry: new SeedRegistry([
         baseSeedModule,
+        flagsSeedModule,
         permissionFixtureSeedModule,
         groupsSeedModule,
         membersSeedModule,
@@ -677,6 +679,131 @@ integrationDescribe("forum page", () => {
         expect(report.variants.get("locked forum 3")).not.toBe(
           report.variants.get("unlocked forum 3"),
         );
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("renders a standalone URL in rules as an ordinary link, never an unfurl card", async () => {
+    await withSeededDb(async (database) => {
+      // The unfurls flag is on, but link previews belong to member posts, not staff content.
+      await database.sql`
+        UPDATE core.feature_flags SET default_value = true WHERE key = 'unfurls'
+      `;
+      const admin = await memberSession(database, "admin");
+      const url = "https://example.com/release-notes";
+
+      expect(
+        await saveForumSettings(database.sql, admin.memberId, {
+          id: "2",
+          prefixIds: [],
+          rules: `Read these before posting.\n\n${url}`,
+        }),
+      ).toEqual({ ok: true });
+
+      const member = await memberSession(database, "member-1");
+      const page = await render(database, await forumHref(database, "2"), member);
+
+      expect(page.kind).toBe("page");
+
+      if (page.kind !== "page") {
+        return;
+      }
+
+      expect(page.html).toContain(`<a href="${url}"`);
+      expect(page.html).toContain(`>${url}</a>`);
+      expect(page.html).not.toContain("<bl-unfurl");
+      expect(page.html).not.toContain("unfurl-card");
+    });
+  }, 30_000);
+
+  test("gates stored mention links by the viewer's flag without leaking across cache variants", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.feature_flags SET default_value = true WHERE key = 'mentions'
+      `;
+      const admin = await memberSession(database, "admin");
+      const name = admin.displayName ?? "Admin";
+
+      expect(
+        await saveForumSettings(database.sql, admin.memberId, {
+          id: "2",
+          prefixIds: [],
+          rules: `Welcome @${name}.`,
+        }),
+      ).toEqual({ ok: true });
+
+      // The stored HTML always carries the mention link; only the read path may hide it.
+      const [stored] = (await database.sql`
+        SELECT rules_html FROM core.forums WHERE id = 2
+      `) as Array<{ rules_html: string }>;
+      expect(stored?.rules_html).toContain('data-mention="');
+
+      const setMentions = async (value: boolean): Promise<void> => {
+        await database.sql`
+          UPDATE core.feature_flags SET default_value = ${value} WHERE key = 'mentions'
+        `;
+      };
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const member = await memberSession(database, "member-1");
+        const ref = await forumHref(database, "2");
+        const renderPage = () => render(database, ref, member, { cache, tagVersions: versions });
+
+        const on = await renderPage();
+        expect(on.kind).toBe("page");
+
+        if (on.kind !== "page") {
+          return;
+        }
+
+        expect(on.cache).toBe("miss");
+        expect(on.html).toContain('data-mention="');
+        expect(on.html).toContain(`@${name}`);
+
+        await setMentions(false);
+        const off = await renderPage();
+
+        if (off.kind !== "page") {
+          return;
+        }
+
+        expect(off.cache).toBe("miss");
+        expect(off.variant).not.toBe(on.variant);
+        expect(off.html).toContain(`@${name}`);
+        expect(off.html).not.toContain("data-mention");
+        expect(off.html).not.toContain('href="/profile/');
+
+        // The flag-off variant warms independently and stays plain.
+        const warmOff = await renderPage();
+
+        if (warmOff.kind !== "page") {
+          return;
+        }
+
+        expect(warmOff.cache).toBe("hit");
+        expect(warmOff.variant).toBe(off.variant);
+        expect(warmOff.html).not.toContain("data-mention");
+        expect(warmOff.html).toContain(`@${name}`);
+
+        // Turning the flag back on re-uses the flag-on variant, never the plain one.
+        await setMentions(true);
+        const warmOn = await renderPage();
+
+        if (warmOn.kind !== "page") {
+          return;
+        }
+
+        expect(warmOn.cache).toBe("hit");
+        expect(warmOn.variant).toBe(on.variant);
+        expect(warmOn.html).toContain('data-mention="');
       } finally {
         await versions.close();
       }

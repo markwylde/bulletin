@@ -3,6 +3,7 @@ export * from "./before-save.ts";
 export * from "./embeds.ts";
 export * from "./extensions/inline.ts";
 export * from "./extensions/quotes.ts";
+export * from "./mentions.ts";
 export * from "./pipeline.ts";
 export * from "./quote-view.ts";
 export * from "./refresh.ts";

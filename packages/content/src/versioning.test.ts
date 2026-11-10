@@ -51,4 +51,35 @@ describe("content versions", () => {
     expect(result.bodyHtml).toContain("darn");
     expect(result.bodyText).toBe("A darn post");
   });
+
+  test("mention links are unwrapped for a viewer without the flag, stale or not", async () => {
+    const versions = currentContentVersions();
+    const bodyHtml =
+      '<p>Hi <a href="/profile/42-jane" data-mention="42" rel="nofollow ugc noopener">@Jane</a></p>';
+
+    const current = await ensureCurrentRendering(
+      { bodyHtml, bodyText: "Hi @Jane", ...versions },
+      { profile: "rules", mentions: false },
+    );
+
+    expect(current.refreshed).toBe(false);
+    expect(current.bodyHtml).toBe("<p>Hi @Jane</p>");
+
+    // A stale row is re-sanitised first, then gated; the marker survives the refresh.
+    const stale = await ensureCurrentRendering(
+      { bodyHtml, renderVersion: versions.renderVersion - 1, sanitiserVersion: 0 },
+      { profile: "rules", mentions: false },
+    );
+
+    expect(stale.refreshed).toBe(true);
+    expect(stale.bodyHtml).toBe("<p>Hi @Jane</p>");
+
+    // The same row keeps its link for a viewer with the flag on.
+    const enabled = await ensureCurrentRendering(
+      { bodyHtml, bodyText: "Hi @Jane", ...versions },
+      { profile: "rules", mentions: true },
+    );
+
+    expect(enabled.bodyHtml).toContain('href="/profile/42-jane"');
+  });
 });

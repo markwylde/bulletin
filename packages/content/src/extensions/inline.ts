@@ -1,5 +1,5 @@
-import type { Image, Parent, PhrasingContent, Root, Text } from "mdast";
-import type { MentionedMember, MentionResolver } from "../types.ts";
+import type { Image, Link, Parent, PhrasingContent, Root, Text } from "mdast";
+import { MENTION_ATTRIBUTE, type MentionedMember, type MentionResolver } from "../types.ts";
 
 interface CustomNode extends Parent {
   readonly type: string;
@@ -22,6 +22,16 @@ function isParent(node: unknown): node is Parent {
 
 function text(value: string): Text {
   return { type: "text", value };
+}
+
+function mentionLink(member: MentionedMember): Link {
+  return {
+    type: "link",
+    url: member.url,
+    title: null,
+    data: { hProperties: { [MENTION_ATTRIBUTE]: member.id } },
+    children: [text(`@${member.displayName}`)],
+  };
 }
 
 /** Replaces a text node's children with `build`'s pieces, keeping non-text nodes untouched. */
@@ -165,12 +175,7 @@ async function withMemberLinks(
           }
 
           mentioned.add(member.id);
-          result.push({
-            type: "link",
-            url: member.url,
-            title: null,
-            children: [text(`@${member.displayName}`)],
-          });
+          result.push(mentionLink(member));
           index += 1;
           continue;
         }
@@ -227,12 +232,7 @@ async function withMentions(
       }
 
       mentioned.add(member.id);
-      result.push({
-        type: "link",
-        url: member.url,
-        title: null,
-        children: [text(`@${member.displayName}`)],
-      });
+      result.push(mentionLink(member));
       cursor = mentionStart + 1 + name.length;
     }
 

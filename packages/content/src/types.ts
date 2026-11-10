@@ -1,3 +1,6 @@
+/** Marks mention links in stored HTML so reads can gate them by the viewer's flag (ADR 0010). */
+export const MENTION_ATTRIBUTE = "dataMention";
+
 /** Profile selectors for the sanitised HTML schema (ADR 0007). */
 export const CONTENT_PROFILES = ["post", "signature", "profile_field", "rules"] as const;
 export type ContentProfile = (typeof CONTENT_PROFILES)[number];

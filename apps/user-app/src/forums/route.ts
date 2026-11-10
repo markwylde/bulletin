@@ -235,6 +235,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
             prefix,
             now,
             announcementsEnabled: flags.values.announcements === true,
+            mentionsEnabled: flags.values.mentions === true,
           });
         }
       }

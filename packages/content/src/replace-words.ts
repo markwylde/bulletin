@@ -5,9 +5,10 @@ import type { ReplaceWords } from "./types.ts";
 /**
  * Pipeline rules change only with a code release; filter edits add their own version.
  * Version 2 marks embed players with `data-bl-embed` so the theme renderer can keep them
- * while still rejecting every theme-authored iframe (ADR 0007, 0008).
+ * while still rejecting every theme-authored iframe (ADR 0007, 0008). Version 3 marks mention
+ * links with `data-mention` so reads can unwrap them for viewers without the flag (ADR 0010).
  */
-export const BASE_RENDER_VERSION = 2;
+export const BASE_RENDER_VERSION = 3;
 export const SANITISER_VERSION = 1;
 
 /**
