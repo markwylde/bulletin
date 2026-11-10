@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFlagVersion } from "@bulletin/db/flags";
 import { createAuthService, createCsrfToken, hashToken } from "@bulletin/domain/auth";
 import { displayNameSkeleton } from "@bulletin/domain/member";
-import { ACP_PERMISSIONS, can } from "@bulletin/domain/permissions";
+import { can, PERMISSION_KEYS } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { authIssuer, staffOrigin } from "@bulletin/test-utils/urls";
 import { SQL } from "bun";
@@ -1157,15 +1157,16 @@ integrationDescribe("ACP permission catalog", () => {
   test("seeds every permission for administrators and the moderator subset", async () => {
     await withDb("staff_acp_seed", async ({ sql }) => {
       const rows = (await sql`
-        SELECT g.key, p.permission
-        FROM core.group_acp_permissions p
-        JOIN core.groups g ON g.id = p.group_id
-        ORDER BY g.key, p.permission
+        SELECT g.key, s.key AS permission
+        FROM core.group_settings s
+        JOIN core.groups g ON g.id = s.group_id
+        WHERE s.value = 'true'::jsonb
+        ORDER BY g.key, s.key
       `) as Array<{ key: string; permission: string }>;
 
       expect(
         rows.filter((row) => row.key === "administrators").map((row) => row.permission),
-      ).toEqual([...ACP_PERMISSIONS, "board.view_offline"].sort());
+      ).toEqual([...PERMISSION_KEYS].sort());
       expect(
         rows.filter((row) => row.key === "super_moderators").map((row) => row.permission),
       ).toEqual(["acp.access", "acp.members"]);

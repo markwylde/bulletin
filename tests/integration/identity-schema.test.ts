@@ -48,7 +48,16 @@ integrationDescribe("identity schema", () => {
       }
 
       expect(byTable.get("groups")?.sort()).toEqual(
-        ["created_at", "id", "is_system", "key", "title"].sort(),
+        [
+          "created_at",
+          "display_order",
+          "icon",
+          "id",
+          "is_system",
+          "key",
+          "name_colour",
+          "title",
+        ].sort(),
       );
       expect(byTable.get("members")?.sort()).toEqual(
         [

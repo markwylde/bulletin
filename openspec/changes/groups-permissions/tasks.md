@@ -2,10 +2,10 @@
 
 ## 1. Model and registry
 
-- [ ] 1.1 Migrations for groups (display attributes, ordering), `member_groups` with primary flag, `group_settings`, `masks`, `group_masks`, `forum_permissions(forum, mask, action bits, inherits)`, and `moderators(forum, member|group, powers, this_forum_only)`; verify with integration tests
-- [ ] 1.2 Implement the settings/ACP permission registry with merge rules and migrate the interim ACP flags from change `staff-console-shell`; unit tests for each merge rule
-- [ ] 1.3 Fold password unlocks into the effective `read` bit in `CapabilityView` (marking unlock-dependent responses not CDN-cacheable), and add `announcementAudience(viewer)`; unit tests, and a variant test that an unlocked viewer never shares a variant with a locked one
-- [ ] 1.4 Implement `core.has_mod_power(member_id, forum_id, power)` in SQL (group super-moderator setting, forum and inherited moderator assignments, bans), granted only to `pii_owner`, with a property test proving it agrees with `can()` across seeded members and fixture trees
+- [x] 1.1 Migrations for groups (display attributes, ordering), `member_groups` with primary flag, `group_settings`, `masks`, `group_masks`, `forum_permissions(forum, mask, action bits, inherits)`, and `moderators(forum, member|group, powers, this_forum_only)`; verify with integration tests
+- [x] 1.2 Implement the settings/ACP permission registry with merge rules and migrate the interim ACP flags from change `staff-console-shell`; unit tests for each merge rule
+- [x] 1.3 Fold password unlocks into the effective `read` bit in `CapabilityView` (marking unlock-dependent responses not CDN-cacheable), and add `announcementAudience(viewer)`; unit tests, and a variant test that an unlocked viewer never shares a variant with a locked one
+- [x] 1.4 Implement `core.has_mod_power(member_id, forum_id, power)` in SQL (group super-moderator setting, forum and inherited moderator assignments, bans), granted only to `pii_owner`, with a property test proving it agrees with `can()` across seeded members and fixture trees
 
 ## 2. Evaluation
 

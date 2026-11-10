@@ -1,23 +1,14 @@
 import type { SQL } from "bun";
+import { type AcpPermission, isAcpPermissionKey, PERMISSION_KEYS } from "./registry.ts";
 
 /**
- * The interim ACP permission set for this change. `groups-permissions` replaces this with the
- * typed group-settings registry; until then the built-in groups grant these explicitly.
+ * The ACP permission set from the typed registry (ADR 0005). `groups-permissions` replaced the
+ * interim `core.group_acp_permissions` table with registry entries in `core.group_settings`.
  */
-export const ACP_PERMISSIONS = [
-  "acp.access",
-  "acp.flags",
-  "acp.log",
-  "acp.members",
-  "acp.settings",
-  "acp.strings",
-  "acp.system",
-] as const;
-
-export type AcpPermission = (typeof ACP_PERMISSIONS)[number];
+export const ACP_PERMISSIONS: readonly AcpPermission[] = PERMISSION_KEYS.filter(isAcpPermissionKey);
 
 export function isAcpPermission(value: string): value is AcpPermission {
-  return (ACP_PERMISSIONS as readonly string[]).includes(value);
+  return isAcpPermissionKey(value);
 }
 
 export const STAFF_SCHEMES = ["light", "dark", "system"] as const;
@@ -36,12 +27,14 @@ export function isStaffScheme(value: unknown): value is StaffScheme {
  */
 export async function acpPermissionsFor(sql: SQL, memberId: string): Promise<AcpPermission[]> {
   const rows = (await sql`
-    SELECT DISTINCT p.permission
+    SELECT DISTINCT s.key
     FROM core.member_groups mg
-    JOIN core.group_acp_permissions p ON p.group_id = mg.group_id
+    JOIN core.group_settings s ON s.group_id = mg.group_id
     WHERE mg.member_id = ${memberId}
-  `) as Array<{ permission: string }>;
-  const granted = new Set(rows.map((row) => row.permission));
+      AND s.key LIKE 'acp.%'
+      AND s.value = 'true'::jsonb
+  `) as Array<{ key: string }>;
+  const granted = new Set(rows.map((row) => row.key));
 
   return ACP_PERMISSIONS.filter((permission) => granted.has(permission));
 }
