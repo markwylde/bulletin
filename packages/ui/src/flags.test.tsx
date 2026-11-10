@@ -29,4 +29,23 @@ describe("useFlag", () => {
     expect(unknown).toBe("");
     expect(noProvider).toBe("");
   });
+
+  test("fails closed for inherited object keys", () => {
+    const markup = renderToStaticMarkup(
+      <FlagsProvider value={{}}>
+        <Feature flag="constructor" label="constructor" />
+        <Feature flag="toString" label="toString" />
+        <Feature flag="hasOwnProperty" label="hasOwnProperty" />
+      </FlagsProvider>,
+    );
+    const inherited = Object.create({ inheritedFlag: true }) as Readonly<Record<string, boolean>>;
+    const inheritedMarkup = renderToStaticMarkup(
+      <FlagsProvider value={inherited}>
+        <Feature flag="inheritedFlag" label="inherited" />
+      </FlagsProvider>,
+    );
+
+    expect(markup).toBe("");
+    expect(inheritedMarkup).toBe("");
+  });
 });

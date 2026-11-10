@@ -17,5 +17,8 @@ export function FlagsProvider({ value, children }: FlagsProviderProps) {
 
 /** Reads a client-visible flag; without a provider, or for an unknown key, it fails closed. */
 export function useFlag(key: string): boolean {
-  return useContext(FlagsContext)?.[key] ?? false;
+  const flags = useContext(FlagsContext);
+
+  // Only an own entry that is exactly `true` enables UI: `{}` must not answer `constructor`.
+  return flags !== null && Object.hasOwn(flags, key) && flags[key] === true;
 }

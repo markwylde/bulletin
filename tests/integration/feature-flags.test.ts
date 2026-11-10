@@ -8,7 +8,13 @@ import {
   syncFlagDefinitions,
   watchFlagInvalidation,
 } from "@bulletin/db/flags";
-import { createFlagRuntime, defineFlag, type FlagViewer, GUEST_VIEWER } from "@bulletin/flags";
+import {
+  createFlagRuntime,
+  defineFlag,
+  FLAG_HEARTBEAT_TIMEOUT_MS,
+  type FlagViewer,
+  GUEST_VIEWER,
+} from "@bulletin/flags";
 import { withTestDatabase } from "@bulletin/test-utils/database";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -115,6 +121,94 @@ integrationDescribe("feature flags", () => {
       } finally {
         await watch.close();
       }
+    });
+  }, 15_000);
+
+  test("bypasses the snapshot while the listener is down and trusts it again after reconnect", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "flags_listener" }, async ({ sql }) => {
+      await syncFlagDefinitions(sql, [BETA]);
+
+      const runtime = createFlagRuntime(createFlagDefinitionSource(sql), { backstopMs: 60_000 });
+      const watch = await watchFlagInvalidation(sql, runtime, { heartbeatMs: 60_000 });
+      let reconnected: Awaited<ReturnType<typeof watchFlagInvalidation>> | null = null;
+
+      try {
+        expect(runtime.isListenerHealthy()).toBe(true);
+        await runtime.ensureFresh();
+        expect(runtime.isOn(MEMBER, BETA.key)).toBe(false);
+
+        // The listener is down, so the change is durable but its NOTIFY is never delivered.
+        runtime.setListenerHealthy(false);
+        expect(runtime.isListenerHealthy()).toBe(false);
+
+        await sql`
+          UPDATE core.feature_flags
+          SET rules = ${GROUP_RULE}::jsonb, updated_at = now()
+          WHERE key = ${BETA.key}
+        `;
+        await sql`
+          UPDATE core.cache_tags
+          SET version = version + 1, updated_at = now()
+          WHERE tag = 'flags'
+        `;
+
+        await runtime.ensureFresh();
+        expect(runtime.isOn(MEMBER, BETA.key)).toBe(true);
+
+        await watch.close();
+        expect(runtime.isListenerHealthy()).toBe(false);
+
+        // Reconnecting re-listens, trusts itself and re-reads the durable tag version.
+        reconnected = await watchFlagInvalidation(sql, runtime, { heartbeatMs: 60_000 });
+        expect(runtime.isListenerHealthy()).toBe(true);
+        await runtime.ensureFresh();
+        expect(runtime.isOn(MEMBER, BETA.key)).toBe(true);
+      } finally {
+        await reconnected?.close();
+        await watch.close();
+      }
+    });
+  }, 15_000);
+
+  test("stays trusted while heartbeats arrive and drops trust when they stop", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "flags_heartbeat" }, async ({ sql }) => {
+      await syncFlagDefinitions(sql, [BETA]);
+
+      let clock = 1_000;
+      const runtime = createFlagRuntime(createFlagDefinitionSource(sql), {
+        backstopMs: 60_000,
+        now: () => clock,
+      });
+      const watch = await watchFlagInvalidation(sql, runtime, { heartbeatMs: 25 });
+
+      try {
+        expect(runtime.isListenerHealthy()).toBe(true);
+
+        // No signal for longer than the ADR 0006 window makes the snapshot untrusted.
+        clock += FLAG_HEARTBEAT_TIMEOUT_MS + 1;
+        expect(runtime.isListenerHealthy()).toBe(false);
+
+        // A real heartbeat arrives and restores trust at the current time.
+        const startedAt = performance.now();
+
+        while (performance.now() - startedAt < 2_000 && !runtime.isListenerHealthy()) {
+          await Bun.sleep(10);
+        }
+
+        expect(runtime.isListenerHealthy()).toBe(true);
+      } finally {
+        await watch.close();
+      }
+
+      expect(runtime.isListenerHealthy()).toBe(false);
     });
   }, 15_000);
 

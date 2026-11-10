@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { defineFlag } from "./defaults.ts";
 import type { FlagDefinitionSource } from "./runtime.ts";
-import { createFlagRuntime } from "./runtime.ts";
+import { createFlagRuntime, FLAG_HEARTBEAT_TIMEOUT_MS } from "./runtime.ts";
 import type { FlagDefinition, FlagViewer } from "./types.ts";
 
 const MEMBER: FlagViewer = { memberId: "7", groups: ["members"] };
@@ -66,6 +66,7 @@ describe("flag runtime", () => {
     const { source, set } = fakeSource([flag("newEditor")]);
     const runtime = createFlagRuntime(source, { backstopMs: 0 });
 
+    runtime.setListenerHealthy(true);
     await runtime.ensureFresh();
     expect(runtime.isOn(MEMBER, "newEditor")).toBe(false);
 
@@ -79,6 +80,7 @@ describe("flag runtime", () => {
     const { source, loads, set } = fakeSource([flag("newEditor")]);
     const runtime = createFlagRuntime(source, { backstopMs: 60_000 });
 
+    runtime.setListenerHealthy(true);
     await runtime.ensureFresh();
     expect(loads()).toBe(1);
 
@@ -96,10 +98,69 @@ describe("flag runtime", () => {
     const { source, loads } = fakeSource([flag("newEditor")]);
     const runtime = createFlagRuntime(source, { backstopMs: 60_000 });
 
+    runtime.setListenerHealthy(true);
     await Promise.all([runtime.ensureFresh(), runtime.ensureFresh(), runtime.ensureFresh()]);
     await runtime.ensureFresh();
 
     expect(loads()).toBe(1);
+  });
+
+  test("fails closed while the listener heartbeat is late and recovers", async () => {
+    let clock = 1_000;
+    const { source, loads, set } = fakeSource([flag("newEditor")]);
+    const runtime = createFlagRuntime(source, { backstopMs: 60_000, now: () => clock });
+
+    runtime.setListenerHealthy(true);
+    await runtime.ensureFresh();
+    expect(loads()).toBe(1);
+    expect(runtime.isListenerHealthy()).toBe(true);
+
+    // A write that reached Postgres but whose NOTIFY was missed.
+    set([flag("newEditor", { defaultValue: true })], false);
+
+    // No heartbeat for longer than the ADR 0006 window.
+    clock += FLAG_HEARTBEAT_TIMEOUT_MS + 1;
+    expect(runtime.isListenerHealthy()).toBe(false);
+
+    await runtime.ensureFresh();
+    expect(loads()).toBe(2);
+    expect(runtime.isOn(MEMBER, "newEditor")).toBe(true);
+
+    // Still untrusted: every request reads Postgres instead of the snapshot.
+    await runtime.ensureFresh();
+    expect(loads()).toBe(3);
+
+    // The heartbeat resumes; the next request re-checks the durable version.
+    runtime.setListenerHealthy(true);
+    expect(runtime.isListenerHealthy()).toBe(true);
+    await runtime.ensureFresh();
+    expect(runtime.isOn(MEMBER, "newEditor")).toBe(true);
+
+    // Once the tag and the snapshot agree, the versioned cache is used again.
+    const settled = loads();
+    await runtime.ensureFresh();
+    expect(loads()).toBe(settled);
+  });
+
+  test("fails closed after an explicit listener drop and re-checks on reconnect", async () => {
+    const { source, loads, set } = fakeSource([flag("newEditor")]);
+    const runtime = createFlagRuntime(source, { backstopMs: 60_000 });
+
+    runtime.setListenerHealthy(true);
+    await runtime.ensureFresh();
+    expect(loads()).toBe(1);
+
+    set([flag("newEditor", { defaultValue: true })], false);
+    runtime.setListenerHealthy(false);
+    expect(runtime.isListenerHealthy()).toBe(false);
+
+    await runtime.ensureFresh();
+    expect(loads()).toBe(2);
+    expect(runtime.isOn(MEMBER, "newEditor")).toBe(true);
+
+    runtime.setListenerHealthy(true);
+    await runtime.ensureFresh();
+    expect(runtime.isOn(MEMBER, "newEditor")).toBe(true);
   });
 
   test("reports render flags, their hash and client-visible values", async () => {

@@ -14,6 +14,12 @@ export const FLAG_CACHE_TAG = "flags";
 /** The 1 s backstop from ADR 0006, independent of NOTIFY. */
 export const FLAG_BACKSTOP_MS = 1_000;
 
+/** Each process echoes a heartbeat over this interval (ADR 0006). */
+export const FLAG_HEARTBEAT_MS = 2_000;
+
+/** A heartbeat later than this marks the in-process snapshot untrusted (ADR 0006). */
+export const FLAG_HEARTBEAT_TIMEOUT_MS = 5_000;
+
 /** Supplies the durable tag version and the definition snapshot. */
 export interface FlagDefinitionSource {
   version(): Promise<string>;
@@ -29,10 +35,17 @@ export interface FlagRuntimeOptions {
  * Synchronous evaluation from an in-process snapshot. Call `ensureFresh()` once per request;
  * it checks the `flags` tag version at most once per backstop interval, and `invalidate()` on
  * a NOTIFY makes the next request reload immediately.
+ *
+ * When the listener is down or its heartbeat is late, the snapshot is untrusted and every
+ * request reads the definitions from Postgres instead (ADR 0006, fail closed).
  */
 export interface FlagRuntime {
   ensureFresh(): Promise<void>;
   invalidate(): void;
+  /** Records a listener signal now, or marks the listener down. Test/ops seam. */
+  setListenerHealthy(healthy: boolean): void;
+  /** Whether the snapshot may be trusted right now (connected and heartbeat is fresh). */
+  isListenerHealthy(): boolean;
   /** Unknown keys fail closed. */
   isOn(viewer: FlagViewer, key: string): boolean;
   has(key: string): boolean;
@@ -62,6 +75,8 @@ export function createFlagRuntime(
   let lastCheckedAt = 0;
   let generation = 0;
   let inflight: Promise<void> | null = null;
+  let listenerUp = false;
+  let lastListenerSignalAt = 0;
 
   function replace(value: readonly FlagDefinition[]): void {
     definitions = value;
@@ -69,9 +84,23 @@ export function createFlagRuntime(
     loaded = true;
   }
 
+  /** ADR 0006: a connected listener with a heartbeat younger than 5 s is trustworthy. */
+  function trusted(): boolean {
+    return listenerUp && now() - lastListenerSignalAt <= FLAG_HEARTBEAT_TIMEOUT_MS;
+  }
+
   async function reload(): Promise<void> {
     const startedAt = generation;
-    const { value } = await cache.get(FLAG_CACHE_TAG);
+    let value: readonly FlagDefinition[];
+
+    if (trusted()) {
+      value = (await cache.get(FLAG_CACHE_TAG)).value;
+    } else {
+      // Fail closed: never reuse the in-process snapshot while invalidation is unhealthy.
+      cache.invalidate(FLAG_CACHE_TAG);
+      value = await source.load();
+    }
+
     replace(value);
     lastCheckedAt = now();
     // An invalidation that arrived while the load was running must not be swallowed.
@@ -79,7 +108,7 @@ export function createFlagRuntime(
   }
 
   function stale(): boolean {
-    return !loaded || invalidated || now() - lastCheckedAt >= backstopMs;
+    return !trusted() || !loaded || invalidated || now() - lastCheckedAt >= backstopMs;
   }
 
   return {
@@ -98,6 +127,21 @@ export function createFlagRuntime(
       cache.invalidate(FLAG_CACHE_TAG);
       generation += 1;
       invalidated = true;
+    },
+
+    setListenerHealthy(healthy) {
+      const wasTrusted = trusted();
+      listenerUp = healthy;
+      lastListenerSignalAt = healthy ? now() : 0;
+
+      // A signal that resumes trust means the next request must re-check the tag version.
+      if (healthy && !wasTrusted) {
+        invalidated = true;
+      }
+    },
+
+    isListenerHealthy() {
+      return trusted();
     },
 
     isOn(viewer, key) {

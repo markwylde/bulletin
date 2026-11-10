@@ -2,6 +2,7 @@ import { CACHE_TAG_NOTIFY_CHANNEL } from "@bulletin/cache";
 import {
   assertFlagDefinitions,
   FLAG_CACHE_TAG,
+  FLAG_HEARTBEAT_MS,
   type FlagDefinition,
   type FlagDefinitionSource,
   type FlagRuntime,
@@ -125,20 +126,72 @@ export function createFlagDefinitionSource(sql: SQL): FlagDefinitionSource {
   };
 }
 
-/** Watches the cache tag channel and invalidates the snapshot on a `flags` change. */
+/** The heartbeat channel for this process's flags listener (ADR 0006). */
+export const FLAG_LISTENER_HEALTH_CHANNEL = "flags_cache_health";
+
+export interface FlagWatchOptions {
+  /** Heartbeat interval; tests shorten it, production keeps the 2 s from ADR 0006. */
+  readonly heartbeatMs?: number;
+}
+
+export interface FlagWatch {
+  close(): Promise<void>;
+}
+
+/**
+ * Watches the cache tag channel and keeps the runtime's listener health current. ADR 0006:
+ * LISTEN first, then reload versions; echo a heartbeat every 2 s; a missing echo or a dropped
+ * connection marks the snapshot untrusted until the listener reconnects.
+ */
 export async function watchFlagInvalidation(
   sql: SQL,
   runtime: FlagRuntime,
-): Promise<{ close(): Promise<void> }> {
-  const subscription = await sql.listen(CACHE_TAG_NOTIFY_CHANNEL, (payload) => {
-    if (payload === FLAG_CACHE_TAG) {
+  options: FlagWatchOptions = {},
+): Promise<FlagWatch> {
+  const heartbeatMs = options.heartbeatMs ?? FLAG_HEARTBEAT_MS;
+
+  // The on-connect callback also runs after a reconnect. Invalidating first closes the
+  // LISTEN-before-version-read race: the next request reloads the durable tag version.
+  const subscription = await sql.listen(
+    CACHE_TAG_NOTIFY_CHANNEL,
+    (payload) => {
+      if (payload === FLAG_CACHE_TAG) {
+        runtime.invalidate();
+      }
+
+      runtime.setListenerHealthy(true);
+    },
+    () => {
       runtime.invalidate();
-    }
-  });
+      runtime.setListenerHealthy(true);
+    },
+  );
+  const health = await sql.listen(
+    FLAG_LISTENER_HEALTH_CHANNEL,
+    () => runtime.setListenerHealthy(true),
+    () => runtime.setListenerHealthy(true),
+  );
+  runtime.setListenerHealthy(true);
+
+  const heartbeat = setInterval(() => {
+    void sql.notify(FLAG_LISTENER_HEALTH_CHANNEL, crypto.randomUUID()).catch(() => {
+      runtime.setListenerHealthy(false);
+    });
+  }, heartbeatMs);
+  heartbeat.unref?.();
+
+  let closed = false;
 
   return {
     async close() {
-      await subscription.unlisten();
+      if (closed) {
+        return;
+      }
+
+      closed = true;
+      clearInterval(heartbeat);
+      runtime.setListenerHealthy(false);
+      await Promise.all([subscription.unlisten(), health.unlisten()]);
     },
   };
 }
