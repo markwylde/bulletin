@@ -438,6 +438,9 @@ export function MasksPage() {
               <p className="lede" data-masks-guest-note>
                 {t("staff.masks.guestRevocationNote")}
               </p>
+              <p className="lede" data-masks-member-note>
+                {t("staff.masks.memberRevocationNote")}
+              </p>
               <div className="matrix-scroll" data-matrix-scroll>
                 <table className="matrix-table" data-mask-matrix={selected.key}>
                   <thead>

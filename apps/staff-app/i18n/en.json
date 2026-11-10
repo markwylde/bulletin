@@ -258,6 +258,7 @@
   "staff.masks.list.title": "Masks",
   "staff.masks.loadError": "Could not load permissions.",
   "staff.masks.matrix.title": "Forum matrix",
+  "staff.masks.memberRevocationNote": "Members lose access within 1 second: permission changes are re-checked every second.",
   "staff.masks.name": "Name",
   "staff.masks.save": "Save mask",
   "staff.masks.saveError": "The permission change could not be saved.",

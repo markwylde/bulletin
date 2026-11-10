@@ -45,5 +45,5 @@
 
 ## 8. Strings and seed
 
-- [ ] 8.1 Add en/es/fr strings for template validation errors and cache settings notes; verify completeness
+- [x] 8.1 Add en/es/fr strings for template validation errors and cache settings notes; verify completeness
 - [ ] 8.2 Seed the default theme into the DB from repo files, and verify the demo route renders from the DB-stored templates after `docker compose up --watch`

@@ -1,4 +1,6 @@
+import { createServerT, type Translator } from "@bulletin/i18n";
 import { type DefaultTreeAdapterTypes, parse as parseHtml } from "parse5";
+import en from "../i18n/en.json";
 
 export type TemplateIssueCode =
   | "script"
@@ -12,13 +14,19 @@ export type TemplateIssueCode =
   | "off_origin_form"
   | "unsupported_tag";
 
+/**
+ * A rejected construct. Issues are machine-readable; the admin-facing text comes from the
+ * translated formatter below, so every locale can name the problem (task 8.1).
+ */
 export interface TemplateIssue {
   readonly code: TemplateIssueCode;
-  readonly message: string;
   readonly line: number;
   readonly column: number;
+  /** The HTML element, or the Liquid tag for `unsupported_tag`. */
   readonly element: string;
   readonly attribute?: string;
+  /** Extra context for the message: the forbidden scheme or the unsupported tag name. */
+  readonly detail?: string;
 }
 
 export interface TemplateValidation {
@@ -201,13 +209,7 @@ function inspectElement(element: Element, issues: TemplateIssue[]): void {
   const { line, column } = locationOf(element);
 
   if (banned !== undefined) {
-    issues.push({
-      code: banned,
-      message: `the <${tag}> element is not allowed`,
-      line,
-      column,
-      element: tag,
-    });
+    issues.push({ code: banned, line, column, element: tag });
     return;
   }
 
@@ -217,7 +219,6 @@ function inspectElement(element: Element, issues: TemplateIssue[]): void {
     const position = locationOf(element, "http-equiv");
     issues.push({
       code: "meta_refresh",
-      message: "the http-equiv refresh meta tag is not allowed",
       ...position,
       element: tag,
       attribute: "http-equiv",
@@ -232,13 +233,7 @@ function inspectElement(element: Element, issues: TemplateIssue[]): void {
     const position = locationOf(element, name);
 
     if (/^on[a-z]/.test(name)) {
-      issues.push({
-        code: "event_handler",
-        message: `the ${name} attribute is not allowed`,
-        ...position,
-        element: tag,
-        attribute: name,
-      });
+      issues.push({ code: "event_handler", ...position, element: tag, attribute: name });
       continue;
     }
 
@@ -252,22 +247,16 @@ function inspectElement(element: Element, issues: TemplateIssue[]): void {
     if (unsafe !== undefined) {
       issues.push({
         code: "unsafe_url",
-        message: `the ${name} attribute uses a forbidden ${normaliseUrl(unsafe).split(":")[0]}: URL`,
         ...position,
         element: tag,
         attribute: name,
+        detail: normaliseUrl(unsafe).split(":")[0] ?? "",
       });
       continue;
     }
 
     if ((name === "action" || name === "formaction") && !isSameOriginTarget(attribute.value)) {
-      issues.push({
-        code: "off_origin_form",
-        message: `the ${name} attribute must target this origin`,
-        ...position,
-        element: tag,
-        attribute: name,
-      });
+      issues.push({ code: "off_origin_form", ...position, element: tag, attribute: name });
     }
   }
 }
@@ -298,10 +287,10 @@ function findUnsupportedTags(source: string): readonly TemplateIssue[] {
 
     issues.push({
       code: "unsupported_tag",
-      message: `the {% ${tag} %} tag is not available to themes`,
       line,
       column: offset - before.lastIndexOf("\n"),
       element: tag,
+      detail: tag,
     });
   }
 
@@ -327,9 +316,58 @@ export function validateTemplateMarkup(source: string): TemplateValidation {
   return { ok: issues.length === 0, issues };
 }
 
-/** One admin-facing line per issue, naming the element, attribute and line. */
-export function formatTemplateIssues(issues: readonly TemplateIssue[]): string {
+/** The shipped English messages, used for server logs before a locale is known. */
+const DEFAULT_TRANSLATE: Translator = createServerT("en", { shipped: { en } });
+
+/** The translated, admin-facing text for one rejected construct. */
+export function templateIssueMessage(issue: TemplateIssue, translate: Translator): string {
+  switch (issue.code) {
+    case "script":
+      return translate("template.validation.script");
+    case "frame":
+      return translate("template.validation.frame", { element: issue.element });
+    case "object":
+      return translate("template.validation.object", { element: issue.element });
+    case "embed":
+      return translate("template.validation.embed", { element: issue.element });
+    case "base":
+      return translate("template.validation.base");
+    case "meta_refresh":
+      return translate("template.validation.metaRefresh");
+    case "event_handler":
+      return translate("template.validation.eventHandler", {
+        attribute: issue.attribute ?? issue.element,
+      });
+    case "unsafe_url":
+      return translate("template.validation.unsafeUrl", {
+        attribute: issue.attribute ?? issue.element,
+        scheme: issue.detail ?? "",
+      });
+    case "off_origin_form":
+      return translate("template.validation.offOriginForm", {
+        attribute: issue.attribute ?? issue.element,
+      });
+    case "unsupported_tag":
+      return translate("template.validation.unsupportedTag", {
+        tag: issue.detail ?? issue.element,
+      });
+  }
+}
+
+/**
+ * One admin-facing line per issue, naming the problem and the line. Pass the request's
+ * translator; the default is English for seed and server logs.
+ */
+export function formatTemplateIssues(
+  issues: readonly TemplateIssue[],
+  translate: Translator = DEFAULT_TRANSLATE,
+): string {
   return issues
-    .map((issue) => `line ${issue.line}: ${issue.message} (<${issue.element}>)`)
+    .map((issue) =>
+      translate("template.validation.line", {
+        line: issue.line,
+        message: templateIssueMessage(issue, translate),
+      }),
+    )
     .join("\n");
 }

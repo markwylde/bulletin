@@ -258,6 +258,7 @@
   "staff.masks.list.title": "Máscaras",
   "staff.masks.loadError": "No se pudieron cargar los permisos.",
   "staff.masks.matrix.title": "Matriz de foros",
+  "staff.masks.memberRevocationNote": "Los miembros pierden el acceso en 1 segundo: los cambios de permisos se comprueban cada segundo.",
   "staff.masks.name": "Nombre",
   "staff.masks.save": "Guardar máscara",
   "staff.masks.saveError": "No se pudo guardar el cambio de permiso.",

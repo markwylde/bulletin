@@ -258,6 +258,7 @@
   "staff.masks.list.title": "Masques",
   "staff.masks.loadError": "Impossible de charger les permissions.",
   "staff.masks.matrix.title": "Matrice des forums",
+  "staff.masks.memberRevocationNote": "Les membres perdent l’accès en 1 seconde : les changements d’autorisation sont vérifiés chaque seconde.",
   "staff.masks.name": "Nom",
   "staff.masks.save": "Enregistrer le masque",
   "staff.masks.saveError": "La modification de permission n'a pas pu être enregistrée.",

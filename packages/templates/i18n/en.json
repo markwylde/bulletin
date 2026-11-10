@@ -1,0 +1,13 @@
+{
+  "template.validation.base": "The base element is not allowed.",
+  "template.validation.embed": "The {element} element is not allowed.",
+  "template.validation.eventHandler": "The {attribute} attribute is not allowed.",
+  "template.validation.frame": "The {element} element is not allowed.",
+  "template.validation.line": "Line {line}: {message}",
+  "template.validation.metaRefresh": "The http-equiv refresh meta tag is not allowed.",
+  "template.validation.object": "The {element} element is not allowed.",
+  "template.validation.offOriginForm": "The {attribute} attribute must target this origin.",
+  "template.validation.script": "The script element is not allowed.",
+  "template.validation.unsafeUrl": "The {attribute} attribute uses a forbidden {scheme}: URL.",
+  "template.validation.unsupportedTag": "The {tag} tag is not available to themes."
+}

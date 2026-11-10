@@ -1,0 +1,13 @@
+{
+  "template.validation.base": "L’élément base n’est pas autorisé.",
+  "template.validation.embed": "L’élément {element} n’est pas autorisé.",
+  "template.validation.eventHandler": "L’attribut {attribute} n’est pas autorisé.",
+  "template.validation.frame": "L’élément {element} n’est pas autorisé.",
+  "template.validation.line": "Ligne {line} : {message}",
+  "template.validation.metaRefresh": "La balise meta d’actualisation http-equiv n’est pas autorisée.",
+  "template.validation.object": "L’élément {element} n’est pas autorisé.",
+  "template.validation.offOriginForm": "L’attribut {attribute} doit cibler cette origine.",
+  "template.validation.script": "L’élément script n’est pas autorisé.",
+  "template.validation.unsafeUrl": "L’attribut {attribute} utilise une URL {scheme}: interdite.",
+  "template.validation.unsupportedTag": "La balise {tag} n’est pas disponible pour les thèmes."
+}

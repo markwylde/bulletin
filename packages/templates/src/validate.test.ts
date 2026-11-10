@@ -1,10 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { createServerT } from "@bulletin/i18n";
+import en from "../i18n/en.json";
+import es from "../i18n/es.json";
+import fr from "../i18n/fr.json";
 import {
   formatTemplateIssues,
   maskLiquid,
   type TemplateIssueCode,
+  templateIssueMessage,
   validateTemplateMarkup,
 } from "./validate.ts";
+
+const translateEn = createServerT("en", { shipped: { en } });
+const translateEs = createServerT("es", { shipped: { es } });
+const translateFr = createServerT("fr", { shipped: { fr } });
 
 interface CorpusCase {
   readonly name: string;
@@ -217,7 +226,7 @@ describe("validateTemplateMarkup", () => {
 
       if (corpusCase.attribute !== undefined) {
         expect(issue.attribute).toBe(corpusCase.attribute);
-        expect(issue.message).toContain(corpusCase.attribute);
+        expect(templateIssueMessage(issue, translateEn)).toContain(corpusCase.attribute);
       }
 
       expect(issue.line).toBeGreaterThanOrEqual(1);
@@ -238,8 +247,41 @@ describe("validateTemplateMarkup", () => {
     expect(issue?.code).toBe("event_handler");
     expect(issue?.attribute).toBe("onclick");
     expect(issue?.line).toBe(3);
-    expect(formatTemplateIssues(result.issues)).toContain("line 3: the onclick attribute");
-    expect(formatTemplateIssues(result.issues)).toContain("<div>");
+
+    const english = formatTemplateIssues(result.issues, translateEn);
+
+    expect(english).toContain("Line 3: The onclick attribute is not allowed.");
+
+    // The same issue in every shipped locale (task 8.1).
+    expect(formatTemplateIssues(result.issues, translateEs)).toContain(
+      "Línea 3: No se permite el atributo onclick.",
+    );
+    expect(formatTemplateIssues(result.issues, translateFr)).toContain(
+      "Ligne 3 : L’attribut onclick n’est pas autorisé.",
+    );
+  });
+
+  test("translates every rejected construct's message", () => {
+    const translated = new Set<string>();
+
+    for (const corpusCase of REJECTED) {
+      const issue = validateTemplateMarkup(corpusCase.template).issues.find(
+        (candidate) => candidate.code === corpusCase.code,
+      );
+
+      if (issue === undefined) {
+        throw new Error(`missing ${corpusCase.code}`);
+      }
+
+      for (const translate of [translateEn, translateEs, translateFr]) {
+        const message = templateIssueMessage(issue, translate);
+        expect(message).not.toContain("template.validation.");
+        expect(message.length).toBeGreaterThan(0);
+        translated.add(message);
+      }
+    }
+
+    expect(translated.size).toBeGreaterThanOrEqual(REJECTED.length);
   });
 
   test("accepts the default theme's safe markup, islands, hooks and Liquid expressions", () => {
