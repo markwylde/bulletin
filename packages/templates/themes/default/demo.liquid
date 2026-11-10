@@ -33,7 +33,7 @@
     {% endif %}
   {% else %}
     {% if topics.size > 0 %}
-      <ol class="bl-topic-list" data-demo-topics>
+      <ol class="bl-topic-list{% if flags.compactTopicList %} bl-topic-list--compact{% endif %}" data-demo-topics data-demo-compact="{{ flags.compactTopicList }}">
         {% for topic in topics %}
           <li class="bl-topic-list__item" data-demo-topic>
             <span class="bl-topic-list__title">{{ topic.title }}</span>

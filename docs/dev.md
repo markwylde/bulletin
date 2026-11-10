@@ -30,6 +30,12 @@ hydrate in the browser.
 - `http://bulletin.localhost:8080/account` — display name and history, active sessions and the
   language setting.
 
+The demo route renders through the in-process cache (`packages/cache`): the variant key covers
+the forum id, capability answers, theme version, plugin generation, locale, colour scheme and
+render-flag hash, and `forum:<id>` is its only invalidation tag. `tests/integration/demo-cache-variants.test.ts`
+registers it with the reusable variant harness, which covers permission, unlock, moderator, flag
+and plugin-generation variants and fails on leaked content.
+
 The demo route returns the themed 404 outside development and for unknown ids. Theme sources
 live in [`packages/templates/themes/default`](../packages/templates/themes/default); the seed
 installs them into `core.themes`/`core.theme_templates` (task 8.2 verifies the repo-to-DB sync).

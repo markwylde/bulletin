@@ -7,12 +7,14 @@
     ".": "./src/index.ts",
     "./database": "./src/database.ts",
     "./e2e": "./src/e2e.ts",
-    "./urls": "./src/urls.ts"
+    "./urls": "./src/urls.ts",
+    "./cache-variants": "./src/cache-variants.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bulletin/cache": "workspace:*",
     "@bulletin/db": "workspace:*"
   }
 }

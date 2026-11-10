@@ -332,6 +332,11 @@ input:focus-visible {
   font-weight: 600;
 }
 
+.bl-topic-list--compact .bl-topic-list__item {
+  padding-block: 0.25rem;
+  font-size: 0.9375rem;
+}
+
 .bl-badge {
   padding: 0.125rem var(--bl-space-small);
   border-radius: 999px;

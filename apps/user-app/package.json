@@ -14,6 +14,7 @@
     "@bulletin/cache": "workspace:*",
     "@bulletin/config": "workspace:*",
     "@bulletin/domain": "workspace:*",
+    "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
     "@bulletin/templates": "workspace:*",
     "@bulletin/ui": "workspace:*",

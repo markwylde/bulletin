@@ -1,5 +1,6 @@
 import {
-  can,
+  type CapabilityDep,
+  CapabilityView,
   GUEST_PRINCIPAL,
   loadPermissionSnapshot,
   type ViewerPrincipal,
@@ -37,6 +38,10 @@ export interface DemoPageInput {
 interface DemoBase {
   readonly breadcrumbs: readonly BreadcrumbItem[];
   readonly title: string;
+  /** Hash of the capability answers the page depends on; null for an unknown forum. */
+  readonly visibilityKey: string | null;
+  /** Whether the deleted fixture topic is shown (a moderator-only request parameter). */
+  readonly showDeleted: boolean;
 }
 
 /** The states the demo route can render; only `content` contains the required counter. */
@@ -77,6 +82,7 @@ function errorPage(
   message: string,
   breadcrumbs: readonly BreadcrumbItem[],
   title: string,
+  visibilityKey: string | null,
 ): DemoErrorPage {
   return {
     template: "error",
@@ -84,18 +90,21 @@ function errorPage(
     status: code === "not_found" ? 404 : 403,
     title,
     breadcrumbs,
+    visibilityKey,
+    showDeleted: false,
     viewModel: { code, message },
   };
 }
 
 /**
- * Builds the demo route's view model over the fixture forum tree (ADR 0008, task 4.2). All
- * authorisation goes through `can()` (ADR 0005) with one compiled snapshot for the request.
+ * Builds the demo route's view model over the fixture forum tree (ADR 0008, task 4.2). The
+ * capability answers come from the ADR 0005 view, so the variant key hashes exactly the bits
+ * the page depends on.
  */
 export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> {
   const node = FIXTURE_FORUM_TREE.get(input.forumId);
   const title = input.translate("theme.error.title");
-  const notFound = errorPage("not_found", input.translate("theme.error.notFound"), [], title);
+  const notFound = errorPage("not_found", input.translate("theme.error.notFound"), [], title, null);
 
   if (node === undefined) {
     return notFound;
@@ -108,21 +117,39 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
     tree: FIXTURE_FORUM_TREE,
     sessionId,
   });
-  const allowed = (bit: "show" | "read" | "pin" | "see_deleted", forumId: string) =>
-    can(input.sql, principal, bit, {
-      forumId,
-      tree: FIXTURE_FORUM_TREE,
-      sessionId,
-      snapshot,
-    });
+  const childNodes = FIXTURE_FORUM_NODES.filter((candidate) => candidate.parentId === node.id);
+  // Every branch below reads one of these bits, and the variant key hashes exactly them.
+  const deps: readonly CapabilityDep[] = [
+    { forumId: node.id, bit: "show" },
+    { forumId: node.id, bit: "read" },
+    { forumId: node.id, bit: "see_deleted" },
+    ...childNodes.flatMap((child) => [
+      { forumId: child.id, bit: "show" as const },
+      { forumId: child.id, bit: "read" as const },
+    ]),
+  ];
+  const view = new CapabilityView({
+    tree: FIXTURE_FORUM_TREE,
+    bits: snapshot.bits,
+    unlocked: snapshot.unlocked,
+    deps,
+    view: "demo",
+  });
+  const visibilityKey = view.visibilityKey();
 
-  if (!(await allowed("show", node.id))) {
-    return errorPage("forbidden", input.translate("theme.error.forbidden"), breadcrumbs, title);
+  if (!view.has(node.id, "show")) {
+    return errorPage(
+      "forbidden",
+      input.translate("theme.error.forbidden"),
+      breadcrumbs,
+      title,
+      visibilityKey,
+    );
   }
 
   const forumTitle = demoTitle(input.translate, node.id);
   const isCategory = node.parentId === null;
-  const locked = node.passwordProtected && !(await allowed("read", node.id));
+  const locked = node.passwordProtected && !view.read(node.id);
   const base = {
     forumId: node.id,
     forumTitle,
@@ -137,6 +164,8 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
       state: "locked",
       title: forumTitle,
       breadcrumbs,
+      visibilityKey,
+      showDeleted: false,
       viewModel: base,
     };
   }
@@ -144,20 +173,20 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
   const children: Array<{ id: string; label: string; locked: boolean }> = [];
 
   if (isCategory) {
-    for (const child of FIXTURE_FORUM_NODES.filter((candidate) => candidate.parentId === node.id)) {
-      if (!(await allowed("show", child.id))) {
+    for (const child of childNodes) {
+      if (!view.has(child.id, "show")) {
         continue;
       }
 
       children.push({
         id: child.id,
         label: demoTitle(input.translate, child.id),
-        locked: child.passwordProtected && !(await allowed("read", child.id)),
+        locked: child.passwordProtected && !view.read(child.id),
       });
     }
   }
 
-  const canSeeDeleted = await allowed("see_deleted", node.id);
+  const canSeeDeleted = view.has(node.id, "see_deleted");
   const showDeleted = input.showDeleted && canSeeDeleted;
   const topicCount = DEMO_TOPIC_COUNTS[node.id] ?? 0;
   const topics = isCategory
@@ -173,6 +202,8 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
     state: "content",
     title: forumTitle,
     breadcrumbs,
+    visibilityKey,
+    showDeleted,
     viewModel: {
       ...base,
       children,

@@ -100,7 +100,8 @@ async function renderDemo(
     locale: "en",
     translate,
     template: outcome.template,
-    viewModel: outcome.viewModel,
+    // The demo template reads the affectsRender flag (ADR 0010); task 5.4 covers the hash.
+    viewModel: { ...outcome.viewModel, flags: { compactTopicList: true } },
     breadcrumbs: outcome.breadcrumbs,
     route: {
       route: demoContract.route,

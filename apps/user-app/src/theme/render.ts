@@ -1,7 +1,10 @@
+import { parseCookieHeader } from "@bulletin/domain/auth";
 import type { Locale, Translator } from "@bulletin/i18n";
+import { BP_COOKIE_NAME, type ColorScheme, parseBpCookie } from "@bulletin/i18n";
 import {
   createCompileCache,
   createTemplateEngine,
+  type LoadedTheme,
   loadHookFragments,
   loadTheme,
   missingRenderedIslands,
@@ -136,6 +139,10 @@ export interface ThemedPageInput {
   readonly viewModel: object;
   readonly breadcrumbs: readonly BreadcrumbItem[];
   readonly route: RouteDeclaration;
+  /** Hook-fragment generation (ADR 0009); the demo route varies it for variants. */
+  readonly pluginsGeneration?: number;
+  /** A theme already loaded for the cache variant key, to avoid a second query. */
+  readonly theme?: LoadedTheme | null;
 }
 
 export interface ThemedPage {
@@ -164,22 +171,23 @@ function report(violations: readonly TemplateViolation[], errors: string[]): voi
  * required islands are reported to the caller and logged; the page still renders.
  */
 export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPage> {
-  const theme = await loadTheme(input.sql, THEME_NAME);
+  const theme = input.theme ?? (await loadTheme(input.sql, THEME_NAME));
 
-  if (theme === null) {
+  if (theme === null || theme === undefined) {
     throw new ThemeNotInstalledError();
   }
 
+  const generation = input.pluginsGeneration ?? PLUGIN_GENERATION;
   const errors: string[] = [];
   const runtime: TemplateRuntime = {
     translate: input.translate,
-    hooks: await loadHookFragments(input.sql, PLUGIN_GENERATION),
+    hooks: await loadHookFragments(input.sql, generation),
     report: (message) => {
       errors.push(message);
       console.warn(`[theme] ${message}`);
     },
   };
-  const compiled = compiledThemes.compile(theme, PLUGIN_GENERATION);
+  const compiled = compiledThemes.compile(theme, generation);
   const page = await renderThemePage({
     engine,
     compiled,
@@ -197,6 +205,17 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
   }
 
   return { html: page.html, errors };
+}
+
+/** Loads the active theme for the cache variant key (default theme until `themes`). */
+export function loadActiveTheme(sql: SQL): Promise<LoadedTheme | null> {
+  return loadTheme(sql, THEME_NAME);
+}
+
+/** The guest's colour scheme from the normalised `bp` cookie (ADR 0006). */
+export function requestColourScheme(cookieHeader: string | null): ColorScheme {
+  const bp = parseCookieHeader(cookieHeader)[BP_COOKIE_NAME];
+  return parseBpCookie(bp).scheme;
 }
 
 /** The board's name as pages show it, falling back to the shipped name. */

@@ -1,64 +1,81 @@
 ---
 import { createServerT } from "@bulletin/i18n";
+import { cacheRuntime } from "../cache-runtime.ts";
 import { USER_CATALOGS } from "../catalogs.ts";
-import { DEMO_SHELL_ISLANDS, demoContract } from "../contracts.ts";
+import { demoContract } from "../contracts.ts";
 import { readSql } from "../db.ts";
 import { demoEnabled } from "../demo/enabled.ts";
-import { buildDemoPage } from "../demo/page.ts";
+import { renderDemoRoute } from "../demo/route.ts";
+import { loadViewerFlags } from "../flags.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
-import { type BreadcrumbItem, boardNameFrom, renderThemedPage } from "../theme/render.ts";
+import {
+  boardNameFrom,
+  loadActiveTheme,
+  PLUGIN_GENERATION,
+  renderThemedPage,
+  requestColourScheme,
+} from "../theme/render.ts";
 
 // The rest route serves the dev-only demo (`/_demo/<id>`, which Astro cannot route directly
 // because of the underscore) and the themed 404 for every other unknown path.
+const sql = readSql();
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 const session = Astro.locals.session ?? null;
-const viewer = { isMember: session !== null, displayName: session?.displayName ?? null };
 const demoMatch = /^_demo\/([^/]+)\/?$/.exec(Astro.params.path ?? "");
 
 let status = 404;
-let template = "error";
-let requiredIslands: readonly string[] = DEMO_SHELL_ISLANDS;
 let pageTitle = translate("theme.error.title");
-let breadcrumbs: readonly BreadcrumbItem[] = [];
-let viewModel: object = { code: "not_found", message: translate("theme.error.notFound") };
+let body: string;
 
 if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
-  const outcome = await buildDemoPage({
-    sql: readSql(),
+  const [flags, theme, runtime] = await Promise.all([
+    loadViewerFlags(sql, session),
+    loadActiveTheme(sql),
+    cacheRuntime(sql),
+  ]);
+  const result = await renderDemoRoute({
+    sql,
+    boardName,
     locale,
     translate,
     session,
     forumId: demoMatch[1] ?? "",
     showDeleted: Astro.url.searchParams.get("deleted") === "1",
+    pluginsGeneration: PLUGIN_GENERATION,
+    colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+    theme,
+    flags,
+    cache: runtime.cache,
   });
 
-  status = outcome.template === "error" ? outcome.status : 200;
-  template = outcome.template;
-  requiredIslands =
-    outcome.state === "content" ? demoContract.requiredIslands : DEMO_SHELL_ISLANDS;
-  pageTitle = outcome.title;
-  breadcrumbs = outcome.breadcrumbs;
-  viewModel = outcome.viewModel;
+  status = result.status;
+  pageTitle = result.title;
+  body = result.html;
+} else {
+  const page = await renderThemedPage({
+    sql,
+    boardName,
+    viewer: {
+      isMember: session !== null,
+      displayName: session?.displayName ?? null,
+    },
+    locale,
+    translate,
+    template: "error",
+    viewModel: { code: "not_found", message: translate("theme.error.notFound") },
+    breadcrumbs: [],
+    route: demoContract,
+  });
+
+  body = page.html;
 }
 
 Astro.response.status = status;
 Astro.response.headers.set("cache-control", "private, no-store");
-
-const page = await renderThemedPage({
-  sql: readSql(),
-  boardName,
-  viewer,
-  locale,
-  translate,
-  template,
-  viewModel,
-  breadcrumbs,
-  route: { route: demoContract.route, requiredIslands },
-});
 ---
 
-<ThemeLayout title={`${pageTitle} · ${boardName}`} locale={locale} body={page.html}>
+<ThemeLayout title={`${pageTitle} · ${boardName}`} locale={locale} body={body}>
   <script>import "../demo/client.ts";</script>
 </ThemeLayout>

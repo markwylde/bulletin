@@ -5,6 +5,7 @@ import { parseCookieHeader } from "@bulletin/domain/auth";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
 import { BP_COOKIE_NAME, resolveRequestLocale } from "@bulletin/i18n";
 import { canViewOffline, readBoard } from "./board.ts";
+import { closeCacheRuntime } from "./cache-runtime.ts";
 import { readSql } from "./db.ts";
 import { offlinePage } from "./offline.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
@@ -33,6 +34,7 @@ const DISPLAY_NAME_PATH = "/display-name";
 if (import.meta.env.DEV) {
   process.once("SIGTERM", () => {
     void drain?.drain(Number(process.env.BULLETIN_DRAIN_TIMEOUT_MS ?? 25_000)).finally(() => {
+      void closeCacheRuntime();
       void closeSessionReadPool();
       process.exit(0);
     });
