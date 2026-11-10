@@ -83,10 +83,13 @@ async function setStandardActions(
   actions: readonly ForumAction[],
 ): Promise<void> {
   await database.sql`
-    UPDATE core.forum_permissions
-    SET actions = ${forumActionMask(actions)}
-    WHERE forum_id = ${forumId}
-      AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+    INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+    VALUES (
+      ${forumId}, (SELECT id FROM core.masks WHERE key = 'standard'),
+      ${forumActionMask(actions)}, false
+    )
+    ON CONFLICT (forum_id, mask_id) DO UPDATE
+      SET actions = EXCLUDED.actions, inherits = false
   `;
 }
 
@@ -97,7 +100,7 @@ function allForumIds(viewModel: { categories: readonly { forums: readonly { id: 
 integrationDescribe("board index view model", () => {
   test("omits hidden forums and their sub-forums and shows only readable latest posts", async () => {
     await withSeededDb(async (database) => {
-      const category = await forumIdByTitle(database, "Permission Fixtures");
+      const category = await forumIdByTitle(database, "Community");
       const announcements = await forumIdByTitle(database, "Announcements");
       const general = await forumIdByTitle(database, "General Discussion");
       const [member] = (await database.sql`
@@ -137,9 +140,9 @@ integrationDescribe("board index view model", () => {
         session: await memberSession(database, "member-1"),
       });
 
-      // Guests inherit the category row, so they see the same forums as a plain member.
-      expect(guest.viewModel.categories).toHaveLength(1);
-      expect(asMember.viewModel.categories).toHaveLength(1);
+      // Guests see Community and Support; members also see the public Archive category.
+      expect(guest.viewModel.categories).toHaveLength(2);
+      expect(asMember.viewModel.categories).toHaveLength(3);
       expect(asMember.viewModel.categories[0]?.id).toBe(category);
 
       const announcementsView = asMember.viewModel.categories[0]?.forums.find(
@@ -220,10 +223,13 @@ integrationDescribe("board index view model", () => {
 
         const restore = async (): Promise<void> => {
           await database.sql`
-            UPDATE core.forum_permissions
-            SET actions = ${originalActions}
-            WHERE forum_id = ${announcements}
-              AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+            INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+            VALUES (
+              ${announcements}, (SELECT id FROM core.masks WHERE key = 'standard'),
+              ${originalActions}, false
+            )
+            ON CONFLICT (forum_id, mask_id) DO UPDATE
+              SET actions = EXCLUDED.actions, inherits = false
           `;
         };
 
@@ -261,7 +267,7 @@ integrationDescribe("board index view model", () => {
           leaks: [
             {
               description: "a hidden forum's row and title never reach the hidden variant",
-              markers: [`data-forum-link="${announcements}"`, "Announcements"],
+              markers: [`data-forum-link="${announcements}"`],
               absentFrom: ["announcements hidden"],
             },
           ],

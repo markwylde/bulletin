@@ -22,8 +22,8 @@
 
 ## 4. Strings and seed
 
-- [ ] 4.1 Add en/es/fr strings for the index, forum page, prefixes, announcements and staff screens; verify completeness
-- [ ] 4.2 Seed ~15 forums across 4 categories with 3 levels of nesting, one redirect forum, one password forum, one staff-only forum, prefixes, and global plus forum announcements; verify after `docker compose up --watch`
+- [x] 4.1 Add en/es/fr strings for the index, forum page, prefixes, announcements and staff screens; verify completeness
+- [x] 4.2 Seed ~15 forums across 4 categories with 3 levels of nesting, one redirect forum, one password forum, one staff-only forum, prefixes, and global plus forum announcements; verify after `docker compose up --watch`
 
 ## 5. Feature flag
 

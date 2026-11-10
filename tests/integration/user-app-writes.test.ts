@@ -10,7 +10,12 @@ const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
  * template-failure report is queued in a buffer and forwarded by workers; `user_app` never
  * writes the durable audit log.
  */
-const ALLOWED_WRITES = ["presence", "system_audit_buffer", "topic_view_buffer"];
+const ALLOWED_WRITES = [
+  "forum_redirect_clicks",
+  "presence",
+  "system_audit_buffer",
+  "topic_view_buffer",
+];
 
 function userAppUrl(adminUrl: string, databaseName: string): string {
   const url = new URL(adminUrl);

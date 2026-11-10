@@ -30,7 +30,7 @@ const MEMBER_MOD_POWERS = MODERATOR_POWERS.filter((power) =>
  */
 export const moderatorAssignmentsSeedModule: SeedModule = {
   name: "moderator-assignments",
-  dependsOn: ["members", "groups", "permission-fixtures"],
+  dependsOn: ["members", "groups", "forums"],
   async run({ sql }) {
     const forumMod = await memberForSub(sql, "forum-mod");
     const memberMod = await memberForSub(sql, "member-mod");

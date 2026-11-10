@@ -139,7 +139,7 @@ async function waitFor(check: () => boolean, timeoutMs = 3_000): Promise<void> {
   throw new Error("Timed out waiting for the tag listener");
 }
 
-async function forumActions(database: TestDatabase, forumId: string): Promise<number> {
+async function forumActions(database: TestDatabase, forumId: string): Promise<number | null> {
   const [row] = (await database.sql`
     SELECT actions
     FROM core.forum_permissions
@@ -147,7 +147,15 @@ async function forumActions(database: TestDatabase, forumId: string): Promise<nu
       AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
   `) as Array<{ actions: number }>;
 
-  return row?.actions ?? 0;
+  return row?.actions ?? null;
+}
+
+async function clearForumActions(database: TestDatabase, forumId: string): Promise<void> {
+  await database.sql`
+    DELETE FROM core.forum_permissions
+    WHERE forum_id = ${forumId}
+      AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+  `;
 }
 
 async function setForumActions(
@@ -156,10 +164,12 @@ async function setForumActions(
   actions: number,
 ): Promise<void> {
   await database.sql`
-    UPDATE core.forum_permissions
-    SET actions = ${actions}
-    WHERE forum_id = ${forumId}
-      AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+    INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+    VALUES (
+      ${forumId}, (SELECT id FROM core.masks WHERE key = 'standard'), ${actions}, false
+    )
+    ON CONFLICT (forum_id, mask_id) DO UPDATE
+      SET actions = EXCLUDED.actions, inherits = false
   `;
 }
 
@@ -462,7 +472,7 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
         const moderator = await memberSession(database, "super-mod");
         const unlockedId = await unlockedSession(database, member.memberId);
         const unlocked = { ...member, sessionId: unlockedId };
-        let revokedActions = 0;
+        let revokedActions: number | null = null;
 
         const cases: VariantCase[] = [
           {
@@ -476,7 +486,11 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
               await setForumActions(database, "2", 0);
             },
             teardown: async () => {
-              await setForumActions(database, "2", revokedActions);
+              if (revokedActions === null) {
+                await clearForumActions(database, "2");
+              } else {
+                await setForumActions(database, "2", revokedActions);
+              }
             },
             render: () => renderVariant(database, cache, { session: member, forumId: "2" }),
           },

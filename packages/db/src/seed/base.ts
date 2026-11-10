@@ -2,11 +2,12 @@ import type { SeedSize } from "@bulletin/config";
 import { SQL } from "bun";
 import { adminLogSeedModule } from "./admin-log.ts";
 import { flagsSeedModule } from "./flags.ts";
+import { forumExtrasSeedModule } from "./forum-extras.ts";
+import { forumSeedModule } from "./forums.ts";
 import { runSeeds, type SeedModule, SeedRegistry, type SeedResult } from "./framework.ts";
 import { groupsSeedModule } from "./groups.ts";
 import { membersSeedModule } from "./members.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
-import { permissionFixtureSeedModule } from "./permission-fixtures.ts";
 import { themesSeedModule } from "./themes.ts";
 
 export const baseSeedModule: SeedModule = {
@@ -45,8 +46,9 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
       sql,
       registry: new SeedRegistry([
         baseSeedModule,
-        permissionFixtureSeedModule,
+        forumSeedModule,
         groupsSeedModule,
+        forumExtrasSeedModule,
         membersSeedModule,
         moderatorAssignmentsSeedModule,
         adminLogSeedModule,

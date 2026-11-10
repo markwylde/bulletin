@@ -57,7 +57,7 @@ integrationDescribe("staff forum manager", () => {
 
         await createForum(view, category, null, "category");
         await createForum(view, target, category);
-        await createForum(view, moving, "Permission Fixtures");
+        await createForum(view, moving, "Community");
 
         const sourceId = await view.evaluate<string>(
           `document.querySelector('[data-forum-title="${moving}"]')?.getAttribute('data-forum-row') ?? ""`,

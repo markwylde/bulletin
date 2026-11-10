@@ -211,7 +211,7 @@ integrationDescribe("announcement blocks", () => {
       });
       const member = await memberSession(database, "member-1");
       const support = await renderForum(database, "/forum/2-announcements", member);
-      const general = await renderForum(database, "/forum/4-nested-forum", member);
+      const general = await renderForum(database, "/forum/4-introductions", member);
       const index = await renderIndex(database, member);
 
       expect(support.kind).toBe("page");

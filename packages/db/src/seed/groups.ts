@@ -115,7 +115,7 @@ async function setForumMatrix(
  */
 export const groupsSeedModule: SeedModule = {
   name: "groups",
-  dependsOn: ["base", "permission-fixtures"],
+  dependsOn: ["base", "forums"],
   async run({ sql }) {
     for (const group of GROUPS) {
       await sql`
@@ -180,35 +180,55 @@ export const groupsSeedModule: SeedModule = {
       }
     }
 
-    const forums = (await sql`
-      SELECT id FROM core.forums ORDER BY id
-    `) as Array<{ id: string }>;
+    // Matrix rows live on the four category roots; every forum inherits from its category.
+    const roots = (await sql`
+      SELECT id, slug FROM core.forums WHERE parent_id IS NULL AND type = 'category'
+    `) as Array<{ id: string; slug: string }>;
+    const rootBySlug = new Map(roots.map((root) => [root.slug, root.id]));
     const guest = masks.get("guest");
     const standard = masks.get("standard");
     const staff = masks.get("staff");
+    const guestRoots = ["community", "support"] as const;
+    const standardRoots = ["community", "support", "archive"] as const;
+    const staffRoots = ["community", "support", "staff-area", "archive"] as const;
 
-    if (guest !== undefined && forums[0] !== undefined) {
-      await setForumMatrix(sql, forums[0].id, guest, ["show", "read"]);
-    }
+    for (const slug of guestRoots) {
+      const forumId = rootBySlug.get(slug);
 
-    if (standard !== undefined && forums[0] !== undefined) {
-      await setForumMatrix(sql, forums[0].id, standard, ["show", "read"]);
-
-      for (const forum of forums.slice(1, 3)) {
-        await setForumMatrix(sql, forum.id, standard, ["show", "read", "reply", "upload", "vote"]);
+      if (guest !== undefined && forumId !== undefined) {
+        await setForumMatrix(sql, forumId, guest, ["show", "read"]);
       }
     }
 
-    if (staff !== undefined && forums[0] !== undefined) {
-      await setForumMatrix(sql, forums[0].id, staff, [
-        "show",
-        "read",
-        "start",
-        "reply",
-        "upload",
-        "download",
-        "vote",
-      ]);
+    for (const slug of standardRoots) {
+      const forumId = rootBySlug.get(slug);
+
+      if (standard !== undefined && forumId !== undefined) {
+        await setForumMatrix(sql, forumId, standard, [
+          "show",
+          "read",
+          "start",
+          "reply",
+          "upload",
+          "vote",
+        ]);
+      }
+    }
+
+    for (const slug of staffRoots) {
+      const forumId = rootBySlug.get(slug);
+
+      if (staff !== undefined && forumId !== undefined) {
+        await setForumMatrix(sql, forumId, staff, [
+          "show",
+          "read",
+          "start",
+          "reply",
+          "upload",
+          "download",
+          "vote",
+        ]);
+      }
     }
 
     for (const groupKey of ["super_moderators", "administrators"]) {

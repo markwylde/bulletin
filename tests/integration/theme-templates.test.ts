@@ -235,10 +235,10 @@ integrationDescribe("default theme templates", () => {
       const session = await memberSession(database, "member-1");
 
       await database.sql`
-        UPDATE core.forum_permissions
-        SET actions = actions & ~3
-        WHERE forum_id = 2
-          AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+        INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+        VALUES (2, (SELECT id FROM core.masks WHERE key = 'standard'), 0, false)
+        ON CONFLICT (forum_id, mask_id) DO UPDATE
+          SET actions = core.forum_permissions.actions & ~3, inherits = false
       `;
 
       const page = await renderDemo(database, session, "2");
