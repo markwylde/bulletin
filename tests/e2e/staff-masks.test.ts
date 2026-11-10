@@ -20,6 +20,12 @@ integrationDescribe("staff permission masks", () => {
       await waitForSelector(view, '[data-page="masks"]');
       await waitForSelector(view, "[data-mask-create]", 20_000);
       await waitForExpression(view, "!document.querySelector('[data-matrix-disabled]')", 20_000);
+      // The 30 s guest revocation window is documented next to the permission matrix.
+      expect(
+        await view.evaluate<string>(
+          'document.querySelector("[data-masks-guest-note]")?.textContent ?? ""',
+        ),
+      ).toContain("30");
       expect(
         await view.evaluate<boolean>(
           `[...document.querySelectorAll('[data-matrix-scroll]')].every(
