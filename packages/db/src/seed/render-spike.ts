@@ -1,4 +1,8 @@
-import { loadSpikeFixtures } from "@bulletin/templates";
+import {
+  formatTemplateIssues,
+  loadSpikeFixtures,
+  validateTemplateMarkup,
+} from "@bulletin/templates";
 import type { SeedModule } from "./framework.ts";
 
 /**
@@ -33,6 +37,15 @@ export const renderSpikeSeedModule: SeedModule = {
 
     for (const theme of themes) {
       for (const [name, body] of Object.entries(theme.templates)) {
+        // The seed installs a theme, so it runs the same save-time profile as the staff app.
+        const validation = validateTemplateMarkup(body);
+
+        if (!validation.ok) {
+          throw new Error(
+            `Spike theme ${theme.name}/${name} failed template validation: ${formatTemplateIssues(validation.issues)}`,
+          );
+        }
+
         await sql`
           INSERT INTO core.theme_templates (theme_id, name, body)
           SELECT id, ${name}, ${body} FROM core.themes WHERE name = ${theme.name}

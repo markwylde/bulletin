@@ -9,7 +9,8 @@ export type TemplateIssueCode =
   | "meta_refresh"
   | "event_handler"
   | "unsafe_url"
-  | "off_origin_form";
+  | "off_origin_form"
+  | "unsupported_tag";
 
 export interface TemplateIssue {
   readonly code: TemplateIssueCode;
@@ -98,7 +99,7 @@ function isSameOriginTarget(value: string): boolean {
     return true;
   }
 
-  if (trimmed.startsWith("//") || trimmed.startsWith("\\\\")) {
+  if (trimmed.startsWith("//") || trimmed.startsWith("\\")) {
     return false;
   }
 
@@ -224,7 +225,10 @@ function inspectElement(element: Element, issues: TemplateIssue[]): void {
   }
 
   for (const attribute of element.attrs) {
-    const name = attribute.name.toLowerCase();
+    const name =
+      attribute.prefix === undefined
+        ? attribute.name.toLowerCase()
+        : `${attribute.prefix}:${attribute.name}`.toLowerCase();
     const position = locationOf(element, name);
 
     if (/^on[a-z]/.test(name)) {
@@ -280,16 +284,53 @@ function walk(node: ParentNode, issues: TemplateIssue[]): void {
   }
 }
 
+/** Tags that read from the filesystem; a theme never needs them (ADR 0008 include depth 0). */
+const UNSUPPORTED_TAGS = /\{%-?\s*(include|render|layout)\b/g;
+
+function findUnsupportedTags(source: string): readonly TemplateIssue[] {
+  const issues: TemplateIssue[] = [];
+
+  for (const match of source.matchAll(UNSUPPORTED_TAGS)) {
+    const offset = match.index ?? 0;
+    const before = source.slice(0, offset);
+    const line = before.split("\n").length;
+    const tag = match[1] ?? "include";
+
+    issues.push({
+      code: "unsupported_tag",
+      message: `the {% ${tag} %} tag is not available to themes`,
+      line,
+      column: offset - before.lastIndexOf("\n"),
+      element: tag,
+      attribute: tag,
+    });
+  }
+
+  return issues;
+}
+
 /**
  * The save/install-time check for a theme template (ADR 0008): scripts, event handlers,
- * forbidden URL schemes, frames, objects, embeds, base tags, meta refresh and off-origin forms
- * are rejected with the element, attribute and line.
+ * forbidden URL schemes, frames, objects, embeds, base tags, meta refresh, off-origin forms and
+ * filesystem includes are rejected with the element, attribute and line.
  */
 export function validateTemplateMarkup(source: string): TemplateValidation {
-  const document = parseHtml(maskLiquid(source), { sourceCodeLocationInfo: true });
+  const document = parseHtml(maskLiquid(source), {
+    sourceCodeLocationInfo: true,
+    // Parse `<noscript>` content as markup so a script hidden in it is rejected too.
+    scriptingEnabled: false,
+  });
   const issues: TemplateIssue[] = [];
 
   walk(document, issues);
+  issues.push(...findUnsupportedTags(source));
 
   return { ok: issues.length === 0, issues };
+}
+
+/** One admin-facing line per issue, naming the element, attribute and line. */
+export function formatTemplateIssues(issues: readonly TemplateIssue[]): string {
+  return issues
+    .map((issue) => `line ${issue.line}: ${issue.message} (<${issue.element}>)`)
+    .join("\n");
 }

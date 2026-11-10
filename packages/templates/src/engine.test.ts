@@ -109,6 +109,13 @@ describe("template engine", () => {
     ).toBe("Prueba de renderizado");
   });
 
+  test("cannot include templates from the filesystem", () => {
+    const engine = createTemplateEngine({ islands: ISLANDS });
+
+    expect(() => engine.compile('{% include "package.json" %}')).toThrow();
+    expect(() => engine.compile('{% render "package.json" %}')).toThrow();
+  });
+
   test("fails loudly when a template is rendered without a runtime", async () => {
     const engine = createTemplateEngine({ islands: ISLANDS });
 

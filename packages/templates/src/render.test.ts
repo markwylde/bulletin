@@ -117,6 +117,28 @@ describe("renderThemeTemplate", () => {
     expect(rendered.violations[0]?.theme).toBe("child");
   });
 
+  test("treats a filesystem include as a compile violation and renders the parent", async () => {
+    const activeEngine = engine();
+    const compiled = createCompileCache(activeEngine).compile(
+      buildTheme([
+        { name: "child", templates: { page: '<p>{% include "package.json" %}</p>' } },
+        { name: "parent", templates: { page: "<p>parent</p>" } },
+      ]),
+      1,
+    );
+
+    const rendered = await renderThemeTemplate({
+      engine: activeEngine,
+      compiled,
+      name: "page",
+      viewModel: {},
+      runtime,
+    });
+
+    expect(rendered.html).toBe("<p>parent</p>");
+    expect(rendered.violations[0]?.kind).toBe("compile");
+  });
+
   test("propagates template bugs that are not limit violations", async () => {
     const activeEngine = engine();
     const compiled = createCompileCache(activeEngine).compile(

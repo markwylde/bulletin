@@ -68,6 +68,13 @@ export function createTemplateEngine(options: TemplateEngineOptions): TemplateEn
   // through SafeHtml fields, islands and hook fragments, so the filter must not exist.
   liquid.unregisterFilter("raw");
 
+  // `include`, `render` and `layout` read templates from the filesystem. Themes are untrusted
+  // and are composed from named DB templates by the route, so these file-backed tags are
+  // removed: ADR 0008's include-depth limit is enforced at zero rather than trusting a root.
+  for (const tag of ["include", "render", "layout"]) {
+    delete liquid.tags[tag];
+  }
+
   registerTranslationTag(liquid);
   registerIslandTag(liquid, { islands: options.islands });
   registerHookTag(liquid);
