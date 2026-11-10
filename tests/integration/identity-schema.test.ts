@@ -69,6 +69,7 @@ integrationDescribe("identity schema", () => {
           "locale",
           "name_skeleton",
           "previous_visit_at",
+          "promotion_version",
         ].sort(),
       );
       expect(byTable.get("member_groups")?.sort()).toEqual(

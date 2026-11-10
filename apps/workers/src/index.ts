@@ -12,6 +12,7 @@ import {
   type EventSubscriber,
 } from "@bulletin/db/events";
 import { syncFlagDefinitions } from "@bulletin/db/flags";
+import { createPromotionJobs } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
@@ -44,6 +45,7 @@ const eventWorker = await createEventWorker({
   handlers: {},
   logger,
 });
+const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
 
 let relayInFlight: Promise<void> | undefined;
 const relayTimer = setInterval(() => {
@@ -83,12 +85,14 @@ await startService({
     clearInterval(relayTimer);
     await relayInFlight;
     await listener.close();
+    await promotionJobs.stop();
     await eventWorker.stop();
     await boss.stop();
   },
 }).catch(async (error: unknown) => {
   clearInterval(relayTimer);
   await listener.close();
+  await promotionJobs.stop();
   await boss.stop();
   throw error;
 });

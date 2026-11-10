@@ -17,7 +17,7 @@
 
 ## 3. Promotion
 
-- [ ] 3.1 Implement promotion rules (storage, ordered evaluation, worker job with row lock, nightly schedule) with integration tests for the post-count and concurrency scenarios
+- [x] 3.1 Implement promotion rules (storage, ordered evaluation, worker job with row lock, nightly schedule) with integration tests for the post-count and concurrency scenarios
 
 ## 4. Staff screens
 

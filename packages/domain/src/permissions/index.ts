@@ -4,6 +4,7 @@ export * from "./can.ts";
 export * from "./capability.ts";
 export * from "./moderator.ts";
 export * from "./perm-version.ts";
+export * from "./promotion-criteria.ts";
 export * from "./registry.ts";
 export * from "./service.ts";
 export * from "./snapshot.ts";

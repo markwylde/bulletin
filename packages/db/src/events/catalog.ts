@@ -4,6 +4,10 @@ export const EVENT_CATALOG = {
     aggregateType: "post",
     payloadIds: ["postId", "topicId", "forumId", "authorId"],
   },
+  "member.promoted": {
+    aggregateType: "member",
+    payloadIds: ["memberId", "fromGroupId", "toGroupId", "ruleId"],
+  },
 } as const;
 
 export type EventType = keyof typeof EVENT_CATALOG;

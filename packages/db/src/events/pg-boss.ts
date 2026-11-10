@@ -16,6 +16,29 @@ export interface PgBossQueue {
   stop(): Promise<void>;
 }
 
+/** Retry policy shared by every core queue (ADR 0011). */
+export const PGBOSS_RETRY_OPTIONS = {
+  retryLimit: 5,
+  retryDelay: 30,
+  retryBackoff: true,
+  retryDelayMax: 600,
+} as const;
+
+/** Creates a queue if needed and keeps its retry policy current; safe on every start. */
+export async function ensurePgBossQueue(
+  boss: PgBoss,
+  name: string,
+  policy: "short" | "standard" = "short",
+): Promise<void> {
+  const existing = await boss.getQueue(name);
+
+  if (existing === null) {
+    await boss.createQueue(name, { policy, ...PGBOSS_RETRY_OPTIONS });
+  } else {
+    await boss.updateQueue(name, PGBOSS_RETRY_OPTIONS);
+  }
+}
+
 /** Creates the pg-boss schema/queue with the workers role's connection (ADR 0011). */
 export async function createPgBossQueue(options: PgBossQueueOptions): Promise<PgBossQueue> {
   const boss = new PgBoss({
@@ -32,20 +55,7 @@ export async function createPgBossQueue(options: PgBossQueueOptions): Promise<Pg
   await boss.start();
 
   const queueName = options.queueName ?? "domain-events";
-  const existing = await boss.getQueue(queueName);
-  const retryOptions = {
-    retryLimit: 5,
-    retryDelay: 30,
-    retryBackoff: true,
-    retryDelayMax: 600,
-  };
-
-  if (existing === null) {
-    // A short queue admits one queued job per singleton key; retries use exponential backoff.
-    await boss.createQueue(queueName, { policy: "short", ...retryOptions });
-  } else {
-    await boss.updateQueue(queueName, retryOptions);
-  }
+  await ensurePgBossQueue(boss, queueName);
 
   const queue: JobQueue = {
     async send(name, payload, sendOptions) {
