@@ -15,7 +15,7 @@ import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
-import { draftDeleteResponse, draftGetResponse, draftSaveResponse } from "./drafts.ts";
+import { draftsRoute } from "./drafts.ts";
 import { emoticonImageResponse, listEmoticonsResponse } from "./emoticons.ts";
 import { createUserApiFlags } from "./flag-guard.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
@@ -124,28 +124,10 @@ await startService({
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }
 
-    if (pathname === "/api/me/drafts") {
-      const response = await auth.handle(request, async ({ session }) => {
-        if (session === null) {
-          return Response.json({ code: "unauthenticated" }, { status: 401 });
-        }
+    const drafts = await draftsRoute(auth, sql, request);
 
-        if (request.method === "GET") {
-          return draftGetResponse(sql, session.memberId, new URL(request.url));
-        }
-
-        if (request.method === "PUT") {
-          return draftSaveResponse(sql, session.memberId, request);
-        }
-
-        if (request.method === "DELETE") {
-          return draftDeleteResponse(sql, session.memberId, new URL(request.url));
-        }
-
-        return Response.json({ code: "method_not_allowed" }, { status: 405 });
-      });
-
-      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    if (drafts !== null) {
+      return drafts;
     }
 
     if (request.method === "GET" && pathname === "/api/members/suggest") {

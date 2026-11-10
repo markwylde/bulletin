@@ -14,6 +14,7 @@ import {
 import {
   insertQuoteSnapshot,
   loadQuoteSnapshot,
+  saveEmbedProvider,
   saveEmoticon,
   saveEmoticonSet,
   updateQuoteSnapshotRendering,
@@ -186,6 +187,62 @@ integrationDescribe("content versioning (ADR 0007)", () => {
       expect(stored?.bodyHtml).toContain('alt="Smile"');
       expect(stored?.bodyHtml).not.toContain("@Jane, enjoy :smile:");
       expect(stored?.renderVersion).toBe(currentContentVersions().renderVersion);
+    });
+  });
+
+  test("an upgrade re-render keeps embeds and honours disabled providers", async () => {
+    await withDb(async (database) => {
+      const author = await createMember(database);
+      const url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+
+      const embedded = await insertQuoteSnapshot(
+        database.sql,
+        draft(author, {
+          bodyMd: url,
+          bodyHtml: `<p><a href="${url}">${url}</a></p>`,
+          renderVersion: 1,
+          sanitiserVersion: 2,
+        }),
+      );
+
+      // The worker registers no render options at startup; the job loads the providers itself.
+      const first = await runContentRerenderJob(database.sql);
+      expect(first.rerendered).toBe(1);
+
+      const stored = await loadQuoteSnapshot(database.sql, embedded);
+      expect(stored?.bodyHtml).toContain('class="embed embed-youtube"');
+      expect(stored?.bodyHtml).toContain(
+        'src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"',
+      );
+      expect(stored?.bodyHtml).not.toContain("<a href=");
+
+      // A provider an admin disabled is not embedded by the next upgrade.
+      await saveEmbedProvider(database.sql, {
+        key: "youtube",
+        title: "YouTube",
+        urlPattern:
+          "^https?://(?:www\\.)?(?:youtube\\.com/(?:watch\\?v=|shorts/)|youtu\\.be/)([A-Za-z0-9_-]{6,64})(?:[?&#/].*)?$",
+        embedUrl: "https://www.youtube-nocookie.com/embed/{id}",
+        enabled: false,
+        position: 0,
+      });
+
+      const plain = await insertQuoteSnapshot(
+        database.sql,
+        draft(author, {
+          bodyMd: url,
+          bodyHtml: `<p><a href="${url}">${url}</a></p>`,
+          renderVersion: 1,
+          sanitiserVersion: 2,
+        }),
+      );
+
+      const second = await runContentRerenderJob(database.sql);
+      expect(second.rerendered).toBe(1);
+
+      const disabled = await loadQuoteSnapshot(database.sql, plain);
+      expect(disabled?.bodyHtml).toContain(`href="${url}"`);
+      expect(disabled?.bodyHtml).not.toContain("<iframe");
     });
   });
 

@@ -1,6 +1,12 @@
 import { bumpCacheTags, forumAnnouncementsTag, forumTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
 import type { Logger } from "@bulletin/config";
-import type { ContentVersions, Emoticon, MentionResolver, ReplaceWords } from "@bulletin/content";
+import type {
+  ContentVersions,
+  EmbedProvider,
+  Emoticon,
+  MentionResolver,
+  ReplaceWords,
+} from "@bulletin/content";
 import { currentContentVersions, renderContent, renderSnapshot } from "@bulletin/content";
 import {
   listStaleQuoteSnapshots,
@@ -35,6 +41,7 @@ export interface ContentRenderOptions {
   readonly replaceWords?: ReplaceWords;
   readonly emoticons?: readonly Emoticon[];
   readonly mentions?: MentionResolver;
+  readonly embeds?: readonly EmbedProvider[];
 }
 
 /**
@@ -45,7 +52,11 @@ async function renderOptionsFor(
   sql: SQL,
   options: ContentRenderOptions,
 ): Promise<ContentRenderOptions> {
-  if (options.emoticons !== undefined && options.mentions !== undefined) {
+  if (
+    options.emoticons !== undefined &&
+    options.mentions !== undefined &&
+    options.embeds !== undefined
+  ) {
     return options;
   }
 
@@ -55,6 +66,7 @@ async function renderOptionsFor(
     ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
     emoticons: options.emoticons ?? dependencies.emoticons,
     mentions: options.mentions ?? dependencies.mentions,
+    embeds: options.embeds ?? dependencies.embeds,
   };
 }
 
@@ -83,6 +95,7 @@ function renderInputs(options: ContentRenderOptions) {
     ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
     ...(options.emoticons === undefined ? {} : { emoticons: options.emoticons }),
     ...(options.mentions === undefined ? {} : { mentions: options.mentions }),
+    ...(options.embeds === undefined ? {} : { embeds: options.embeds }),
   };
 }
 

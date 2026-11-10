@@ -1,3 +1,4 @@
+import type { AuthService } from "@bulletin/domain/auth";
 import {
   deleteDraft,
   readDraft,
@@ -61,4 +62,40 @@ export async function draftDeleteResponse(sql: SQL, memberId: string, url: URL):
 
   await deleteDraft(sql, memberId, contextKey);
   return json({ ok: true });
+}
+
+/**
+ * `GET|PUT|DELETE /api/me/drafts`. Authentication, Origin and CSRF are enforced by the auth
+ * service (ADR 0018); the member id always comes from the session, never from the request.
+ */
+export async function draftsRoute(
+  auth: AuthService,
+  sql: SQL,
+  request: Request,
+): Promise<Response | null> {
+  if (new URL(request.url).pathname !== "/api/me/drafts") {
+    return null;
+  }
+
+  const response = await auth.handle(request, async ({ session }) => {
+    if (session === null) {
+      return json({ code: "unauthenticated" }, 401);
+    }
+
+    if (request.method === "GET") {
+      return draftGetResponse(sql, session.memberId, new URL(request.url));
+    }
+
+    if (request.method === "PUT") {
+      return draftSaveResponse(sql, session.memberId, request);
+    }
+
+    if (request.method === "DELETE") {
+      return draftDeleteResponse(sql, session.memberId, new URL(request.url));
+    }
+
+    return json({ code: "method_not_allowed" }, 405);
+  });
+
+  return response ?? json({ code: "not_found" }, 404);
 }
