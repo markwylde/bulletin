@@ -5,9 +5,11 @@ import {
   createServiceSql,
   startService,
 } from "@bulletin/config/server";
+import { syncFlagDefinitions } from "@bulletin/db/flags";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
+import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { auditStaffLocaleChange } from "./admin-log.ts";
 import { createStaffApi } from "./api.ts";
 
@@ -21,6 +23,7 @@ await runMigrations({ databaseUrl: migrationUrl });
 await runBaseSeed({ databaseUrl: migrationUrl, seed: config.seed, size: config.seedSize });
 
 const sql = createServiceSql("staff-api", databaseUrl);
+await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
 const listener = await createListenerCheck(sql);
 const auth = await createAuthService({
   sql,

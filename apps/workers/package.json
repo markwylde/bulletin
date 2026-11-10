@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@bulletin/config": "workspace:*",
-    "@bulletin/db": "workspace:*"
+    "@bulletin/db": "workspace:*",
+    "@bulletin/flags": "workspace:*"
   }
 }

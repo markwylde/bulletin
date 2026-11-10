@@ -9,14 +9,17 @@
     "./seed": "./src/seed/index.ts",
     "./events": "./src/events/index.ts",
     "./jobs": "./src/jobs/index.ts",
-    "./i18n": "./src/i18n/index.ts"
+    "./i18n": "./src/i18n/index.ts",
+    "./flags": "./src/flags/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bulletin/cache": "workspace:*",
     "@bulletin/config": "workspace:*",
     "@bulletin/domain": "workspace:*",
+    "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
     "pg-boss": "12.38.1"
   }

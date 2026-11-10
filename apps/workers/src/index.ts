@@ -11,8 +11,10 @@ import {
   createRelay,
   type EventSubscriber,
 } from "@bulletin/db/events";
+import { syncFlagDefinitions } from "@bulletin/db/flags";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
+import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 
 const config = loadConfig();
 const logger = createLogger({ service: "workers", level: config.logLevel });
@@ -24,6 +26,7 @@ await runMigrations({ databaseUrl: migrationUrl });
 await runBaseSeed({ databaseUrl: migrationUrl, seed: config.seed, size: config.seedSize });
 
 const sql = createServiceSql("workers", databaseUrl);
+await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
 const listener = await createListenerCheck(sql);
 const boss = await createPgBossQueue({
   connectionString: Bun.env.PG_BOSS_DATABASE_URL ?? databaseUrl,
