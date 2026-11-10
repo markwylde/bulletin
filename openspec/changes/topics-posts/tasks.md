@@ -2,7 +2,7 @@
 
 ## 1. Schema and mutations
 
-- [ ] 1.1 Migrations for topics, posts, post_revisions, polls, poll_questions, poll_choices, poll_votes, poll_vote_choices, topic_reads, forum_reads and topic_view_buffer; verify with integration tests
+- [x] 1.1 Migrations for topics, posts, post_revisions, polls, poll_questions, poll_choices, poll_votes, poll_vote_choices, topic_reads, forum_reads and topic_view_buffer; verify with integration tests
 - [ ] 1.2 Implement `startTopic`, `reply`, `editPost`, `softDelete`, `restore`, `hardDelete`, `lock`, `pin` and `move` as mutations with declared tags and transactional counters; integration tests for counter correctness under concurrent replies
 
 ## 2. Topics

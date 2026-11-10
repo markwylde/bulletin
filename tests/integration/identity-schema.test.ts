@@ -61,6 +61,7 @@ integrationDescribe("identity schema", () => {
       );
       expect(byTable.get("members")?.sort()).toEqual(
         [
+          "board_marked_at",
           "display_name",
           "id",
           "is_service",
@@ -68,6 +69,7 @@ integrationDescribe("identity schema", () => {
           "last_active_at",
           "locale",
           "name_skeleton",
+          "post_count",
           "previous_visit_at",
           "promotion_version",
         ].sort(),
