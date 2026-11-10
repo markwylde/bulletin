@@ -6,6 +6,7 @@ import { Schema } from "@milkdown/kit/prose/model";
 import { ParserState, SerializerState } from "@milkdown/kit/transformer";
 import { remark } from "remark";
 import remarkGfm from "remark-gfm";
+import { preprocessRawBlocks, restoreRawBlocks } from "./milkdown.ts";
 
 interface RoundTrip {
   readonly parse: ReturnType<typeof ParserState.create>;
@@ -50,10 +51,11 @@ async function roundTrip(): Promise<RoundTrip> {
   return cached;
 }
 
-/** Markdown → Milkdown document → canonical markdown. */
+/** Markdown → Milkdown document → canonical markdown, preserving unknown raw blocks. */
 export async function roundTripMarkdown(markdown: string): Promise<string> {
   const { parse, serialize } = await roundTrip();
-  return serialize(parse(markdown));
+  const processed = preprocessRawBlocks(markdown);
+  return restoreRawBlocks(serialize(parse(processed.markdown)), processed.raw);
 }
 
 /**

@@ -131,6 +131,24 @@ integrationDescribe("post editor", () => {
     });
   }, 120_000);
 
+  test("renders emoticons, spoilers and mentions as custom editor nodes", async () => {
+    await withPage({ url: EDITOR_URL, viewport: "mobile360" }, async (view) => {
+      await waitForSelector(view, "[data-editor-wysiwyg] .ProseMirror", 30_000);
+      await switchToSource(view);
+      const value = ":smile: ||secret|| @[Regular Member One](member:5)";
+      await setInputValue(view, "[data-editor-source]", value);
+      await clickSelector(view, '[data-editor-mode="wysiwyg"]');
+      await waitForSelector(view, "[data-editor-wysiwyg] img.emoticon", 30_000);
+      await waitForSelector(view, "[data-editor-wysiwyg] span.spoiler", 30_000);
+      await waitForSelector(view, "[data-editor-wysiwyg] a[data-mention-id]", 30_000);
+      await switchToSource(view);
+
+      expect(await sourceValue(view)).toContain(":smile:");
+      expect(await sourceValue(view)).toContain("||secret||");
+      expect(await sourceValue(view)).toContain("@[Regular Member One](member:5)");
+    });
+  }, 120_000);
+
   test("the emoticon picker inserts its code", async () => {
     await withPage({ url: EDITOR_URL, viewport: "mobile360" }, async (view) => {
       await waitForSelector(view, "[data-editor-wysiwyg] .ProseMirror", 30_000);

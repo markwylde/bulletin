@@ -128,6 +128,108 @@ integrationDescribe("rules and announcements through the pipeline", () => {
     });
   });
 
+  test("replace-word re-renders persist the derived plain text", async () => {
+    await withDb(async (database) => {
+      const versions = currentContentVersions();
+      const [forum] = (await database.sql`
+        INSERT INTO core.forums (title, slug, description, rules)
+        VALUES ('Replace forum', 'replace-forum', '', 'A damn rule')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [announcement] = (await database.sql`
+        INSERT INTO core.announcements (title, body, scope, starts_at)
+        VALUES ('Replace announcement', 'A damn notice', 'global', now())
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (forum === undefined || announcement === undefined) {
+        throw new Error("Could not create rows");
+      }
+
+      await database.sql`
+        UPDATE core.forums
+        SET rules_render_version = ${versions.renderVersion - 7},
+          rules_sanitiser_version = ${versions.sanitiserVersion},
+          rules_html = ''
+        WHERE id = ${forum.id}
+      `;
+      await database.sql`
+        UPDATE core.announcements
+        SET render_version = ${versions.renderVersion - 7},
+          sanitiser_version = ${versions.sanitiserVersion},
+          body_html = ''
+        WHERE id = ${announcement.id}
+      `;
+
+      const result = await runContentRerenderJob(database.sql, {
+        sources: [forumRulesRerenderSource, announcementRerenderSource],
+        replaceWords: { version: 7, rules: [{ word: "damn", replacement: "darn" }] },
+      });
+      expect(result.rerendered).toBe(2);
+
+      const [updatedForum] = (await database.sql`
+        SELECT rules_text FROM core.forums WHERE id = ${forum.id}
+      `) as Array<{ rules_text: string }>;
+      const [updatedAnnouncement] = (await database.sql`
+        SELECT body_text FROM core.announcements WHERE id = ${announcement.id}
+      `) as Array<{ body_text: string }>;
+      expect(updatedForum?.rules_text).toBe("A darn rule");
+      expect(updatedAnnouncement?.body_text).toBe("A darn notice");
+    });
+  });
+
+  test("refuses to overwrite a source row edited while it rendered", async () => {
+    await withDb(async (database) => {
+      const versions = currentContentVersions();
+      const [forum] = (await database.sql`
+        INSERT INTO core.forums (title, slug, description, rules, rules_html, rules_text)
+        VALUES ('Concurrent forum', 'concurrent-forum', '', 'Old **rules**', '<p>old</p>', 'Old rules')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (forum === undefined) {
+        throw new Error("Could not create forum");
+      }
+
+      await database.sql`
+        UPDATE core.forums
+        SET rules_render_version = ${versions.renderVersion - 1},
+          rules_sanitiser_version = ${versions.sanitiserVersion}
+        WHERE id = ${forum.id}
+      `;
+
+      const [stale] = await forumRulesRerenderSource.listStale(database.sql, versions, {
+        afterId: "0",
+        limit: 10,
+      });
+
+      if (stale === undefined) {
+        throw new Error("Expected a stale row");
+      }
+
+      await database.sql`
+        UPDATE core.forums
+        SET rules = 'New **rules**', rules_html = '<p>new</p>', rules_text = 'New rules',
+          rules_render_version = ${versions.renderVersion},
+          rules_sanitiser_version = ${versions.sanitiserVersion}
+        WHERE id = ${forum.id}
+      `;
+
+      const rendered = await forumRulesRerenderSource.render(stale, {});
+      const saved = await forumRulesRerenderSource.save(database.sql, stale, rendered);
+      expect(saved).toBe(false);
+
+      const [row] = (await database.sql`
+        SELECT rules, rules_html, rules_text FROM core.forums WHERE id = ${forum.id}
+      `) as Array<{ rules: string; rules_html: string; rules_text: string }>;
+      expect(row).toEqual({
+        rules: "New **rules**",
+        rules_html: "<p>new</p>",
+        rules_text: "New rules",
+      });
+    });
+  });
+
   test("saves announcements with rendered HTML and quote-free text", async () => {
     await withDb(async (database) => {
       const actor = await createMember(database, "Announcement Admin");

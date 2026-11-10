@@ -11,6 +11,8 @@ const CORPUS = [
   "- [x] done\n- [ ] todo\n",
   "~~struck~~\n",
   "A line  \nwith a hard break.\n",
+  ":::disabled-plugin\nraw [b]hi[/b]\n:::",
+  "Mention @[Regular Member One](member:42) and :smile: and ||spoiler||.",
 ];
 
 describe("Milkdown headless round trip", () => {
@@ -20,6 +22,10 @@ describe("Milkdown headless round trip", () => {
       const twice = await roundTripMarkdown(once);
 
       expect(twice).toBe(once);
+
+      if (markdown.includes(":::disabled-plugin")) {
+        expect(once).toContain(":::disabled-plugin\nraw [b]hi[/b]\n:::");
+      }
     });
   }
 

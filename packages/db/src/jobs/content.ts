@@ -1,7 +1,7 @@
 import type { Logger } from "@bulletin/config";
 import type { ContentVersions, Emoticon, MentionResolver, ReplaceWords } from "@bulletin/content";
 import { currentContentVersions, renderContent, renderSnapshot } from "@bulletin/content";
-import { listStaleQuoteSnapshots, updateQuoteSnapshotRendering } from "@bulletin/domain/content";
+import { listStaleQuoteSnapshots } from "@bulletin/domain/content";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
@@ -21,6 +21,7 @@ export interface RerenderRow {
 
 export interface RenderedContent {
   readonly bodyHtml: string;
+  readonly bodyText?: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;
 }
@@ -43,7 +44,8 @@ export interface ContentRerenderSource {
     options: { readonly afterId: string; readonly limit: number },
   ): Promise<readonly RerenderRow[]>;
   render(row: RerenderRow, options: ContentRenderOptions): Promise<RenderedContent>;
-  save(sql: SQL, id: string, rendered: RenderedContent): Promise<void>;
+  /** Returns false when the source row changed while it was being rendered. */
+  save(sql: SQL, row: RerenderRow, rendered: RenderedContent): Promise<boolean>;
 }
 
 export const quoteSnapshotRerenderSource: ContentRerenderSource = {
@@ -69,7 +71,21 @@ export const quoteSnapshotRerenderSource: ContentRerenderSource = {
       sanitiserVersion: rendered.sanitiserVersion,
     };
   },
-  save: (sql, id, rendered) => updateQuoteSnapshotRendering(sql, id, rendered),
+  async save(sql, row, value) {
+    const rows = (await sql`
+      UPDATE core.quote_snapshots
+      SET body_html = ${value.bodyHtml},
+        render_version = ${value.renderVersion},
+        sanitiser_version = ${value.sanitiserVersion}
+      WHERE id = ${row.id}
+        AND body_md = ${row.bodyMd}
+        AND render_version = ${row.renderVersion}
+        AND sanitiser_version = ${row.sanitiserVersion}
+      RETURNING id
+    `) as Array<{ id: string }>;
+
+    return rows.length > 0;
+  },
 };
 
 interface RuleRow {
@@ -92,11 +108,13 @@ interface AnnouncementRow {
 
 function rendered(result: {
   readonly bodyHtml: string;
+  readonly bodyText?: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;
 }): RenderedContent {
   return {
     bodyHtml: result.bodyHtml,
+    ...(result.bodyText === undefined ? {} : { bodyText: result.bodyText }),
     renderVersion: result.renderVersion,
     sanitiserVersion: result.sanitiserVersion,
   };
@@ -137,14 +155,21 @@ export const forumRulesRerenderSource: ContentRerenderSource = {
       }),
     );
   },
-  async save(sql, id, value) {
-    await sql`
+  async save(sql, row, value) {
+    const rows = (await sql`
       UPDATE core.forums
       SET rules_html = ${value.bodyHtml},
+        rules_text = ${value.bodyText ?? ""},
         rules_render_version = ${value.renderVersion},
         rules_sanitiser_version = ${value.sanitiserVersion}
-      WHERE id = ${id}
-    `;
+      WHERE id = ${row.id}
+        AND rules = ${row.bodyMd}
+        AND rules_render_version = ${row.renderVersion}
+        AND rules_sanitiser_version = ${row.sanitiserVersion}
+      RETURNING id
+    `) as Array<{ id: string }>;
+
+    return rows.length > 0;
   },
 };
 
@@ -182,14 +207,21 @@ export const announcementRerenderSource: ContentRerenderSource = {
       }),
     );
   },
-  async save(sql, id, value) {
-    await sql`
+  async save(sql, row, value) {
+    const rows = (await sql`
       UPDATE core.announcements
       SET body_html = ${value.bodyHtml},
+        body_text = ${value.bodyText ?? ""},
         render_version = ${value.renderVersion},
         sanitiser_version = ${value.sanitiserVersion}
-      WHERE id = ${id}
-    `;
+      WHERE id = ${row.id}
+        AND body = ${row.bodyMd}
+        AND render_version = ${row.renderVersion}
+        AND sanitiser_version = ${row.sanitiserVersion}
+      RETURNING id
+    `) as Array<{ id: string }>;
+
+    return rows.length > 0;
   },
 };
 
@@ -278,9 +310,12 @@ export async function runContentRerenderJob(
       for (const row of rows) {
         // The row id advances only after its write, so the cursor never skips a failure.
         const value = await source.render(row, options);
-        await source.save(sql, row.id, value);
+        const saved = await source.save(sql, row, value);
         cursor = row.id;
-        rerendered += 1;
+
+        if (saved) {
+          rerendered += 1;
+        }
       }
 
       await writeCursor(sql, cursorKey, cursor);

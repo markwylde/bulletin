@@ -161,6 +161,7 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
         element,
         markdown: markdownRef.current,
         label: labels.editor,
+        emoticons,
         onChange: (next) => {
           markdownRef.current = next;
           setMarkdown(next);
@@ -188,7 +189,7 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
       created?.destroy();
       controller.current = null;
     };
-  }, [mode, labels.editor]);
+  }, [mode, labels.editor, emoticons]);
 
   // 2 s debounce as specified by ADR 0007; the API stores one row per member and context.
   useEffect(() => {

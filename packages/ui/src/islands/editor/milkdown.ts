@@ -1,4 +1,5 @@
 import { defaultValueCtx, Editor, editorViewCtx, rootCtx } from "@milkdown/kit/core";
+import type { MilkdownPlugin } from "@milkdown/kit/ctx";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import {
   commonmark,
@@ -12,7 +13,8 @@ import {
 import { gfm } from "@milkdown/kit/preset/gfm";
 import { Fragment } from "@milkdown/kit/prose/model";
 import { callCommand, getMarkdown, insert, replaceAll } from "@milkdown/kit/utils";
-import type { EditorController } from "./types.ts";
+import { createBulletinTokenPlugins } from "./tokens.ts";
+import type { EditorController, EditorEmoticon } from "./types.ts";
 
 const RAW_BLOCK = /^:::[a-z0-9-]+[^\n]*\n[\s\S]*?\n:::[ \t]*$/gim;
 
@@ -29,7 +31,7 @@ export interface PreprocessedMarkdown {
 export function preprocessRawBlocks(markdown: string): PreprocessedMarkdown {
   const raw = new Map<string, string>();
   const next = markdown.replace(RAW_BLOCK, (block) => {
-    const token = `<!--BLRAW${raw.size}-->`;
+    const token = `⟦raw-block-${raw.size}⟧`;
     raw.set(token, block);
     return token;
   });
@@ -51,6 +53,7 @@ export interface CreateEditorOptions {
   readonly element: HTMLElement;
   readonly markdown: string;
   readonly label: string;
+  readonly emoticons: readonly EditorEmoticon[];
   readonly onChange: (markdown: string) => void;
 }
 
@@ -60,6 +63,7 @@ export async function createMilkdownEditor(
 ): Promise<EditorController> {
   const preprocessed = preprocessRawBlocks(options.markdown);
   const raw = new Map(preprocessed.raw);
+  const tokenPlugins = createBulletinTokenPlugins(options.emoticons).flat() as MilkdownPlugin[];
   const editor = await Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, options.element);
@@ -70,6 +74,7 @@ export async function createMilkdownEditor(
     })
     .use(commonmark)
     .use(gfm)
+    .use(tokenPlugins)
     .use(listener)
     .create();
 
