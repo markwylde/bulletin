@@ -1,5 +1,5 @@
 {{ header }}
-<main id="main" class="bl-main" data-forum-page data-forum-id="{{ forumId }}" data-overlay-ctx="forum:{{ forumId }}">
+<main id="main" class="bl-main" data-forum-page data-forum-id="{{ forumId }}" data-overlay-ctx="forum:{{ forumId }}" data-overlay-forum="{{ forumId }}">
   {{ breadcrumbs }}
   <header class="bl-page__header">
     <h1 class="bl-page__title" data-forum-title>{{ title }}</h1>
@@ -9,7 +9,9 @@
     <p class="bl-muted">
       <span data-topic-count="{{ forumId }}">{{ topicCount }}</span>
       <span data-post-count="{{ forumId }}">{{ postCount }}</span>
+      <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ forumId }}">—</span>
     </p>
+    <button class="bl-button bl-button--quiet bl-button--small" type="button" data-mark-forum-read="{{ forumId }}" data-overlay-member-only hidden>{% t "read.markForum" %}</button>
   </header>
 
   {% if isModerator %}
@@ -54,8 +56,9 @@
         {% if children.size > 0 %}
           <ul class="bl-forum-list" data-forum-children>
             {% for child in children %}
-              <li class="bl-forum-list__item">
+              <li class="bl-forum-list__item" data-overlay-forum="{{ child.id }}">
                 <a class="bl-forum-list__link" href="{{ child.href }}" data-forum-child="{{ child.id }}">{{ child.title }}</a>
+                <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ child.id }}">—</span>
               </li>
             {% endfor %}
           </ul>
@@ -132,6 +135,7 @@
                     </span>
                   {% endif %}
                   <span class="bl-overlay-slot" data-overlay-unread data-overlay-context="topic:{{ topic.id }}">—</span>
+                  <a class="bl-muted" data-overlay-first-unread data-overlay-context="topic:{{ topic.id }}" href="{{ topic.href }}" hidden>{% t "topic.firstUnread" %}</a>
                 </div>
               </li>
             {% endfor %}
@@ -158,8 +162,9 @@
             <h2 class="bl-card__title">{% t "index.subforums" %}</h2>
             <ul class="bl-forum-list" data-forum-children>
               {% for child in children %}
-                <li class="bl-forum-list__item">
+                <li class="bl-forum-list__item" data-overlay-forum="{{ child.id }}">
                   <a class="bl-forum-list__link" href="{{ child.href }}" data-forum-child="{{ child.id }}">{{ child.title }}</a>
+                  <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ child.id }}">—</span>
                 </li>
               {% endfor %}
             </ul>

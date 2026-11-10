@@ -6,6 +6,11 @@
 
 export type OverlayCount = "notifications" | "conversations";
 
+export interface OverlayFirstUnread {
+  readonly topicId: string;
+  readonly url: string;
+}
+
 export interface OverlayPoll {
   readonly pollId: string;
   readonly hasVoted: boolean;
@@ -27,6 +32,10 @@ export interface OverlayPayload {
   readonly draft?: OverlayDraft;
   /** Whether the member already voted in the poll on this page (task 4.2). */
   readonly polls?: readonly OverlayPoll[];
+  /** Forums with at least one unread topic for this member (task 5.1). */
+  readonly unreadForums?: readonly string[];
+  /** First unread post links for topic rows on this page (task 5.1). */
+  readonly firstUnread?: readonly OverlayFirstUnread[];
 }
 
 export interface UnreadSlot {
@@ -39,11 +48,13 @@ export interface CountSlot {
 
 export interface OverlayTarget {
   unreadSlots(topicId: string): readonly UnreadSlot[];
+  forumUnreadSlots(forumId: string): readonly UnreadSlot[];
   countSlots(count: OverlayCount): readonly CountSlot[];
   storeCsrfToken(token: string): void;
   hideAnnouncement(announcementId: string): void;
   setDraft(draft: OverlayDraft): void;
   setPollVoted(pollId: string, hasVoted: boolean): void;
+  setFirstUnread(topicId: string, url: string): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -62,6 +73,29 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
 
     for (const slot of target.unreadSlots(topicId)) {
       slot.markUnread();
+    }
+  }
+
+  for (const forumId of payload.unreadForums ?? []) {
+    if (typeof forumId !== "string" || !/^[1-9]\d{0,18}$/.test(forumId)) {
+      continue;
+    }
+
+    for (const slot of target.forumUnreadSlots(forumId)) {
+      slot.markUnread();
+    }
+  }
+
+  for (const link of payload.firstUnread ?? []) {
+    if (
+      typeof link === "object" &&
+      link !== null &&
+      typeof link.topicId === "string" &&
+      /^[1-9]\d{0,18}$/.test(link.topicId) &&
+      typeof link.url === "string" &&
+      /^\/topic\/\d+-/.test(link.url)
+    ) {
+      target.setFirstUnread(link.topicId, link.url);
     }
   }
 

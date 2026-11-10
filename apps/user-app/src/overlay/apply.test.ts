@@ -9,6 +9,8 @@ function target(): {
   readonly dismissed: string[];
   readonly drafts: string[];
   readonly polls: string[];
+  readonly unreadForums: string[];
+  readonly firstUnread: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
@@ -16,6 +18,8 @@ function target(): {
   const dismissed: string[] = [];
   const drafts: string[] = [];
   const polls: string[] = [];
+  const unreadForums: string[] = [];
+  const firstUnread: string[] = [];
 
   return {
     unread,
@@ -24,16 +28,20 @@ function target(): {
     dismissed,
     drafts,
     polls,
+    unreadForums,
+    firstUnread,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
         { markUnread: () => unread.push(`${topicId} (second slot)`) },
       ],
+      forumUnreadSlots: (forumId) => [{ markUnread: () => unreadForums.push(forumId) }],
       countSlots: (name) => [{ setCount: (count) => counts.push(`${name}=${count}`) }],
       storeCsrfToken: (token) => tokens.push(token),
       hideAnnouncement: (announcementId) => dismissed.push(announcementId),
       setDraft: (draft) => drafts.push(`${draft.contextKey}:${draft.bodyMd}`),
       setPollVoted: (pollId, hasVoted) => polls.push(`${pollId}:${hasVoted ? "yes" : "no"}`),
+      setFirstUnread: (topicId, url) => firstUnread.push(`${topicId}:${url}`),
     },
   };
 }
@@ -74,6 +82,21 @@ describe("overlay applier", () => {
     });
 
     expect(fixture.dismissed).toEqual(["7", "9"]);
+  });
+
+  test("marks unread forums and sets safe first-unread links", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, {
+      unreadForums: ["3", "x"],
+      firstUnread: [
+        { topicId: "9", url: "/topic/9-hello/page/2#post-30" },
+        { topicId: "10", url: "javascript:alert(1)" },
+      ],
+    });
+
+    expect(fixture.unreadForums).toEqual(["3"]);
+    expect(fixture.firstUnread).toEqual(["9:/topic/9-hello/page/2#post-30"]);
   });
 
   test("applies the member's poll vote state and ignores unsafe ids", () => {

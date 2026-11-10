@@ -21,6 +21,7 @@ import { createUserApiFlags } from "./flag-guard.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 import { memberSuggestResponse } from "./members.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
+import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
 import {
   createTopicResponse,
@@ -129,6 +130,32 @@ await startService({
           rateLimitSecret: config.sessionSecret,
         }),
       );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const markForumReadMatch = /^\/api\/forums\/(\d+)\/read$/.exec(pathname);
+
+    if (request.method === "POST" && markForumReadMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return markForumReadResponse(sql, session.memberId, markForumReadMatch[1] ?? "");
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/read-all") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return markBoardReadResponse(sql, session.memberId);
+      });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

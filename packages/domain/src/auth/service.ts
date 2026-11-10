@@ -1,5 +1,6 @@
 import { isLocale, type Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import { readBoardSettings } from "../board/index.ts";
 import { readDraft, validDraftContext } from "../content/drafts.ts";
 import { validateDisplayName } from "../member/names.ts";
 import {
@@ -18,6 +19,8 @@ import {
 import { listDismissedAnnouncementIds } from "../permissions/announcements.ts";
 import { can } from "../permissions/can.ts";
 import { pollVoteStateForTopic } from "../polls/repository.ts";
+import { firstUnreadForTopics, unreadForumIds } from "../topics/reading/repository.ts";
+import { canonicalUrl } from "../urls/index.ts";
 import { memberViewerKey, parseTopicIds, parseVisitContext, recordVisit } from "../visits/index.ts";
 import type { AuthRouterOptions, SessionCapabilities } from "./router.ts";
 import { createAuthRouter, guestView, sessionView } from "./router.ts";
@@ -389,6 +392,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           ? body.lastReadPostId
           : undefined;
       const visitContext = parseVisitContext(ctx);
+      const forums = parseTopicIds(body?.forums);
       const [visits, dismissedAnnouncements, draft, poll] = await Promise.all([
         recordVisit(options.sql, {
           viewerKey: memberViewerKey(session.memberId),
@@ -406,10 +410,27 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           ? pollVoteStateForTopic(options.sql, visitContext.id, session.memberId)
           : Promise.resolve(null),
       ]);
+      const [unreadForums, firstUnreadRows] = await Promise.all([
+        unreadForumIds(options.sql, { memberId: session.memberId, forumIds: forums }),
+        topics.length === 0
+          ? Promise.resolve([])
+          : readBoardSettings(options.sql).then((settings) =>
+              firstUnreadForTopics(options.sql, {
+                memberId: session.memberId,
+                topicIds: topics,
+                perPage: settings.postsPerPage,
+              }),
+            ),
+      ]);
       const payload = {
         ctx,
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
         unread: visits.unread,
+        unreadForums,
+        firstUnread: firstUnreadRows.map((row) => ({
+          topicId: row.topicId,
+          url: `${canonicalUrl("topic", row.topicId, row.topicSlug, { page: row.page })}#post-${row.postId}`,
+        })),
         dismissedAnnouncements,
         // Counts arrive with `events-notifications`; the overlay shape is fixed now.
         counts: { notifications: 0, conversations: 0 },

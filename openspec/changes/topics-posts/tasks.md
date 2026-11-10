@@ -34,7 +34,7 @@
 
 ## 5. Read tracking
 
-- [ ] 5.1 Read markers (advanced by the topic-page overlay request), unread computation in the overlay, jump to first unread, and single-row mark forum/board read; integration tests for each scenario and a test that shared HTML contains no unread state
+- [x] 5.1 Read markers (advanced by the topic-page overlay request), unread computation in the overlay, jump to first unread, and single-row mark forum/board read; integration tests for each scenario and a test that shared HTML contains no unread state
 
 ## 6. Strings and seed
 

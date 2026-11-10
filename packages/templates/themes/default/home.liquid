@@ -36,10 +36,12 @@
     </section>
   {% endif %}
 
+  <button class="bl-button bl-button--quiet bl-button--small" type="button" data-mark-board-read data-overlay-member-only hidden>{% t "read.markBoard" %}</button>
+
   {% if rootForums.size > 0 %}
     <ul class="bl-forum-list" data-root-forums>
       {% for forum in rootForums %}
-        <li class="bl-forum-list__item" data-forum-row="{{ forum.id }}">
+        <li class="bl-forum-list__item" data-forum-row="{{ forum.id }}" data-overlay-forum="{{ forum.id }}">
           <div class="bl-forum-row__main">
             <a class="bl-forum-list__link" href="{{ forum.href }}" data-forum-link="{{ forum.id }}">{{ forum.title }}</a>
             {% if forum.description.size > 0 %}
@@ -62,6 +64,7 @@
           <div class="bl-forum-row__stats">
             <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
             <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
+            <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ forum.id }}">—</span>
             {% if forum.lastPost %}
               <span class="bl-muted" data-last-post="{{ forum.id }}">
                 {% if forum.lastPost.memberName %}
@@ -79,10 +82,11 @@
 
   {% if categories.size > 0 %}
     {% for category in categories %}
-      <section class="bl-board-category" data-category="{{ category.id }}">
+      <section class="bl-board-category" data-category="{{ category.id }}" data-overlay-forum="{{ category.id }}">
         <header class="bl-board-category__header">
           <h2 class="bl-board-category__title">
             <a href="{{ category.href }}" data-category-link="{{ category.id }}">{{ category.title }}</a>
+            <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ category.id }}">—</span>
           </h2>
           {% if category.description.size > 0 %}
             <p class="bl-muted" data-category-description>{{ category.description }}</p>
@@ -90,7 +94,7 @@
         </header>
         <ul class="bl-forum-list" data-category-forums="{{ category.id }}">
           {% for forum in category.forums %}
-            <li class="bl-forum-list__item" data-forum-row="{{ forum.id }}">
+            <li class="bl-forum-list__item" data-forum-row="{{ forum.id }}" data-overlay-forum="{{ forum.id }}">
               <div class="bl-forum-row__main">
                 <a class="bl-forum-list__link" href="{{ forum.href }}" data-forum-link="{{ forum.id }}">{{ forum.title }}</a>
                 {% if forum.description.size > 0 %}

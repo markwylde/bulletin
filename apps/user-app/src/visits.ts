@@ -32,6 +32,20 @@ function overlayReadMarker(): { readonly lastReadAt?: string; readonly lastReadP
   };
 }
 
+function pageForumIds(): string[] {
+  const ids = new Set<string>();
+
+  for (const element of document.querySelectorAll("[data-overlay-forum]")) {
+    const id = element.getAttribute("data-overlay-forum") ?? "";
+
+    if (/^[1-9]\d{0,18}$/.test(id)) {
+      ids.add(id);
+    }
+  }
+
+  return [...ids];
+}
+
 function pageTopicIds(): string[] {
   const ids = new Set<string>();
 
@@ -53,6 +67,19 @@ const overlayTarget: OverlayTarget = {
     return [
       ...document.querySelectorAll(
         `[data-overlay-unread][data-overlay-context="topic:${CSS.escape(topicId)}"]`,
+      ),
+    ].map((slot) => ({
+      markUnread() {
+        slot.setAttribute("data-unread", "true");
+        slot.textContent = "";
+      },
+    }));
+  },
+
+  forumUnreadSlots(forumId) {
+    return [
+      ...document.querySelectorAll(
+        `[data-overlay-forum-unread][data-overlay-forum-id="${CSS.escape(forumId)}"]`,
       ),
     ].map((slot) => ({
       markUnread() {
@@ -103,6 +130,15 @@ const overlayTarget: OverlayTarget = {
   setPollVoted(pollId, hasVoted) {
     window.dispatchEvent(new CustomEvent("bulletin:poll-voted", { detail: { pollId, hasVoted } }));
   },
+
+  setFirstUnread(topicId, url) {
+    for (const link of document.querySelectorAll<HTMLAnchorElement>(
+      `[data-overlay-first-unread][data-overlay-context="topic:${CSS.escape(topicId)}"]`,
+    )) {
+      link.href = url;
+      link.hidden = false;
+    }
+  },
 };
 
 function draftContext(): string | null {
@@ -117,6 +153,7 @@ async function loadOverlay(ctx: string): Promise<void> {
       body: JSON.stringify({
         ctx,
         topics: pageTopicIds(),
+        forums: pageForumIds(),
         ...overlayReadMarker(),
         ...(draftContext() === null ? {} : { draftContext: draftContext() }),
       }),

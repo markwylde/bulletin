@@ -849,17 +849,231 @@ export async function unreadTopicIds(
     SELECT t.id::text AS id
     FROM core.topics t
     JOIN core.members m ON m.id = ${input.memberId}
+    JOIN core.forums topic_forum ON topic_forum.id = t.forum_id
     LEFT JOIN core.topic_reads tr
       ON tr.member_id = m.id AND tr.topic_id = t.id
-    LEFT JOIN core.forum_reads fr
-      ON fr.member_id = m.id AND fr.forum_id = t.forum_id
+    LEFT JOIN LATERAL (
+      SELECT max(fr.marked_at) AS marked_at
+      FROM core.forum_reads fr
+      JOIN core.forums marked ON marked.id = fr.forum_id
+      WHERE fr.member_id = m.id AND topic_forum.path <@ marked.path
+    ) fr ON true
     WHERE t.id = ANY(${`{${input.topicIds.join(",")}}`}::bigint[])
       AND t.last_post_at IS NOT NULL
-      AND t.last_post_at > GREATEST(
-        COALESCE(tr.last_read_at, 'epoch'::timestamptz),
-        COALESCE(fr.marked_at, 'epoch'::timestamptz),
-        COALESCE(m.board_marked_at, 'epoch'::timestamptz)
+      AND (
+        date_trunc('milliseconds', t.last_post_at) > GREATEST(
+          COALESCE(tr.last_read_at, 'epoch'::timestamptz),
+          COALESCE(fr.marked_at, 'epoch'::timestamptz),
+          COALESCE(m.board_marked_at, 'epoch'::timestamptz)
+        )
+        OR (
+          date_trunc('milliseconds', t.last_post_at) = GREATEST(
+            COALESCE(tr.last_read_at, 'epoch'::timestamptz),
+            COALESCE(fr.marked_at, 'epoch'::timestamptz),
+            COALESCE(m.board_marked_at, 'epoch'::timestamptz)
+          )
+          AND t.last_post_at > GREATEST(
+            COALESCE(tr.last_read_at, 'epoch'::timestamptz),
+            COALESCE(fr.marked_at, 'epoch'::timestamptz),
+            COALESCE(m.board_marked_at, 'epoch'::timestamptz)
+          )
+          AND tr.last_read_post_id IS NOT NULL
+          AND t.last_post_id > tr.last_read_post_id
+        )
       )
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}
+
+export interface FirstUnreadPost {
+  readonly topicId: string;
+  readonly topicSlug: string;
+  readonly postId: string;
+  readonly page: number;
+}
+
+/** One row per member and forum; descendants inherit the mark through their ltree path. */
+export async function markForumRead(
+  sql: SQL,
+  memberId: string,
+  forumId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const rows = (await sql`
+    INSERT INTO core.forum_reads (member_id, forum_id, marked_at)
+    SELECT ${memberId}, id, ${now}
+    FROM core.forums
+    WHERE id = ${forumId}
+    ON CONFLICT (member_id, forum_id) DO UPDATE
+      SET marked_at = GREATEST(core.forum_reads.marked_at, EXCLUDED.marked_at)
+    RETURNING forum_id
+  `) as unknown[];
+
+  return rows.length > 0;
+}
+
+/** One member row; every forum and topic is read before this watermark. */
+export async function markBoardRead(
+  sql: SQL,
+  memberId: string,
+  now: Date = new Date(),
+): Promise<void> {
+  await sql`
+    UPDATE core.members SET board_marked_at = GREATEST(COALESCE(board_marked_at, ${now}), ${now})
+    WHERE id = ${memberId}
+  `;
+}
+
+/**
+ * First visible post after the member's effective watermark for each topic, with the page it
+ * falls on. Used by the overlay's "first unread" links (task 5.1).
+ */
+export async function firstUnreadForTopics(
+  sql: SQL,
+  input: {
+    readonly memberId: string;
+    readonly topicIds: readonly string[];
+    readonly perPage: number;
+  },
+): Promise<readonly FirstUnreadPost[]> {
+  if (input.topicIds.length === 0) {
+    return [];
+  }
+
+  const rows = (await sql`
+    WITH marked AS (
+      SELECT
+        t.id AS topic_id, t.slug AS topic_slug,
+        GREATEST(
+          COALESCE(tr.last_read_at, 'epoch'::timestamptz),
+          COALESCE(fr.marked_at, 'epoch'::timestamptz),
+          COALESCE(m.board_marked_at, 'epoch'::timestamptz)
+        ) AS marker,
+        tr.last_read_post_id
+      FROM core.topics t
+      JOIN core.members m ON m.id = ${input.memberId}
+      JOIN core.forums topic_forum ON topic_forum.id = t.forum_id
+      LEFT JOIN core.topic_reads tr
+        ON tr.member_id = m.id AND tr.topic_id = t.id
+      LEFT JOIN LATERAL (
+        SELECT max(fr.marked_at) AS marked_at
+        FROM core.forum_reads fr
+        JOIN core.forums marked ON marked.id = fr.forum_id
+        WHERE fr.member_id = m.id AND topic_forum.path <@ marked.path
+      ) fr ON true
+      WHERE t.id = ANY(${`{${input.topicIds.join(",")}}`}::bigint[])
+    ),
+    ranked AS (
+      SELECT
+        p.topic_id, p.id, p.position, marked.topic_slug,
+        row_number() OVER (PARTITION BY p.topic_id ORDER BY p.position) AS rank
+      FROM core.posts p
+      JOIN marked ON marked.topic_id = p.topic_id
+      WHERE p.visibility = 'visible'
+        AND (
+          marked.marker = 'epoch'::timestamptz
+          OR date_trunc('milliseconds', p.created_at) > marked.marker
+          OR (
+            date_trunc('milliseconds', p.created_at) = marked.marker
+            AND p.created_at > marked.marker
+            AND marked.last_read_post_id IS NOT NULL
+            AND p.id > marked.last_read_post_id
+          )
+        )
+    )
+    SELECT
+      ranked.topic_id::text AS topic_id,
+      ranked.topic_slug,
+      ranked.id::text AS post_id,
+      ranked.position,
+      (
+        SELECT count(*)::int
+        FROM core.posts p2
+        WHERE p2.topic_id = ranked.topic_id
+          AND p2.visibility = 'visible'
+          AND p2.position < ranked.position
+      ) AS before
+    FROM ranked
+    WHERE ranked.rank = 1
+    ORDER BY ranked.topic_id
+  `) as Array<{
+    topic_id: string;
+    topic_slug: string;
+    post_id: string;
+    position: number;
+    before: number;
+  }>;
+
+  return rows.map((row) => ({
+    topicId: row.topic_id,
+    topicSlug: row.topic_slug,
+    postId: row.post_id,
+    page: Math.floor(row.before / input.perPage) + 1,
+  }));
+}
+
+/**
+ * Forums (including ancestors) whose visible topics contain a post newer than the member's
+ * effective watermark. Callers pass only forums the viewer may see.
+ */
+export async function unreadForumIds(
+  sql: SQL,
+  input: { readonly memberId: string; readonly forumIds: readonly string[] },
+): Promise<readonly string[]> {
+  if (input.forumIds.length === 0) {
+    return [];
+  }
+
+  const rows = (await sql`
+    WITH unread AS (
+      SELECT DISTINCT t.forum_id
+      FROM core.topics t
+      JOIN core.members m ON m.id = ${input.memberId}
+      JOIN core.forums topic_forum ON topic_forum.id = t.forum_id
+      LEFT JOIN core.topic_reads tr
+        ON tr.member_id = m.id AND tr.topic_id = t.id
+      LEFT JOIN LATERAL (
+        SELECT max(fr.marked_at) AS marked_at
+        FROM core.forum_reads fr
+        JOIN core.forums marked ON marked.id = fr.forum_id
+        WHERE fr.member_id = m.id AND topic_forum.path <@ marked.path
+      ) fr ON true
+      WHERE t.forum_id = ANY(${`{${input.forumIds.join(",")}}`}::bigint[])
+        AND t.last_post_at IS NOT NULL
+        AND (
+          date_trunc('milliseconds', t.last_post_at) > GREATEST(
+            COALESCE(tr.last_read_at, 'epoch'::timestamptz),
+            COALESCE(fr.marked_at, 'epoch'::timestamptz),
+            COALESCE(m.board_marked_at, 'epoch'::timestamptz)
+          )
+          OR (
+            date_trunc('milliseconds', t.last_post_at) = GREATEST(
+              COALESCE(tr.last_read_at, 'epoch'::timestamptz),
+              COALESCE(fr.marked_at, 'epoch'::timestamptz),
+              COALESCE(m.board_marked_at, 'epoch'::timestamptz)
+            )
+            AND t.last_post_at > GREATEST(
+              COALESCE(tr.last_read_at, 'epoch'::timestamptz),
+              COALESCE(fr.marked_at, 'epoch'::timestamptz),
+              COALESCE(m.board_marked_at, 'epoch'::timestamptz)
+            )
+            AND tr.last_read_post_id IS NOT NULL
+            AND t.last_post_id > tr.last_read_post_id
+          )
+        )
+    )
+    SELECT DISTINCT forum.id::text AS id
+    FROM core.forums forum
+    WHERE forum.id = ANY(${`{${input.forumIds.join(",")}}`}::bigint[])
+      AND EXISTS (
+        SELECT 1
+        FROM unread
+        JOIN core.forums topic_forum ON topic_forum.id = unread.forum_id
+        WHERE topic_forum.path <@ forum.path
+          AND unread.forum_id = ANY(${`{${input.forumIds.join(",")}}`}::bigint[])
+      )
+    ORDER BY forum.id::text
   `) as Array<{ id: string }>;
 
   return rows.map((row) => row.id);
