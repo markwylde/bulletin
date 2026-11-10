@@ -51,7 +51,8 @@ export const demoContract = defineContract<DemoViewModel>({
   route: "/_demo/[id]",
   templates: { page: "demo", regions: ["header", "breadcrumbs", "empty", "footer"] },
   deps: [],
-  tags: (model) => [`forum:${model.forumId}`],
+  // The header/footer carry the board name, so a board settings save must invalidate it too.
+  tags: (model) => [`forum:${model.forumId}`, GLOBAL_CACHE_TAGS.board],
   // Guests share the fixture forum page; members and unlock grants stay private (ADR 0006).
   cdnCacheable: true,
   requiredIslands: [...DEMO_SHELL_ISLANDS, "SpikeCounter"],

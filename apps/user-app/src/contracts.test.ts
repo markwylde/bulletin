@@ -40,7 +40,8 @@ describe("route contracts", () => {
     expect(contract?.deps).toEqual([]);
     expect(contract?.cdnCacheable).toBe(true);
     expect(contract?.requiredIslands).toEqual(["LanguageSwitcher", "SpikeCounter"]);
-    expect(contractTags(demoContract, { forumId: "2" })).toEqual(["forum:2"]);
+    // The demo header/footer carry the board name, so a board save invalidates it too.
+    expect(contractTags(demoContract, { forumId: "2" })).toEqual(["forum:2", "board"]);
     expect(ISLAND_NAMES).toContain("SpikeCounter");
     expect(ISLAND_NAMES).toContain("LanguageSwitcher");
   });

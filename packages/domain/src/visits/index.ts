@@ -12,8 +12,8 @@ export const VIEW_DEDUPE_MS = 30 * 60 * 1_000;
 export const PRESENCE_REFRESH_MS = 60 * 1_000;
 
 /**
- * How long the derived presence and view rows live (design retention table: 15 minutes). The
- * worker maintenance job deletes older rows; neither buffer is a durable record.
+ * How long a presence row lives (design retention table: 15 minutes). The worker maintenance
+ * job deletes older rows; presence is a derived record, never durable.
  */
 export const VISIT_BUFFER_RETENTION_MS = 15 * 60 * 1_000;
 
@@ -107,8 +107,8 @@ function bucketStart(now: Date, windowMs: number): Date {
 
 async function recordView(sql: SQL, topicId: string, viewerKey: string, now: Date): Promise<void> {
   await sql`
-    INSERT INTO core.topic_view_buffer (topic_id, viewer_key, bucket)
-    VALUES (${topicId}, ${viewerKey}, ${bucketStart(now, VIEW_DEDUPE_MS)})
+    INSERT INTO core.topic_view_buffer (topic_id, viewer_key, bucket, recorded_at)
+    VALUES (${topicId}, ${viewerKey}, ${bucketStart(now, VIEW_DEDUPE_MS)}, ${now})
     ON CONFLICT (topic_id, viewer_key, bucket) DO NOTHING
   `;
 }
@@ -212,24 +212,29 @@ export interface VisitExpiryResult {
 }
 
 /**
- * Expires derived visit buffers (ADR 0012): presence and view rows older than the retention
- * window are deleted. Runs from the workers maintenance schedule; fresh visits are untouched.
+ * Expires derived visit buffers (ADR 0012). Presence rows go after the retention window. A
+ * view row is kept until its 30-minute dedupe bucket has closed: deleting it earlier (its
+ * `bucket` is the rounded start) would let a second visit late in the same bucket insert a
+ * duplicate view. `recorded_at` keeps the true visit time on the row. Runs from the workers
+ * maintenance schedule; fresh visits are untouched.
  */
 export async function expireVisitBuffers(
   sql: SQL,
   options: VisitExpiryOptions = {},
 ): Promise<VisitExpiryResult> {
-  const cutoff = new Date(
-    (options.now ?? new Date()).getTime() - (options.retentionMs ?? VISIT_BUFFER_RETENTION_MS),
+  const now = options.now ?? new Date();
+  const presenceCutoff = new Date(
+    now.getTime() - (options.retentionMs ?? VISIT_BUFFER_RETENTION_MS),
   );
+  const bucketCutoff = new Date(now.getTime() - VIEW_DEDUPE_MS);
   const presence = (await sql`
     DELETE FROM core.presence
-    WHERE last_seen < ${cutoff}
+    WHERE last_seen < ${presenceCutoff}
     RETURNING 1
   `) as unknown[];
   const views = (await sql`
     DELETE FROM core.topic_view_buffer
-    WHERE bucket < ${cutoff}
+    WHERE bucket <= ${bucketCutoff}
     RETURNING 1
   `) as unknown[];
 

@@ -30,7 +30,8 @@ stackDescribe("HTTP cache contract", () => {
     expect(response.headers.get("cache-control")).toBe(
       "public, s-maxage=15, stale-while-revalidate=15",
     );
-    expect(response.headers.get("surrogate-key")).toBe("forum:2");
+    // The demo header/footer carry the board name, so the page also depends on `board`.
+    expect(response.headers.get("surrogate-key")).toBe("forum:2 board");
     expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
     expect(["HIT", "MISS", "BYPASS"]).toContain(response.headers.get("x-cache"));
     expect(response.headers.get("x-cache-key")).toBeString();
@@ -104,7 +105,7 @@ stackDescribe("HTTP cache contract", () => {
 
     expect(first.headers.get("x-cache")).toBe("MISS");
     expect(second.headers.get("x-cache")).toBe("HIT");
-    expect(second.headers.get("surrogate-key")).toBe("forum:2");
+    expect(second.headers.get("surrogate-key")).toBe("forum:2 board");
 
     const spanish = await fetch(`${CDN}/_demo/2`, {
       headers: { cookie: "bp=es.1.system" },

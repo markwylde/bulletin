@@ -7,7 +7,7 @@ import {
 } from "@bulletin/db/jobs";
 import { baseSeedModule, runSeeds, SeedRegistry } from "@bulletin/db/seed";
 import { forwardSystemAudits, queueSystemAudit } from "@bulletin/domain/audit";
-import { recordVisit, VISIT_BUFFER_RETENTION_MS } from "@bulletin/domain/visits";
+import { recordVisit } from "@bulletin/domain/visits";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import type { PgBoss } from "pg-boss";
 
@@ -32,7 +32,8 @@ integrationDescribe("maintenance sweep (ADR 0012)", () => {
   test("forwards queued audit events and expires old visit buffers", async () => {
     await withDb(async (database) => {
       const now = new Date();
-      const expired = new Date(now.getTime() - VISIT_BUFFER_RETENTION_MS - 60_000);
+      // Older than the half-hour view bucket as well as the presence retention.
+      const expired = new Date(now.getTime() - 60 * 60_000);
 
       await recordVisit(database.sql, { viewerKey: "guest:old", ctx: "topic:401", now: expired });
       await recordVisit(database.sql, { viewerKey: "guest:fresh", ctx: "topic:402", now });

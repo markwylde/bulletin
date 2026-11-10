@@ -19,6 +19,7 @@ import {
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { loadBoardSettings, saveBoardSettings } from "../../apps/staff-api/src/board-settings.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { demoContract } from "../../apps/user-app/src/contracts.ts";
 import { type DemoRouteInput, renderDemoRoute } from "../../apps/user-app/src/demo/route.ts";
@@ -312,16 +313,19 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
           flags,
           tagVersions: versions,
         };
-        const before = await readTagVersions(database.sql, ["forum:2"]);
+        const before = await readTagVersions(database.sql, ["forum:2", "board"]);
         const result = await renderDemoRoute({ ...input, cache: racingCache });
-        const after = await readTagVersions(database.sql, ["forum:2"]);
+        const after = await readTagVersions(database.sql, ["forum:2", "board"]);
 
         if (result.variant === null) {
           throw new Error("expected a cacheable variant");
         }
 
         // A tag that was never bumped has no row; the cache reads it as version 0.
-        const captured = new Map([["forum:2", before.get("forum:2") ?? "0"]]);
+        const captured = new Map([
+          ["forum:2", before.get("forum:2") ?? "0"],
+          ["board", before.get("board") ?? "0"],
+        ]);
 
         expect(after.get("forum:2")).not.toBe(captured.get("forum:2"));
         // The ETag describes the HTML that was rendered (the pre-mutation version), so a
@@ -335,6 +339,71 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
 
         expect(next.cache).toBe("miss");
         expect(next.etag).not.toBe(result.etag);
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
+  test("a board settings save invalidates a warmed demo page and its ETag", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const member = await memberSession(database, "member-1");
+        const theme = await loadActiveTheme(database.sql);
+        const flags = await loadViewerFlags(database.sql, member);
+        const base = {
+          sql: database.sql,
+          boardName: "Bulletin",
+          boardDescription: "A friendly place",
+          locale: "en" as const,
+          translate,
+          session: member,
+          forumId: "2",
+          showDeleted: false,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          theme,
+          flags,
+          cache,
+          tagVersions: versions,
+        };
+        const first = await renderDemoRoute(base);
+        const warm = await renderDemoRoute(base);
+
+        expect(first.cache).toBe("miss");
+        expect(warm.cache).toBe("hit");
+        expect(first.html).toContain("data-board-name>Bulletin<");
+
+        const saved = await saveBoardSettings(database.sql, member.memberId, {
+          boardName: "Renamed board",
+          boardDescription: "A renamed place",
+          defaultLocale: "en",
+          offline: false,
+          offlineMessage: "",
+        });
+
+        expect(saved.ok).toBe(true);
+
+        // The save bumps `board` in its transaction; the demo header/footer depend on it too.
+        const settings = await loadBoardSettings(database.sql);
+        await versions.refresh();
+
+        const after = await renderDemoRoute({
+          ...base,
+          boardName: settings.boardName,
+          boardDescription: settings.boardDescription,
+        });
+
+        expect(after.cache).toBe("miss");
+        expect(after.html).toContain("data-board-name>Renamed board<");
+        expect(after.etag).not.toBe(first.etag);
       } finally {
         await versions.close();
       }

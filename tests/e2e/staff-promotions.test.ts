@@ -72,6 +72,13 @@ integrationDescribe("staff auto-promotion", () => {
         return true;
       })()`);
       expect(clicked).toBe(true);
+      // Editing is a React state update: the delete button stays disabled until the selected
+      // draft renders, and clicking a disabled control would silently do nothing.
+      await waitForExpression(
+        view,
+        "document.querySelector('[data-promotion-delete]')?.disabled === false",
+        20_000,
+      );
       await clickSelector(view, "[data-promotion-delete]");
       await waitForExpression(
         view,

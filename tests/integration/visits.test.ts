@@ -245,6 +245,8 @@ integrationDescribe("read-path visits", () => {
   });
 
   test("expired presence and view rows are removed while fresh visits stay", async () => {
+    // View rows also need their 30-minute dedupe bucket to have closed, so this uses a visit
+    // more than half an hour old.
     await withDb(async (database) => {
       const now = new Date("2026-11-10T12:00:00Z");
       const expired = new Date(now.getTime() - VISIT_BUFFER_RETENTION_MS - 60_000);
@@ -266,6 +268,50 @@ integrationDescribe("read-path visits", () => {
 
       expect(presence.map((row) => row.viewer_key)).toEqual(["guest:fresh"]);
       expect(views.map((row) => row.topic_id)).toEqual(["302"]);
+    });
+  });
+
+  test("maintenance between repeat visits late in a bucket preserves view dedupe", async () => {
+    await withDb(async (database) => {
+      const late = new Date("2026-11-10T12:20:00Z");
+      const viewerKey = "guest:late-bucket";
+
+      await recordVisit(database.sql, { viewerKey, ctx: "topic:303", now: late });
+
+      // Five minutes later the bucket (12:00) still holds a fresh visit; the old bucket-time
+      // cutoff would already have deleted it and allowed a duplicate row below.
+      expect(
+        await expireVisitBuffers(database.sql, { now: new Date("2026-11-10T12:25:00Z") }),
+      ).toEqual({ presence: 0, views: 0 });
+
+      const rows = (await database.sql`
+        SELECT bucket, recorded_at FROM core.topic_view_buffer
+      `) as Array<{ bucket: Date; recorded_at: Date }>;
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.recorded_at.toISOString()).toBe(late.toISOString());
+
+      // A repeat visit in the same half-hour is still deduped to one row.
+      await recordVisit(database.sql, {
+        viewerKey,
+        ctx: "topic:303",
+        now: new Date("2026-11-10T12:26:00Z"),
+      });
+
+      const [count] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.topic_view_buffer
+      `) as Array<{ count: number }>;
+
+      expect(count?.count).toBe(1);
+
+      // Once the dedupe bucket ends the view row expires.
+      expect(
+        await expireVisitBuffers(database.sql, { now: new Date("2026-11-10T12:31:00Z") }),
+      ).toEqual({ presence: 0, views: 1 });
+      // Presence follows its own 15-minute retention from the last visit.
+      expect(
+        await expireVisitBuffers(database.sql, { now: new Date("2026-11-10T12:45:00Z") }),
+      ).toEqual({ presence: 1, views: 0 });
     });
   });
 
