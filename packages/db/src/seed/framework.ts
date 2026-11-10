@@ -1,4 +1,5 @@
 import type { SeedSize } from "@bulletin/config";
+import type { StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { createSeededRng } from "./rng.ts";
 
@@ -7,6 +8,8 @@ export interface SeedContext {
   readonly rng: () => number;
   readonly seed: number;
   readonly size: SeedSize;
+  /** Present in local/dev apps; absent in pure database tests. */
+  readonly storage?: StorageClient;
 }
 
 export interface SeedModule {
@@ -88,6 +91,7 @@ export interface RunSeedOptions {
   readonly registry: SeedRegistry;
   readonly seed?: number;
   readonly size?: SeedSize;
+  readonly storage?: StorageClient;
 }
 
 /**
@@ -114,7 +118,13 @@ export async function runSeeds(options: RunSeedOptions): Promise<SeedResult> {
     }
 
     for (const module of options.registry.ordered) {
-      await module.run({ sql: tx, rng, seed, size });
+      await module.run({
+        sql: tx,
+        rng,
+        seed,
+        size,
+        ...(options.storage === undefined ? {} : { storage: options.storage }),
+      });
     }
 
     for (const module of options.registry.ordered) {

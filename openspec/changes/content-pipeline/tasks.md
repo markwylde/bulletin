@@ -33,8 +33,8 @@
 
 ## 6. Strings and seed
 
-- [ ] 6.1 Add en/es/fr strings for the editor UI, accessible names and errors; verify completeness
-- [ ] 6.2 Seed a default emoticon set and render the seeded rules and announcements through the pipeline; verify after `docker compose up --watch`
+- [x] 6.1 Add en/es/fr strings for the editor UI, accessible names and errors; verify completeness
+- [x] 6.2 Seed a default emoticon set and render the seeded rules and announcements through the pipeline; verify after `docker compose up --watch`
 
 ## 7. Feature flag
 

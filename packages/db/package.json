@@ -23,6 +23,7 @@
     "@bulletin/i18n": "workspace:*",
     "@bulletin/templates": "workspace:*",
     "pg-boss": "12.38.1",
-    "@bulletin/content": "workspace:*"
+    "@bulletin/content": "workspace:*",
+    "@bulletin/storage": "workspace:*"
   }
 }

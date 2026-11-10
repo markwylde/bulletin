@@ -20,7 +20,7 @@ import {
 } from "./announcements.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import { listEmbedProvidersForStaff, mutateEmbedProvider } from "./embeds.ts";
-import { listEmoticonsForStaff, mutateEmoticon } from "./emoticons.ts";
+import { emoticonImageForStaff, listEmoticonsForStaff, mutateEmoticon } from "./emoticons.ts";
 import { staffFeatureFlags, staffFlagEnabled } from "./features.ts";
 import { listFlagLog, listFlags, saveFlagRules } from "./flags.ts";
 import {
@@ -332,7 +332,16 @@ async function embedsMutate(context: StaffRouteContext): Promise<Response> {
 }
 
 async function emoticonsList(context: StaffRouteContext): Promise<Response> {
-  return json(await listEmoticonsForStaff(context.sql, context.userOrigin ?? ""));
+  return json(await listEmoticonsForStaff(context.sql));
+}
+
+async function emoticonsImage(context: StaffRouteContext): Promise<Response> {
+  if (context.storage === undefined) {
+    return json({ code: "storage_unavailable" }, 503);
+  }
+
+  const id = context.url.searchParams.get("id") ?? "";
+  return emoticonImageForStaff(context.sql, context.storage, id);
 }
 
 async function emoticonsMutate(context: StaffRouteContext): Promise<Response> {
@@ -737,6 +746,13 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/emoticons",
     permission: "acp.emoticons",
     handler: emoticonsList,
+  },
+  {
+    id: "emoticons.image",
+    method: "GET",
+    path: "/api/staff/emoticons/image",
+    permission: "acp.emoticons",
+    handler: emoticonsImage,
   },
   {
     id: "emoticons.mutate",

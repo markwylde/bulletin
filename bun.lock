@@ -98,6 +98,7 @@
         "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
         "@bulletin/flags": "workspace:*",
+        "@bulletin/storage": "workspace:*",
       },
     },
     "mocks/cdn": {
@@ -188,6 +189,7 @@
         "@bulletin/domain": "workspace:*",
         "@bulletin/flags": "workspace:*",
         "@bulletin/i18n": "workspace:*",
+        "@bulletin/storage": "workspace:*",
         "@bulletin/templates": "workspace:*",
         "pg-boss": "12.38.1",
       },

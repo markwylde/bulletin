@@ -1,5 +1,5 @@
 import { createCdnPurger } from "@bulletin/cache";
-import { createLogger, loadConfig, parseReplicas } from "@bulletin/config";
+import { createLogger, loadConfig, loadStorageEnvironment, parseReplicas } from "@bulletin/config";
 import {
   createDatabaseCheck,
   createListenerCheck,
@@ -23,6 +23,7 @@ import {
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
+import { createStorage } from "@bulletin/storage";
 import { createCoreEventHandler } from "./core-events.ts";
 
 const config = loadConfig();
@@ -31,8 +32,15 @@ const port = config.port;
 const databaseUrl = config.databaseUrl;
 const migrationUrl = Bun.env.MIGRATION_DATABASE_URL ?? databaseUrl;
 
+const storage = createStorage(loadStorageEnvironment(Bun.env, config.nodeEnv));
+
 await runMigrations({ databaseUrl: migrationUrl });
-await runBaseSeed({ databaseUrl: migrationUrl, seed: config.seed, size: config.seedSize });
+await runBaseSeed({
+  databaseUrl: migrationUrl,
+  seed: config.seed,
+  size: config.seedSize,
+  storage,
+});
 
 const sql = createServiceSql("workers", databaseUrl);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);

@@ -1,3 +1,4 @@
+import { listEditorEmoticons } from "@bulletin/domain/content";
 import {
   type CapabilityDep,
   CapabilityView,
@@ -128,8 +129,17 @@ function errorPage(
  * decision goes through `can()` (ADR 0005); the capability view exists only to hash exactly the
  * declared deps into the variant key.
  */
-function editorPage(translate: DemoPageInput["translate"]): DemoForumPage {
+async function editorPage(input: DemoPageInput): Promise<DemoForumPage> {
+  const translate = input.translate;
   const title = translate("editor.demo.title");
+  const sets = await listEditorEmoticons(input.sql);
+  const emoticons = sets.flatMap((set) =>
+    set.emoticons.map((emoticon) => ({
+      code: emoticon.code,
+      src: emoticon.src,
+      alt: emoticon.alt,
+    })),
+  );
 
   return {
     template: "demo",
@@ -151,13 +161,7 @@ function editorPage(translate: DemoPageInput["translate"]): DemoForumPage {
       editor: {
         contextKey: "demo:editor",
         initialMarkdown: "# Demo post\n\n:::disabled-plugin\nraw [b]hi[/b]\n:::",
-        emoticons: [
-          {
-            code: "smile",
-            src: "/files/emoticons/smile.svg",
-            alt: translate("editor.emoticon.smile"),
-          },
-        ],
+        emoticons,
         labels: {
           editor: translate("editor.label"),
           toolbar: translate("editor.toolbar"),
@@ -189,7 +193,7 @@ function editorPage(translate: DemoPageInput["translate"]): DemoForumPage {
 
 export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> {
   if (input.forumId === "editor") {
-    return editorPage(input.translate);
+    return editorPage(input);
   }
 
   const node = FIXTURE_FORUM_TREE.get(input.forumId);

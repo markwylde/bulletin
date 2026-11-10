@@ -1,5 +1,6 @@
 export * from "./admin-log.ts";
 export * from "./base.ts";
+export * from "./emoticons.ts";
 export * from "./flags.ts";
 export * from "./forum-extras.ts";
 export * from "./forums.ts";

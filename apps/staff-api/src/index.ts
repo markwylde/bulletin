@@ -20,9 +20,15 @@ const logger = createLogger({ service: "staff-api", level: config.logLevel });
 const port = config.port;
 const databaseUrl = config.databaseUrl;
 const migrationUrl = Bun.env.MIGRATION_DATABASE_URL ?? databaseUrl;
+const storage = createStorage(loadStorageEnvironment(Bun.env, config.nodeEnv));
 
 await runMigrations({ databaseUrl: migrationUrl });
-await runBaseSeed({ databaseUrl: migrationUrl, seed: config.seed, size: config.seedSize });
+await runBaseSeed({
+  databaseUrl: migrationUrl,
+  seed: config.seed,
+  size: config.seedSize,
+  storage,
+});
 
 const sql = createServiceSql("staff-api", databaseUrl);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
@@ -49,7 +55,6 @@ const checks = [
 ];
 const purgeUrl = Bun.env.BULLETIN_CDN_PURGE_URL;
 const purge = purgeUrl === undefined ? undefined : createCdnPurger({ url: purgeUrl });
-const storage = createStorage(loadStorageEnvironment(Bun.env, config.nodeEnv));
 const api = createStaffApi({
   auth,
   sql,

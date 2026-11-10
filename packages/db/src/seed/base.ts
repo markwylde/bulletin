@@ -1,6 +1,8 @@
 import type { SeedSize } from "@bulletin/config";
+import type { StorageClient } from "@bulletin/storage";
 import { SQL } from "bun";
 import { adminLogSeedModule } from "./admin-log.ts";
+import { emoticonSeedModule } from "./emoticons.ts";
 import { flagsSeedModule } from "./flags.ts";
 import { forumExtrasSeedModule } from "./forum-extras.ts";
 import { forumSeedModule } from "./forums.ts";
@@ -32,6 +34,7 @@ function seedSize(): SeedSize {
 }
 
 export interface BaseSeedOptions {
+  readonly storage?: StorageClient;
   readonly databaseUrl: string;
   readonly seed?: number;
   readonly size?: SeedSize;
@@ -47,6 +50,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
       registry: new SeedRegistry([
         baseSeedModule,
         forumSeedModule,
+        emoticonSeedModule,
         groupsSeedModule,
         forumExtrasSeedModule,
         membersSeedModule,
@@ -57,6 +61,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
       ]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",
+      ...(options.storage === undefined ? {} : { storage: options.storage }),
     });
   } finally {
     await sql.close();

@@ -5,6 +5,7 @@ import {
   type EmoticonContentType,
   type EmoticonMutation,
   listEmoticonSets,
+  readEmoticonImage,
   saveEmoticon,
   saveEmoticonSet,
 } from "@bulletin/domain/content";
@@ -40,7 +41,7 @@ function imageBytes(value: unknown): Uint8Array | null {
   }
 }
 
-export async function listEmoticonsForStaff(sql: SQL, userOrigin: string) {
+export async function listEmoticonsForStaff(sql: SQL) {
   const sets = await listEmoticonSets(sql);
 
   return {
@@ -48,10 +49,34 @@ export async function listEmoticonsForStaff(sql: SQL, userOrigin: string) {
       ...set,
       emoticons: set.emoticons.map((emoticon) => ({
         ...emoticon,
-        src: `${userOrigin}/api/emoticons/${emoticon.id}/image`,
+        src: `/api/staff/emoticons/image?id=${emoticon.id}`,
       })),
     })),
   };
+}
+
+export async function emoticonImageForStaff(
+  sql: SQL,
+  storage: StorageClient,
+  id: string,
+): Promise<Response> {
+  const image = await readEmoticonImage(sql, id);
+
+  if (image === null) {
+    return Response.json({ code: "not_found" }, { status: 404 });
+  }
+
+  try {
+    return new Response(await storage.get(image.storageKey), {
+      headers: {
+        "content-type": image.contentType,
+        "cache-control": "private, max-age=300",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  } catch {
+    return Response.json({ code: "not_found" }, { status: 404 });
+  }
 }
 
 function log(
