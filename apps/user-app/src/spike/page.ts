@@ -7,6 +7,7 @@ import {
   escapeHtml,
   loadHookFragments,
   loadTheme,
+  missingRenderedIslands,
   renderThemeTemplate,
   SPIKE_FOOTER_TEMPLATE,
   SPIKE_PAGE_TEMPLATE,
@@ -171,6 +172,12 @@ export async function renderSpikePage(
       runtime,
     });
     reportViolations(page.violations);
+
+    // The required-islands check per route (ADR 0008, task 3.2). Activation refuses such a
+    // theme; at render time we report it and keep serving the page.
+    for (const island of missingRenderedIslands(page.html, input.contract.requiredIslands)) {
+      report(`required island "${island}" is missing from route "${input.contract.route}"`);
+    }
 
     return page.html;
   });

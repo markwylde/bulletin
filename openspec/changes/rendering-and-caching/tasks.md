@@ -15,7 +15,7 @@
 ## 3. Islands
 
 - [x] 3.1 Implement the island registry, props validation, SSR emission and the client hydration runtime, with unit tests and an E2E hydration test at all viewports
-- [ ] 3.2 Implement the required-islands check per route and the hook registry check in CI, with tests for both failure scenarios
+- [x] 3.2 Implement the required-islands check per route and the hook registry check in CI, with tests for both failure scenarios
 
 ## 4. Default theme skeleton
 

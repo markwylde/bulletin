@@ -179,6 +179,30 @@ integrationDescribe("theme templates", () => {
     });
   });
 
+  test("reports a required island the theme omits, and still renders the page", async () => {
+    await withDb(async (database) => {
+      await database.sql`
+        UPDATE core.theme_templates
+        SET body = replace(body, '{% island "SpikeCounter" island %}', ''),
+            version = version + 1
+        WHERE name = ${SPIKE_PAGE_TEMPLATE}
+          AND theme_id = (SELECT id FROM core.themes WHERE name = 'default')
+      `;
+
+      const outcome = await renderSpikePage(input(database), createFragmentCache());
+
+      if (outcome.status !== "ok") {
+        throw new Error("expected the page to render without its island");
+      }
+
+      expect(outcome.html).not.toContain("<bl-island");
+      expect(outcome.errors).toContain(
+        'required island "SpikeCounter" is missing from route "/spike/rendering"',
+      );
+      expect(outcome.html).toContain('data-spike-layout="default"');
+    });
+  });
+
   test("caches per theme and plugin generation with no content leaking across variants", async () => {
     await withDb(async (database) => {
       const cache = createFragmentCache();
