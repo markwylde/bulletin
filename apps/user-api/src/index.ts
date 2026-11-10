@@ -10,6 +10,7 @@ import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
+import { announceDismissResponse } from "./announcements.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
@@ -56,6 +57,20 @@ await startService({
         }
 
         return forumUnlockResponse(sql, session, unlockMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const dismissMatch = /^\/api\/announcements\/(\d+)\/dismiss$/.exec(pathname);
+
+    if (request.method === "POST" && dismissMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return announceDismissResponse(sql, session.memberId, dismissMatch[1] ?? "");
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

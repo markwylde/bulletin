@@ -11,8 +11,22 @@ import {
 } from "@bulletin/domain/permissions";
 import type { SQL } from "bun";
 import { listAdminLog, writeAdminLog } from "./admin-log.ts";
+import {
+  type AnnouncementMutation,
+  deleteAnnouncement,
+  listAnnouncementsAdmin,
+  saveAnnouncement,
+} from "./announcements.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import { listFlagLog, listFlags, saveFlagRules } from "./flags.ts";
+import {
+  createForum,
+  deleteForum,
+  type ForumMutation,
+  listForumsAdmin,
+  moveForum,
+  saveForumSettings,
+} from "./forums.ts";
 import {
   createGroup,
   deleteGroup,
@@ -41,6 +55,7 @@ import {
   saveModerator,
   searchModeratorMembers,
 } from "./moderators.ts";
+import { deletePrefix, listPrefixesAdmin, type PrefixMutation, savePrefix } from "./prefixes.ts";
 import {
   deletePromotionRule,
   listPromotions,
@@ -313,7 +328,14 @@ async function flagSaveRules(context: StaffRouteContext): Promise<Response> {
 }
 
 function mutationResponse(
-  result: GroupMutation | MaskMutation | ModeratorMutation | PromotionMutation,
+  result:
+    | GroupMutation
+    | MaskMutation
+    | ModeratorMutation
+    | PromotionMutation
+    | ForumMutation
+    | PrefixMutation
+    | AnnouncementMutation,
 ): Response {
   if (result.ok) {
     return json({ ok: true });
@@ -325,7 +347,10 @@ function mutationResponse(
       : result.code === "duplicate_key" ||
           result.code === "system_group" ||
           result.code === "system_mask" ||
-          result.code === "replacement_required"
+          result.code === "replacement_required" ||
+          result.code === "prefix_required_needs_prefix" ||
+          result.code === "topic_choice_required" ||
+          result.code === "invalid_topic_choice"
         ? 409
         : 400;
 
@@ -451,6 +476,67 @@ async function masksMutate(context: StaffRouteContext): Promise<Response> {
 
       return mutationResponse(result);
     }
+    default:
+      return json({ code: "invalid_request" }, 400);
+  }
+}
+
+async function forumsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listForumsAdmin(context.sql));
+}
+
+async function forumsMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const action = actionOf(body);
+  const actor = context.session.memberId;
+
+  switch (action) {
+    case "create":
+      return mutationResponse(await createForum(context.sql, actor, body));
+    case "move":
+      return mutationResponse(await moveForum(context.sql, actor, body));
+    case "delete":
+      return mutationResponse(await deleteForum(context.sql, actor, body));
+    case "settings":
+      return mutationResponse(await saveForumSettings(context.sql, actor, body));
+    default:
+      return json({ code: "invalid_request" }, 400);
+  }
+}
+
+async function prefixesList(context: StaffRouteContext): Promise<Response> {
+  return json(await listPrefixesAdmin(context.sql));
+}
+
+async function prefixesMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const action = actionOf(body);
+
+  switch (action) {
+    case "save":
+      return mutationResponse(await savePrefix(context.sql, context.session.memberId, body));
+    case "delete":
+      return mutationResponse(await deletePrefix(context.sql, context.session.memberId, body));
+    default:
+      return json({ code: "invalid_request" }, 400);
+  }
+}
+
+async function announcementsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listAnnouncementsAdmin(context.sql));
+}
+
+async function announcementsMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const action = actionOf(body);
+
+  switch (action) {
+    case "save":
+      return mutationResponse(await saveAnnouncement(context.sql, context.session.memberId, body));
+    case "delete":
+      return mutationResponse(
+        await deleteAnnouncement(context.sql, context.session.memberId, body),
+      );
     default:
       return json({ code: "invalid_request" }, 400);
   }
@@ -664,6 +750,48 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     permission: "acp.permissions",
     requiresStepUp: true,
     handler: masksMutate,
+  },
+  {
+    id: "forums.list",
+    method: "GET",
+    path: "/api/staff/forums",
+    permission: "acp.forums",
+    handler: forumsList,
+  },
+  {
+    id: "forums.mutate",
+    method: "POST",
+    path: "/api/staff/forums",
+    permission: "acp.forums",
+    handler: forumsMutate,
+  },
+  {
+    id: "prefixes.list",
+    method: "GET",
+    path: "/api/staff/prefixes",
+    permission: "acp.forums",
+    handler: prefixesList,
+  },
+  {
+    id: "prefixes.mutate",
+    method: "POST",
+    path: "/api/staff/prefixes",
+    permission: "acp.forums",
+    handler: prefixesMutate,
+  },
+  {
+    id: "announcements.list",
+    method: "GET",
+    path: "/api/staff/announcements",
+    permission: "acp.announcements",
+    handler: announcementsList,
+  },
+  {
+    id: "announcements.mutate",
+    method: "POST",
+    path: "/api/staff/announcements",
+    permission: "acp.announcements",
+    handler: announcementsMutate,
   },
   {
     id: "moderators.list",

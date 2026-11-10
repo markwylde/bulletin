@@ -20,6 +20,7 @@
   "account.sessions.title": "Active sessions",
   "account.sessions.unknownBrowser": "Unknown browser",
   "account.title": "Your account",
+  "announcement.dismiss": "Dismiss",
   "auth.continue": "Continue",
   "auth.login": "Log in",
   "auth.loginError": "Sign-in failed. Please try again.",

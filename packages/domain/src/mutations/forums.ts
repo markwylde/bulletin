@@ -16,6 +16,8 @@ export interface AnnouncementChange {
   readonly scope: "global" | "forums";
   /** Every forum whose announcement block can show this announcement. */
   readonly forumIds: readonly string[];
+  /** True when a scope change removes the announcement from the global block too. */
+  readonly bumpGlobal?: boolean;
 }
 
 function uniqueTags(tags: readonly string[]): readonly string[] {
@@ -45,7 +47,10 @@ export const forumSettingsMutation: Mutation<ForumSettingsChange, void> = {
 export const announcementMutation: Mutation<AnnouncementChange, void> = {
   name: "announcement.update",
   tags: (input) =>
-    input.scope === "global"
-      ? [GLOBAL_CACHE_TAGS.announcements]
-      : uniqueTags(input.forumIds.map(forumAnnouncementsTag)),
+    uniqueTags([
+      ...(input.scope === "global" || input.bumpGlobal === true
+        ? [GLOBAL_CACHE_TAGS.announcements]
+        : []),
+      ...input.forumIds.map(forumAnnouncementsTag),
+    ]),
 };

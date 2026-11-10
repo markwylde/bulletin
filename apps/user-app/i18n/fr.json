@@ -20,6 +20,7 @@
   "account.sessions.title": "Sessions actives",
   "account.sessions.unknownBrowser": "Navigateur inconnu",
   "account.title": "Votre compte",
+  "announcement.dismiss": "Masquer",
   "auth.continue": "Continuer",
   "auth.login": "Se connecter",
   "auth.loginError": "La connexion a échoué. Réessayez.",

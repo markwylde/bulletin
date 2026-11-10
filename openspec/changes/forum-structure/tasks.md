@@ -15,10 +15,10 @@
 
 ## 3. Staff screens
 
-- [ ] 3.1 Forum tree manager (create, drag reorder/reparent, delete with move-or-delete choice), with tests for each scenario including permission denial; E2E at 360/1440
-- [ ] 3.2 Forum settings form (description, rules, password, prefixes, show moderators, language), with integration tests
-- [ ] 3.3 Prefix manager (labels per locale, colour, group restriction), with tests for the required-prefix rule
-- [ ] 3.4 Announcements manager (scope, groups, schedule, dismissible), with tests for scheduling, targeting and dismissal
+- [x] 3.1 Forum tree manager (create, drag reorder/reparent, delete with move-or-delete choice), with tests for each scenario including permission denial; E2E at 360/1440
+- [x] 3.2 Forum settings form (description, rules, password, prefixes, show moderators, language), with integration tests
+- [x] 3.3 Prefix manager (labels per locale, colour, group restriction), with tests for the required-prefix rule
+- [x] 3.4 Announcements manager (scope, groups, schedule, dismissible), with tests for scheduling, targeting and dismissal
 
 ## 4. Strings and seed
 

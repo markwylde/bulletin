@@ -250,8 +250,8 @@ integrationDescribe("forum mutations invalidate the index and affected pages", (
           input: { announcementId: "0", scope: "global", forumIds: [] },
           apply: async (tx) => {
             await tx`
-              INSERT INTO core.announcements (title, body, scope)
-              VALUES ('Board notice', 'Everyone sees this', 'global')
+              INSERT INTO core.announcements (title, body, scope, starts_at)
+              VALUES ('Board notice', 'Everyone sees this', 'global', now() - interval '1 minute')
             `;
           },
         });

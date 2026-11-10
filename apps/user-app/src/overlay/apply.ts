@@ -10,6 +10,8 @@ export interface OverlayPayload {
   readonly unread?: readonly string[];
   readonly counts?: Partial<Record<OverlayCount, number>>;
   readonly csrfToken?: string;
+  /** Announcement ids the member dismissed at their current content version. */
+  readonly dismissedAnnouncements?: readonly string[];
 }
 
 export interface UnreadSlot {
@@ -24,6 +26,7 @@ export interface OverlayTarget {
   unreadSlots(topicId: string): readonly UnreadSlot[];
   countSlots(count: OverlayCount): readonly CountSlot[];
   storeCsrfToken(token: string): void;
+  hideAnnouncement(announcementId: string): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -61,5 +64,11 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
 
   if (typeof payload.csrfToken === "string" && payload.csrfToken !== "") {
     target.storeCsrfToken(payload.csrfToken);
+  }
+
+  for (const announcementId of payload.dismissedAnnouncements ?? []) {
+    if (typeof announcementId === "string" && /^[1-9]\d{0,18}$/.test(announcementId)) {
+      target.hideAnnouncement(announcementId);
+    }
   }
 }

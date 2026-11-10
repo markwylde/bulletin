@@ -1416,3 +1416,82 @@ textarea.form-input {
     width: 100%;
   }
 }
+
+/* Forum manager, prefixes and announcements ------------------------------- */
+
+.forum-tree,
+.prefix-list,
+.announcement-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.forum-tree__row,
+.prefix-row,
+.announcement-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.forum-tree__row {
+  cursor: grab;
+}
+
+.forum-tree__handle {
+  color: var(--muted);
+  letter-spacing: -0.2em;
+}
+
+.forum-tree__title {
+  flex: 1 1 10rem;
+  font-weight: 600;
+}
+
+.forum-tag {
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.forum-tree__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.prefix-row__label {
+  flex: 1 1 8rem;
+  font-weight: 600;
+}
+
+.prefix-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+}
+
+.announcement-row {
+  justify-content: space-between;
+}
+
+.announcement-row > div {
+  flex: 1 1 14rem;
+}
+
+.forum-delete-choice {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px dashed var(--danger);
+  border-radius: 0.5rem;
+}

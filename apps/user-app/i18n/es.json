@@ -20,6 +20,7 @@
   "account.sessions.title": "Sesiones activas",
   "account.sessions.unknownBrowser": "Navegador desconocido",
   "account.title": "Tu cuenta",
+  "announcement.dismiss": "Descartar",
   "auth.continue": "Continuar",
   "auth.login": "Iniciar sesión",
   "auth.loginError": "No se pudo iniciar sesión. Inténtalo de nuevo.",

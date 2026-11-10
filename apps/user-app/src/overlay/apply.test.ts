@@ -6,15 +6,18 @@ function target(): {
   readonly unread: string[];
   readonly counts: string[];
   readonly tokens: string[];
+  readonly dismissed: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
   const tokens: string[] = [];
+  const dismissed: string[] = [];
 
   return {
     unread,
     counts,
     tokens,
+    dismissed,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -22,6 +25,7 @@ function target(): {
       ],
       countSlots: (name) => [{ setCount: (count) => counts.push(`${name}=${count}`) }],
       storeCsrfToken: (token) => tokens.push(token),
+      hideAnnouncement: (announcementId) => dismissed.push(announcementId),
     },
   };
 }
@@ -52,6 +56,16 @@ describe("overlay applier", () => {
     applyOverlay(fixture.target, { csrfToken: "" });
 
     expect(fixture.tokens).toEqual(["token-123"]);
+  });
+
+  test("hides the announcements the member dismissed and ignores unsafe ids", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, {
+      dismissedAnnouncements: ["7", "x", "9"],
+    });
+
+    expect(fixture.dismissed).toEqual(["7", "9"]);
   });
 
   test("ignores unknown payload fields and keeps applying the rest", () => {

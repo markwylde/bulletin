@@ -1,6 +1,9 @@
 import type { ComponentType } from "react";
+import { AnnouncementsPage } from "./announcements/AnnouncementsPage.tsx";
 import { DashboardPage } from "./dashboard/DashboardPage.tsx";
 import { FlagsPage } from "./flags/FlagsPage.tsx";
+import { ForumsPage } from "./forums/ForumsPage.tsx";
+import { PrefixesPage } from "./forums/PrefixesPage.tsx";
 import { GroupSettingsPage } from "./groups/GroupSettingsPage.tsx";
 import { GroupsPage } from "./groups/GroupsPage.tsx";
 import { AdminLogPage } from "./log/AdminLogPage.tsx";
@@ -25,6 +28,9 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   memberGroups: MemberGroupsPage,
   moderators: ModeratorsPage,
   promotions: PromotionsPage,
+  forums: ForumsPage,
+  prefixes: PrefixesPage,
+  announcements: AnnouncementsPage,
 };
 
 export function sectionElement(section: StaffSection): ComponentType | null {

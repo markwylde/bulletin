@@ -28,6 +28,9 @@
         <article class="bl-card bl-announcement" data-announcement="{{ announcement.id }}">
           <h2 class="bl-announcement__title">{{ announcement.title }}</h2>
           <p class="bl-announcement__body">{{ announcement.body }}</p>
+          {% if announcement.dismissible %}
+            <button type="button" class="bl-button bl-button--quiet bl-button--small" data-announcement-dismiss="{{ announcement.id }}" data-overlay-member-only hidden>{% t "announcement.dismiss" %}</button>
+          {% endif %}
         </article>
       {% endfor %}
     </section>

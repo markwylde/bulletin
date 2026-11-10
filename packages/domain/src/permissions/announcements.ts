@@ -260,3 +260,60 @@ export async function bumpAnnouncementTransitions(
     return tags;
   });
 }
+
+export type DismissAnnouncementResult = "ok" | "not_found" | "not_dismissible";
+
+/** Records a member's dismissal at the announcement's current content version (ADR 0006). */
+export async function dismissAnnouncement(
+  sql: SQL,
+  memberId: string,
+  announcementId: string,
+  now: Date = new Date(),
+): Promise<DismissAnnouncementResult> {
+  const [announcement] = (await sql`
+    SELECT id, version, dismissible
+    FROM core.announcements
+    WHERE id = ${announcementId}
+      AND starts_at <= ${now}
+      AND (ends_at IS NULL OR ends_at > ${now})
+  `) as Array<{ id: string; version: number; dismissible: boolean }>;
+
+  if (announcement === undefined) {
+    return "not_found";
+  }
+
+  if (!announcement.dismissible) {
+    return "not_dismissible";
+  }
+
+  await sql`
+    INSERT INTO core.announcement_dismissals (member_id, announcement_id, version)
+    VALUES (${memberId}, ${announcement.id}, ${announcement.version})
+    ON CONFLICT (member_id, announcement_id) DO UPDATE
+      SET version = EXCLUDED.version, dismissed_at = now()
+  `;
+
+  return "ok";
+}
+
+/**
+ * Active announcements whose dismissed version still matches the current content. Editing the
+ * title or body bumps `version`, so the announcement reappears for everyone who dismissed it.
+ */
+export async function listDismissedAnnouncementIds(
+  sql: SQL,
+  memberId: string,
+  now: Date = new Date(),
+): Promise<readonly string[]> {
+  const rows = (await sql`
+    SELECT a.id::text AS id
+    FROM core.announcement_dismissals d
+    JOIN core.announcements a ON a.id = d.announcement_id
+    WHERE d.member_id = ${memberId}
+      AND d.version = a.version
+      AND a.starts_at <= ${now}
+      AND (a.ends_at IS NULL OR a.ends_at > ${now})
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}

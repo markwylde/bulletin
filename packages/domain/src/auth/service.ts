@@ -14,6 +14,7 @@ import {
   isStaffScheme,
   type StaffScheme,
 } from "../permissions/acp.ts";
+import { listDismissedAnnouncementIds } from "../permissions/announcements.ts";
 import { can } from "../permissions/can.ts";
 import { memberViewerKey, parseTopicIds, parseVisitContext, recordVisit } from "../visits/index.ts";
 import type { AuthRouterOptions, SessionCapabilities } from "./router.ts";
@@ -376,16 +377,20 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       }
 
       const topics = parseTopicIds(body?.topics);
-      const visits = await recordVisit(options.sql, {
-        viewerKey: memberViewerKey(session.memberId),
-        ctx,
-        topics,
-        memberId: session.memberId,
-      });
+      const [visits, dismissedAnnouncements] = await Promise.all([
+        recordVisit(options.sql, {
+          viewerKey: memberViewerKey(session.memberId),
+          ctx,
+          topics,
+          memberId: session.memberId,
+        }),
+        listDismissedAnnouncementIds(options.sql, session.memberId),
+      ]);
       const payload = {
         ctx,
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
         unread: visits.unread,
+        dismissedAnnouncements,
         // Counts arrive with `events-notifications`; the overlay shape is fixed now.
         counts: { notifications: 0, conversations: 0 },
       };

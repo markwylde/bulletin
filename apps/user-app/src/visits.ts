@@ -69,6 +69,16 @@ const overlayTarget: OverlayTarget = {
       // Storage can be unavailable (private mode); the overlay still applies.
     }
   },
+
+  hideAnnouncement(announcementId) {
+    const element = document.querySelector<HTMLElement>(
+      `[data-announcement="${CSS.escape(announcementId)}"]`,
+    );
+
+    if (element !== null) {
+      element.hidden = true;
+    }
+  },
 };
 
 async function loadOverlay(ctx: string): Promise<void> {

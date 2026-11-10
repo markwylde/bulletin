@@ -70,6 +70,7 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
 >
   <div hidden data-i18n-catalog>{messages}</div>
   <script>import "../locale-bootstrap.ts";</script>
+  <script>import "../announcements/client.ts";</script>
   <script>
     import { applyBoardDefaultLocale, applyBoardState, fetchBoardState } from "../board-client.ts";
 
