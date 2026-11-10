@@ -248,6 +248,7 @@
   "staff.masks.forum": "Forum",
   "staff.masks.grid.bulkColumn": "Toggle column",
   "staff.masks.grid.bulkRow": "Toggle row",
+  "staff.masks.grid.scope": "Category",
   "staff.masks.grid.title": "Forums × masks",
   "staff.masks.groups.title": "Groups using this mask",
   "staff.masks.inherits": "inherited",

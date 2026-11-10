@@ -2,6 +2,7 @@ import type { SQL } from "bun";
 import { isForumAction, isModeratorPower } from "./actions.ts";
 import { can, type PermissionAction, type PermissionScope } from "./can.ts";
 import { memberBanned } from "./moderator.ts";
+import { GUEST_SNAPSHOT_MEMBER_ID, principalMemberId, type ViewerPrincipal } from "./principal.ts";
 import { mergeGroupSettings } from "./registry.ts";
 import {
   type CompiledGroupSnapshot,
@@ -50,7 +51,7 @@ export function createPermissionService(options: PermissionServiceOptions): Perm
   });
 
   async function snapshot(
-    memberId: string,
+    memberId: ViewerPrincipal,
     request: PermissionSnapshotRequest = {},
   ): Promise<PermissionSnapshot> {
     const groups = await loadMemberGroups(options.sql, memberId);
@@ -88,7 +89,7 @@ export function createPermissionService(options: PermissionServiceOptions): Perm
       groupSnapshot,
       assignments,
       tree: data.tree,
-      memberId,
+      memberId: principalMemberId(memberId) ?? GUEST_SNAPSHOT_MEMBER_ID,
       groupIds,
       primaryGroupId,
       settings,
@@ -102,7 +103,7 @@ export function createPermissionService(options: PermissionServiceOptions): Perm
   return {
     snapshot,
 
-    async can(memberId, action, scope) {
+    async can(memberId: ViewerPrincipal, action, scope) {
       if (isModeratorPower(action)) {
         if (scope === undefined) {
           return false;

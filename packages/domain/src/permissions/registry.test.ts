@@ -189,6 +189,31 @@ describe("merge rules", () => {
     expect(merged["test.quota"]).toBe(99);
   });
 
+  test("applies each group's default before merging explicit values", () => {
+    const react = settingDefinition("posting.can_react");
+    const flood = settingDefinition("posting.flood_control_seconds");
+
+    if (react === undefined || flood === undefined) {
+      throw new Error("Missing settings");
+    }
+
+    const merged = mergeGroupSettings(
+      [
+        source("primary", true, {}),
+        source("secondary", false, {
+          "posting.can_react": false,
+          "posting.flood_control_seconds": 30,
+        }),
+      ],
+      [react, flood],
+    );
+
+    // The primary group's default true still grants the capability.
+    expect(merged["posting.can_react"]).toBe(true);
+    // The primary group's default 15 seconds wins the min rule over the explicit 30.
+    expect(merged["posting.flood_control_seconds"]).toBe(15);
+  });
+
   test("merges every registered setting to a value", () => {
     const merged = mergeGroupSettings([
       source("1", true, {

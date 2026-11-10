@@ -3,9 +3,11 @@ import { displayNameSkeleton } from "@bulletin/domain/member";
 import {
   bumpPermVersion,
   CapabilityView,
+  can,
   createPermissionService,
   type ForumAction,
   forumActionMask,
+  GUEST_PRINCIPAL,
   loadForumTree,
   readPermVersion,
 } from "@bulletin/domain/permissions";
@@ -210,6 +212,43 @@ integrationDescribe("permission snapshot", () => {
 
       expect(await service.can(memberOnly, "reply", { forumId: forum, tree })).toBe(false);
       expect(await service.can(both, "reply", { forumId: forum, tree })).toBe(false);
+    });
+  }, 30_000);
+
+  test("resolves the explicit guest principal through the Guests group", async () => {
+    await withDb("snapshot_guests", async (database) => {
+      const allowedForum = await createForum(database);
+      const deniedForum = await createForum(database);
+      const maskId = await createMask(database, "guest_read");
+      const guests = (await database.sql`
+        SELECT id FROM core.groups WHERE key = 'guests'
+      `) as Array<{ id: string }>;
+      const guestId = guests[0]?.id;
+
+      if (guestId === undefined) {
+        throw new Error("Missing guests group");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_masks (group_id, mask_id) VALUES (${guestId}, ${maskId})
+      `;
+      await setMatrix(database, allowedForum, maskId, ["show", "read"]);
+
+      const tree = await loadForumTree(database.sql);
+      const service = createPermissionService({ sql: database.sql });
+      const snapshot = await service.snapshot(GUEST_PRINCIPAL);
+
+      expect(snapshot.memberId).toBe("guest");
+      expect(await service.can(GUEST_PRINCIPAL, "read", { forumId: allowedForum, tree })).toBe(
+        true,
+      );
+      expect(await service.can(GUEST_PRINCIPAL, "read", { forumId: deniedForum, tree })).toBe(
+        false,
+      );
+      expect(await service.can(GUEST_PRINCIPAL, "acp.access")).toBe(false);
+      expect(
+        await can(database.sql, GUEST_PRINCIPAL, "read", { forumId: allowedForum, tree }),
+      ).toBe(true);
     });
   }, 30_000);
 

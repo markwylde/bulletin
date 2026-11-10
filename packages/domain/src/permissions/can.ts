@@ -5,6 +5,7 @@ import {
   isModeratorPower,
   type ModeratorPower,
 } from "./actions.ts";
+import { isGuestPrincipal, type ViewerPrincipal } from "./principal.ts";
 import { isPermissionKey, type PermissionKey } from "./registry.ts";
 import { capabilityAnswer, loadPermissionSnapshot, type PermissionSnapshot } from "./snapshot.ts";
 import type { ForumTree } from "./tree.ts";
@@ -29,7 +30,7 @@ export interface PermissionScope {
  */
 export async function can(
   sql: SQL,
-  memberId: string,
+  principal: ViewerPrincipal,
   action: PermissionAction,
   scope?: PermissionScope,
 ): Promise<boolean> {
@@ -40,7 +41,7 @@ export async function can(
 
     const snapshot =
       scope.snapshot ??
-      (await loadPermissionSnapshot(sql, memberId, {
+      (await loadPermissionSnapshot(sql, principal, {
         tree: scope.tree,
         sessionId: scope.sessionId ?? null,
       }));
@@ -55,7 +56,7 @@ export async function can(
 
     const snapshot =
       scope.snapshot ??
-      (await loadPermissionSnapshot(sql, memberId, {
+      (await loadPermissionSnapshot(sql, principal, {
         tree: scope.tree,
         sessionId: scope.sessionId ?? null,
       }));
@@ -67,11 +68,25 @@ export async function can(
     return false;
   }
 
+  if (isGuestPrincipal(principal)) {
+    const rows = (await sql`
+      SELECT 1
+      FROM core.groups g
+      JOIN core.group_settings s ON s.group_id = g.id
+      WHERE g.key = 'guests'
+        AND s.key = ${action}
+        AND s.value = 'true'::jsonb
+      LIMIT 1
+    `) as unknown[];
+
+    return rows.length > 0;
+  }
+
   const rows = (await sql`
     SELECT 1
     FROM core.member_groups mg
     JOIN core.group_settings s ON s.group_id = mg.group_id
-    WHERE mg.member_id = ${memberId}
+    WHERE mg.member_id = ${principal}
       AND s.key = ${action}
       AND s.value = 'true'::jsonb
     LIMIT 1

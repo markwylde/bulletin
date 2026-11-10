@@ -249,6 +249,7 @@
   "staff.masks.forum": "Forum",
   "staff.masks.grid.bulkColumn": "Basculer la colonne",
   "staff.masks.grid.bulkRow": "Basculer la ligne",
+  "staff.masks.grid.scope": "Catégorie",
   "staff.masks.grid.title": "Forums × masques",
   "staff.masks.groups.title": "Groupes utilisant ce masque",
   "staff.masks.inherits": "hérité",

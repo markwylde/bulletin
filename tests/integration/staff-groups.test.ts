@@ -391,7 +391,8 @@ integrationDescribe("staff group and permission screens", () => {
         const session = await createSession(database, admin);
         const members = await groupId(database, "members");
         const category = await createForum(database);
-        await createForum(database, category);
+        const inheritingChild = await createForum(database, category);
+        const overrideChild = await createForum(database, category);
 
         const created = await call(api, session, "masks.update", {
           action: "save",
@@ -411,6 +412,12 @@ integrationDescribe("staff group and permission screens", () => {
           throw new Error("Missing mask");
         }
 
+        // An explicit override on one child must survive parent bulk toggles.
+        await database.sql`
+          INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+          VALUES (${overrideChild}, ${mask.id}, ${forumActionMask(["show"])}, false)
+        `;
+
         expect(
           (
             await call(api, session, "masks.update", {
@@ -426,6 +433,7 @@ integrationDescribe("staff group and permission screens", () => {
           (
             await call(api, session, "masks.update", {
               action: "bulk",
+              forumId: category,
               maskId: mask.id,
               permissionAction: "read",
               allowed: true,
@@ -434,11 +442,39 @@ integrationDescribe("staff group and permission screens", () => {
         ).toBe(200);
 
         matrix = (await (await call(api, session, "masks.list")).json()) as typeof matrix;
-        const childRow = matrix.rows.find(
-          (row) => row.forumId !== category && row.maskId === mask.id,
+        const inheritedRow = matrix.rows.find(
+          (row) => row.forumId === inheritingChild && row.maskId === mask.id,
         );
-        expect(childRow?.effectiveActions).toBeGreaterThan(0);
-        expect((childRow?.effectiveActions ?? 0) & 2).toBe(2);
+        const overrideRow = matrix.rows.find(
+          (row) => row.forumId === overrideChild && row.maskId === mask.id,
+        );
+        expect((inheritedRow?.effectiveActions ?? 0) & 2).toBe(2);
+        expect((overrideRow?.effectiveActions ?? 0) & 2).toBe(0);
+
+        // The inheriting child has no explicit row; a later parent revocation must reach it.
+        const [childPermission] = (await database.sql`
+          SELECT count(*)::int AS rows
+          FROM core.forum_permissions
+          WHERE forum_id = ${inheritingChild} AND mask_id = ${mask.id}
+        `) as Array<{ rows: number }>;
+        expect(childPermission?.rows).toBe(0);
+
+        await call(api, session, "masks.update", {
+          action: "cell",
+          forumId: category,
+          maskId: mask.id,
+          permissionAction: "read",
+          allowed: false,
+        });
+        matrix = (await (await call(api, session, "masks.list")).json()) as typeof matrix;
+        expect(
+          (matrix.rows.find((row) => row.forumId === inheritingChild && row.maskId === mask.id)
+            ?.effectiveActions ?? 0) & 2,
+        ).toBe(0);
+        expect(
+          (matrix.rows.find((row) => row.forumId === overrideChild && row.maskId === mask.id)
+            ?.effectiveActions ?? 0) & 2,
+        ).toBe(0);
 
         // Row bulk applies the action to every mask on one forum.
         expect(

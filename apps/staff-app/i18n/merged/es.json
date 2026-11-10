@@ -249,6 +249,7 @@
   "staff.masks.forum": "Foro",
   "staff.masks.grid.bulkColumn": "Alternar columna",
   "staff.masks.grid.bulkRow": "Alternar fila",
+  "staff.masks.grid.scope": "Categoría",
   "staff.masks.grid.title": "Foros × máscaras",
   "staff.masks.groups.title": "Grupos que usan esta máscara",
   "staff.masks.inherits": "heredado",

@@ -412,6 +412,80 @@ integrationDescribe("core.has_mod_power", () => {
     });
   }, 30_000);
 
+  test("requires the session password unlock at the PII boundary", async () => {
+    await withDb("mod_power_session", async (database) => {
+      const [protectedForum] = (await database.sql`
+        INSERT INTO core.forums (password_hash)
+        VALUES (${await Bun.password.hash("let-me-in")})
+        RETURNING id
+      `) as Array<{ id: string }>;
+      const [openForum] = (await database.sql`
+        INSERT INTO core.forums DEFAULT VALUES RETURNING id
+      `) as Array<{ id: string }>;
+      const ids = await groupIds(database);
+      const members = ids.get("members");
+      const superModerators = ids.get("super_moderators");
+
+      if (
+        protectedForum === undefined ||
+        openForum === undefined ||
+        members === undefined ||
+        superModerators === undefined
+      ) {
+        throw new Error("Missing seed rows");
+      }
+
+      const memberId = await createMember(database, "Session Boundary Moderator");
+      await addToGroup(database, memberId, "members", true);
+      await addToGroup(database, memberId, "super_moderators", false);
+      await grantRead(database, "members", [protectedForum.id, openForum.id]);
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${superModerators}, 'moderation.pin', 'true'::jsonb)
+      `;
+
+      const [session] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (
+          ${memberId}, 'user', sha256(convert_to(${crypto.randomUUID()}, 'UTF8')),
+          now() + interval '24 hours'
+        )
+        RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (session === undefined) {
+        throw new Error("Could not create session");
+      }
+
+      const sessionPower = async (forumId: string): Promise<boolean> => {
+        const [row] = (await database.sql`
+          SELECT core.has_mod_power_for_session(
+            ${memberId}, ${forumId}, 'pin', ${session.id}
+          ) AS allowed
+        `) as Array<{ allowed: boolean }>;
+        return row?.allowed === true;
+      };
+
+      // The member-level check still sees the moderator; the session boundary does not until
+      // the password forum is unlocked.
+      expect(await sqlHasModPower(database, memberId, protectedForum.id, "pin")).toBe(true);
+      expect(await sessionPower(protectedForum.id)).toBe(false);
+      expect(await sessionPower(openForum.id)).toBe(true);
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${session.id}, 'forum_password', ${protectedForum.id})
+      `;
+      expect(await sessionPower(protectedForum.id)).toBe(true);
+
+      await database.sql`
+        UPDATE core.sessions SET revoked_at = now() WHERE id = ${session.id}
+      `;
+      expect(await sessionPower(protectedForum.id)).toBe(false);
+      expect(await sessionPower(openForum.id)).toBe(false);
+    });
+  }, 30_000);
+
   test("agrees with can() across seeded members, random assignments and fixture trees", async () => {
     await withDb("mod_power_property", async (database) => {
       await runSeeds({

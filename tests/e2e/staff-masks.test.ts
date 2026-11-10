@@ -44,6 +44,7 @@ integrationDescribe("staff permission masks", () => {
         "document.querySelector('[data-grid-row-bulk]')?.getAttribute('data-grid-row-bulk') ?? ''",
       );
       expect(forumId).not.toBe("");
+      await setInputValue(view, "[data-grid-scope]", forumId);
 
       // Row bulk: every mask grants read on one forum.
       await clickSelector(view, `[data-grid-row-bulk="${forumId}"]`);

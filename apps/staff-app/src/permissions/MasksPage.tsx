@@ -83,6 +83,7 @@ export function MasksPage() {
   const [editDraft, setEditDraft] = useState<MaskDraft>(EMPTY_DRAFT);
   const [gridAction, setGridAction] = useState<ForumAction>("read");
   const [gridAllowed, setGridAllowed] = useState(true);
+  const [gridScope, setGridScope] = useState("");
   const query = useQuery({
     queryKey: ["staff", "masks"],
     queryFn: () => apiGet<MatrixView>("/api/staff/masks"),
@@ -103,6 +104,12 @@ export function MasksPage() {
       setSelectedId(masks[0].id);
     }
   }, [masks, selectedId]);
+
+  useEffect(() => {
+    if (gridScope === "" && query.data?.forums[0] !== undefined) {
+      setGridScope(query.data.forums[0].id);
+    }
+  }, [gridScope, query.data]);
 
   useEffect(() => {
     if (selected !== null) {
@@ -320,6 +327,20 @@ export function MasksPage() {
                   </select>
                 </label>
                 <label>
+                  <span>{t("staff.masks.grid.scope")}</span>
+                  <select
+                    data-grid-scope
+                    value={gridScope}
+                    onChange={(event) => setGridScope(event.target.value)}
+                  >
+                    {query.data.forums.map((forum) => (
+                      <option key={forum.id} value={forum.id}>
+                        {`#${forum.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
                   <input
                     type="checkbox"
                     data-grid-allowed
@@ -340,9 +361,11 @@ export function MasksPage() {
                           <button
                             type="button"
                             data-grid-column-bulk={mask.key}
+                            disabled={gridScope === ""}
                             onClick={() =>
                               save.mutate({
                                 action: "bulk",
+                                forumId: gridScope,
                                 maskId: mask.id,
                                 permissionAction: gridAction,
                                 allowed: gridAllowed,

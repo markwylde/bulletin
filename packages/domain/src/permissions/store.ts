@@ -6,6 +6,7 @@ import {
   type ModeratorContext,
   memberBanned,
 } from "./moderator.ts";
+import { principalMemberId, type ViewerPrincipal } from "./principal.ts";
 import {
   type GroupSettingsSource,
   type MergedGroupSettings,
@@ -32,27 +33,45 @@ interface ModeratorRow {
   readonly this_forum_only: boolean;
 }
 
-/** Loads a member's groups and their raw registry values in one query. */
+/** Loads a member's groups and raw registry values; guests resolve to the Guests group. */
 export async function loadMemberGroups(
   sql: SQL,
-  memberId: string,
+  principal: ViewerPrincipal,
 ): Promise<readonly MemberGroupRecord[]> {
-  const rows = (await sql`
-    SELECT
-      g.id AS group_id,
-      g.key,
-      mg.is_primary,
-      COALESCE(
-        jsonb_object_agg(s.key, s.value) FILTER (WHERE s.key IS NOT NULL),
-        '{}'::jsonb
-      ) AS settings
-    FROM core.member_groups mg
-    JOIN core.groups g ON g.id = mg.group_id
-    LEFT JOIN core.group_settings s ON s.group_id = g.id
-    WHERE mg.member_id = ${memberId}
-    GROUP BY g.id, g.key, mg.is_primary
-    ORDER BY g.id
-  `) as MemberGroupRow[];
+  const memberId = principalMemberId(principal);
+  const rows =
+    memberId === null
+      ? ((await sql`
+        SELECT
+          g.id AS group_id,
+          g.key,
+          true AS is_primary,
+          COALESCE(
+            jsonb_object_agg(s.key, s.value) FILTER (WHERE s.key IS NOT NULL),
+            '{}'::jsonb
+          ) AS settings
+        FROM core.groups g
+        LEFT JOIN core.group_settings s ON s.group_id = g.id
+        WHERE g.key = 'guests'
+        GROUP BY g.id, g.key
+        ORDER BY g.id
+      `) as MemberGroupRow[])
+      : ((await sql`
+        SELECT
+          g.id AS group_id,
+          g.key,
+          mg.is_primary,
+          COALESCE(
+            jsonb_object_agg(s.key, s.value) FILTER (WHERE s.key IS NOT NULL),
+            '{}'::jsonb
+          ) AS settings
+        FROM core.member_groups mg
+        JOIN core.groups g ON g.id = mg.group_id
+        LEFT JOIN core.group_settings s ON s.group_id = g.id
+        WHERE mg.member_id = ${memberId}
+        GROUP BY g.id, g.key, mg.is_primary
+        ORDER BY g.id
+      `) as MemberGroupRow[]);
 
   return rows.map((row) => ({
     groupId: row.group_id,
@@ -64,16 +83,22 @@ export async function loadMemberGroups(
 
 export async function loadMergedGroupSettings(
   sql: SQL,
-  memberId: string,
+  principal: ViewerPrincipal,
 ): Promise<MergedGroupSettings> {
-  return mergeGroupSettings(await loadMemberGroups(sql, memberId));
+  return mergeGroupSettings(await loadMemberGroups(sql, principal));
 }
 
 /** Member-specific and group assignments that can apply to the member. */
 export async function loadModeratorAssignments(
   sql: SQL,
-  memberId: string,
+  principal: ViewerPrincipal,
 ): Promise<readonly ModeratorAssignment[]> {
+  const memberId = principalMemberId(principal);
+
+  if (memberId === null) {
+    return [];
+  }
+
   const rows = (await sql`
     SELECT forum_id, member_id, group_id, powers, this_forum_only
     FROM core.moderators

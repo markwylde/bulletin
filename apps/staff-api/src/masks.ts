@@ -423,14 +423,18 @@ export async function bulkToggleMatrix(
     return { ok: false, code: "invalid_action" };
   }
 
-  const scopes = ["forumId", "maskId"].filter((key) => typeof input[key] === "string");
+  if (typeof input.forumId !== "string") {
+    return { ok: false, code: "invalid_request" };
+  }
 
-  if (scopes.length !== 1) {
+  if (input.maskId !== undefined && typeof input.maskId !== "string") {
     return { ok: false, code: "invalid_request" };
   }
 
   const action = input.permissionAction;
   const allowed = input.allowed;
+  const forumId = input.forumId;
+  const maskId = typeof input.maskId === "string" ? input.maskId : null;
   const bit = capabilityBitMask(action);
 
   return sql.begin(async (tx) => {
@@ -439,25 +443,14 @@ export async function bulkToggleMatrix(
       SELECT id, key FROM core.masks ORDER BY id
     `) as Array<{ id: string; key: string }>;
 
-    let targetMasks = allMasks;
-    let targetForums = tree.ids;
-    let scope: "row" | "column" = "column";
-    let scopeId = "";
+    // A row bulk toggles every mask at one forum. A column bulk toggles one mask at one
+    // forum (typically a category); descendants inherit and explicit overrides stay untouched.
+    const scope: "row" | "column" = maskId === null ? "row" : "column";
+    const scopeId = forumId;
+    const targetForums = [forumId];
+    const targetMasks = maskId === null ? allMasks : allMasks.filter((mask) => mask.id === maskId);
 
-    if (typeof input.forumId === "string") {
-      scope = "row";
-      scopeId = input.forumId;
-      targetForums = [input.forumId];
-    } else if (typeof input.maskId === "string") {
-      scope = "column";
-      scopeId = input.maskId;
-      targetMasks = allMasks.filter((mask) => mask.id === input.maskId);
-    }
-
-    if (
-      targetMasks.length === 0 ||
-      targetForums.some((forumId) => tree.get(forumId) === undefined)
-    ) {
+    if (targetMasks.length === 0 || tree.get(forumId) === undefined) {
       return { ok: false, code: "not_found" } as const;
     }
 

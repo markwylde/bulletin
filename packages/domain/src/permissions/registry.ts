@@ -471,58 +471,44 @@ export interface GroupSettingsSource {
 
 export type MergedGroupSettings = Readonly<Record<string, GroupSettingValue>>;
 
+/** A group's effective value: its explicit setting, otherwise the registry default. */
+function groupValue(
+  definition: GroupSettingDefinition,
+  group: GroupSettingsSource,
+): GroupSettingValue {
+  const raw = Object.hasOwn(group.values, definition.key)
+    ? group.values[definition.key]
+    : definition.defaultValue;
+
+  return parseGroupSettingValue(definition, raw) ?? definition.defaultValue;
+}
+
 function numericValues(
   definition: GroupSettingDefinition,
   groups: readonly GroupSettingsSource[],
 ): readonly number[] {
-  const values: number[] = [];
-
-  for (const group of groups) {
-    if (!Object.hasOwn(group.values, definition.key)) {
-      continue;
-    }
-
-    const value = parseGroupSettingValue(definition, group.values[definition.key]);
-
-    if (typeof value === "number") {
-      values.push(value);
-    }
-  }
-
-  return values;
+  return groups
+    .map((group) => groupValue(definition, group))
+    .filter((value): value is number => typeof value === "number");
 }
 
 function booleanGranted(
   definition: GroupSettingDefinition,
   groups: readonly GroupSettingsSource[],
 ): boolean | null {
-  let seen = false;
-
-  for (const group of groups) {
-    if (!Object.hasOwn(group.values, definition.key)) {
-      continue;
-    }
-
-    const value = parseGroupSettingValue(definition, group.values[definition.key]);
-
-    if (typeof value !== "boolean") {
-      continue;
-    }
-
-    seen = true;
-
-    if (value) {
-      return true;
-    }
+  if (groups.length === 0) {
+    return null;
   }
 
-  return seen ? false : null;
+  return groups.some((group) => groupValue(definition, group) === true);
 }
 
 /**
- * Applies every merge rule across a member's groups (ADR 0005). Restriction rules and
- * allowance rules both answer "did any group set it"; they differ in meaning and default.
- * Invalid stored values are ignored, so a broken row can never grant a capability.
+ * Applies every merge rule across a member's groups (ADR 0005). Every group participates with
+ * its own effective value: an unset setting means that group's registry default. Restriction
+ * and allowance rules both answer "did any group grant it"; they differ in meaning and default.
+ * Invalid stored values fall back to the default, so a broken row cannot grant a capability
+ * beyond what that group's default allows.
  */
 export function mergeGroupSettings(
   groups: readonly GroupSettingsSource[],
@@ -534,8 +520,8 @@ export function mergeGroupSettings(
   for (const definition of definitions) {
     switch (definition.merge) {
       case "primary": {
-        const raw = primary === undefined ? undefined : primary.values[definition.key];
-        merged[definition.key] = parseGroupSettingValue(definition, raw) ?? definition.defaultValue;
+        merged[definition.key] =
+          primary === undefined ? definition.defaultValue : groupValue(definition, primary);
         break;
       }
       case "allow-any":
