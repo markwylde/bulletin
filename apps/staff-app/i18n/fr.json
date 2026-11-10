@@ -78,6 +78,7 @@
   "staff.emoticons.deleteSet": "Supprimer le jeu",
   "staff.emoticons.duplicateCode": "Ce code est déjà utilisé.",
   "staff.emoticons.duplicateSet": "Cette clé de jeu est déjà utilisée.",
+  "staff.emoticons.edit": "Modifier",
   "staff.emoticons.emoticonForm": "Détails de l’émoticône",
   "staff.emoticons.empty": "Aucun jeu pour le moment.",
   "staff.emoticons.field.alt": "Texte alternatif",

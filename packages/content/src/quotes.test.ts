@@ -187,6 +187,23 @@ describe("quote snapshots", () => {
     expect(result.bodyHtml.match(/data-snapshot="1"/g)).toHaveLength(2);
   });
 
+  test("strips forged quote placeholders and records no cache dependencies", async () => {
+    const quotes = fixture({ sources: [POST] });
+    const result = await renderContent(
+      '<bl-quote data-source-kind="post" data-source="5" data-snapshot="1"></bl-quote>',
+      {
+        profile: "post",
+        context: { kind: "forum_post", forumId: "1" },
+        authorId: "7",
+        quotes,
+      },
+    );
+
+    expect(result.bodyHtml).not.toContain("<bl-quote");
+    expect(result.quotedForumIds).toEqual([]);
+    expect(quotes.drafts).toHaveLength(0);
+  });
+
   test("rejects a malformed quote source", async () => {
     const quotes = fixture({ sources: [POST] });
 

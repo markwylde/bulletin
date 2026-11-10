@@ -105,6 +105,7 @@
   "staff.emoticons.deleteSet": "Eliminar conjunto",
   "staff.emoticons.duplicateCode": "Ese código ya está en uso.",
   "staff.emoticons.duplicateSet": "Esa clave de conjunto ya está en uso.",
+  "staff.emoticons.edit": "Editar",
   "staff.emoticons.emoticonForm": "Datos del emoticono",
   "staff.emoticons.empty": "Todavía no hay conjuntos.",
   "staff.emoticons.field.alt": "Texto alternativo",

@@ -16,6 +16,8 @@ export interface MentionedMember {
 export interface MentionResolver {
   /** Resolves a display name typed after `@`; null means "no such member". */
   resolve(name: string): Promise<MentionedMember | null>;
+  /** Resolves the unambiguous editor token `@[Name](member:<id>)`. */
+  resolveById?(id: string): Promise<MentionedMember | null>;
 }
 
 export interface Emoticon {

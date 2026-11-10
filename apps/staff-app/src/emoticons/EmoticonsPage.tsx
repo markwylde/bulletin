@@ -70,6 +70,7 @@ export function EmoticonsPage() {
   const queryClient = useQueryClient();
   const [setDraft, setSetDraft] = useState<SetDraft>(EMPTY_SET);
   const [emoticonSetId, setEmoticonSetId] = useState<string | null>(null);
+  const [editingEmoticonId, setEditingEmoticonId] = useState<string | null>(null);
   const [emoticonDraft, setEmoticonDraft] = useState<EmoticonDraft>(EMPTY_EMOTICON);
   const query = useQuery({
     queryKey: ["staff", "emoticons"],
@@ -129,7 +130,7 @@ export function EmoticonsPage() {
     if (
       emoticonDraft.code.trim() === "" ||
       emoticonDraft.alt.trim() === "" ||
-      emoticonDraft.imageBase64 === ""
+      (emoticonDraft.imageBase64 === "" && editingEmoticonId === null)
     ) {
       toast.pushToast({ messageKey: "staff.emoticons.invalid", tone: "error" });
       return;
@@ -138,6 +139,7 @@ export function EmoticonsPage() {
     mutate.mutate(
       {
         action: "emoticon-save",
+        ...(editingEmoticonId === null ? {} : { id: editingEmoticonId }),
         setId: emoticonSetId,
         code: emoticonDraft.code,
         alt: emoticonDraft.alt,
@@ -145,7 +147,12 @@ export function EmoticonsPage() {
         imageBase64: emoticonDraft.imageBase64,
         contentType: emoticonDraft.contentType,
       },
-      { onSuccess: () => setEmoticonDraft(EMPTY_EMOTICON) },
+      {
+        onSuccess: () => {
+          setEmoticonDraft(EMPTY_EMOTICON);
+          setEditingEmoticonId(null);
+        },
+      },
     );
   };
 
@@ -204,6 +211,23 @@ export function EmoticonsPage() {
                         <code>:{emoticon.code}:</code>
                         <span>{emoticon.alt}</span>
                         <span className="widget-muted">{emoticon.position}</span>
+                        <button
+                          type="button"
+                          data-emoticon-edit={emoticon.id}
+                          onClick={() => {
+                            setEmoticonSetId(set.id);
+                            setEditingEmoticonId(emoticon.id);
+                            setEmoticonDraft({
+                              code: emoticon.code,
+                              alt: emoticon.alt,
+                              position: emoticon.position,
+                              imageBase64: "",
+                              contentType: "",
+                            });
+                          }}
+                        >
+                          {t("staff.emoticons.edit")}
+                        </button>
                         <button
                           type="button"
                           data-emoticon-delete={emoticon.id}

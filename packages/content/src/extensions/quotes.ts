@@ -72,9 +72,17 @@ export interface QuoteDirectiveOptions {
   readonly strip?: boolean;
 }
 
+export interface QuotePlaceholder {
+  readonly token: string;
+  readonly kind: QuoteSourceKind;
+  readonly id: string;
+  readonly snapshotId: string;
+}
+
 export interface QuoteDirectiveResult {
   readonly quoteSources: readonly QuoteSourceRef[];
   readonly quotedForumIds: readonly string[];
+  readonly placeholders: readonly QuotePlaceholder[];
 }
 
 function collectDirectives(parent: Parent): DirectiveNode[] {
@@ -120,12 +128,13 @@ export async function applyQuoteDirectives(
 
   if (options.strip === true) {
     removeDirectives(tree);
-    return { quoteSources: [], quotedForumIds: [] };
+    return { quoteSources: [], quotedForumIds: [], placeholders: [] };
   }
 
   const snapshots = new Map<string, string>();
   const quoteSources: QuoteSourceRef[] = [];
   const quotedForumIds = new Set<string>();
+  const placeholders: QuotePlaceholder[] = [];
 
   for (const directive of directives) {
     const ref = parseQuoteSource(directive.attributes?.source);
@@ -153,16 +162,10 @@ export async function applyQuoteDirectives(
       snapshots.set(key, snapshotId);
     }
 
-    directive.children = [];
-    directive.data = {
-      ...(directive.data ?? {}),
-      hName: "bl-quote",
-      hProperties: {
-        dataSourceKind: ref.kind,
-        dataSource: ref.id,
-        dataSnapshot: snapshotId,
-      },
-    };
+    const token = `BLQUOTE_${crypto.randomUUID()}`;
+    directive.children = [{ type: "text", value: token }];
+    directive.data = { ...(directive.data ?? {}), hName: "p" };
+    placeholders.push({ token, kind: ref.kind, id: ref.id, snapshotId });
 
     if (!quoteSources.some((entry) => entry.kind === ref.kind && entry.id === ref.id)) {
       quoteSources.push(ref);
@@ -173,5 +176,5 @@ export async function applyQuoteDirectives(
     }
   }
 
-  return { quoteSources, quotedForumIds: [...quotedForumIds].sort() };
+  return { quoteSources, quotedForumIds: [...quotedForumIds].sort(), placeholders };
 }

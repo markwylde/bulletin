@@ -138,10 +138,31 @@ integrationDescribe("emoticon management", () => {
       expect(saved).toMatchObject({ ok: true });
       expect(storage.puts).toHaveLength(1);
 
+      const savedId = saved.ok ? saved.id : undefined;
+
+      if (savedId === undefined) {
+        throw new Error("Saved emoticon has no id");
+      }
+
+      const updated = await mutateEmoticon(database.sql, storage, actor, {
+        action: "emoticon-save",
+        id: savedId,
+        setId,
+        code: "wave2",
+        alt: "Wave two",
+        position: 3,
+      });
+      expect(updated).toMatchObject({ ok: true, id: savedId });
+
+      const rows = (await database.sql`
+        SELECT code, alt, position FROM core.emoticons WHERE id = ${savedId}
+      `) as Array<{ code: string; alt: string; position: number }>;
+      expect(rows).toEqual([{ code: "wave2", alt: "Wave two", position: 3 }]);
+
       const duplicate = await mutateEmoticon(database.sql, storage, actor, {
         action: "emoticon-save",
         setId,
-        code: "wave",
+        code: "wave2",
         alt: "Wave again",
         position: 1,
         imageBase64: image,

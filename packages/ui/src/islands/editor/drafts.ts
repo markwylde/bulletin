@@ -71,3 +71,14 @@ export async function clearDraft(contextKey: string, csrfToken: string): Promise
 
   return response.ok;
 }
+
+export type DraftWrite = "save" | "clear" | "none";
+
+/** Undoing back to the original content clears the saved draft instead of leaving it behind. */
+export function draftWriteFor(initial: string, current: string, dirty: boolean): DraftWrite {
+  if (!dirty) {
+    return "none";
+  }
+
+  return current === initial ? "clear" : "save";
+}

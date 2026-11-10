@@ -1,4 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { currentContentVersions } from "@bulletin/content";
+import {
+  announcementRerenderSource,
+  forumRulesRerenderSource,
+  runContentRerenderJob,
+} from "@bulletin/db/jobs";
 import { loadAnnouncements } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { saveAnnouncement } from "../../apps/staff-api/src/announcements.ts";
@@ -69,6 +75,56 @@ integrationDescribe("rules and announcements through the pipeline", () => {
       expect(row?.rules_text).toContain("Be kind.");
       expect(row?.rules_render_version).toBeGreaterThan(0);
       expect(row?.rules_sanitiser_version).toBeGreaterThan(0);
+    });
+  });
+
+  test("backfills rules and announcements that predate the rendered columns", async () => {
+    await withDb(async (database) => {
+      const versions = currentContentVersions();
+      const [forum] = (await database.sql`
+        INSERT INTO core.forums (title, slug, description, rules)
+        VALUES ('Legacy forum', 'legacy-forum', '', '**Legacy rules**')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [announcement] = (await database.sql`
+        INSERT INTO core.announcements (title, body, scope, starts_at)
+        VALUES ('Legacy announcement', '**Legacy news**', 'global', now())
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (forum === undefined || announcement === undefined) {
+        throw new Error("Could not create legacy rows");
+      }
+
+      await database.sql`
+        UPDATE core.forums
+        SET rules_render_version = ${versions.renderVersion},
+          rules_sanitiser_version = ${versions.sanitiserVersion},
+          rules_html = ''
+        WHERE id = ${forum.id}
+      `;
+      await database.sql`
+        UPDATE core.announcements
+        SET render_version = ${versions.renderVersion},
+          sanitiser_version = ${versions.sanitiserVersion},
+          body_html = ''
+        WHERE id = ${announcement.id}
+      `;
+
+      const result = await runContentRerenderJob(database.sql, {
+        sources: [forumRulesRerenderSource, announcementRerenderSource],
+      });
+      expect(result.rerendered).toBe(2);
+
+      const [renderedForum] = (await database.sql`
+        SELECT rules_html FROM core.forums WHERE id = ${forum.id}
+      `) as Array<{ rules_html: string }>;
+      const [renderedAnnouncement] = (await database.sql`
+        SELECT body_html FROM core.announcements WHERE id = ${announcement.id}
+      `) as Array<{ body_html: string }>;
+
+      expect(renderedForum?.rules_html).toContain("<strong>Legacy rules</strong>");
+      expect(renderedAnnouncement?.body_html).toContain("<strong>Legacy news</strong>");
     });
   });
 

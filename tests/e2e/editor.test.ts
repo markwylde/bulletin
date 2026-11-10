@@ -69,6 +69,41 @@ integrationDescribe("post editor", () => {
             'document.querySelectorAll("[data-editor-toolbar] button").length',
           ),
         ).toBeGreaterThanOrEqual(10);
+
+        if (viewportName === "mobile360") {
+          await view.evaluate(
+            'document.querySelector("[data-editor-wysiwyg] .ProseMirror")?.focus()',
+          );
+          // A phone keyboard shrinks the visual viewport; the sticky toolbar must stay visible.
+          await view.cdp("Emulation.setDeviceMetricsOverride", {
+            width: 360,
+            height: 420,
+            deviceScaleFactor: 1,
+            mobile: true,
+          });
+          await view.cdp("Input.insertText", { text: "Typing on a phone keyboard" });
+          await Bun.sleep(100);
+
+          expect(
+            await view.evaluate<boolean>(`(() => {
+              const toolbar = document.querySelector("[data-editor-toolbar]");
+              if (!(toolbar instanceof HTMLElement)) return false;
+              const rect = toolbar.getBoundingClientRect();
+              return rect.top >= 0 && rect.bottom <= window.innerHeight + 1;
+            })()`),
+          ).toBe(true);
+
+          await view.evaluate("window.scrollTo(0, document.body.scrollHeight)");
+          await Bun.sleep(50);
+          expect(
+            await view.evaluate<boolean>(`(() => {
+              const toolbar = document.querySelector("[data-editor-toolbar]");
+              if (!(toolbar instanceof HTMLElement)) return false;
+              const rect = toolbar.getBoundingClientRect();
+              return rect.top >= 0 && rect.bottom <= window.innerHeight + 1;
+            })()`),
+          ).toBe(true);
+        }
       });
     }, 120_000);
   }
@@ -85,6 +120,14 @@ integrationDescribe("post editor", () => {
       await switchToSource(view);
 
       expect(await sourceValue(view)).toBe(original);
+
+      await setInputValue(view, "[data-editor-source]", `New intro\n\n${original}`);
+      await clickSelector(view, '[data-editor-mode="wysiwyg"]');
+      await waitForSelector(view, "[data-editor-wysiwyg] .ProseMirror", 30_000);
+      await switchToSource(view);
+
+      expect(await sourceValue(view)).toContain(original);
+      expect(await sourceValue(view)).toContain("New intro");
     });
   }, 120_000);
 
@@ -116,7 +159,7 @@ integrationDescribe("post editor", () => {
       await clickSelector(view, "[data-mention-list] [data-mention-id]");
       await switchToSource(view);
 
-      expect(await sourceValue(view)).toContain("@Regular Member One");
+      expect(await sourceValue(view)).toContain("@[Regular Member One](member:");
     });
   }, 180_000);
 
@@ -154,6 +197,33 @@ integrationDescribe("post editor", () => {
         });
         return true;
       })()`);
+    });
+  }, 240_000);
+
+  test("reverting to the original content clears the saved draft", async () => {
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "member-1");
+      await clearEditorDraft(view);
+      await openEditor(view);
+      await switchToSource(view);
+      const original = await sourceValue(view);
+
+      await setInputValue(view, "[data-editor-source]", "Temporary draft");
+      await waitForSelector(view, '[data-draft-status="saved"]', 15_000);
+
+      await setInputValue(view, "[data-editor-source]", original);
+      await Bun.sleep(2_500);
+      await waitForSelector(view, '[data-draft-status="saved"]', 15_000);
+    });
+
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "member-1");
+      await openEditor(view);
+      await Bun.sleep(1_000);
+
+      expect(
+        await view.evaluate<boolean>('document.querySelector("[data-draft-offer]") === null'),
+      ).toBe(true);
     });
   }, 240_000);
 

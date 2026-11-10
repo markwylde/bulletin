@@ -46,6 +46,7 @@ export interface EditorController {
   insertText(text: string): void;
   insertMarkdown(markdown: string): void;
   replaceTextBeforeCursor(length: number, text: string): void;
+  insertMemberMention(id: string, displayName: string): void;
   format(command: EditorCommand): void;
   destroy(): void;
 }

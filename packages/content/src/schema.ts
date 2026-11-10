@@ -14,7 +14,6 @@ const COMMON_ATTRIBUTES: NonNullable<Schema["attributes"]> = {
   code: [["className", CODE_CLASS, "hljs"]],
   pre: [["className", "hljs"]],
   span: [["className", HLJS_CLASS, "spoiler"]],
-  "bl-quote": ["dataSourceKind", "dataSource", "dataSnapshot"],
   "bl-embed": ["dataProvider", "dataEmbedId"],
   "bl-unfurl": ["dataUrl", "dataUrlHash"],
 };
@@ -48,7 +47,6 @@ const MARKDOWN_TAGS = [
   "span",
   "strong",
   "ul",
-  "bl-quote",
 ] as const;
 
 const POST_TAGS = [

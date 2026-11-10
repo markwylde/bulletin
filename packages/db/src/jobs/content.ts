@@ -1,6 +1,6 @@
 import type { Logger } from "@bulletin/config";
 import type { ContentVersions, Emoticon, MentionResolver, ReplaceWords } from "@bulletin/content";
-import { currentContentVersions, renderSnapshot } from "@bulletin/content";
+import { currentContentVersions, renderContent, renderSnapshot } from "@bulletin/content";
 import { listStaleQuoteSnapshots, updateQuoteSnapshotRendering } from "@bulletin/domain/content";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
@@ -72,8 +72,135 @@ export const quoteSnapshotRerenderSource: ContentRerenderSource = {
   save: (sql, id, rendered) => updateQuoteSnapshotRendering(sql, id, rendered),
 };
 
+interface RuleRow {
+  readonly id: string;
+  readonly rules: string;
+  readonly rules_html: string;
+  readonly rules_text: string;
+  readonly rules_render_version: number;
+  readonly rules_sanitiser_version: number;
+}
+
+interface AnnouncementRow {
+  readonly id: string;
+  readonly body: string;
+  readonly body_html: string;
+  readonly body_text: string;
+  readonly render_version: number;
+  readonly sanitiser_version: number;
+}
+
+function rendered(result: {
+  readonly bodyHtml: string;
+  readonly renderVersion: number;
+  readonly sanitiserVersion: number;
+}): RenderedContent {
+  return {
+    bodyHtml: result.bodyHtml,
+    renderVersion: result.renderVersion,
+    sanitiserVersion: result.sanitiserVersion,
+  };
+}
+
+export const forumRulesRerenderSource: ContentRerenderSource = {
+  name: "forum_rules",
+  async listStale(sql, versions, options) {
+    const rows = (await sql`
+      SELECT id::text AS id, rules, rules_html, rules_text,
+        rules_render_version, rules_sanitiser_version
+      FROM core.forums
+      WHERE id > ${options.afterId}
+        AND (
+          rules_render_version <> ${versions.renderVersion}
+          OR rules_sanitiser_version <> ${versions.sanitiserVersion}
+          OR (rules <> '' AND rules_html = '')
+        )
+      ORDER BY id
+      LIMIT ${options.limit}
+    `) as RuleRow[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      bodyMd: row.rules,
+      bodyHtml: row.rules_html,
+      renderVersion: row.rules_render_version,
+      sanitiserVersion: row.rules_sanitiser_version,
+    }));
+  },
+  async render(row, options) {
+    return rendered(
+      await renderContent(row.bodyMd, {
+        profile: "rules",
+        context: { kind: "forum_post", forumId: "1" },
+        authorId: "0",
+        ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+      }),
+    );
+  },
+  async save(sql, id, value) {
+    await sql`
+      UPDATE core.forums
+      SET rules_html = ${value.bodyHtml},
+        rules_render_version = ${value.renderVersion},
+        rules_sanitiser_version = ${value.sanitiserVersion}
+      WHERE id = ${id}
+    `;
+  },
+};
+
+export const announcementRerenderSource: ContentRerenderSource = {
+  name: "announcements",
+  async listStale(sql, versions, options) {
+    const rows = (await sql`
+      SELECT id::text AS id, body, body_html, body_text, render_version, sanitiser_version
+      FROM core.announcements
+      WHERE id > ${options.afterId}
+        AND (
+          render_version <> ${versions.renderVersion}
+          OR sanitiser_version <> ${versions.sanitiserVersion}
+          OR (body <> '' AND body_html = '')
+        )
+      ORDER BY id
+      LIMIT ${options.limit}
+    `) as AnnouncementRow[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      bodyMd: row.body,
+      bodyHtml: row.body_html,
+      renderVersion: row.render_version,
+      sanitiserVersion: row.sanitiser_version,
+    }));
+  },
+  async render(row, options) {
+    return rendered(
+      await renderContent(row.bodyMd, {
+        profile: "rules",
+        context: { kind: "forum_post", forumId: "1" },
+        authorId: "0",
+        ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+      }),
+    );
+  },
+  async save(sql, id, value) {
+    await sql`
+      UPDATE core.announcements
+      SET body_html = ${value.bodyHtml},
+        render_version = ${value.renderVersion},
+        sanitiser_version = ${value.sanitiserVersion}
+      WHERE id = ${id}
+    `;
+  },
+};
+
+/** Every core content table the worker keeps current. */
+export function contentRerenderSources(): readonly ContentRerenderSource[] {
+  return [quoteSnapshotRerenderSource, forumRulesRerenderSource, announcementRerenderSource];
+}
+
 export interface ContentRerenderOptions extends ContentRenderOptions {
   readonly source?: ContentRerenderSource;
+  readonly sources?: readonly ContentRerenderSource[];
   readonly versions?: ContentVersions;
   readonly batchSize?: number;
   /** Time-box a run; the cursor lets the next run continue where this one stopped. */
@@ -124,39 +251,51 @@ export async function runContentRerenderJob(
   sql: SQL,
   options: ContentRerenderOptions = {},
 ): Promise<ContentRerenderResult> {
-  const source = options.source ?? quoteSnapshotRerenderSource;
+  const sources =
+    options.sources ??
+    (options.source === undefined ? [quoteSnapshotRerenderSource] : [options.source]);
   const versions = options.versions ?? currentContentVersions(options.replaceWords);
   const batchSize = options.batchSize ?? CONTENT_RERENDER_BATCH;
   const maxBatches = options.maxBatches ?? Number.POSITIVE_INFINITY;
-  const cursorKey = rerenderCursorKey(source.name, versions);
-  let cursor = await readCursor(sql, cursorKey);
   let rerendered = 0;
   let batches = 0;
+  let lastId = "0";
+  const cursorKeys: string[] = [];
 
-  while (batches < maxBatches) {
-    const rows = await source.listStale(sql, versions, { afterId: cursor, limit: batchSize });
+  for (const source of sources) {
+    const cursorKey = rerenderCursorKey(source.name, versions);
+    cursorKeys.push(cursorKey);
+    let cursor = await readCursor(sql, cursorKey);
+    let sourceBatches = 0;
 
-    if (rows.length === 0) {
-      break;
+    while (sourceBatches < maxBatches) {
+      const rows = await source.listStale(sql, versions, { afterId: cursor, limit: batchSize });
+
+      if (rows.length === 0) {
+        break;
+      }
+
+      for (const row of rows) {
+        // The row id advances only after its write, so the cursor never skips a failure.
+        const value = await source.render(row, options);
+        await source.save(sql, row.id, value);
+        cursor = row.id;
+        rerendered += 1;
+      }
+
+      await writeCursor(sql, cursorKey, cursor);
+      sourceBatches += 1;
+      batches += 1;
+
+      if (rows.length < batchSize) {
+        break;
+      }
     }
 
-    for (const row of rows) {
-      // The row id advances only after its write, so the cursor never skips a failure.
-      const rendered = await source.render(row, options);
-      await source.save(sql, row.id, rendered);
-      cursor = row.id;
-      rerendered += 1;
-    }
-
-    await writeCursor(sql, cursorKey, cursor);
-    batches += 1;
-
-    if (rows.length < batchSize) {
-      break;
-    }
+    lastId = cursor;
   }
 
-  return { rerendered, batches, cursorKey, lastId: cursor };
+  return { rerendered, batches, cursorKey: cursorKeys.join("|"), lastId };
 }
 
 export interface ContentJobsOptions extends ContentRerenderOptions {
@@ -179,7 +318,10 @@ export async function createContentJobs(options: ContentJobsOptions): Promise<Co
   await ensurePgBossQueue(options.boss, CONTENT_RERENDER_QUEUE);
 
   await options.boss.work(CONTENT_RERENDER_QUEUE, async () => {
-    const result = await runContentRerenderJob(options.sql, options);
+    const result = await runContentRerenderJob(options.sql, {
+      ...options,
+      sources: options.sources ?? contentRerenderSources(),
+    });
     options.logger?.info("content.rerender.completed", {
       rerendered: result.rerendered,
       batches: result.batches,

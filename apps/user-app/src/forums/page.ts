@@ -1,3 +1,4 @@
+import { ensureCurrentRendering } from "@bulletin/content";
 import {
   type ForumPrefix,
   type ForumRecord,
@@ -216,6 +217,29 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
   view.track(input.forum.id, "see_unapproved", isModerator);
 
   const blocks = input.forum.type === "category" ? [] : pageAnnouncements;
+  const rules = await ensureCurrentRendering(
+    {
+      bodyHtml: input.forum.rulesHtml,
+      bodyText: input.forum.rulesText,
+      renderVersion: input.forum.rulesRenderVersion,
+      sanitiserVersion: input.forum.rulesSanitiserVersion,
+    },
+    { profile: "rules" },
+  );
+  const announcementViews = await Promise.all(
+    blocks.map(async (announcement) => ({
+      announcement,
+      rendered: await ensureCurrentRendering(
+        {
+          bodyHtml: announcement.bodyHtml,
+          bodyText: announcement.bodyText,
+          renderVersion: announcement.renderVersion,
+          sanitiserVersion: announcement.sanitiserVersion,
+        },
+        { profile: "rules" },
+      ),
+    })),
+  );
 
   return {
     breadcrumbs,
@@ -226,16 +250,23 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
       description: input.forum.description,
       topicCount: input.translate("index.topicCount", { count: input.forum.topicCount }),
       postCount: input.translate("index.postCount", { count: input.forum.postCount }),
-      rules: input.forum.rules.trim() === "" ? null : safeHtml(input.forum.rulesHtml),
+      rules:
+        input.forum.rules.trim() === ""
+          ? null
+          : safeHtml(
+              rules.bodyHtml.trim() === ""
+                ? `<p>${escapeHtml(input.forum.rules)}</p>`
+                : rules.bodyHtml,
+            ),
       prefixes,
       activePrefix,
-      announcements: blocks.map((announcement) => ({
+      announcements: announcementViews.map(({ announcement, rendered }) => ({
         id: announcement.id,
         title: announcement.title,
         body: safeHtml(
-          announcement.bodyHtml.trim() === ""
+          rendered.bodyHtml.trim() === ""
             ? `<p>${escapeHtml(announcement.body)}</p>`
-            : announcement.bodyHtml,
+            : rendered.bodyHtml,
         ),
         dismissible: announcement.dismissible,
         version: announcement.version,

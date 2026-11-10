@@ -8,6 +8,7 @@ import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { type Plugin, unified } from "unified";
+import { visit } from "unist-util-visit";
 import {
   type BeforeSaveStage,
   createBeforeSaveRegistry,
@@ -75,7 +76,50 @@ function downgradeHeadings(parent: Parent): void {
   }
 }
 
-function processorFor(options: RenderContentOptions) {
+function expandQuotePlaceholders(
+  tree: HastRoot,
+  placeholders: readonly {
+    readonly token: string;
+    readonly kind: string;
+    readonly id: string;
+    readonly snapshotId: string;
+  }[],
+): void {
+  if (placeholders.length === 0) {
+    return;
+  }
+
+  const byToken = new Map(placeholders.map((placeholder) => [placeholder.token, placeholder]));
+
+  visit(tree, "text", (node, index, parent) => {
+    const placeholder = byToken.get(node.value.trim());
+
+    if (placeholder === undefined || parent === undefined || index === undefined) {
+      return;
+    }
+
+    parent.children.splice(index, 1, {
+      type: "element",
+      tagName: "bl-quote",
+      properties: {
+        dataSourceKind: placeholder.kind,
+        dataSource: placeholder.id,
+        dataSnapshot: placeholder.snapshotId,
+      },
+      children: [],
+    });
+  });
+}
+
+function processorFor(
+  options: RenderContentOptions,
+  placeholders: () => readonly {
+    readonly token: string;
+    readonly kind: string;
+    readonly id: string;
+    readonly snapshotId: string;
+  }[],
+) {
   return unified()
     .use(remarkParse)
     .use(remarkGfm)
@@ -87,6 +131,7 @@ function processorFor(options: RenderContentOptions) {
     })
     .use(rehypeSanitize, profileSchema(options.profile))
     .use(() => (tree: HastRoot) => {
+      expandQuotePlaceholders(tree, placeholders());
       expandEmbedPlaceholders(tree, options.embeds ?? []);
     })
     .use(rehypeHighlight, { detect: false, ignoreMissing: true })
@@ -135,7 +180,13 @@ async function renderMarkdown(
   options: RenderContentOptions,
   snapshot: boolean,
 ): Promise<Omit<RenderResult, "bodyMd">> {
-  const processor = processorFor(options);
+  let quotePlaceholders: readonly {
+    readonly token: string;
+    readonly kind: string;
+    readonly id: string;
+    readonly snapshotId: string;
+  }[] = [];
+  const processor = processorFor(options, () => quotePlaceholders);
   const tree = processor.parse(bodyMd) as MdastRoot;
 
   if (options.profile === "signature") {
@@ -154,7 +205,7 @@ async function renderMarkdown(
     });
   }
 
-  let quotes: QuoteDirectiveResult = { quoteSources: [], quotedForumIds: [] };
+  let quotes: QuoteDirectiveResult = { quoteSources: [], quotedForumIds: [], placeholders: [] };
 
   if (snapshot || options.quotes === undefined) {
     quotes = await applyQuoteDirectives(tree, {
@@ -178,6 +229,7 @@ async function renderMarkdown(
     });
   }
 
+  quotePlaceholders = quotes.placeholders;
   const hast = (await processor.run(tree)) as HastRoot;
 
   return {

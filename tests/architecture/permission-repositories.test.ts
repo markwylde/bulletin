@@ -31,6 +31,8 @@ function isAllowed(file: SourceFile): boolean {
     // Staff-admin screens read forum definitions behind an ACP guard; they are not a public
     // content path.
     file.path.startsWith("apps/staff-api/src/") ||
+    // The re-render worker only materialises stored HTML; it never serves a viewer.
+    file.path === "packages/db/src/jobs/content.ts" ||
     isPermissionRepository(file)
   );
 }

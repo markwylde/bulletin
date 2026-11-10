@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FlagsProvider, useFlag } from "../flags.tsx";
 import {
   clearDraft,
+  draftWriteFor,
   type EditorDraft,
   readDraft,
   readEditorSession,
@@ -191,15 +192,27 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
 
   // 2 s debounce as specified by ADR 0007; the API stores one row per member and context.
   useEffect(() => {
-    if (csrfToken === null || !dirty || markdown === initialRef.current) {
+    if (csrfToken === null) {
+      return;
+    }
+
+    const mode = draftWriteFor(initialRef.current, markdown, dirty);
+
+    if (mode === "none") {
       return;
     }
 
     const timer = setTimeout(() => {
       setStatus("saving");
-      void writeDraft(contextKey, markdown, csrfToken)
-        .then((saved) => {
-          setStatus(saved === null ? "failed" : "saved");
+
+      const write =
+        mode === "clear"
+          ? clearDraft(contextKey, csrfToken).then((ok) => ok)
+          : writeDraft(contextKey, markdown, csrfToken).then((saved) => saved !== null);
+
+      void write
+        .then((ok) => {
+          setStatus(ok ? "saved" : "failed");
         })
         .catch(() => {
           setStatus("failed");
@@ -376,12 +389,12 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
   function chooseMention(member: SuggestedMember): void {
     if (mentionQuery !== null) {
       if (mode === "wysiwyg") {
-        controller.current?.replaceTextBeforeCursor(
-          mentionQuery.length + 1,
-          `@${member.displayName} `,
-        );
+        controller.current?.replaceTextBeforeCursor(mentionQuery.length + 1, "");
+        controller.current?.insertMemberMention(member.id, member.displayName);
+        controller.current?.insertText(" ");
+        syncFromEditor();
       } else {
-        insertSourceText(`@${member.displayName} `);
+        insertSourceText(`@[${member.displayName}](member:${member.id}) `);
       }
     }
 

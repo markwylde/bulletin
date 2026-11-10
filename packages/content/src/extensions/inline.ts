@@ -131,6 +131,58 @@ function withEmoticons(
   });
 }
 
+const MEMBER_LINK = /^member:(\d+)$/;
+
+/** Resolves the editor's unambiguous `@[Name](member:<id>)` token before plain @names. */
+async function withMemberLinks(
+  pieces: readonly PhrasingContent[],
+  resolver: MentionResolver,
+  mentioned: Set<string>,
+): Promise<PhrasingContent[]> {
+  const result: PhrasingContent[] = [];
+
+  for (let index = 0; index < pieces.length; index += 1) {
+    const piece = pieces[index];
+    const next = pieces[index + 1];
+
+    if (piece?.type === "text" && piece.value.endsWith("@") && next?.type === "link") {
+      const match = MEMBER_LINK.exec(next.url);
+
+      if (match?.[1] !== undefined) {
+        const id = match[1];
+        const member =
+          resolver.resolveById === undefined
+            ? await resolver.resolve(
+                next.children.map((child) => ("value" in child ? child.value : "")).join(""),
+              )
+            : await resolver.resolveById(id);
+
+        if (member !== null) {
+          const before = piece.value.slice(0, -1);
+
+          if (before !== "") {
+            result.push(text(before));
+          }
+
+          mentioned.add(member.id);
+          result.push({
+            type: "link",
+            url: member.url,
+            title: null,
+            children: [text(`@${member.displayName}`)],
+          });
+          index += 1;
+          continue;
+        }
+      }
+    }
+
+    result.push(piece as PhrasingContent);
+  }
+
+  return result;
+}
+
 async function withMentions(
   pieces: readonly PhrasingContent[],
   resolver: MentionResolver,
@@ -245,6 +297,7 @@ export async function applyInlineExtensions(
     next = withEmoticons(next, emoticons);
 
     if (options.mentions !== undefined) {
+      next = await withMemberLinks(next, options.mentions, mentioned);
       next = await withMentions(next, options.mentions, cache, mentioned);
     }
 

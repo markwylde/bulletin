@@ -148,30 +148,47 @@ export async function mutateEmoticon(
         typeof body.position === "number" && Number.isInteger(body.position) && body.position >= 0
           ? body.position
           : 0;
+      const id = typeof body.id === "string" ? body.id : undefined;
+      let key: string;
+      let finalType: EmoticonContentType;
 
-      if (type === null || bytes === null) {
-        return { ok: false, code: "invalid", fields: ["image"] };
-      }
+      if (type !== null && bytes !== null) {
+        key = opaqueKey("emoticon");
+        finalType = type;
 
-      const key = opaqueKey("emoticon");
+        try {
+          await storage.put(key, bytes, { contentType: type });
+        } catch {
+          return { ok: false, code: "invalid", fields: ["image"] };
+        }
+      } else if (id !== undefined) {
+        const existing = await readEmoticonImage(sql, id);
 
-      try {
-        await storage.put(key, bytes, { contentType: type });
-      } catch {
+        if (existing === null) {
+          return { ok: false, code: "not_found", fields: ["id"] };
+        }
+
+        key = existing.storageKey;
+        finalType = existing.contentType;
+      } else {
         return { ok: false, code: "invalid", fields: ["image"] };
       }
 
       const result = await saveEmoticon(sql, {
+        ...(id === undefined ? {} : { id }),
         setId,
         code,
         alt,
         storageKey: key,
-        contentType: type,
+        contentType: finalType,
         position,
       });
 
       if (!result.ok) {
-        await storage.delete(key).catch(() => undefined);
+        if (type !== null && bytes !== null) {
+          await storage.delete(key).catch(() => undefined);
+        }
+
         return result;
       }
 
@@ -179,7 +196,7 @@ export async function mutateEmoticon(
         setId,
         code,
         alt,
-        contentType: type,
+        contentType: finalType,
         position,
       });
 

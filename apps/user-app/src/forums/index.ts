@@ -1,3 +1,4 @@
+import { ensureCurrentRendering } from "@bulletin/content";
 import { type ForumRecord, listVisibleForums } from "@bulletin/domain/forums";
 import {
   announcementAudienceClass,
@@ -166,6 +167,20 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
     snapshot,
   });
   const notices = announcementsEnabled ? globalAnnouncements(announcements, now) : [];
+  const noticeViews = await Promise.all(
+    notices.map(async (announcement) => ({
+      announcement,
+      rendered: await ensureCurrentRendering(
+        {
+          bodyHtml: announcement.bodyHtml,
+          bodyText: announcement.bodyText,
+          renderVersion: announcement.renderVersion,
+          sanitiserVersion: announcement.sanitiserVersion,
+        },
+        { profile: "rules" },
+      ),
+    })),
+  );
   const audience = announcementAudienceClass(announcements, snapshot.groupIds, now);
   const categories = rows
     .filter((row) => row.type === "category")
@@ -186,13 +201,13 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
     viewModel: {
       categories,
       rootForums,
-      announcements: notices.map((announcement) => ({
+      announcements: noticeViews.map(({ announcement, rendered }) => ({
         id: announcement.id,
         title: announcement.title,
         body: safeHtml(
-          announcement.bodyHtml.trim() === ""
+          rendered.bodyHtml.trim() === ""
             ? `<p>${escapeHtml(announcement.body)}</p>`
-            : announcement.bodyHtml,
+            : rendered.bodyHtml,
         ),
         dismissible: announcement.dismissible,
         version: announcement.version,

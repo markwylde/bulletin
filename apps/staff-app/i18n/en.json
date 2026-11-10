@@ -78,6 +78,7 @@
   "staff.emoticons.deleteSet": "Delete set",
   "staff.emoticons.duplicateCode": "That code is already in use.",
   "staff.emoticons.duplicateSet": "That set key is already in use.",
+  "staff.emoticons.edit": "Edit",
   "staff.emoticons.emoticonForm": "Emoticon details",
   "staff.emoticons.empty": "No emoticon sets yet.",
   "staff.emoticons.field.alt": "Alt text",

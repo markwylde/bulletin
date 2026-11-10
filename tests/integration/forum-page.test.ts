@@ -343,6 +343,26 @@ integrationDescribe("forum page", () => {
     });
   }, 30_000);
 
+  test("re-sanitises stale rules before caching the page", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.forums
+        SET rules_html = '<p><strong>Old safe rules</strong></p><script>alert(1)</script>',
+          rules_sanitiser_version = 999
+        WHERE id = 2
+      `;
+      const member = await memberSession(database, "member-1");
+      const page = await render(database, await forumHref(database, "2"), member);
+
+      expect(page.kind).toBe("page");
+
+      if (page.kind === "page") {
+        expect(page.html).toContain("Old safe rules");
+        expect(page.html).not.toContain("<script>alert(1)</script>");
+      }
+    });
+  }, 30_000);
+
   test("keeps a group-restricted prefix out of a regular member's warm-cache variant", async () => {
     await withSeededDb(async (database) => {
       const [prefix] = (await database.sql`

@@ -272,6 +272,29 @@ export async function saveEmoticon(sql: SQL, value: SaveEmoticonInput): Promise<
   }
 
   try {
+    if (value.id !== undefined) {
+      if (!/^\d+$/.test(value.id)) {
+        return { ok: false, code: "invalid", fields: ["id"] };
+      }
+
+      const [row] = (await sql`
+        UPDATE core.emoticons
+        SET set_id = ${value.setId},
+          code = ${value.code},
+          alt = ${value.alt.trim()},
+          storage_key = ${value.storageKey},
+          content_type = ${value.contentType},
+          position = ${value.position},
+          updated_at = now()
+        WHERE id = ${value.id}
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      return row === undefined
+        ? { ok: false, code: "not_found", fields: ["id"] }
+        : { ok: true, id: row.id };
+    }
+
     const [row] = (await sql`
       INSERT INTO core.emoticons (
         set_id, code, alt, storage_key, content_type, position
@@ -280,14 +303,6 @@ export async function saveEmoticon(sql: SQL, value: SaveEmoticonInput): Promise<
         ${value.setId}, ${value.code}, ${value.alt.trim()}, ${value.storageKey},
         ${value.contentType}, ${value.position}
       )
-      ON CONFLICT (id) DO UPDATE
-        SET set_id = EXCLUDED.set_id,
-          code = EXCLUDED.code,
-          alt = EXCLUDED.alt,
-          storage_key = EXCLUDED.storage_key,
-          content_type = EXCLUDED.content_type,
-          position = EXCLUDED.position,
-          updated_at = now()
       RETURNING id::text AS id
     `) as Array<{ id: string }>;
 

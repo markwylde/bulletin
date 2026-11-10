@@ -3,6 +3,11 @@ import { renderContent } from "./pipeline.ts";
 import type { MentionResolver } from "./types.ts";
 
 const mentions: MentionResolver = {
+  async resolveById(id) {
+    return id === "42"
+      ? { id: "42", displayName: "Regular Member One", url: "/profile/42-regular-member-one" }
+      : null;
+  },
   async resolve(name) {
     if (name.toLowerCase() === "jane") {
       return { id: "42", displayName: "Jane", url: "/profile/42-jane" };
@@ -42,6 +47,15 @@ describe("inline extensions", () => {
 
     expect(result.bodyHtml).toContain("@Jane");
     expect(result.bodyHtml).toContain(".");
+    expect(result.mentionedMemberIds).toEqual(["42"]);
+  });
+
+  test("resolves the unambiguous multiword mention token", async () => {
+    const result = await renderContent("Hi @[Regular Member One](member:42)!", options());
+
+    expect(result.bodyHtml).toContain('href="/profile/42-regular-member-one"');
+    expect(result.bodyHtml).toContain("@Regular Member One");
+    expect(result.bodyHtml).not.toContain("member:42");
     expect(result.mentionedMemberIds).toEqual(["42"]);
   });
 
