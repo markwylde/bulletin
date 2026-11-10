@@ -14,7 +14,9 @@ import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { announceDismissResponse } from "./announcements.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
+import { draftDeleteResponse, draftGetResponse, draftSaveResponse } from "./drafts.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
+import { memberSuggestResponse } from "./members.ts";
 import { redirectCountsResponse } from "./redirects.ts";
 
 const config = loadConfig();
@@ -98,6 +100,42 @@ await startService({
           rateLimitSecret: config.sessionSecret,
         }),
       );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (pathname === "/api/me/drafts") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        if (request.method === "GET") {
+          return draftGetResponse(sql, session.memberId, new URL(request.url));
+        }
+
+        if (request.method === "PUT") {
+          return draftSaveResponse(sql, session.memberId, request);
+        }
+
+        if (request.method === "DELETE") {
+          return draftDeleteResponse(sql, session.memberId, new URL(request.url));
+        }
+
+        return Response.json({ code: "method_not_allowed" }, { status: 405 });
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/members/suggest") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return memberSuggestResponse(sql, new URL(request.url));
+      });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

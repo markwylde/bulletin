@@ -1,5 +1,6 @@
 import type { Logger } from "@bulletin/config";
 import { forwardSystemAudits } from "@bulletin/domain/audit";
+import { purgeExpiredDrafts } from "@bulletin/domain/content";
 import { expireVisitBuffers } from "@bulletin/domain/visits";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
@@ -13,16 +14,22 @@ export interface MaintenanceResult {
   readonly forwardedAudits: number;
   readonly expiredPresence: number;
   readonly expiredViews: number;
+  readonly expiredDrafts: number;
 }
 
 /** The maintenance sweep itself, so tests and the scheduled job share one implementation. */
 export async function runMaintenance(sql: SQL): Promise<MaintenanceResult> {
-  const [audits, visits] = await Promise.all([forwardSystemAudits(sql), expireVisitBuffers(sql)]);
+  const [audits, visits, drafts] = await Promise.all([
+    forwardSystemAudits(sql),
+    expireVisitBuffers(sql),
+    purgeExpiredDrafts(sql),
+  ]);
 
   return {
     forwardedAudits: audits.forwarded,
     expiredPresence: visits.presence,
     expiredViews: visits.views,
+    expiredDrafts: drafts,
   };
 }
 
@@ -48,6 +55,7 @@ export async function createMaintenanceJobs(
       forwardedAudits: result.forwardedAudits,
       expiredPresence: result.expiredPresence,
       expiredViews: result.expiredViews,
+      expiredDrafts: result.expiredDrafts,
     });
   });
 

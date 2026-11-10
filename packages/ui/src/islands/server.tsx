@@ -2,10 +2,12 @@ import type { ServerIslandDefinition, ServerIslandRegistry } from "@bulletin/tem
 import { type ComponentType, createElement } from "react";
 import { renderToString } from "react-dom/server";
 import * as v from "valibot";
+import { Editor } from "./Editor.tsx";
 import { LanguageSwitcher } from "./LanguageSwitcher.tsx";
 import { LocaleSuggestion } from "./LocaleSuggestion.tsx";
 import { SpikeCounter } from "./SpikeCounter.tsx";
 import {
+  editorSchema,
   type IslandPropsSchema,
   languageSwitcherSchema,
   localeSuggestionSchema,
@@ -45,4 +47,5 @@ export const SERVER_ISLANDS: ServerIslandRegistry = {
     localeSuggestionSchema,
     LocaleSuggestion,
   ),
+  Editor: defineServerIsland("Editor", editorSchema, Editor),
 };

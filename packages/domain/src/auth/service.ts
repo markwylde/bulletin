@@ -1,5 +1,6 @@
 import { isLocale, type Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import { readDraft, validDraftContext } from "../content/drafts.ts";
 import { validateDisplayName } from "../member/names.ts";
 import {
   readMember,
@@ -377,7 +378,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       }
 
       const topics = parseTopicIds(body?.topics);
-      const [visits, dismissedAnnouncements] = await Promise.all([
+      const draftContext = validDraftContext(body?.draftContext) ? body.draftContext : null;
+      const [visits, dismissedAnnouncements, draft] = await Promise.all([
         recordVisit(options.sql, {
           viewerKey: memberViewerKey(session.memberId),
           ctx,
@@ -385,6 +387,9 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           memberId: session.memberId,
         }),
         listDismissedAnnouncementIds(options.sql, session.memberId),
+        draftContext === null
+          ? Promise.resolve(null)
+          : readDraft(options.sql, session.memberId, draftContext),
       ]);
       const payload = {
         ctx,
@@ -393,6 +398,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         dismissedAnnouncements,
         // Counts arrive with `events-notifications`; the overlay shape is fixed now.
         counts: { notifications: 0, conversations: 0 },
+        ...(draft === null ? {} : { draft }),
       };
       const text = JSON.stringify(payload);
       const etag = `"${new Bun.CryptoHasher("sha256").update(text).digest("hex")}"`;

@@ -7,17 +7,20 @@ function target(): {
   readonly counts: string[];
   readonly tokens: string[];
   readonly dismissed: string[];
+  readonly drafts: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
   const tokens: string[] = [];
   const dismissed: string[] = [];
+  const drafts: string[] = [];
 
   return {
     unread,
     counts,
     tokens,
     dismissed,
+    drafts,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -26,6 +29,7 @@ function target(): {
       countSlots: (name) => [{ setCount: (count) => counts.push(`${name}=${count}`) }],
       storeCsrfToken: (token) => tokens.push(token),
       hideAnnouncement: (announcementId) => dismissed.push(announcementId),
+      setDraft: (draft) => drafts.push(`${draft.contextKey}:${draft.bodyMd}`),
     },
   };
 }
@@ -66,6 +70,17 @@ describe("overlay applier", () => {
     });
 
     expect(fixture.dismissed).toEqual(["7", "9"]);
+  });
+
+  test("delivers the member's draft for the editor context", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, {
+      draft: { contextKey: "reply:topic:1", bodyMd: "unsaved", updatedAt: "2026-11-10T00:00:00Z" },
+    });
+    applyOverlay(fixture.target, { draft: { contextKey: "x", bodyMd: 1 } } as never);
+
+    expect(fixture.drafts).toEqual(["reply:topic:1:unsaved"]);
   });
 
   test("ignores unknown payload fields and keeps applying the rest", () => {

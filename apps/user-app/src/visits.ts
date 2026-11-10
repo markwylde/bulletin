@@ -8,6 +8,7 @@ import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
 import {
   applyOverlay,
   type OverlayCount,
+  type OverlayDraft,
   type OverlayPayload,
   type OverlayTarget,
 } from "./overlay/apply.ts";
@@ -79,14 +80,26 @@ const overlayTarget: OverlayTarget = {
       element.hidden = true;
     }
   },
+
+  setDraft(draft: OverlayDraft) {
+    window.dispatchEvent(new CustomEvent<OverlayDraft>("bulletin:draft", { detail: draft }));
+  },
 };
+
+function draftContext(): string | null {
+  return document.querySelector("[data-draft-context]")?.getAttribute("data-draft-context") ?? null;
+}
 
 async function loadOverlay(ctx: string): Promise<void> {
   try {
     const response = await fetch("/api/me/overlay", {
       method: "POST",
       headers: { "content-type": "application/json", "x-bulletin-overlay": "1" },
-      body: JSON.stringify({ ctx, topics: pageTopicIds() }),
+      body: JSON.stringify({
+        ctx,
+        topics: pageTopicIds(),
+        ...(draftContext() === null ? {} : { draftContext: draftContext() }),
+      }),
     });
 
     if (!response.ok) {

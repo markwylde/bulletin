@@ -109,8 +109,8 @@ export function expandEmbedPlaceholders(
       return;
     }
 
-    const key = node.properties["dataProvider"];
-    const id = node.properties["dataEmbedId"];
+    const key = node.properties.dataProvider;
+    const id = node.properties.dataEmbedId;
     const provider = typeof key === "string" ? byKey.get(key) : undefined;
     const src =
       provider === undefined || typeof id !== "string" ? null : embedIframeSrc(provider, id);

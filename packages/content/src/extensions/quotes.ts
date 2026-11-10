@@ -128,7 +128,7 @@ export async function applyQuoteDirectives(
   const quotedForumIds = new Set<string>();
 
   for (const directive of directives) {
-    const ref = parseQuoteSource(directive.attributes?.["source"]);
+    const ref = parseQuoteSource(directive.attributes?.source);
 
     if (!(await options.resolver.canRead(ref, options.authorId))) {
       throw new ContentError(

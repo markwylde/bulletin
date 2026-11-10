@@ -6,12 +6,20 @@
 
 export type OverlayCount = "notifications" | "conversations";
 
+export interface OverlayDraft {
+  readonly contextKey: string;
+  readonly bodyMd: string;
+  readonly updatedAt: string;
+}
+
 export interface OverlayPayload {
   readonly unread?: readonly string[];
   readonly counts?: Partial<Record<OverlayCount, number>>;
   readonly csrfToken?: string;
   /** Announcement ids the member dismissed at their current content version. */
   readonly dismissedAnnouncements?: readonly string[];
+  /** The member's draft for the editor on this page, never in shared HTML (ADR 0007). */
+  readonly draft?: OverlayDraft;
 }
 
 export interface UnreadSlot {
@@ -27,6 +35,7 @@ export interface OverlayTarget {
   countSlots(count: OverlayCount): readonly CountSlot[];
   storeCsrfToken(token: string): void;
   hideAnnouncement(announcementId: string): void;
+  setDraft(draft: OverlayDraft): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -70,5 +79,17 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
     if (typeof announcementId === "string" && /^[1-9]\d{0,18}$/.test(announcementId)) {
       target.hideAnnouncement(announcementId);
     }
+  }
+
+  const draft = payload.draft;
+
+  if (
+    typeof draft === "object" &&
+    draft !== null &&
+    typeof draft.contextKey === "string" &&
+    typeof draft.bodyMd === "string" &&
+    typeof draft.updatedAt === "string"
+  ) {
+    target.setDraft(draft);
   }
 }

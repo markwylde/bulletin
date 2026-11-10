@@ -21,10 +21,10 @@
 
 ## 4. Editor
 
-- [ ] 4.1 Implement the Milkdown editor island (WYSIWYG/source toggle, custom nodes, raw markdown preservation) with the round-trip corpus test
-- [ ] 4.2 Implement the mobile toolbar, emoticon picker and mention autocomplete (`GET /api/members/suggest`), with E2E at 360/390/1440 including toolbar visibility
-- [ ] 4.3 Implement draft autosave and restore (API, overlay delivery, clear on submit), with integration tests and an E2E restore on a second browser profile
-- [ ] 4.4 Verify keyboard operation and accessible names with an E2E accessibility check
+- [x] 4.1 Implement the Milkdown editor island (WYSIWYG/source toggle, custom nodes, raw markdown preservation) with the round-trip corpus test
+- [x] 4.2 Implement the mobile toolbar, emoticon picker and mention autocomplete (`GET /api/members/suggest`), with E2E at 360/390/1440 including toolbar visibility
+- [x] 4.3 Implement draft autosave and restore (API, overlay delivery, clear on submit), with integration tests and an E2E restore on a second browser profile
+- [x] 4.4 Verify keyboard operation and accessible names with an E2E accessibility check
 
 ## 5. Staff screens and adoption
 

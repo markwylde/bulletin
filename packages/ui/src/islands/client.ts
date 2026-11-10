@@ -2,6 +2,7 @@ import { type ComponentType, createElement } from "react";
 import { hydrateRoot } from "react-dom/client";
 import * as v from "valibot";
 import {
+  editorSchema,
   type IslandPropsSchema,
   languageSwitcherSchema,
   localeSuggestionSchema,
@@ -57,5 +58,9 @@ export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
   LocaleSuggestion: defineClientIsland(localeSuggestionSchema, async () => {
     const module = await import("./LocaleSuggestion.tsx");
     return module.LocaleSuggestion;
+  }),
+  Editor: defineClientIsland(editorSchema, async () => {
+    const module = await import("./Editor.tsx");
+    return module.Editor;
   }),
 };

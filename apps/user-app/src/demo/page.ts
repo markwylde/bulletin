@@ -128,7 +128,70 @@ function errorPage(
  * decision goes through `can()` (ADR 0005); the capability view exists only to hash exactly the
  * declared deps into the variant key.
  */
+function editorPage(translate: DemoPageInput["translate"]): DemoForumPage {
+  const title = translate("editor.demo.title");
+
+  return {
+    template: "demo",
+    state: "content",
+    title,
+    breadcrumbs: [],
+    visibilityKey: "editor",
+    showDeleted: false,
+    hasUnlockGrant: false,
+    viewModel: {
+      forumId: "1",
+      forumTitle: title,
+      isCategory: false,
+      locked: false,
+      children: [],
+      topics: [],
+      showDeleted: false,
+      showModTools: false,
+      editor: {
+        contextKey: "demo:editor",
+        initialMarkdown: "# Demo post\n\n:::disabled-plugin\nraw [b]hi[/b]\n:::",
+        emoticons: [
+          {
+            code: "smile",
+            src: "/files/emoticons/smile.svg",
+            alt: translate("editor.emoticon.smile"),
+          },
+        ],
+        labels: {
+          editor: translate("editor.label"),
+          toolbar: translate("editor.toolbar"),
+          wysiwyg: translate("editor.wysiwyg"),
+          source: translate("editor.source"),
+          bold: translate("editor.bold"),
+          italic: translate("editor.italic"),
+          heading: translate("editor.heading"),
+          link: translate("editor.link"),
+          code: translate("editor.code"),
+          quote: translate("editor.quote"),
+          spoiler: translate("editor.spoiler"),
+          list: translate("editor.list"),
+          emoticon: translate("editor.emoticon"),
+          mention: translate("editor.mention"),
+          draftFound: translate("editor.draft.found"),
+          restoreDraft: translate("editor.draft.restore"),
+          discardDraft: translate("editor.draft.discard"),
+          saving: translate("editor.draft.saving"),
+          saved: translate("editor.draft.saved"),
+          saveFailed: translate("editor.draft.failed"),
+          mentionEmpty: translate("editor.mention.empty"),
+          mentionLoading: translate("editor.mention.loading"),
+        },
+      },
+    },
+  };
+}
+
 export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> {
+  if (input.forumId === "editor") {
+    return editorPage(input.translate);
+  }
+
   const node = FIXTURE_FORUM_TREE.get(input.forumId);
   const title = input.translate("theme.error.title");
   const notFound = errorPage("not_found", input.translate("theme.error.notFound"), [], title, null);
@@ -204,6 +267,7 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
     isCategory,
     locked,
     passwordHint: FIXTURE_DEMO_PASSWORD,
+    editor: null,
   };
 
   if (locked) {

@@ -30,6 +30,44 @@ export const languageSwitcherSchema = v.strictObject({
   saveFailed: v.pipe(v.string(), v.minLength(1)),
 });
 
+const editorEmoticonSchema = v.strictObject({
+  code: v.pipe(v.string(), v.regex(/^[a-z0-9_+-]{1,32}$/i)),
+  src: v.pipe(v.string(), v.minLength(1)),
+  alt: v.pipe(v.string(), v.minLength(1)),
+});
+
+const editorLabelsSchema = v.strictObject({
+  editor: v.pipe(v.string(), v.minLength(1)),
+  toolbar: v.pipe(v.string(), v.minLength(1)),
+  wysiwyg: v.pipe(v.string(), v.minLength(1)),
+  source: v.pipe(v.string(), v.minLength(1)),
+  bold: v.pipe(v.string(), v.minLength(1)),
+  italic: v.pipe(v.string(), v.minLength(1)),
+  heading: v.pipe(v.string(), v.minLength(1)),
+  link: v.pipe(v.string(), v.minLength(1)),
+  code: v.pipe(v.string(), v.minLength(1)),
+  quote: v.pipe(v.string(), v.minLength(1)),
+  spoiler: v.pipe(v.string(), v.minLength(1)),
+  list: v.pipe(v.string(), v.minLength(1)),
+  emoticon: v.pipe(v.string(), v.minLength(1)),
+  mention: v.pipe(v.string(), v.minLength(1)),
+  draftFound: v.pipe(v.string(), v.minLength(1)),
+  restoreDraft: v.pipe(v.string(), v.minLength(1)),
+  discardDraft: v.pipe(v.string(), v.minLength(1)),
+  saving: v.pipe(v.string(), v.minLength(1)),
+  saved: v.pipe(v.string(), v.minLength(1)),
+  saveFailed: v.pipe(v.string(), v.minLength(1)),
+  mentionEmpty: v.pipe(v.string(), v.minLength(1)),
+  mentionLoading: v.pipe(v.string(), v.minLength(1)),
+});
+
+export const editorSchema = v.strictObject({
+  contextKey: v.pipe(v.string(), v.regex(/^[a-z0-9][a-z0-9:._-]{0,119}$/)),
+  initialMarkdown: v.pipe(v.string(), v.maxLength(100_000)),
+  emoticons: v.array(editorEmoticonSchema),
+  labels: editorLabelsSchema,
+});
+
 export const localeSuggestionSchema = v.strictObject({
   current: v.picklist(LOCALE_VALUES),
   options: v.pipe(v.array(languageOptionSchema), v.minLength(1)),
@@ -43,6 +81,7 @@ export const ISLAND_SCHEMAS = {
   SpikeCounter: spikeCounterSchema,
   LanguageSwitcher: languageSwitcherSchema,
   LocaleSuggestion: localeSuggestionSchema,
+  Editor: editorSchema,
 } as const;
 
 export type IslandName = keyof typeof ISLAND_SCHEMAS;

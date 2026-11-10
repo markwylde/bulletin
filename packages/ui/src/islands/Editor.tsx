@@ -1,0 +1,613 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  clearDraft,
+  type EditorDraft,
+  readDraft,
+  readEditorSession,
+  writeDraft,
+} from "./editor/drafts.ts";
+import type { EditorCommand, EditorController, EditorMode, EditorProps } from "./editor/types.ts";
+
+interface SuggestedMember {
+  readonly id: string;
+  readonly displayName: string;
+  readonly url: string;
+}
+
+type SaveStatus = "idle" | "saving" | "saved" | "failed";
+
+const MENTION_AT_CURSOR = /(?:^|\s)@([\p{L}\p{N}_.-]{2,32})$/u;
+
+function mentionQueryAtCursor(element: HTMLElement): string | null {
+  const selection = window.getSelection();
+
+  if (selection === null || selection.rangeCount === 0 || !selection.isCollapsed) {
+    return null;
+  }
+
+  const node = selection.anchorNode;
+
+  if (node === null || !element.contains(node)) {
+    return null;
+  }
+
+  const text = (node.textContent ?? "").slice(0, selection.anchorOffset);
+  return MENTION_AT_CURSOR.exec(text)?.[1] ?? null;
+}
+
+function wrapSelection(
+  value: string,
+  start: number,
+  end: number,
+  before: string,
+  after: string,
+): string {
+  return `${value.slice(0, start)}${before}${value.slice(start, end)}${after}${value.slice(end)}`;
+}
+
+/** The editor island (ADR 0007): WYSIWYG/source, toolbar, emoticons, mentions and drafts. */
+export function Editor({ contextKey, initialMarkdown, emoticons, labels }: EditorProps) {
+  const [mode, setMode] = useState<EditorMode>("source");
+  const [markdown, setMarkdown] = useState(initialMarkdown);
+  const [dirty, setDirty] = useState(false);
+  const [status, setStatus] = useState<SaveStatus>("idle");
+  const [draft, setDraft] = useState<EditorDraft | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
+  const [emoticonOpen, setEmoticonOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentions, setMentions] = useState<readonly SuggestedMember[]>([]);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionLoading, setMentionLoading] = useState(false);
+  const initialRef = useRef(initialMarkdown);
+  const baseSource = useRef(initialMarkdown);
+  const markdownRef = useRef(initialMarkdown);
+  const dirtyRef = useRef(false);
+  const restoringRef = useRef(false);
+  const editorElement = useRef<HTMLDivElement>(null);
+  const sourceElement = useRef<HTMLTextAreaElement>(null);
+  const controller = useRef<EditorController | null>(null);
+
+  const markDirty = (): void => {
+    dirtyRef.current = true;
+    setDirty(true);
+  };
+
+  const updateMarkdown = (value: string): void => {
+    markdownRef.current = value;
+    setMarkdown(value);
+    markDirty();
+  };
+
+  const syncFromEditor = (): void => {
+    const current = controller.current?.getMarkdown();
+
+    if (current !== undefined) {
+      markdownRef.current = current;
+      setMarkdown(current);
+      markDirty();
+    }
+  };
+
+  // Members get their own draft; guests keep typing without server-side personal data.
+  useEffect(() => {
+    let active = true;
+
+    void readEditorSession().then((session) => {
+      if (!active || session?.authenticated !== true || typeof session.csrfToken !== "string") {
+        return;
+      }
+
+      setCsrfToken(session.csrfToken);
+      void readDraft(contextKey).then((value) => {
+        if (active && value !== null && value.bodyMd !== initialRef.current) {
+          setDraft(value);
+        }
+      });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [contextKey]);
+
+  // The personal overlay delivers the draft before/alongside the editor's own request.
+  useEffect(() => {
+    const receive = (event: Event): void => {
+      const detail = (event as CustomEvent<EditorDraft>).detail;
+
+      if (detail?.contextKey === contextKey && detail.bodyMd !== initialRef.current) {
+        setDraft(detail);
+      }
+    };
+
+    window.addEventListener("bulletin:draft", receive);
+    return () => {
+      window.removeEventListener("bulletin:draft", receive);
+    };
+  }, [contextKey]);
+
+  // Start in WYSIWYG when JavaScript works; the server-rendered source mode is the fallback.
+  useEffect(() => {
+    setMode("wysiwyg");
+  }, []);
+
+  useEffect(() => {
+    if (mode !== "wysiwyg") {
+      return;
+    }
+
+    const element = editorElement.current;
+
+    if (element === null) {
+      return;
+    }
+
+    let cancelled = false;
+    let created: EditorController | null = null;
+
+    void import("./editor/milkdown.ts").then(async ({ createMilkdownEditor }) => {
+      const value = await createMilkdownEditor({
+        element,
+        markdown: markdownRef.current,
+        label: labels.editor,
+        onChange: (next) => {
+          markdownRef.current = next;
+          setMarkdown(next);
+
+          if (!restoringRef.current) {
+            dirtyRef.current = true;
+            setDirty(true);
+          }
+
+          setMentionQuery(mentionQueryAtCursor(element));
+        },
+      });
+
+      if (cancelled) {
+        value.destroy();
+        return;
+      }
+
+      created = value;
+      controller.current = value;
+    });
+
+    return () => {
+      cancelled = true;
+      created?.destroy();
+      controller.current = null;
+    };
+  }, [mode, labels.editor]);
+
+  // 2 s debounce as specified by ADR 0007; the API stores one row per member and context.
+  useEffect(() => {
+    if (csrfToken === null || !dirty || markdown === initialRef.current) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setStatus("saving");
+      void writeDraft(contextKey, markdown, csrfToken)
+        .then((saved) => {
+          setStatus(saved === null ? "failed" : "saved");
+        })
+        .catch(() => {
+          setStatus("failed");
+        });
+    }, 2_000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [csrfToken, contextKey, dirty, markdown]);
+
+  useEffect(() => {
+    if (mentionQuery === null) {
+      setMentions([]);
+      setMentionOpen(false);
+      return;
+    }
+
+    setMentionLoading(true);
+    const timer = setTimeout(() => {
+      void fetch(`/api/members/suggest?q=${encodeURIComponent(mentionQuery)}`, {
+        headers: { accept: "application/json" },
+      })
+        .then(async (response) => {
+          const body = response.ok
+            ? ((await response.json()) as { members?: SuggestedMember[] })
+            : { members: [] };
+          setMentions(body.members ?? []);
+          setMentionOpen(true);
+        })
+        .catch(() => {
+          setMentions([]);
+          setMentionOpen(false);
+        })
+        .finally(() => {
+          setMentionLoading(false);
+        });
+    }, 200);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [mentionQuery]);
+
+  function switchMode(next: EditorMode): void {
+    if (next === mode) {
+      return;
+    }
+
+    if (next === "source") {
+      // An untouched document keeps its exact source, including syntax WYSIWYG normalises.
+      const current = dirtyRef.current
+        ? (controller.current?.getMarkdown() ?? markdownRef.current)
+        : baseSource.current;
+      markdownRef.current = current;
+      setMarkdown(current);
+    }
+
+    setMentionOpen(false);
+    setEmoticonOpen(false);
+    setMode(next);
+  }
+
+  function insertSourceText(text: string): void {
+    const element = sourceElement.current;
+
+    if (element === null) {
+      updateMarkdown(`${markdownRef.current}${text}`);
+      return;
+    }
+
+    const start = element.selectionStart;
+    const end = element.selectionEnd;
+    const next = `${markdownRef.current.slice(0, start)}${text}${markdownRef.current.slice(end)}`;
+    updateMarkdown(next);
+
+    requestAnimationFrame(() => {
+      element.focus();
+      element.setSelectionRange(start + text.length, start + text.length);
+    });
+  }
+
+  function sourceFormat(command: EditorCommand): void {
+    const element = sourceElement.current;
+
+    if (element === null) {
+      return;
+    }
+
+    const start = element.selectionStart;
+    const end = element.selectionEnd;
+
+    const wraps: Record<EditorCommand, readonly [string, string]> = {
+      bold: ["**", "**"],
+      italic: ["*", "*"],
+      heading: ["## ", ""],
+      code: ["`", "`"],
+      quote: ["> ", ""],
+      list: ["- ", ""],
+    };
+    const [before, after] = wraps[command];
+    const next =
+      command === "heading" || command === "quote" || command === "list"
+        ? `${markdownRef.current.slice(0, start)}${before}${markdownRef.current.slice(start)}`
+        : wrapSelection(markdownRef.current, start, end, before, after);
+
+    updateMarkdown(next);
+    requestAnimationFrame(() => {
+      element.focus();
+      const cursor =
+        command === "heading" || command === "quote" || command === "list"
+          ? start + before.length
+          : end + before.length + after.length;
+      element.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  function runCommand(command: EditorCommand): void {
+    if (mode === "wysiwyg") {
+      controller.current?.format(command);
+      syncFromEditor();
+      return;
+    }
+
+    sourceFormat(command);
+  }
+
+  function insertMarkup(markdownValue: string): void {
+    if (mode === "wysiwyg") {
+      controller.current?.insertMarkdown(markdownValue);
+      syncFromEditor();
+      return;
+    }
+
+    insertSourceText(markdownValue);
+  }
+
+  function insertPlainText(text: string): void {
+    if (mode === "wysiwyg") {
+      controller.current?.insertText(text);
+      syncFromEditor();
+      return;
+    }
+
+    insertSourceText(text);
+  }
+
+  function restoreDraft(): void {
+    if (draft === null) {
+      return;
+    }
+
+    markdownRef.current = draft.bodyMd;
+    baseSource.current = draft.bodyMd;
+    dirtyRef.current = false;
+    restoringRef.current = true;
+    setMarkdown(draft.bodyMd);
+    setDirty(false);
+    controller.current?.replaceAll(draft.bodyMd);
+    window.setTimeout(() => {
+      restoringRef.current = false;
+    }, 400);
+    setDraft(null);
+  }
+
+  function discardDraft(): void {
+    setDraft(null);
+
+    if (csrfToken !== null) {
+      void clearDraft(contextKey, csrfToken);
+    }
+  }
+
+  function chooseMention(member: SuggestedMember): void {
+    if (mentionQuery !== null) {
+      if (mode === "wysiwyg") {
+        controller.current?.replaceTextBeforeCursor(
+          mentionQuery.length + 1,
+          `@${member.displayName} `,
+        );
+      } else {
+        insertSourceText(`@${member.displayName} `);
+      }
+    }
+
+    setMentionQuery(null);
+    setMentionOpen(false);
+  }
+
+  function chooseEmoticon(code: string): void {
+    const text = `:${code}: `;
+
+    if (mode === "wysiwyg") {
+      controller.current?.insertText(text);
+      syncFromEditor();
+    } else {
+      insertSourceText(text);
+    }
+
+    setEmoticonOpen(false);
+  }
+
+  const statusText =
+    status === "saving"
+      ? labels.saving
+      : status === "saved"
+        ? labels.saved
+        : status === "failed"
+          ? labels.saveFailed
+          : "";
+
+  return (
+    <div className="bl-editor" data-editor data-draft-context={contextKey}>
+      <fieldset className="bl-editor__modes" aria-label={labels.editor}>
+        <button
+          className="bl-button bl-button--quiet bl-button--small"
+          type="button"
+          aria-pressed={mode === "wysiwyg"}
+          data-editor-mode="wysiwyg"
+          onClick={() => switchMode("wysiwyg")}
+        >
+          {labels.wysiwyg}
+        </button>
+        <button
+          className="bl-button bl-button--quiet bl-button--small"
+          type="button"
+          aria-pressed={mode === "source"}
+          data-editor-mode="source"
+          onClick={() => switchMode("source")}
+        >
+          {labels.source}
+        </button>
+        <span className="bl-visually-hidden" aria-live="polite" data-editor-mode-announcement>
+          {mode === "wysiwyg" ? labels.wysiwyg : labels.source}
+        </span>
+      </fieldset>
+
+      {draft === null ? null : (
+        <div className="bl-editor__draft" data-draft-offer role="status">
+          <span>{labels.draftFound}</span>
+          <button
+            className="bl-button bl-button--small"
+            type="button"
+            data-draft-restore
+            onClick={restoreDraft}
+          >
+            {labels.restoreDraft}
+          </button>
+          <button
+            className="bl-button bl-button--quiet bl-button--small"
+            type="button"
+            data-draft-discard
+            onClick={discardDraft}
+          >
+            {labels.discardDraft}
+          </button>
+        </div>
+      )}
+
+      <div
+        className="bl-editor__toolbar"
+        role="toolbar"
+        aria-label={labels.toolbar}
+        data-editor-toolbar
+      >
+        <button
+          type="button"
+          aria-label={labels.bold}
+          data-editor-command="bold"
+          onClick={() => runCommand("bold")}
+        >
+          B
+        </button>
+        <button
+          type="button"
+          aria-label={labels.italic}
+          data-editor-command="italic"
+          onClick={() => runCommand("italic")}
+        >
+          I
+        </button>
+        <button
+          type="button"
+          aria-label={labels.heading}
+          data-editor-command="heading"
+          onClick={() => runCommand("heading")}
+        >
+          H
+        </button>
+        <button
+          type="button"
+          aria-label={labels.link}
+          data-editor-command="link"
+          onClick={() => insertMarkup("[link](https://)")}
+        >
+          ↗
+        </button>
+        <button
+          type="button"
+          aria-label={labels.code}
+          data-editor-command="code"
+          onClick={() => runCommand("code")}
+        >
+          {"</>"}
+        </button>
+        <button
+          type="button"
+          aria-label={labels.quote}
+          data-editor-command="quote"
+          onClick={() => runCommand("quote")}
+        >
+          ❝
+        </button>
+        <button
+          type="button"
+          aria-label={labels.spoiler}
+          data-editor-command="spoiler"
+          onClick={() => insertMarkup("||spoiler||")}
+        >
+          ◌
+        </button>
+        <button
+          type="button"
+          aria-label={labels.list}
+          data-editor-command="list"
+          onClick={() => runCommand("list")}
+        >
+          ≡
+        </button>
+        <button
+          type="button"
+          aria-label={labels.emoticon}
+          data-editor-emoticon
+          aria-expanded={emoticonOpen}
+          onClick={() => setEmoticonOpen((open) => !open)}
+        >
+          ☺
+        </button>
+        <button
+          type="button"
+          aria-label={labels.mention}
+          data-editor-mention
+          onClick={() => insertPlainText("@")}
+        >
+          @
+        </button>
+      </div>
+
+      {emoticonOpen ? (
+        <div
+          className="bl-editor__popover"
+          data-emoticon-picker
+          role="menu"
+          aria-label={labels.emoticon}
+        >
+          {emoticons.map((emoticon) => (
+            <button
+              key={emoticon.code}
+              type="button"
+              role="menuitem"
+              data-emoticon-code={emoticon.code}
+              aria-label={emoticon.alt}
+              onClick={() => chooseEmoticon(emoticon.code)}
+            >
+              <img src={emoticon.src} alt="" width={20} height={20} />
+              <span>:{emoticon.code}:</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {mentionOpen ? (
+        <div
+          className="bl-editor__mentions"
+          data-mention-list
+          role="listbox"
+          aria-label={labels.mention}
+        >
+          {mentionLoading ? <p className="bl-muted">{labels.mentionLoading}</p> : null}
+          {!mentionLoading && mentions.length === 0 ? (
+            <p className="bl-muted">{labels.mentionEmpty}</p>
+          ) : null}
+          {mentions.map((member) => (
+            <button
+              key={member.id}
+              type="button"
+              role="option"
+              aria-selected={false}
+              data-mention-id={member.id}
+              onClick={() => chooseMention(member)}
+            >
+              {member.displayName}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {mode === "wysiwyg" ? (
+        <div ref={editorElement} className="bl-editor__surface" data-editor-wysiwyg />
+      ) : (
+        <textarea
+          ref={sourceElement}
+          className="bl-editor__source"
+          data-editor-source
+          aria-label={labels.editor}
+          value={markdown}
+          onChange={(event) => updateMarkdown(event.currentTarget.value)}
+        />
+      )}
+
+      <p
+        className="bl-editor__status"
+        role="status"
+        data-editor-status={status}
+        data-draft-status={status}
+      >
+        {statusText}
+      </p>
+    </div>
+  );
+}

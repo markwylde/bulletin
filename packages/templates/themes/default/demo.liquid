@@ -6,7 +6,11 @@
     <p class="bl-muted" data-demo-kind>{% if isCategory %}{% t "demo.categoryIntro" %}{% else %}{% t "demo.forumIntro" %}{% endif %}</p>
   </header>
 
-  {% if locked %}
+  {% if editor %}
+    <section class="bl-card bl-editor-card" data-editor-demo>
+      {% island "Editor" editor %}
+    </section>
+  {% elsif locked %}
     <section class="bl-card bl-lock" data-demo-locked>
       <h2 class="bl-card__title">{% t "demo.locked.title" %}</h2>
       <p class="bl-muted">{% t "demo.locked.body" %}</p>

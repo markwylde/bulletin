@@ -123,7 +123,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
     });
   };
 
-  if (FIXTURE_FORUM_TREE.get(input.forumId) === undefined) {
+  if (input.forumId !== "editor" && FIXTURE_FORUM_TREE.get(input.forumId) === undefined) {
     // An unknown forum id is a 404 page; nothing is shared or cached for it.
     const data = await loadData();
     const page = await renderOutcome(data);
