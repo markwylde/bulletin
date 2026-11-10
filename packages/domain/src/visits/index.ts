@@ -93,6 +93,10 @@ export interface VisitInput {
   readonly topics?: readonly string[];
   /** Only a member principal owns read markers and unread state. */
   readonly memberId?: string | null;
+  /** The `created_at` of the last post on the page; timestamps survive merge and split. */
+  readonly lastReadAt?: Date;
+  /** The last post on the page, kept for permalinks and history. */
+  readonly lastReadPostId?: string;
   readonly now?: Date;
 }
 
@@ -149,11 +153,26 @@ export async function recordVisit(sql: SQL, input: VisitInput): Promise<VisitRes
     await recordView(sql, context.id, input.viewerKey, now);
 
     if (input.memberId !== undefined && input.memberId !== null) {
+      const lastReadAt = input.lastReadAt ?? now;
+      const lastReadPostId =
+        input.lastReadPostId !== undefined && /^\d+$/.test(input.lastReadPostId)
+          ? input.lastReadPostId
+          : null;
+
       await sql`
-        INSERT INTO core.topic_reads (member_id, topic_id, last_read_at)
-        VALUES (${input.memberId}, ${context.id}, ${now})
+        INSERT INTO core.topic_reads (member_id, topic_id, last_read_at, last_read_post_id)
+        VALUES (${input.memberId}, ${context.id}, ${lastReadAt}, ${lastReadPostId})
         ON CONFLICT (member_id, topic_id) DO UPDATE
-          SET last_read_at = GREATEST(core.topic_reads.last_read_at, EXCLUDED.last_read_at)
+          SET last_read_at = GREATEST(
+                core.topic_reads.last_read_at,
+                EXCLUDED.last_read_at
+              ),
+              last_read_post_id = CASE
+                WHEN ${lastReadPostId}::bigint IS NULL THEN core.topic_reads.last_read_post_id
+                WHEN EXCLUDED.last_read_at >= core.topic_reads.last_read_at
+                  THEN EXCLUDED.last_read_post_id
+                ELSE core.topic_reads.last_read_post_id
+              END
       `;
     }
   }

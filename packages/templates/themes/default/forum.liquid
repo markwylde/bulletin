@@ -71,7 +71,50 @@
             {% endfor %}
           </nav>
         {% endif %}
-        <div data-topic-list-empty>{{ emptyState }}</div>
+        {% if topics.size > 0 %}
+          <ol class="bl-topic-list" data-topic-list data-topic-page="{{ pagination.page }}">
+            {% for topic in topics %}
+              <li class="bl-topic-list__item{% if topic.moved %} is-moved{% endif %}" data-topic-row="{{ topic.id }}">
+                <div class="bl-topic-row__main">
+                  {% if topic.prefix %}
+                    <span class="bl-prefix-tag" style="--bl-prefix: {{ topic.prefix.colour }}" data-topic-prefix="{{ topic.prefix.key }}">{{ topic.prefix.label }}</span>
+                  {% endif %}
+                  <a class="bl-topic-list__title" href="{{ topic.href }}" data-topic-link="{{ topic.id }}">{{ topic.title }}</a>
+                  {% if topic.pinned %}<span class="bl-badge" data-topic-pinned>{% t "topic.pinned" %}</span>{% endif %}
+                  {% if topic.locked %}<span class="bl-badge" data-topic-locked>{% t "topic.locked" %}</span>{% endif %}
+                  {% if topic.moved %}<span class="bl-badge" data-topic-moved>{% t "topic.moved" %}</span>{% endif %}
+                </div>
+                <div class="bl-topic-row__stats">
+                  <span data-topic-replies="{{ topic.id }}">{{ topic.replies }}</span>
+                  <span data-topic-views="{{ topic.id }}">{{ topic.views }}</span>
+                  {% if topic.lastPost %}
+                    <span class="bl-muted" data-topic-last-post="{{ topic.id }}">
+                      {% if topic.lastPost.memberName %}
+                        {% t "index.lastPostBy" date: topic.lastPost.date, member: topic.lastPost.memberName %}
+                      {% else %}
+                        {% t "index.lastPost" date: topic.lastPost.date %}
+                      {% endif %}
+                    </span>
+                  {% endif %}
+                  <span class="bl-overlay-slot" data-overlay-unread data-overlay-context="topic:{{ topic.id }}">—</span>
+                </div>
+              </li>
+            {% endfor %}
+          </ol>
+          {% if pagination.pageCount > 1 %}
+            <nav class="bl-pagination" data-topic-pagination aria-label="{% t "topic.pagination" %}">
+              {% if pagination.previousHref %}
+                <a class="bl-pagination__link" href="{{ pagination.previousHref }}" rel="prev" data-page-prev>{% t "topic.previousPage" %}</a>
+              {% endif %}
+              <span class="bl-muted" data-page-status>{% t "topic.pageOf" page: pagination.page, pages: pagination.pageCount %}</span>
+              {% if pagination.nextHref %}
+                <a class="bl-pagination__link" href="{{ pagination.nextHref }}" rel="next" data-page-next>{% t "topic.nextPage" %}</a>
+              {% endif %}
+            </nav>
+          {% endif %}
+        {% else %}
+          <div data-topic-list-empty>{{ emptyState }}</div>
+        {% endif %}
       {% endif %}
 
       {% unless isCategory %}

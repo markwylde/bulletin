@@ -11,6 +11,7 @@ import { groupsSeedModule } from "./groups.ts";
 import { membersSeedModule } from "./members.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
 import { themesSeedModule } from "./themes.ts";
+import { topicsSeedModule } from "./topics.ts";
 
 export const baseSeedModule: SeedModule = {
   name: "base",
@@ -55,6 +56,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         forumExtrasSeedModule,
         membersSeedModule,
         moderatorAssignmentsSeedModule,
+        topicsSeedModule,
         adminLogSeedModule,
         flagsSeedModule,
         themesSeedModule,

@@ -44,18 +44,23 @@ export async function saveBoardSettings(
 
       await tx`
         INSERT INTO core.board_settings (
-          id, board_name, board_description, default_locale, offline, offline_message
+          id, board_name, board_description, default_locale, offline, offline_message,
+          topics_per_page, posts_per_page, public_edit_history
         )
         VALUES (
           1, ${input.boardName}, ${input.boardDescription}, ${input.defaultLocale},
-          ${input.offline}, ${input.offlineMessage}
+          ${input.offline}, ${input.offlineMessage}, ${input.topicsPerPage},
+          ${input.postsPerPage}, ${input.publicEditHistory}
         )
         ON CONFLICT (id) DO UPDATE
         SET board_name = EXCLUDED.board_name,
             board_description = EXCLUDED.board_description,
             default_locale = EXCLUDED.default_locale,
             offline = EXCLUDED.offline,
-            offline_message = EXCLUDED.offline_message
+            offline_message = EXCLUDED.offline_message,
+            topics_per_page = EXCLUDED.topics_per_page,
+            posts_per_page = EXCLUDED.posts_per_page,
+            public_edit_history = EXCLUDED.public_edit_history
       `;
 
       const after = await readBoardSettings(tx);
@@ -72,6 +77,9 @@ export async function saveBoardSettings(
             defaultLocale: before.defaultLocale,
             offline: before.offline,
             offlineMessage: before.offlineMessage,
+            topicsPerPage: before.topicsPerPage,
+            postsPerPage: before.postsPerPage,
+            publicEditHistory: before.publicEditHistory,
           },
           after: {
             boardName: after.boardName,
@@ -79,6 +87,9 @@ export async function saveBoardSettings(
             defaultLocale: after.defaultLocale,
             offline: after.offline,
             offlineMessage: after.offlineMessage,
+            topicsPerPage: after.topicsPerPage,
+            postsPerPage: after.postsPerPage,
+            publicEditHistory: after.publicEditHistory,
           },
         },
       });

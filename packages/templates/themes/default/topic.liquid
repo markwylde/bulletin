@@ -1,0 +1,62 @@
+{{ header }}
+<main id="main" class="bl-main" data-topic-page data-topic-id="{{ topicId }}" data-forum-id="{{ forumId }}" data-overlay-ctx="topic:{{ topicId }}"{% if readMarkerAt %} data-overlay-last-post-at="{{ readMarkerAt }}" data-overlay-last-post-id="{{ readMarkerPostId }}"{% endif %}>
+  {{ breadcrumbs }}
+  <header class="bl-page__header">
+    <p class="bl-muted">
+      <a href="/forum/{{ forumId }}" data-topic-forum-link>{% t "topic.backToForum" %}</a>
+    </p>
+    <h1 class="bl-page__title" data-topic-title>
+      {% if prefix %}<span class="bl-prefix-tag" style="--bl-prefix: {{ prefix.colour }}">{{ prefix.label }}</span>{% endif %}
+      {{ title }}
+    </h1>
+    <p class="bl-topic__meta">
+      {% if pinned %}<span class="bl-badge" data-topic-pinned>{% t "topic.pinned" %}</span>{% endif %}
+      {% if locked %}<span class="bl-badge" data-topic-locked>{% t "topic.locked" %}</span>{% endif %}
+      <span data-topic-replies="{{ topicId }}">{{ replyCount }}</span>
+      {{ viewsSlot }}
+    </p>
+    {% if isModerator %}
+      <p class="bl-note" data-topic-mod-note>{% t "topic.modNote" %}</p>
+    {% endif %}
+  </header>
+
+  {% if posts.size > 0 %}
+    <ol class="bl-post-list" data-post-list>
+      {% for post in posts %}
+        <li class="bl-post{% if post.deleted %} bl-post--deleted{% endif %}" id="post-{{ post.id }}" data-post="{{ post.id }}" data-post-position="{{ post.position }}">
+          <div class="bl-post__author">{{ post.authorCard }}</div>
+          <div class="bl-post__main">
+            <div class="bl-post__meta">
+              <span class="bl-muted" data-post-time>{{ post.createdAt }}</span>
+              {% if post.unapproved %}<span class="bl-badge bl-badge--danger" data-post-unapproved>{% t "post.unapproved" %}</span>{% endif %}
+              {% if post.editedMarker %}<span class="bl-muted" data-post-edited>{{ post.editedMarker }}</span>{% endif %}
+              <a class="bl-muted" href="{{ post.href }}" data-post-link="{{ post.id }}">{% t "post.permalink" %}</a>
+            </div>
+            {% if post.deleted %}
+              <details class="bl-post__deleted" data-post-deleted>
+                <summary>{% t "post.deleted" %}</summary>
+                <div class="bl-post__body">{{ post.body }}</div>
+              </details>
+            {% else %}
+              <div class="bl-post__body" data-post-body>{{ post.body }}</div>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+    {% if pagination.pageCount > 1 %}
+      <nav class="bl-pagination" data-post-pagination aria-label="{% t "topic.pagination" %}">
+        {% if pagination.previousHref %}
+          <a class="bl-pagination__link" href="{{ pagination.previousHref }}" rel="prev" data-page-prev>{% t "topic.previousPage" %}</a>
+        {% endif %}
+        <span class="bl-muted" data-page-status>{% t "topic.pageOf" page: pagination.page, pages: pagination.pageCount %}</span>
+        {% if pagination.nextHref %}
+          <a class="bl-pagination__link" href="{{ pagination.nextHref }}" rel="next" data-page-next>{% t "topic.nextPage" %}</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    {{ emptyState }}
+  {% endif %}
+</main>
+{{ footer }}

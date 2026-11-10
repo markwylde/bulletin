@@ -379,12 +379,22 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
 
       const topics = parseTopicIds(body?.topics);
       const draftContext = validDraftContext(body?.draftContext) ? body.draftContext : null;
+      const lastReadAt =
+        typeof body?.lastReadAt === "string" && !Number.isNaN(Date.parse(body.lastReadAt))
+          ? new Date(body.lastReadAt)
+          : undefined;
+      const lastReadPostId =
+        typeof body?.lastReadPostId === "string" && /^\d+$/.test(body.lastReadPostId)
+          ? body.lastReadPostId
+          : undefined;
       const [visits, dismissedAnnouncements, draft] = await Promise.all([
         recordVisit(options.sql, {
           viewerKey: memberViewerKey(session.memberId),
           ctx,
           topics,
           memberId: session.memberId,
+          ...(lastReadAt === undefined ? {} : { lastReadAt }),
+          ...(lastReadPostId === undefined ? {} : { lastReadPostId }),
         }),
         listDismissedAnnouncementIds(options.sql, session.memberId),
         draftContext === null

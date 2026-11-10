@@ -15,6 +15,8 @@ export const GLOBAL_CACHE_TAGS = {
   announcements: "announcements",
   /** Editor emoticon sets: every page that embeds the picker carries this tag. */
   emoticons: "emoticons",
+  /** Rank titles/pips: author cards rebuild when a rank rule changes (member-profiles). */
+  ranks: "ranks",
   /** Board name, description, locale and offline state: the shared home shell. */
   board: "board",
 } as const;

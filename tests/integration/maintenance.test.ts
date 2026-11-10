@@ -50,6 +50,8 @@ integrationDescribe("maintenance sweep (ADR 0012)", () => {
         expiredPresence: 1,
         expiredViews: 1,
         expiredDrafts: 0,
+        flushedTopicViews: 1,
+        expiredTopicStubs: 0,
       });
 
       const log = (await database.sql`

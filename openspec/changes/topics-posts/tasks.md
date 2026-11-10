@@ -7,12 +7,12 @@
 
 ## 2. Topics
 
-- [ ] 2.1 Forum topic list (pinned first, sort, pagination, prefix filter) with permission-filtered queries; integration tests including permission denial; E2E at all viewports
-- [ ] 2.2 Topic view (linear, paginated, post blocks referencing the `member:{id}:card` fragment, quote placeholder resolution per viewer, quoted forums' `read` bits declared from `posts.quoted_forum_ids` before lookup) with the cache variant harness applied (see-deleted, mod controls, quote source visibility); E2E at all viewports
-- [ ] 2.3 Moved-topic stubs, view counts (overlay and beacon recording, buffer, flush job without content tag bumps, separate views fragment) and `/topic/<id>-<slug>` routing with page/post forms and redirects; integration tests including the guest-view-counted scenario
-- [ ] 2.4 Author card fragment `member:{id}:card` (name, initials avatar, group, post count) tagged `member:{id}` and `ranks`, composed by reference into post blocks; tests that a post-count change rebuilds the card but not the post blocks, and that the card carries no viewer-specific data
-- [ ] 2.5 Permalink page computed from the viewer's visible ordering, and timestamp-based read markers; tests that a permalink lands on the right page after earlier posts are deleted, for a moderator and a member, and that unread state survives merge and split
-- [ ] 2.6 Protected revisions on redacting moderator edits, excluded from public history; tests for the public-history-with-redaction scenario
+- [x] 2.1 Forum topic list (pinned first, sort, pagination, prefix filter) with permission-filtered queries; integration tests including permission denial; E2E at all viewports
+- [x] 2.2 Topic view (linear, paginated, post blocks referencing the `member:{id}:card` fragment, quote placeholder resolution per viewer, quoted forums' `read` bits declared from `posts.quoted_forum_ids` before lookup) with the cache variant harness applied (see-deleted, mod controls, quote source visibility); E2E at all viewports
+- [x] 2.3 Moved-topic stubs, view counts (overlay and beacon recording, buffer, flush job without content tag bumps, separate views fragment) and `/topic/<id>-<slug>` routing with page/post forms and redirects; integration tests including the guest-view-counted scenario
+- [x] 2.4 Author card fragment `member:{id}:card` (name, initials avatar, group, post count) tagged `member:{id}` and `ranks`, composed by reference into post blocks; tests that a post-count change rebuilds the card but not the post blocks, and that the card carries no viewer-specific data
+- [x] 2.5 Permalink page computed from the viewer's visible ordering, and timestamp-based read markers; tests that a permalink lands on the right page after earlier posts are deleted, for a moderator and a member, and that unread state survives merge and split
+- [x] 2.6 Protected revisions on redacting moderator edits, excluded from public history; tests for the public-history-with-redaction scenario
 
 ## 3. Posting
 

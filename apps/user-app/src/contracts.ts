@@ -1,4 +1,11 @@
-import { forumAnnouncementsTag, forumTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
+import {
+  forumAnnouncementsTag,
+  forumTag,
+  GLOBAL_CACHE_TAGS,
+  postSnapshotsTag,
+  topicPagesTag,
+  topicTag,
+} from "@bulletin/cache";
 import { defineContract, type ViewModelContractRegistry } from "@bulletin/templates";
 
 /** The view-model fields the demo route's cache tags depend on. */
@@ -12,6 +19,19 @@ export interface DemoViewModel {
 export interface ForumViewModel {
   readonly forumId: string;
   readonly ancestorIds: readonly string[];
+}
+
+/** The view-model fields the topic route's tags depend on. */
+export interface TopicViewModel {
+  readonly topicId: string;
+  /** The topic forum and every ancestor (breadcrumbs and forum links). */
+  readonly forumIds: readonly string[];
+  /** Topics whose quoted posts appear on this page. */
+  readonly quoteTopicIds?: readonly string[];
+  /** Posts whose snapshots are quoted on this page. */
+  readonly quotePostIds?: readonly string[];
+  /** Forums whose content is quoted: their read bit is part of the variant. */
+  readonly quotedForumIds?: readonly string[];
 }
 
 /** The view-model fields the account route's cache tags depend on. */
@@ -87,6 +107,24 @@ export const forumContract = defineContract<ForumViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+export const topicContract = defineContract<TopicViewModel>({
+  route: "/topic/[ref]",
+  templates: { page: "topic", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  // A quote source's edit/delete and the topic's own counters invalidate the page.
+  tags: (model) => [
+    topicTag(model.topicId),
+    topicPagesTag(model.topicId),
+    GLOBAL_CACHE_TAGS.board,
+    ...model.forumIds.map(forumTag),
+    ...(model.quoteTopicIds ?? []).map(topicTag),
+    ...(model.quotePostIds ?? []).map(postSnapshotsTag),
+    ...(model.quotedForumIds ?? []).map(forumTag),
+  ],
+  cdnCacheable: true,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const displayNameContract = defineContract({
   route: "/display-name",
   templates: {
@@ -114,6 +152,7 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [callbackContract.route]: callbackContract,
   [demoContract.route]: demoContract,
   [forumContract.route]: forumContract,
+  [topicContract.route]: topicContract,
   [displayNameContract.route]: displayNameContract,
   [accountContract.route]: accountContract,
 };

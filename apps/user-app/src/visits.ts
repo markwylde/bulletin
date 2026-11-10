@@ -13,8 +13,23 @@ import {
   type OverlayTarget,
 } from "./overlay/apply.ts";
 
+function overlayElement(): Element | null {
+  return document.querySelector("[data-overlay-ctx]");
+}
+
 function overlayContext(): string | null {
-  return document.querySelector("[data-overlay-ctx]")?.getAttribute("data-overlay-ctx") ?? null;
+  return overlayElement()?.getAttribute("data-overlay-ctx") ?? null;
+}
+
+function overlayReadMarker(): { readonly lastReadAt?: string; readonly lastReadPostId?: string } {
+  const element = overlayElement();
+  const lastReadAt = element?.getAttribute("data-overlay-last-post-at");
+  const lastReadPostId = element?.getAttribute("data-overlay-last-post-id");
+
+  return {
+    ...(lastReadAt === null || lastReadAt === undefined ? {} : { lastReadAt }),
+    ...(lastReadPostId === null || lastReadPostId === undefined ? {} : { lastReadPostId }),
+  };
 }
 
 function pageTopicIds(): string[] {
@@ -98,6 +113,7 @@ async function loadOverlay(ctx: string): Promise<void> {
       body: JSON.stringify({
         ctx,
         topics: pageTopicIds(),
+        ...overlayReadMarker(),
         ...(draftContext() === null ? {} : { draftContext: draftContext() }),
       }),
     });

@@ -1,6 +1,7 @@
 import type { Logger } from "@bulletin/config";
 import { forwardSystemAudits } from "@bulletin/domain/audit";
 import { purgeExpiredDrafts } from "@bulletin/domain/content";
+import { flushTopicViews, purgeExpiredTopicStubs } from "@bulletin/domain/topics";
 import { expireVisitBuffers } from "@bulletin/domain/visits";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
@@ -15,21 +16,26 @@ export interface MaintenanceResult {
   readonly expiredPresence: number;
   readonly expiredViews: number;
   readonly expiredDrafts: number;
+  readonly flushedTopicViews: number;
+  readonly expiredTopicStubs: number;
 }
 
 /** The maintenance sweep itself, so tests and the scheduled job share one implementation. */
 export async function runMaintenance(sql: SQL): Promise<MaintenanceResult> {
-  const [audits, visits, drafts] = await Promise.all([
-    forwardSystemAudits(sql),
-    expireVisitBuffers(sql),
-    purgeExpiredDrafts(sql),
-  ]);
+  const [audits, drafts] = await Promise.all([forwardSystemAudits(sql), purgeExpiredDrafts(sql)]);
+  // Expire stale buffers before counting views, so a row past its dedupe window is never
+  // counted as a fresh visit.
+  const visits = await expireVisitBuffers(sql);
+  const topicViews = await flushTopicViews(sql);
+  const topicStubs = await purgeExpiredTopicStubs(sql);
 
   return {
     forwardedAudits: audits.forwarded,
     expiredPresence: visits.presence,
     expiredViews: visits.views,
     expiredDrafts: drafts,
+    flushedTopicViews: topicViews,
+    expiredTopicStubs: topicStubs,
   };
 }
 
@@ -56,6 +62,8 @@ export async function createMaintenanceJobs(
       expiredPresence: result.expiredPresence,
       expiredViews: result.expiredViews,
       expiredDrafts: result.expiredDrafts,
+      flushedTopicViews: result.flushedTopicViews,
+      expiredTopicStubs: result.expiredTopicStubs,
     });
   });
 

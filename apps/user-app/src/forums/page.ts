@@ -18,6 +18,7 @@ import {
   type PermissionSnapshot,
   type ViewerPrincipal,
 } from "@bulletin/domain/permissions";
+import { readTopicList } from "@bulletin/domain/topics";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
@@ -45,6 +46,26 @@ export interface ForumPageChild {
   readonly href: string;
 }
 
+export interface ForumPageTopic {
+  readonly id: string;
+  readonly title: string;
+  readonly href: string;
+  readonly pinned: boolean;
+  readonly locked: boolean;
+  readonly moved: boolean;
+  readonly prefix: ForumPagePrefix | null;
+  readonly replies: string;
+  readonly views: string;
+  readonly lastPost: { readonly date: string; readonly memberName: string | null } | null;
+}
+
+export interface ForumPagePagination {
+  readonly page: number;
+  readonly pageCount: number;
+  readonly previousHref: string | null;
+  readonly nextHref: string | null;
+}
+
 export interface ForumPageView {
   readonly forumId: string;
   readonly title: string;
@@ -66,6 +87,8 @@ export interface ForumPageView {
   readonly isCategory: boolean;
   readonly locked: boolean;
   readonly children: readonly ForumPageChild[];
+  readonly topics: readonly ForumPageTopic[];
+  readonly pagination: ForumPagePagination;
   readonly flags: Readonly<Record<string, boolean>>;
 }
 
@@ -78,6 +101,9 @@ export interface ForumPageInput {
   readonly snapshot: PermissionSnapshot;
   readonly forum: ForumRecord;
   readonly prefix: string | null;
+  /** The requested topic-list page (1-based). */
+  readonly page?: number;
+  readonly topicsPerPage?: number;
   readonly now: Date;
   readonly announcementsEnabled?: boolean;
   /** The viewer's evaluated `mentions` flag; off unwraps stored mention links (ADR 0010). */
@@ -197,6 +223,8 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         isCategory: false,
         locked: true,
         children: [],
+        topics: [],
+        pagination: { page: 1, pageCount: 1, previousHref: null, nextHref: null },
         flags: { announcements: announcementsEnabled },
       },
       visibilityKey,
@@ -219,6 +247,86 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     snapshot: input.snapshot,
   });
   view.track(input.forum.id, "see_unapproved", isModerator);
+  const seeDeleted = await can(input.sql, input.principal, "see_deleted", {
+    forumId: input.forum.id,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.forum.id, "see_deleted", seeDeleted);
+
+  const prefixId =
+    activePrefix === null
+      ? null
+      : (prefixes.find((prefix) => prefix.key === activePrefix)?.id ?? null);
+  const perPage = input.topicsPerPage ?? 20;
+  let topicPage = Math.max(1, Math.trunc(input.page ?? 1));
+  let topicList =
+    input.forum.type === "category"
+      ? { rows: [], total: 0 }
+      : await readTopicList(input.sql, {
+          forumId: input.forum.id,
+          locale: input.locale,
+          sort: input.forum.defaultSort,
+          prefixId,
+          page: topicPage,
+          perPage,
+          seeUnapproved: isModerator,
+          seeDeleted,
+        });
+  const pageCount = Math.max(1, Math.ceil(topicList.total / perPage));
+
+  if (topicPage > pageCount) {
+    topicPage = pageCount;
+    topicList = await readTopicList(input.sql, {
+      forumId: input.forum.id,
+      locale: input.locale,
+      sort: input.forum.defaultSort,
+      prefixId,
+      page: topicPage,
+      perPage,
+      seeUnapproved: isModerator,
+      seeDeleted,
+    });
+  }
+
+  const pageHref = (page: number): string =>
+    page <= 1
+      ? canonicalUrl("forum", input.forum.id, input.forum.slug)
+      : `${canonicalUrl("forum", input.forum.id, input.forum.slug)}?page=${page}`;
+  const formatDate = (value: Date): string =>
+    new Intl.DateTimeFormat(input.locale, { dateStyle: "medium", timeStyle: "short" }).format(
+      value,
+    );
+  const topics: ForumPageTopic[] = topicList.rows.map((topic) => ({
+    id: topic.id,
+    title: topic.title,
+    href:
+      topic.movedTo === null
+        ? canonicalUrl("topic", topic.id, topic.slug)
+        : `/topic/${topic.movedTo}`,
+    pinned: topic.pinned,
+    locked: topic.locked,
+    moved: topic.movedTo !== null,
+    prefix:
+      topic.prefixKey === null
+        ? null
+        : {
+            id: topic.prefixId ?? topic.prefixKey,
+            key: topic.prefixKey,
+            label: topic.prefixLabel ?? topic.prefixKey,
+            colour: topic.prefixColour ?? "#6b7280",
+          },
+    replies: input.translate("index.topicReplies", { count: topic.replyCount }),
+    views: input.translate("index.topicViews", { count: Number(topic.viewCount) }),
+    lastPost:
+      topic.movedTo !== null || topic.lastPostAt === null
+        ? null
+        : {
+            date: formatDate(topic.lastPostAt),
+            memberName: topic.lastPostMemberName,
+          },
+  }));
 
   const blocks = input.forum.type === "category" ? [] : pageAnnouncements;
   const embedProviders = await listEmbedProviders(input.sql);
@@ -292,6 +400,13 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
           title: child.title,
           href: canonicalUrl("forum", child.id, child.slug),
         })),
+      topics,
+      pagination: {
+        page: topicPage,
+        pageCount,
+        previousHref: topicPage > 1 ? pageHref(topicPage - 1) : null,
+        nextHref: topicPage < pageCount ? pageHref(topicPage + 1) : null,
+      },
       flags: { announcements: announcementsEnabled },
     },
     visibilityKey,

@@ -15,6 +15,8 @@ const PAGES_DIR = fileURLToPath(new URL("../../apps/user-app/src/pages/", import
  */
 const PAGE_ROUTE_ALIASES: Readonly<Record<string, string>> = {
   "/[...path]": "/_demo/[id]",
+  // The topic rest route serves the canonical topic, page and post permalink shapes.
+  "/topic/[...ref]": "/topic/[ref]",
 };
 
 /** Maps an Astro page file to the route it serves. */

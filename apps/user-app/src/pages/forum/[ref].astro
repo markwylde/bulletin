@@ -23,6 +23,11 @@ const result = await renderForumRoute({
   session,
   ref: Astro.params.ref ?? "",
   prefix: Astro.url.searchParams.get("prefix"),
+  ...(() => {
+    const page = Astro.url.searchParams.get("page");
+
+    return page !== null && /^\d{1,6}$/.test(page) ? { page: Number(page) } : {};
+  })(),
   pluginsGeneration: PLUGIN_GENERATION,
   colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,

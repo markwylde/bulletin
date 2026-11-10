@@ -7,6 +7,9 @@ export interface BoardSettings {
   readonly defaultLocale: Locale;
   readonly offline: boolean;
   readonly offlineMessage: string;
+  readonly topicsPerPage: number;
+  readonly postsPerPage: number;
+  readonly publicEditHistory: boolean;
 }
 
 export interface BoardSettingsInput {
@@ -15,6 +18,9 @@ export interface BoardSettingsInput {
   readonly defaultLocale: Locale;
   readonly offline: boolean;
   readonly offlineMessage: string;
+  readonly topicsPerPage: number;
+  readonly postsPerPage: number;
+  readonly publicEditHistory: boolean;
 }
 
 export const EMPTY_BOARD_SETTINGS: BoardSettings = {
@@ -23,11 +29,15 @@ export const EMPTY_BOARD_SETTINGS: BoardSettings = {
   defaultLocale: DEFAULT_LOCALE,
   offline: false,
   offlineMessage: "",
+  topicsPerPage: 20,
+  postsPerPage: 20,
+  publicEditHistory: false,
 };
 
 export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
   const rows = (await sql`
-    SELECT board_name, board_description, default_locale, offline, offline_message
+    SELECT board_name, board_description, default_locale, offline, offline_message,
+      topics_per_page, posts_per_page, public_edit_history
     FROM core.board_settings
     WHERE id = 1
   `) as Array<{
@@ -36,6 +46,9 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     default_locale: string;
     offline: boolean;
     offline_message: string;
+    topics_per_page: number;
+    posts_per_page: number;
+    public_edit_history: boolean;
   }>;
   const row = rows[0];
 
@@ -45,6 +58,9 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     defaultLocale: isLocale(row?.default_locale) ? row.default_locale : DEFAULT_LOCALE,
     offline: row?.offline ?? false,
     offlineMessage: row?.offline_message ?? "",
+    topicsPerPage: row?.topics_per_page ?? 20,
+    postsPerPage: row?.posts_per_page ?? 20,
+    publicEditHistory: row?.public_edit_history ?? false,
   };
 }
 
@@ -54,6 +70,16 @@ export type BoardSettingsParseResult =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function pageSize(value: unknown): number | null {
+  if (value === undefined) {
+    return 20;
+  }
+
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 100
+    ? value
+    : null;
 }
 
 /** Validates a staff board-settings request body. Field ids match the form definition. */
@@ -86,6 +112,18 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
     fields.push("offlineMessage");
   }
 
+  const topicsPerPage = pageSize(value.topicsPerPage);
+  const postsPerPage = pageSize(value.postsPerPage);
+  const publicEditHistory = value.publicEditHistory === true;
+
+  if (topicsPerPage === null) {
+    fields.push("topicsPerPage");
+  }
+
+  if (postsPerPage === null) {
+    fields.push("postsPerPage");
+  }
+
   if (value.defaultLocale !== undefined && !isLocale(String(value.defaultLocale))) {
     fields.push("defaultLocale");
   }
@@ -102,6 +140,9 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
       defaultLocale,
       offline,
       offlineMessage,
+      topicsPerPage: topicsPerPage ?? 20,
+      postsPerPage: postsPerPage ?? 20,
+      publicEditHistory,
     },
   };
 }

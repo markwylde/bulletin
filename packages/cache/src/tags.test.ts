@@ -30,6 +30,7 @@ describe("cache tags", () => {
       plugins: "plugins",
       announcements: "announcements",
       emoticons: "emoticons",
+      ranks: "ranks",
       board: "board",
     });
   });

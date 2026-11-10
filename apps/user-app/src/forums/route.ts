@@ -29,6 +29,8 @@ export interface ForumRouteInput {
   /** The route segment after `/forum/`, e.g. `12-general-discussion`. */
   readonly ref: string;
   readonly prefix?: string | null;
+  /** The requested topic-list page (1-based). */
+  readonly page?: number;
   /** Test seam for announcement transitions. */
   readonly now?: Date;
   /** Benchmark-only variant input: a unique value forces a cold render. */
@@ -233,6 +235,8 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
             snapshot: freshSnapshot,
             forum: freshForum,
             prefix,
+            page: input.page ?? 1,
+            topicsPerPage: settings.topicsPerPage,
             now,
             announcementsEnabled: flags.values.announcements === true,
             mentionsEnabled: flags.values.mentions === true,
@@ -258,6 +262,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
           params: {
             id: forum.id,
             prefix: page?.viewModel.activePrefix ?? "",
+            page: page?.viewModel.pagination.page ?? 1,
             ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
           },
           visibilityKey: page?.visibilityKey ?? `error:${freshView.visibilityKey()}`,

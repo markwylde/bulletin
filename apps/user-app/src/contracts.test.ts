@@ -10,6 +10,7 @@ import {
   homeContract,
   loginContract,
   ROUTE_CONTRACTS,
+  topicContract,
 } from "./contracts.ts";
 
 describe("route contracts", () => {
@@ -29,6 +30,7 @@ describe("route contracts", () => {
         callbackContract.route,
         demoContract.route,
         forumContract.route,
+        topicContract.route,
         displayNameContract.route,
         accountContract.route,
       ].sort(),
@@ -44,6 +46,27 @@ describe("route contracts", () => {
       "forum:5:announcements",
       "forum:1",
       "forum:3",
+      "forum:5",
+    ]);
+  });
+
+  test("the topic route carries its forum chain, quote sources and quoted forums", () => {
+    expect(
+      contractTags(topicContract, {
+        topicId: "9",
+        forumIds: ["1", "3"],
+        quoteTopicIds: ["7"],
+        quotePostIds: ["44"],
+        quotedForumIds: ["5"],
+      }),
+    ).toEqual([
+      "topic:9",
+      "topic:9:pages",
+      "board",
+      "forum:1",
+      "forum:3",
+      "topic:7",
+      "post:44:snapshots",
       "forum:5",
     ]);
   });
