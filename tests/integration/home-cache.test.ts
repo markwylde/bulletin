@@ -3,6 +3,7 @@ import { bumpCacheTags, createRenderCache, createTagVersions } from "@bulletin/c
 import { baseSeedModule, runSeeds, SeedRegistry, themesSeedModule } from "@bulletin/db/seed";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { loadBoardSettings, saveBoardSettings } from "../../apps/staff-api/src/board-settings.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
 import { loadActiveTheme } from "../../apps/user-app/src/theme/render.ts";
@@ -83,6 +84,75 @@ integrationDescribe("home route cache (ADR 0006)", () => {
         expect(invalidated.cache).toBe("miss");
         expect(invalidated.variant).toBe(first.variant);
         expect(invalidated.etag).not.toBe(first.etag);
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
+  test("a real board settings save invalidates a warmed home page and its ETag", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const theme = await loadActiveTheme(database.sql);
+        const base = {
+          sql: database.sql,
+          boardName: "Bulletin",
+          boardDescription: "A friendly place",
+          locale: "en" as const,
+          translate: translateEn,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          theme,
+          cache,
+          tagVersions: versions,
+        };
+        const first = await renderHomeRoute(base);
+        const warm = await renderHomeRoute(base);
+
+        expect(first.cache).toBe("miss");
+        expect(warm.cache).toBe("hit");
+
+        const [admin] = (await database.sql`
+          INSERT INTO core.members (display_name, name_skeleton)
+          VALUES ('Board admin', 'board admin')
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+
+        if (admin === undefined) {
+          throw new Error("could not create the acting member");
+        }
+
+        const saved = await saveBoardSettings(database.sql, admin.id, {
+          boardName: "Renamed board",
+          boardDescription: "A renamed place",
+          defaultLocale: "en",
+          offline: false,
+          offlineMessage: "",
+        });
+
+        expect(saved.ok).toBe(true);
+
+        // The save bumped `board` in its own transaction; reload the settings the page gets.
+        const settings = await loadBoardSettings(database.sql);
+        await versions.refresh();
+
+        const after = await renderHomeRoute({
+          ...base,
+          boardName: settings.boardName,
+          boardDescription: settings.boardDescription,
+        });
+
+        expect(after.cache).toBe("miss");
+        expect(after.html).toContain("Renamed board");
+        expect(after.html).not.toContain("A friendly place");
+        expect(after.etag).not.toBe(first.etag);
       } finally {
         await versions.close();
       }

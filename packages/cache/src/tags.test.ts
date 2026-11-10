@@ -27,6 +27,7 @@ describe("cache tags", () => {
       flags: "flags",
       plugins: "plugins",
       announcements: "announcements",
+      board: "board",
     });
   });
 

@@ -1,4 +1,4 @@
-import { writeSystemAudit } from "@bulletin/domain/audit";
+import { queueSystemAudit } from "@bulletin/domain/audit";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { BP_COOKIE_NAME, type ColorScheme, parseBpCookie } from "@bulletin/i18n";
@@ -191,7 +191,7 @@ function shouldReport(signature: string, now: number): boolean {
   return true;
 }
 
-/** Reports failures to the staff app's admin log; a reporting error never breaks a page. */
+/** Queues failures for the staff app's admin log; a reporting error never breaks a page. */
 async function recordFailures(sql: SQL, failures: readonly FailureReport[]): Promise<void> {
   const now = Date.now();
   const seen = new Set<string>();
@@ -204,7 +204,7 @@ async function recordFailures(sql: SQL, failures: readonly FailureReport[]): Pro
     seen.add(failure.signature);
 
     try {
-      await writeSystemAudit(sql, {
+      await queueSystemAudit(sql, {
         action: failure.action,
         targetType: "theme_template",
         summary: failure.summary,

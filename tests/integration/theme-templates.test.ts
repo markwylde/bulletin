@@ -9,6 +9,7 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
+import { forwardSystemAudits } from "@bulletin/domain/audit";
 import {
   CapabilityView,
   loadPermissionSnapshot,
@@ -344,6 +345,7 @@ integrationDescribe("default theme templates", () => {
       expect(page.html).toContain("data-demo-page");
       expect(page.html).not.toContain('data-name="SpikeCounter"');
 
+      expect((await forwardSystemAudits(database.sql)).forwarded).toBeGreaterThan(0);
       const log = await listAdminLog(database.sql, { action: "theme.island.error" });
 
       expect(log.entries.length).toBeGreaterThan(0);
@@ -365,6 +367,7 @@ integrationDescribe("default theme templates", () => {
       expect(page.html).toContain("data-demo-page");
       expect(page.html).not.toContain('<bl-island data-name="SpikeCounter"');
 
+      expect((await forwardSystemAudits(database.sql)).forwarded).toBeGreaterThan(0);
       const log = await listAdminLog(database.sql, { action: "theme.island.missing" });
 
       expect(
@@ -432,6 +435,7 @@ integrationDescribe("default theme templates", () => {
       // The parent's demo template rendered instead of the broken child override.
       expect(page.html).toContain("data-demo-page");
 
+      expect((await forwardSystemAudits(database.sql)).forwarded).toBeGreaterThan(0);
       const log = await listAdminLog(database.sql, { action: "theme.compile" });
 
       expect(
@@ -452,9 +456,49 @@ integrationDescribe("default theme templates", () => {
         renderDemo(database, await memberSession(database, "member-1"), "2"),
       ).rejects.toThrow();
 
+      expect((await forwardSystemAudits(database.sql)).forwarded).toBeGreaterThan(0);
       const log = await listAdminLog(database.sql, { action: "theme.compile" });
 
       expect(log.entries.length).toBeGreaterThan(0);
+    });
+  });
+
+  test("queues failures in the audit buffer before an authorised writer forwards them", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.theme_templates
+        SET body = replace(
+              body,
+              '{% island "SpikeCounter" counter %}',
+              '{% island "SpikeCounter" "not-props" %}'
+            ),
+            version = version + 1
+        WHERE name = 'demo'
+      `;
+
+      await renderDemo(database, await memberSession(database, "member-1"), "2");
+
+      const queued = (await database.sql`
+        SELECT action FROM core.system_audit_buffer ORDER BY id
+      `) as Array<{ action: string }>;
+      const beforeForward = await listAdminLog(database.sql, { action: "theme.island.error" });
+
+      expect(queued.map((row) => row.action)).toContain("theme.island.error");
+      expect(beforeForward.entries).toEqual([]);
+
+      expect(await forwardSystemAudits(database.sql)).toEqual({ forwarded: queued.length });
+      expect(
+        (await listAdminLog(database.sql, { action: "theme.island.error" })).entries.length,
+      ).toBeGreaterThan(0);
+      expect(
+        (
+          (await database.sql`SELECT count(*)::int AS count FROM core.system_audit_buffer`) as Array<{
+            count: number;
+          }>
+        )[0]?.count,
+      ).toBe(0);
+      // A second drain has nothing left to move.
+      expect(await forwardSystemAudits(database.sql)).toEqual({ forwarded: 0 });
     });
   });
 

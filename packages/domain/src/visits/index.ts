@@ -11,6 +11,12 @@ export const VIEW_DEDUPE_MS = 30 * 60 * 1_000;
 /** Presence is upserted at most once a minute per viewer (member-profiles). */
 export const PRESENCE_REFRESH_MS = 60 * 1_000;
 
+/**
+ * How long the derived presence and view rows live (design retention table: 15 minutes). The
+ * worker maintenance job deletes older rows; neither buffer is a durable record.
+ */
+export const VISIT_BUFFER_RETENTION_MS = 15 * 60 * 1_000;
+
 /** Guest beacons per IP per minute (ADR 0003 flood control). */
 export const BEACON_RATE_LIMIT = 60;
 export const BEACON_RATE_WINDOW_MS = 60 * 1_000;
@@ -193,6 +199,41 @@ export function rateLimitKey(input: RateLimitKeyInput): string {
     .digest("hex");
 
   return `${input.scope}:${rotation}:${digest}`;
+}
+
+export interface VisitExpiryOptions {
+  readonly now?: Date;
+  readonly retentionMs?: number;
+}
+
+export interface VisitExpiryResult {
+  readonly presence: number;
+  readonly views: number;
+}
+
+/**
+ * Expires derived visit buffers (ADR 0012): presence and view rows older than the retention
+ * window are deleted. Runs from the workers maintenance schedule; fresh visits are untouched.
+ */
+export async function expireVisitBuffers(
+  sql: SQL,
+  options: VisitExpiryOptions = {},
+): Promise<VisitExpiryResult> {
+  const cutoff = new Date(
+    (options.now ?? new Date()).getTime() - (options.retentionMs ?? VISIT_BUFFER_RETENTION_MS),
+  );
+  const presence = (await sql`
+    DELETE FROM core.presence
+    WHERE last_seen < ${cutoff}
+    RETURNING 1
+  `) as unknown[];
+  const views = (await sql`
+    DELETE FROM core.topic_view_buffer
+    WHERE bucket < ${cutoff}
+    RETURNING 1
+  `) as unknown[];
+
+  return { presence: presence.length, views: views.length };
 }
 
 export interface RateBucketOptions {

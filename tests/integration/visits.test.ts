@@ -7,12 +7,14 @@ import {
 } from "@bulletin/cache";
 import {
   consumeRateBucket,
+  expireVisitBuffers,
   PRESENCE_REFRESH_MS,
   RATE_BUCKET_RETENTION_MS,
   RATE_KEY_ROTATION_MS,
   rateLimitKey,
   recordVisit,
   VIEW_DEDUPE_MS,
+  VISIT_BUFFER_RETENTION_MS,
 } from "@bulletin/domain/visits";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { beaconResponse } from "../../apps/user-api/src/beacon.ts";
@@ -239,6 +241,31 @@ integrationDescribe("read-path visits", () => {
       `) as Array<{ key: string }>;
 
       expect(rows).toHaveLength(1);
+    });
+  });
+
+  test("expired presence and view rows are removed while fresh visits stay", async () => {
+    await withDb(async (database) => {
+      const now = new Date("2026-11-10T12:00:00Z");
+      const expired = new Date(now.getTime() - VISIT_BUFFER_RETENTION_MS - 60_000);
+
+      await recordVisit(database.sql, { viewerKey: "guest:old", ctx: "topic:301", now: expired });
+      await recordVisit(database.sql, { viewerKey: "guest:fresh", ctx: "topic:302", now });
+
+      expect(await expireVisitBuffers(database.sql, { now })).toEqual({
+        presence: 1,
+        views: 1,
+      });
+
+      const presence = (await database.sql`
+        SELECT viewer_key FROM core.presence ORDER BY viewer_key
+      `) as Array<{ viewer_key: string }>;
+      const views = (await database.sql`
+        SELECT topic_id::text AS topic_id FROM core.topic_view_buffer ORDER BY topic_id
+      `) as Array<{ topic_id: string }>;
+
+      expect(presence.map((row) => row.viewer_key)).toEqual(["guest:fresh"]);
+      expect(views.map((row) => row.topic_id)).toEqual(["302"]);
     });
   });
 

@@ -6,10 +6,11 @@ const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
 /**
- * The allowed write set for `user_app`: the UNLOGGED read-path buffers (ADR 0001) plus the
- * append-only template-failure report (ADR 0008, 0012).
+ * The allowed write set for `user_app`: UNLOGGED processing buffers only (ADR 0001). The
+ * template-failure report is queued in a buffer and forwarded by workers; `user_app` never
+ * writes the durable audit log.
  */
-const ALLOWED_WRITES = ["admin_log", "presence", "topic_view_buffer"];
+const ALLOWED_WRITES = ["presence", "system_audit_buffer", "topic_view_buffer"];
 
 function userAppUrl(adminUrl: string, databaseName: string): string {
   const url = new URL(adminUrl);
@@ -62,6 +63,13 @@ integrationDescribe("user_app database role", () => {
             await denied(() => sql`UPDATE core.board_settings SET board_name = 'x' WHERE id = 1`),
           ).toContain("42501");
           expect(await denied(() => sql`DELETE FROM core.themes`)).toContain("42501");
+          expect(
+            await denied(() => sql`INSERT INTO core.admin_log (action) VALUES ('nope')`),
+          ).toContain("42501");
+          // The report buffer is append-only: it cannot be read back.
+          expect(await denied(() => sql`SELECT count(*) FROM core.system_audit_buffer`)).toContain(
+            "42501",
+          );
         } finally {
           await sql.close();
         }
@@ -78,6 +86,9 @@ integrationDescribe("user_app database role", () => {
           ALLOWED_WRITES,
         );
         expect(grants.some((grant) => grant.privilege_type === "DELETE")).toBe(false);
+        expect(grants.filter((grant) => grant.table_name === "system_audit_buffer")).toEqual([
+          { table_name: "system_audit_buffer", privilege_type: "INSERT" },
+        ]);
       },
     );
   }, 20_000);

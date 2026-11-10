@@ -1,3 +1,4 @@
+import { GLOBAL_CACHE_TAGS } from "@bulletin/cache";
 import { defineContract, type ViewModelContractRegistry } from "@bulletin/templates";
 
 /** The view-model fields the demo route's cache tags depend on. */
@@ -19,7 +20,7 @@ export const homeContract = defineContract({
   route: "/",
   templates: { page: "home", regions: ["header", "footer"] },
   deps: [],
-  tags: ["board"],
+  tags: [GLOBAL_CACHE_TAGS.board],
   // Guests see the same board shell; the member session arrives through the overlay/API.
   cdnCacheable: true,
   requiredIslands: ["LanguageSwitcher"],

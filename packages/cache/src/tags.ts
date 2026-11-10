@@ -13,6 +13,8 @@ export const GLOBAL_CACHE_TAGS = {
   flags: "flags",
   plugins: "plugins",
   announcements: "announcements",
+  /** Board name, description, locale and offline state: the shared home shell. */
+  board: "board",
 } as const;
 
 const RESOURCE_ID = /^\d+$/;

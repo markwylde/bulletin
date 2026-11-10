@@ -30,6 +30,8 @@ export interface RunMutationOptions<TInput, TResult> {
  * Runs a write and bumps every tag it declared in the same transaction, so a rollback also
  * rolls back the invalidation and a commit is followed by the NOTIFY (ADR 0006).
  */
+export * from "./board.ts";
+
 export async function runMutation<TInput, TResult>(
   options: RunMutationOptions<TInput, TResult>,
 ): Promise<TResult> {
