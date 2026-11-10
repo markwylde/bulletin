@@ -74,6 +74,8 @@ integrationDescribe("staff permission masks", () => {
         ),
       ).toBe(true);
 
+      // The delete button stays disabled while the bulk mutation is still pending.
+      await waitForSelector(view, "[data-mask-delete]:not([disabled])", 20_000);
       await clickSelector(view, "[data-mask-delete]");
       await waitForExpression(view, `!document.querySelector('[data-mask-row="${key}"]')`, 20_000);
     });
