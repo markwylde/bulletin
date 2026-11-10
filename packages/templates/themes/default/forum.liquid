@@ -86,6 +86,19 @@
                   {% endfor %}
                 </select>
               {% endif %}
+              <fieldset class="bl-poll-builder" data-poll-builder
+                data-label-question="{% t "poll.question" %}"
+                data-label-choice="{% t "poll.choice" %}"
+                data-label-multiple="{% t "poll.multiple" %}"
+                data-label-add-choice="{% t "poll.addChoice" %}"
+                data-label-remove="{% t "poll.remove" %}">
+                <legend>{% t "poll.add" %}</legend>
+                <div data-poll-questions></div>
+                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-poll-add-question>{% t "poll.addQuestion" %}</button>
+                <label class="bl-label" for="poll-closes-at">{% t "poll.closesAt" %}</label>
+                <input class="bl-input" id="poll-closes-at" name="pollClosesAt" type="datetime-local" />
+                <label class="bl-check"><input type="checkbox" name="pollResultsVisible" /> {% t "poll.resultsVisible" %}</label>
+              </fieldset>
               {% island "Editor" editor %}
               <button class="bl-button" type="submit" data-new-topic-submit>{% t "topic.create" %}</button>
               <p class="bl-error-text" data-form-error hidden>{% t "topic.postFailed" %}</p>

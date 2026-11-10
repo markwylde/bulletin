@@ -20,6 +20,7 @@ import { emoticonImageResponse, listEmoticonsResponse } from "./emoticons.ts";
 import { createUserApiFlags } from "./flag-guard.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 import { memberSuggestResponse } from "./members.ts";
+import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
 import { redirectCountsResponse } from "./redirects.ts";
 import {
   createTopicResponse,
@@ -128,6 +129,44 @@ await startService({
           rateLimitSecret: config.sessionSecret,
         }),
       );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const pollVoteMatch = /^\/api\/polls\/(\d+)\/vote$/.exec(pathname);
+
+    if (request.method === "POST" && pollVoteMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return pollVoteResponse(sql, session, pollVoteMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const pollResultsMatch = /^\/api\/polls\/(\d+)\/results$/.exec(pathname);
+
+    if (request.method === "GET" && pollResultsMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) =>
+        pollResultsResponse(sql, session, pollResultsMatch[1] ?? ""),
+      );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const pollEditMatch = /^\/api\/polls\/(\d+)\/edit$/.exec(pathname);
+
+    if (request.method === "POST" && pollEditMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return pollEditResponse(sql, session, pollEditMatch[1] ?? "", request);
+      });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

@@ -1,6 +1,7 @@
 import type { Logger } from "@bulletin/config";
 import { forwardSystemAudits } from "@bulletin/domain/audit";
 import { purgeExpiredDrafts } from "@bulletin/domain/content";
+import { closePollTransitions } from "@bulletin/domain/polls";
 import { flushTopicViews, purgeExpiredTopicStubs } from "@bulletin/domain/topics";
 import { expireVisitBuffers } from "@bulletin/domain/visits";
 import type { SQL } from "bun";
@@ -18,6 +19,7 @@ export interface MaintenanceResult {
   readonly expiredDrafts: number;
   readonly flushedTopicViews: number;
   readonly expiredTopicStubs: number;
+  readonly closedPolls: number;
 }
 
 /** The maintenance sweep itself, so tests and the scheduled job share one implementation. */
@@ -28,6 +30,7 @@ export async function runMaintenance(sql: SQL): Promise<MaintenanceResult> {
   const visits = await expireVisitBuffers(sql);
   const topicViews = await flushTopicViews(sql);
   const topicStubs = await purgeExpiredTopicStubs(sql);
+  const closedPolls = await closePollTransitions(sql);
 
   return {
     forwardedAudits: audits.forwarded,
@@ -36,6 +39,7 @@ export async function runMaintenance(sql: SQL): Promise<MaintenanceResult> {
     expiredDrafts: drafts,
     flushedTopicViews: topicViews,
     expiredTopicStubs: topicStubs,
+    closedPolls,
   };
 }
 
@@ -64,6 +68,7 @@ export async function createMaintenanceJobs(
       expiredDrafts: result.expiredDrafts,
       flushedTopicViews: result.flushedTopicViews,
       expiredTopicStubs: result.expiredTopicStubs,
+      closedPolls: result.closedPolls,
     });
   });
 

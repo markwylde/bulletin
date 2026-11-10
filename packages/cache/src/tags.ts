@@ -62,6 +62,15 @@ export function postSnapshotsTag(postId: string): string {
   return `${resourceTag("post", postId)}:snapshots`;
 }
 
+export function pollTag(pollId: string): string {
+  return resourceTag("poll", pollId);
+}
+
+/** Public poll counts; a vote bumps this so the shared fragment rebuilds (coalesced later). */
+export function pollResultsTag(pollId: string): string {
+  return `${pollTag(pollId)}:results`;
+}
+
 export function memberTag(memberId: string): string {
   return resourceTag("member", memberId);
 }

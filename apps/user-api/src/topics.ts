@@ -6,6 +6,7 @@ import {
   loadPermissionSnapshot,
   type PermissionSnapshot,
 } from "@bulletin/domain/permissions";
+import { parsePollInput } from "@bulletin/domain/polls";
 import {
   editPost,
   hardDelete,
@@ -132,12 +133,20 @@ export async function createTopicResponse(
     return json({ code: "flood_control", retryAfterSeconds: wait }, 429);
   }
 
+  const poll =
+    body.poll === undefined || body.poll === null ? undefined : parsePollInput(body.poll);
+
+  if (body.poll !== undefined && body.poll !== null && poll === null) {
+    return json({ code: "invalid_poll" }, 400);
+  }
+
   const result = await startTopic(sql, {
     actorId: session.memberId,
     forumId,
     title: typeof body.title === "string" ? body.title : "",
     bodyMd: typeof body.bodyMd === "string" ? body.bodyMd : "",
     ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
+    ...(poll === null || poll === undefined ? {} : { poll }),
   });
 
   if (!result.ok) {

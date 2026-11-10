@@ -23,6 +23,7 @@ import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { topicContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
+import { renderPollFragment } from "../polls/fragment.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
@@ -393,7 +394,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
   let html = rendered.html;
 
   if (latest.page !== null) {
-    const [views, cards] = await Promise.all([
+    const [views, cards, poll] = await Promise.all([
       renderTopicViewsFragment(input.sql, input.cache, topic.id, input.locale, input.translate),
       renderMemberCards(
         input.sql,
@@ -402,10 +403,17 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
         input.locale,
         input.translate,
       ),
+      latest.page.pollId === null
+        ? Promise.resolve(null)
+        : renderPollFragment(input.sql, input.cache, latest.page.pollId, input.translate),
     ]);
 
     html = html.replace("<bl-topic-views></bl-topic-views>", views);
     html = replaceMemberCards(html, cards);
+
+    if (poll !== null) {
+      html = html.replace("<bl-poll></bl-poll>", poll);
+    }
   }
 
   return {

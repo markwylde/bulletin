@@ -57,10 +57,110 @@ function submitButton(form: HTMLFormElement): HTMLButtonElement | null {
   return form.querySelector<HTMLButtonElement>("button[type=submit]");
 }
 
+function choiceRow(label: string): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "bl-poll-builder__choice";
+  row.dataset.pollChoiceRow = "true";
+  const input = document.createElement("input");
+  input.className = "bl-input";
+  input.type = "text";
+  input.dataset.pollChoiceLabel = "true";
+  input.placeholder = label;
+  input.maxLength = 300;
+  const remove = document.createElement("button");
+  remove.className = "bl-button bl-button--quiet bl-button--small";
+  remove.type = "button";
+  remove.textContent = "×";
+  remove.dataset.pollRemoveChoice = "true";
+  remove.addEventListener("click", () => row.remove());
+  row.append(input, remove);
+  return row;
+}
+
+function addQuestion(builder: HTMLElement): void {
+  const container = builder.querySelector<HTMLElement>("[data-poll-questions]");
+  const labels = builder.dataset;
+
+  if (container === null) {
+    return;
+  }
+
+  const question = document.createElement("fieldset");
+  question.className = "bl-poll-builder__question";
+  question.dataset.pollQuestionRow = "true";
+  const legend = document.createElement("legend");
+  legend.textContent = labels.labelQuestion ?? "";
+  const prompt = document.createElement("input");
+  prompt.className = "bl-input";
+  prompt.type = "text";
+  prompt.dataset.pollPrompt = "true";
+  prompt.placeholder = labels.labelQuestion ?? "";
+  prompt.maxLength = 500;
+  const multipleLabel = document.createElement("label");
+  multipleLabel.className = "bl-check";
+  const multiple = document.createElement("input");
+  multiple.type = "checkbox";
+  multiple.dataset.pollMultiple = "true";
+  multipleLabel.append(multiple, ` ${labels.labelMultiple ?? ""}`);
+  const choices = document.createElement("div");
+  choices.dataset.pollChoices = "true";
+  choices.append(choiceRow(labels.labelChoice ?? ""), choiceRow(labels.labelChoice ?? ""));
+  const addChoice = document.createElement("button");
+  addChoice.className = "bl-button bl-button--quiet bl-button--small";
+  addChoice.type = "button";
+  addChoice.textContent = labels.labelAddChoice ?? "";
+  addChoice.addEventListener("click", () => {
+    choices.append(choiceRow(labels.labelChoice ?? ""));
+  });
+  const remove = document.createElement("button");
+  remove.className = "bl-button bl-button--quiet bl-button--small";
+  remove.type = "button";
+  remove.textContent = labels.labelRemove ?? "";
+  remove.addEventListener("click", () => question.remove());
+  question.append(legend, prompt, multipleLabel, choices, addChoice, remove);
+  container.append(question);
+}
+
+function collectPoll(form: HTMLFormElement): Record<string, unknown> | null {
+  const builder = form.querySelector<HTMLElement>("[data-poll-builder]");
+
+  if (builder === null) {
+    return null;
+  }
+
+  const questions = [...builder.querySelectorAll<HTMLElement>("[data-poll-question-row]")]
+    .map((question) => ({
+      prompt: question.querySelector<HTMLInputElement>("[data-poll-prompt]")?.value.trim() ?? "",
+      multiple: question.querySelector<HTMLInputElement>("[data-poll-multiple]")?.checked === true,
+      choices: [...question.querySelectorAll<HTMLElement>("[data-poll-choice-row]")]
+        .map((choice) => ({
+          label:
+            choice.querySelector<HTMLInputElement>("[data-poll-choice-label]")?.value.trim() ?? "",
+        }))
+        .filter((choice) => choice.label !== ""),
+    }))
+    .filter((question) => question.prompt !== "" && question.choices.length >= 2);
+
+  if (questions.length === 0) {
+    return null;
+  }
+
+  const closesAt = form.querySelector<HTMLInputElement>("input[name=pollClosesAt]")?.value ?? "";
+  const resultsVisible =
+    form.querySelector<HTMLInputElement>("input[name=pollResultsVisible]")?.checked === true;
+
+  return {
+    questions,
+    closesAt: closesAt === "" ? null : new Date(closesAt).toISOString(),
+    resultsVisibleBeforeVoting: resultsVisible,
+  };
+}
+
 async function submitForm(form: HTMLFormElement): Promise<void> {
   const data = new FormData(form);
   const bodyMd = data.get("bodyMd");
   const button = submitButton(form);
+  const poll = form.matches("[data-new-topic-form]") ? collectPoll(form) : null;
   const request = form.matches("[data-new-topic-form]")
     ? postJson(`/api/forums/${form.dataset.forumId ?? ""}/topics`, {
         title: String(data.get("title") ?? ""),
@@ -68,6 +168,7 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
         ...(String(data.get("prefixId") ?? "") === ""
           ? {}
           : { prefixId: String(data.get("prefixId")) }),
+        ...(poll === null ? {} : { poll }),
       })
     : form.matches("[data-reply-form]")
       ? postJson(`/api/topics/${form.dataset.topicId ?? ""}/replies`, {
@@ -341,6 +442,18 @@ document.addEventListener("click", (event) => {
   const target = event.target;
 
   if (!(target instanceof Element)) {
+    return;
+  }
+
+  const addQuestionButton = target.closest("[data-poll-add-question]");
+
+  if (addQuestionButton !== null) {
+    const builder = addQuestionButton.closest<HTMLElement>("[data-poll-builder]");
+
+    if (builder !== null) {
+      addQuestion(builder);
+    }
+
     return;
   }
 

@@ -19,7 +19,8 @@
     "./mutations": "./src/mutations/index.ts",
     "./visits": "./src/visits/index.ts",
     "./content": "./src/content/index.ts",
-    "./topics": "./src/topics/index.ts"
+    "./topics": "./src/topics/index.ts",
+    "./polls": "./src/polls/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

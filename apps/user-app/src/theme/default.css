@@ -939,3 +939,74 @@ fieldset.bl-editor__modes {
 .bl-diff del {
   color: var(--bl-danger);
 }
+
+/* Polls ------------------------------------------------------------------ */
+
+.bl-poll {
+  display: grid;
+  gap: var(--bl-space-small);
+}
+
+.bl-poll__form,
+.bl-poll__question {
+  display: grid;
+  gap: var(--bl-space-small);
+}
+
+.bl-poll__question {
+  margin: 0;
+  padding: var(--bl-space-small);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-small);
+}
+
+.bl-poll__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--bl-space-small);
+  min-height: var(--bl-touch);
+}
+
+.bl-poll__count {
+  margin-inline-start: auto;
+  color: var(--bl-muted);
+}
+
+.bl-poll__result-questions,
+.bl-poll__result-list {
+  display: grid;
+  gap: var(--bl-space-small);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bl-poll__result-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--bl-space-small);
+}
+
+.bl-poll-builder {
+  display: grid;
+  gap: var(--bl-space-small);
+  margin: 0;
+  padding: var(--bl-space-small);
+  border: 1px dashed var(--bl-border);
+  border-radius: var(--bl-radius-small);
+}
+
+.bl-poll-builder__question {
+  display: grid;
+  gap: var(--bl-space-small);
+  margin: 0;
+  padding: var(--bl-space-small);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-small);
+}
+
+.bl-poll-builder__choice {
+  display: flex;
+  gap: var(--bl-space-small);
+  align-items: center;
+}

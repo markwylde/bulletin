@@ -6,6 +6,11 @@
 
 export type OverlayCount = "notifications" | "conversations";
 
+export interface OverlayPoll {
+  readonly pollId: string;
+  readonly hasVoted: boolean;
+}
+
 export interface OverlayDraft {
   readonly contextKey: string;
   readonly bodyMd: string;
@@ -20,6 +25,8 @@ export interface OverlayPayload {
   readonly dismissedAnnouncements?: readonly string[];
   /** The member's draft for the editor on this page, never in shared HTML (ADR 0007). */
   readonly draft?: OverlayDraft;
+  /** Whether the member already voted in the poll on this page (task 4.2). */
+  readonly polls?: readonly OverlayPoll[];
 }
 
 export interface UnreadSlot {
@@ -36,6 +43,7 @@ export interface OverlayTarget {
   storeCsrfToken(token: string): void;
   hideAnnouncement(announcementId: string): void;
   setDraft(draft: OverlayDraft): void;
+  setPollVoted(pollId: string, hasVoted: boolean): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -78,6 +86,18 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
   for (const announcementId of payload.dismissedAnnouncements ?? []) {
     if (typeof announcementId === "string" && /^[1-9]\d{0,18}$/.test(announcementId)) {
       target.hideAnnouncement(announcementId);
+    }
+  }
+
+  for (const poll of payload.polls ?? []) {
+    if (
+      typeof poll === "object" &&
+      poll !== null &&
+      typeof poll.pollId === "string" &&
+      /^[1-9]\d{0,18}$/.test(poll.pollId) &&
+      typeof poll.hasVoted === "boolean"
+    ) {
+      target.setPollVoted(poll.pollId, poll.hasVoted);
     }
   }
 

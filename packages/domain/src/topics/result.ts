@@ -2,6 +2,7 @@
 export type TopicMutationCode =
   | "invalid_title"
   | "invalid_body"
+  | "invalid_poll"
   | "invalid_prefix"
   | "prefix_required"
   | "forum_not_found"

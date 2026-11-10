@@ -28,9 +28,9 @@
 
 ## 4. Polls
 
-- [ ] 4.1 Poll creation in the new-topic form, voting, close dates and editing rules; integration tests for each scenario; E2E voting at 360
-- [ ] 4.2 Poll fragments: shared choices fragment, counts only when results are public, private `GET /api/polls/:id/results` (voted, closed or moderator), and `hasVoted` in the overlay; tests that hidden counts never appear in cached or CDN HTML, permission-denial tests for the results endpoint, and a cache variant test
-- [ ] 4.3 Poll close as a time transition (TTL cap and minute worker bump); integration test that a cached open poll shows as closed within one minute of `closes_at`
+- [x] 4.1 Poll creation in the new-topic form, voting, close dates and editing rules; integration tests for each scenario; E2E voting at 360
+- [x] 4.2 Poll fragments: shared choices fragment, counts only when results are public, private `GET /api/polls/:id/results` (voted, closed or moderator), and `hasVoted` in the overlay; tests that hidden counts never appear in cached or CDN HTML, permission-denial tests for the results endpoint, and a cache variant test
+- [x] 4.3 Poll close as a time transition (TTL cap and minute worker bump); integration test that a cached open poll shows as closed within one minute of `closes_at`
 
 ## 5. Read tracking
 

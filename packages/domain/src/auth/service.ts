@@ -17,6 +17,7 @@ import {
 } from "../permissions/acp.ts";
 import { listDismissedAnnouncementIds } from "../permissions/announcements.ts";
 import { can } from "../permissions/can.ts";
+import { pollVoteStateForTopic } from "../polls/repository.ts";
 import { memberViewerKey, parseTopicIds, parseVisitContext, recordVisit } from "../visits/index.ts";
 import type { AuthRouterOptions, SessionCapabilities } from "./router.ts";
 import { createAuthRouter, guestView, sessionView } from "./router.ts";
@@ -387,7 +388,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         typeof body?.lastReadPostId === "string" && /^\d+$/.test(body.lastReadPostId)
           ? body.lastReadPostId
           : undefined;
-      const [visits, dismissedAnnouncements, draft] = await Promise.all([
+      const visitContext = parseVisitContext(ctx);
+      const [visits, dismissedAnnouncements, draft, poll] = await Promise.all([
         recordVisit(options.sql, {
           viewerKey: memberViewerKey(session.memberId),
           ctx,
@@ -400,6 +402,9 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         draftContext === null
           ? Promise.resolve(null)
           : readDraft(options.sql, session.memberId, draftContext),
+        visitContext?.kind === "topic"
+          ? pollVoteStateForTopic(options.sql, visitContext.id, session.memberId)
+          : Promise.resolve(null),
       ]);
       const payload = {
         ctx,
@@ -408,6 +413,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         dismissedAnnouncements,
         // Counts arrive with `events-notifications`; the overlay shape is fixed now.
         counts: { notifications: 0, conversations: 0 },
+        polls: poll === null ? [] : [poll],
         ...(draft === null ? {} : { draft }),
       };
       const text = JSON.stringify(payload);
@@ -578,6 +584,21 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       );
     }
 
+    if (options.kind === "user" && pathname === "/api/test/reset-poll-votes") {
+      if (request.method !== "POST") {
+        return Promise.resolve(json({ code: "method_not_allowed" }, 405));
+      }
+
+      // Test-only (development): clear poll votes so the voting E2E can re-run.
+      return Promise.resolve(
+        options.sql.begin(async (tx) => {
+          await tx`DELETE FROM core.poll_vote_choices`;
+          await tx`DELETE FROM core.poll_votes`;
+          return json({ ok: true });
+        }),
+      );
+    }
+
     if (options.kind === "user" && pathname === "/api/test/reset-display-name") {
       if (request.method !== "POST") {
         return Promise.resolve(json({ code: "method_not_allowed" }, 405));
@@ -653,7 +674,9 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         const devTestPost =
           options.testEndpoints === true &&
           options.kind === "user" &&
-          (pathname === "/api/test/session" || pathname === "/api/test/reset-rate-buckets");
+          (pathname === "/api/test/session" ||
+            pathname === "/api/test/reset-rate-buckets" ||
+            pathname === "/api/test/reset-poll-votes");
 
         if (!isCsrfExempt(request.method, pathname) && !devTestPost) {
           const token = parseCookieHeader(request.headers.get("cookie"))[cookieName];

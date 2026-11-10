@@ -99,6 +99,10 @@ const overlayTarget: OverlayTarget = {
   setDraft(draft: OverlayDraft) {
     window.dispatchEvent(new CustomEvent<OverlayDraft>("bulletin:draft", { detail: draft }));
   },
+
+  setPollVoted(pollId, hasVoted) {
+    window.dispatchEvent(new CustomEvent("bulletin:poll-voted", { detail: { pollId, hasVoted } }));
+  },
 };
 
 function draftContext(): string | null {

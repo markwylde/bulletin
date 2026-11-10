@@ -8,12 +8,24 @@ interface SeedReply {
   readonly body: string;
 }
 
+interface SeedPollQuestion {
+  readonly prompt: string;
+  readonly multiple?: boolean;
+  readonly choices: readonly string[];
+}
+
+interface SeedPoll {
+  readonly resultsVisibleBeforeVoting?: boolean;
+  readonly questions: readonly SeedPollQuestion[];
+}
+
 interface SeedTopic {
   readonly forumSlug: string;
   readonly title: string;
   readonly authorSub: string;
   readonly pinned?: boolean;
   readonly locked?: boolean;
+  readonly poll?: SeedPoll;
   readonly replies: readonly SeedReply[];
 }
 
@@ -59,6 +71,25 @@ const TOPICS: readonly SeedTopic[] = [
     forumSlug: "off-topic",
     title: "Weekend plans",
     authorSub: "member-1",
+    replies: [],
+  },
+  {
+    forumSlug: "off-topic",
+    title: "Poll: what should we read next?",
+    authorSub: "member-1",
+    poll: {
+      questions: [
+        {
+          prompt: "Which format should the next group read use?",
+          choices: ["A novel", "A short story collection", "Non-fiction"],
+        },
+        {
+          prompt: "Which themes interest you?",
+          multiple: true,
+          choices: ["History", "Science fiction", "Mystery", "Nature"],
+        },
+      ],
+    },
     replies: [],
   },
   {
@@ -181,6 +212,37 @@ export const topicsSeedModule: SeedModule = {
             reply_count = ${seed.replies.length}
         WHERE id = ${topic.id}
       `;
+      if (seed.poll !== undefined) {
+        const [poll] = (await sql`
+          INSERT INTO core.polls (topic_id, results_visible_before_voting)
+          VALUES (${topic.id}, ${seed.poll.resultsVisibleBeforeVoting === true})
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+
+        if (poll === undefined) {
+          throw new Error(`Could not seed the poll for ${seed.title}`);
+        }
+
+        for (const [questionIndex, question] of seed.poll.questions.entries()) {
+          const [questionRow] = (await sql`
+            INSERT INTO core.poll_questions (poll_id, position, prompt, multiple)
+            VALUES (${poll.id}, ${questionIndex}, ${question.prompt}, ${question.multiple === true})
+            RETURNING id::text AS id
+          `) as Array<{ id: string }>;
+
+          if (questionRow === undefined) {
+            throw new Error(`Could not seed the poll question for ${seed.title}`);
+          }
+
+          for (const [choiceIndex, label] of question.choices.entries()) {
+            await sql`
+              INSERT INTO core.poll_choices (poll_id, question_id, position, label)
+              VALUES (${poll.id}, ${questionRow.id}, ${choiceIndex}, ${label})
+            `;
+          }
+        }
+      }
+
       await sql`
         UPDATE core.forums
         SET topic_count = topic_count + 1,

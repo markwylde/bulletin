@@ -13,6 +13,8 @@ import {
 } from "../mutations/topics.ts";
 import type { ForumTree } from "../permissions/tree.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
+import { type PollInput, validPollInput } from "../polls/index.ts";
+import { insertPoll } from "../polls/repository.ts";
 import { slugify } from "../urls/index.ts";
 import {
   actorCanForumAction,
@@ -54,6 +56,7 @@ export interface StartTopicInput {
   readonly title: string;
   readonly bodyMd: string;
   readonly prefixId?: string | null;
+  readonly poll?: PollInput;
 }
 
 export interface ReplyInput {
@@ -125,6 +128,10 @@ export async function startTopic(
     return { ok: false, code: "invalid_body" };
   }
 
+  if (input.poll !== undefined && !validPollInput(input.poll)) {
+    return { ok: false, code: "invalid_poll" };
+  }
+
   const forum = await loadForumTarget(sql, input.forumId);
 
   if (forum === null || forum.type !== "forum") {
@@ -183,6 +190,10 @@ export async function startTopic(
           sanitiserVersion: rendered.sanitiserVersion,
           quotedForumIds: rendered.quotedForumIds,
         });
+
+        if (input.poll !== undefined) {
+          await insertPoll(tx, topicId, input.poll);
+        }
 
         await completeNewTopic(tx, {
           topicId,

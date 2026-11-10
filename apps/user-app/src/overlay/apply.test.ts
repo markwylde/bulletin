@@ -8,12 +8,14 @@ function target(): {
   readonly tokens: string[];
   readonly dismissed: string[];
   readonly drafts: string[];
+  readonly polls: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
   const tokens: string[] = [];
   const dismissed: string[] = [];
   const drafts: string[] = [];
+  const polls: string[] = [];
 
   return {
     unread,
@@ -21,6 +23,7 @@ function target(): {
     tokens,
     dismissed,
     drafts,
+    polls,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -30,6 +33,7 @@ function target(): {
       storeCsrfToken: (token) => tokens.push(token),
       hideAnnouncement: (announcementId) => dismissed.push(announcementId),
       setDraft: (draft) => drafts.push(`${draft.contextKey}:${draft.bodyMd}`),
+      setPollVoted: (pollId, hasVoted) => polls.push(`${pollId}:${hasVoted ? "yes" : "no"}`),
     },
   };
 }
@@ -70,6 +74,20 @@ describe("overlay applier", () => {
     });
 
     expect(fixture.dismissed).toEqual(["7", "9"]);
+  });
+
+  test("applies the member's poll vote state and ignores unsafe ids", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, {
+      polls: [
+        { pollId: "4", hasVoted: true },
+        { pollId: "x", hasVoted: true },
+        { pollId: "5", hasVoted: false },
+      ],
+    });
+
+    expect(fixture.polls).toEqual(["4:yes", "5:no"]);
   });
 
   test("delivers the member's draft for the editor context", () => {

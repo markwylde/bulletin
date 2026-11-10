@@ -8,6 +8,7 @@ import {
   principalMemberId,
   type ViewerPrincipal,
 } from "@bulletin/domain/permissions";
+import { readPollForTopic } from "@bulletin/domain/polls";
 import {
   countTopicPosts,
   loadQuoteSources,
@@ -65,6 +66,8 @@ export interface TopicPageView {
   readonly canReply: boolean;
   readonly canHardDeleteTopic: boolean;
   readonly editor: EditorView | null;
+  readonly pollId: string | null;
+  readonly pollSlot: SafeHtml | null;
   readonly flags: Readonly<Record<string, boolean>>;
 }
 
@@ -91,6 +94,7 @@ export interface TopicPageData {
   readonly page: number;
   readonly pageCount: number;
   readonly memberIds: readonly string[];
+  readonly pollId: string | null;
   readonly quoteTopicIds: readonly string[];
   readonly quotePostIds: readonly string[];
 }
@@ -308,6 +312,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
   const quoteTopicIds = [...new Set([...sources.values()].map((source) => source.topicId))];
   const quotePostIds = [...new Set(sourceIds)];
   const memberIds = posts.rows.flatMap((post) => (post.authorId === null ? [] : [post.authorId]));
+  const poll = await readPollForTopic(input.sql, input.topic.id);
 
   return {
     breadcrumbs,
@@ -316,7 +321,8 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     page,
     pageCount,
     memberIds,
-    quoteTopicIds,
+    pollId: poll?.id ?? null,
+    quoteTopicIds: quoteTopicIds,
     quotePostIds,
     viewModel: {
       topicId: input.topic.id,
@@ -375,6 +381,8 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
       readMarkerPostId: posts.rows[posts.rows.length - 1]?.id ?? null,
       canReply: reply && (!input.topic.locked || canLock),
       canHardDeleteTopic: canHardDelete,
+      pollId: poll?.id ?? null,
+      pollSlot: poll === null ? null : safeHtml("<bl-poll></bl-poll>"),
       editor:
         reply && (!input.topic.locked || canLock)
           ? await buildEditorView(input.sql, input.translate, {

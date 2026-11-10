@@ -4,6 +4,8 @@ import {
   GLOBAL_CACHE_TAGS,
   i18nTag,
   memberTag,
+  pollResultsTag,
+  pollTag,
   postSnapshotsTag,
   themeTag,
   topicPagesTag,
@@ -19,6 +21,8 @@ describe("cache tags", () => {
     expect(topicViewsTag("345")).toBe("topic:345:views");
     expect(postSnapshotsTag("9876")).toBe("post:9876:snapshots");
     expect(memberTag("7")).toBe("member:7");
+    expect(pollTag("4")).toBe("poll:4");
+    expect(pollResultsTag("4")).toBe("poll:4:results");
     expect(themeTag(3)).toBe("theme:3");
     expect(i18nTag("fr")).toBe("i18n:fr");
   });

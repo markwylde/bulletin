@@ -33,6 +33,7 @@ export interface RunMutationOptions<TInput, TResult> {
 export * from "./board.ts";
 export * from "./emoticons.ts";
 export * from "./forums.ts";
+export * from "./polls.ts";
 export * from "./topics.ts";
 
 export async function runMutation<TInput, TResult>(
