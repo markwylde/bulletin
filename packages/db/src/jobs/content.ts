@@ -2,7 +2,11 @@ import { bumpCacheTags, forumAnnouncementsTag, forumTag, GLOBAL_CACHE_TAGS } fro
 import type { Logger } from "@bulletin/config";
 import type { ContentVersions, Emoticon, MentionResolver, ReplaceWords } from "@bulletin/content";
 import { currentContentVersions, renderContent, renderSnapshot } from "@bulletin/content";
-import { listStaleQuoteSnapshots, quoteSnapshotTags } from "@bulletin/domain/content";
+import {
+  listStaleQuoteSnapshots,
+  loadContentRenderDependencies,
+  quoteSnapshotTags,
+} from "@bulletin/domain/content";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
@@ -34,6 +38,27 @@ export interface ContentRenderOptions {
 }
 
 /**
+ * Fills in the rendering dependencies the worker does not receive at startup. Tests and
+ * callers that already hold them keep their explicit values.
+ */
+async function renderOptionsFor(
+  sql: SQL,
+  options: ContentRenderOptions,
+): Promise<ContentRenderOptions> {
+  if (options.emoticons !== undefined && options.mentions !== undefined) {
+    return options;
+  }
+
+  const dependencies = await loadContentRenderDependencies(sql);
+
+  return {
+    ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+    emoticons: options.emoticons ?? dependencies.emoticons,
+    mentions: options.mentions ?? dependencies.mentions,
+  };
+}
+
+/**
  * A table that stores rendered markdown. `topics-posts` adds the posts source; quote
  * snapshots are the source this change can already re-render.
  */
@@ -49,6 +74,18 @@ export interface ContentRerenderSource {
   save(sql: SQL, row: RerenderRow, rendered: RenderedContent): Promise<boolean>;
 }
 
+/**
+ * The rendering inputs every source shares. Quote snapshots, rules and announcements all go
+ * through the same inline extensions, so they must receive the same current dependencies.
+ */
+function renderInputs(options: ContentRenderOptions) {
+  return {
+    ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+    ...(options.emoticons === undefined ? {} : { emoticons: options.emoticons }),
+    ...(options.mentions === undefined ? {} : { mentions: options.mentions }),
+  };
+}
+
 export const quoteSnapshotRerenderSource: ContentRerenderSource = {
   name: "quote_snapshots",
   listStale: (sql, versions, options) =>
@@ -61,9 +98,7 @@ export const quoteSnapshotRerenderSource: ContentRerenderSource = {
       profile: "post",
       context: { kind: "forum_post", forumId: "1" },
       authorId: "0",
-      ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
-      ...(options.emoticons === undefined ? {} : { emoticons: options.emoticons }),
-      ...(options.mentions === undefined ? {} : { mentions: options.mentions }),
+      ...renderInputs(options),
     });
 
     return {
@@ -167,7 +202,7 @@ export const forumRulesRerenderSource: ContentRerenderSource = {
         profile: "rules",
         context: { kind: "forum_post", forumId: "1" },
         authorId: "0",
-        ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+        ...renderInputs(options),
       }),
     );
   },
@@ -225,7 +260,7 @@ export const announcementRerenderSource: ContentRerenderSource = {
         profile: "rules",
         context: { kind: "forum_post", forumId: "1" },
         authorId: "0",
-        ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+        ...renderInputs(options),
       }),
     );
   },
@@ -336,6 +371,12 @@ export async function runContentRerenderJob(
   let batches = 0;
   let lastId = "0";
   const cursorKeys: string[] = [];
+  let resolvedRenderOptions: ContentRenderOptions | null = null;
+
+  async function renderOptions(): Promise<ContentRenderOptions> {
+    resolvedRenderOptions ??= await renderOptionsFor(sql, options);
+    return resolvedRenderOptions;
+  }
 
   for (const source of sources) {
     const cursorKey = rerenderCursorKey(source.name, versions);
@@ -352,7 +393,7 @@ export async function runContentRerenderJob(
 
       for (const row of rows) {
         // The row id advances only after its write, so the cursor never skips a failure.
-        const value = await source.render(row, options);
+        const value = await source.render(row, await renderOptions());
         const saved = await source.save(sql, row, value);
         cursor = row.id;
 

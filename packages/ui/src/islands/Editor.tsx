@@ -20,6 +20,10 @@ type SaveStatus = "idle" | "saving" | "saved" | "failed";
 
 const MENTION_AT_CURSOR = /(?:^|\s)@([\p{L}\p{N}_.-]{2,32})$/u;
 
+function mentionQueryInSource(value: string, cursor: number): string | null {
+  return MENTION_AT_CURSOR.exec(value.slice(0, Math.max(cursor, 0)))?.[1] ?? null;
+}
+
 function mentionQueryAtCursor(element: HTMLElement): string | null {
   const selection = window.getSelection();
 
@@ -387,6 +391,27 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
     }
   }
 
+  function replaceSourceMention(member: SuggestedMember): void {
+    if (mentionQuery === null) {
+      return;
+    }
+
+    const element = sourceElement.current;
+    const value = markdownRef.current;
+    const end = element?.selectionEnd ?? value.length;
+    const cursor = element?.selectionStart ?? end;
+    const start = Math.max(0, cursor - mentionQuery.length - 1);
+    const token = `@[${member.displayName}](member:${member.id}) `;
+
+    updateMarkdown(`${value.slice(0, start)}${token}${value.slice(end)}`);
+    const caret = start + token.length;
+
+    requestAnimationFrame(() => {
+      element?.focus();
+      element?.setSelectionRange(caret, caret);
+    });
+  }
+
   function chooseMention(member: SuggestedMember): void {
     if (mentionQuery !== null) {
       if (mode === "wysiwyg") {
@@ -395,12 +420,16 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
         controller.current?.insertText(" ");
         syncFromEditor();
       } else {
-        insertSourceText(`@[${member.displayName}](member:${member.id}) `);
+        replaceSourceMention(member);
       }
     }
 
     setMentionQuery(null);
     setMentionOpen(false);
+  }
+
+  function syncSourceMention(element: HTMLTextAreaElement): void {
+    setMentionQuery(mentionQueryInSource(element.value, element.selectionStart));
   }
 
   function chooseEmoticon(code: string): void {
@@ -622,7 +651,11 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
           data-editor-source
           aria-label={labels.editor}
           value={markdown}
-          onChange={(event) => updateMarkdown(event.currentTarget.value)}
+          onChange={(event) => {
+            updateMarkdown(event.currentTarget.value);
+            syncSourceMention(event.currentTarget);
+          }}
+          onSelect={(event) => syncSourceMention(event.currentTarget)}
         />
       )}
 

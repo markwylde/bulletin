@@ -181,6 +181,33 @@ integrationDescribe("post editor", () => {
     });
   }, 180_000);
 
+  test("source-mode mention autocomplete replaces the typed prefix", async () => {
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "member-1");
+      await openEditor(view);
+      await switchToSource(view);
+
+      await view.evaluate('document.querySelector("[data-editor-source]")?.focus()');
+      await view.cdp("Input.insertText", { text: "@Reg" });
+      await waitForSelector(view, "[data-mention-list] [data-mention-id]", 10_000);
+      await waitForExpression(
+        view,
+        'document.body.innerText.includes("Regular Member One")',
+        10_000,
+      );
+      await clickSelector(view, "[data-mention-list] [data-mention-id]");
+      await waitForExpression(
+        view,
+        'document.querySelector("[data-editor-source]")?.value.includes("@[Regular Member One](member:") === true',
+        10_000,
+      );
+
+      const value = await sourceValue(view);
+      expect(value).toContain("@[Regular Member One](member:");
+      expect(value).not.toContain("@Reg");
+    });
+  }, 180_000);
+
   test("offers a saved draft on a second browser profile", async () => {
     const body = "A saved **draft** reply";
 

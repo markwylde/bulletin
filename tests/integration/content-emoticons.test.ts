@@ -8,6 +8,7 @@ import {
 import type { StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { mutateEmoticon } from "../../apps/staff-api/src/emoticons.ts";
+import { emoticonImageResponse } from "../../apps/user-api/src/emoticons.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -194,6 +195,83 @@ integrationDescribe("emoticon management", () => {
       expect(duplicate).toMatchObject({ ok: false, code: "duplicate_code" });
       expect(storage.puts).toHaveLength(2);
       expect(storage.deletes).toHaveLength(1);
+    });
+  });
+
+  test("revalidates a replaced emoticon image instead of caching it for a year", async () => {
+    await withDb(async (database) => {
+      const set = await saveEmoticonSet(database.sql, {
+        key: "revalidate",
+        title: "Revalidate",
+        position: 0,
+        editorVisible: true,
+      });
+
+      if (!set.ok || set.id === undefined) {
+        throw new Error("Could not create set");
+      }
+
+      const saved = await saveEmoticon(database.sql, {
+        setId: set.id,
+        code: "wave",
+        alt: "Wave",
+        storageKey: "emoticon/one",
+        contentType: "image/png",
+        position: 0,
+      });
+      const id = saved.ok ? saved.id : undefined;
+
+      if (id === undefined) {
+        throw new Error("Could not create emoticon");
+      }
+
+      const storage = fakeStorage();
+      let bytes = new Uint8Array([1, 2, 3]);
+      storage.get = async () => bytes;
+      const url = `http://localhost/api/emoticons/${id}/image`;
+
+      const first = await emoticonImageResponse(database.sql, storage, id, new Request(url));
+      const firstEtag = first.headers.get("etag");
+
+      expect(first.headers.get("cache-control")).not.toContain("immutable");
+      expect(first.headers.get("cache-control")).toContain("max-age=0");
+      expect(firstEtag).not.toBeNull();
+      expect(new Uint8Array(await first.arrayBuffer())).toEqual(bytes);
+
+      // Staff can replace the file behind the same id; the URL does not change.
+      expect(
+        await saveEmoticon(database.sql, {
+          id,
+          setId: set.id,
+          code: "wave",
+          alt: "Wave",
+          storageKey: "emoticon/two",
+          contentType: "image/png",
+          position: 0,
+        }),
+      ).toMatchObject({ ok: true, id });
+      bytes = new Uint8Array([4, 5, 6]);
+
+      const reloaded = await emoticonImageResponse(
+        database.sql,
+        storage,
+        id,
+        new Request(url, { headers: { "if-none-match": firstEtag ?? "" } }),
+      );
+      const nextEtag = reloaded.headers.get("etag");
+
+      expect(reloaded.status).toBe(200);
+      expect(new Uint8Array(await reloaded.arrayBuffer())).toEqual(bytes);
+      expect(nextEtag).not.toBe(firstEtag);
+
+      const cached = await emoticonImageResponse(
+        database.sql,
+        storage,
+        id,
+        new Request(url, { headers: { "if-none-match": nextEtag ?? "" } }),
+      );
+      expect(cached.status).toBe(304);
+      expect(await cached.text()).toBe("");
     });
   });
 

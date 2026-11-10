@@ -14,6 +14,8 @@ import {
 import {
   insertQuoteSnapshot,
   loadQuoteSnapshot,
+  saveEmoticon,
+  saveEmoticonSet,
   updateQuoteSnapshotRendering,
 } from "@bulletin/domain/content";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -30,10 +32,10 @@ async function withDb(run: (database: TestDatabase) => Promise<void>): Promise<v
   await withTestDatabase({ adminUrl, prefix: "content_versioning" }, run);
 }
 
-async function createMember(database: TestDatabase): Promise<string> {
+async function createMember(database: TestDatabase, name = "Version Author"): Promise<string> {
   const [member] = (await database.sql`
     INSERT INTO core.members (display_name, name_skeleton)
-    VALUES ('Version Author', 'versionauthor')
+    VALUES (${name}, ${name.toLowerCase().replace(/\s+/g, "")})
     RETURNING id::text AS id
   `) as Array<{ id: string }>;
 
@@ -131,6 +133,59 @@ integrationDescribe("content versioning (ADR 0007)", () => {
         WHERE subscriber = ${resumed.cursorKey}
       `) as Array<{ last_event_id: string }>;
       expect(cursor?.last_event_id).toBe(third);
+    });
+  });
+
+  test("an upgrade re-render keeps mentions and emoticons", async () => {
+    await withDb(async (database) => {
+      const author = await createMember(database);
+      const jane = await createMember(database, "Jane");
+      const set = await saveEmoticonSet(database.sql, {
+        key: "default",
+        title: "Default",
+        position: 0,
+        editorVisible: true,
+      });
+
+      if (!set.ok || set.id === undefined) {
+        throw new Error("Could not create emoticon set");
+      }
+
+      const emoticon = await saveEmoticon(database.sql, {
+        setId: set.id,
+        code: "smile",
+        alt: "Smile",
+        storageKey: "emoticon/smile",
+        contentType: "image/png",
+        position: 0,
+      });
+
+      if (!emoticon.ok) {
+        throw new Error("Could not create emoticon");
+      }
+
+      const id = await insertQuoteSnapshot(
+        database.sql,
+        draft(author, {
+          bodyMd: "Hi @Jane, enjoy :smile:",
+          bodyHtml: "<p>Hi @Jane, enjoy :smile:</p>",
+          renderVersion: 1,
+          sanitiserVersion: 2,
+        }),
+      );
+
+      // The worker registers no render options at startup; the job loads them itself.
+      const result = await runContentRerenderJob(database.sql);
+      expect(result.rerendered).toBe(1);
+
+      const stored = await loadQuoteSnapshot(database.sql, id);
+
+      expect(stored?.bodyHtml).toContain(`href="/profile/${jane}-jane"`);
+      expect(stored?.bodyHtml).toContain(">@Jane</a>");
+      expect(stored?.bodyHtml).toContain('class="emoticon"');
+      expect(stored?.bodyHtml).toContain('alt="Smile"');
+      expect(stored?.bodyHtml).not.toContain("@Jane, enjoy :smile:");
+      expect(stored?.renderVersion).toBe(currentContentVersions().renderVersion);
     });
   });
 

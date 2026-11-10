@@ -77,7 +77,7 @@ await startService({
     const emoticonImageMatch = /^\/api\/emoticons\/(\d+)\/image$/.exec(pathname);
 
     if (request.method === "GET" && emoticonImageMatch !== null) {
-      return emoticonImageResponse(sql, storage, emoticonImageMatch[1] ?? "");
+      return emoticonImageResponse(sql, storage, emoticonImageMatch[1] ?? "", request);
     }
 
     const unlockMatch = /^\/api\/forums\/(\d+)\/unlock$/.exec(pathname);

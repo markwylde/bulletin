@@ -1,3 +1,4 @@
+import type { Emoticon } from "@bulletin/content";
 import type { SQL } from "bun";
 
 export const EMOTICON_CODE = /^[a-z0-9_+-]{1,32}$/;
@@ -151,6 +152,24 @@ export async function listEditorEmoticons(sql: SQL): Promise<readonly EditorEmot
     key: row.key,
     title: row.title,
     emoticons: bySet.get(row.id) ?? [],
+  }));
+}
+
+/**
+ * Every emoticon the pipeline can render, including sets hidden from the editor picker:
+ * hiding a set must not turn existing `:code:` text in older posts into plain text.
+ */
+export async function listRenderEmoticons(sql: SQL): Promise<readonly Emoticon[]> {
+  const rows = (await sql`
+    SELECT id::text AS id, code, alt
+    FROM core.emoticons
+    ORDER BY position, id
+  `) as Array<{ id: string; code: string; alt: string }>;
+
+  return rows.map((row) => ({
+    code: row.code,
+    alt: row.alt,
+    src: `/api/emoticons/${row.id}/image`,
   }));
 }
 
