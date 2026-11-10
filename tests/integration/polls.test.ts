@@ -262,6 +262,7 @@ integrationDescribe("polls", () => {
         const html = guest.kind === "page" ? guest.html : "";
         expect(html).toContain("data-poll-form");
         expect(html).not.toMatch(/data-poll-count="[^"]*">\s*\d+/);
+        expect(html).not.toMatch(/data-poll-total>\s*\d+/);
 
         const guestResults = await pollResultsResponse(database.sql, null, created.pollId);
         expect(guestResults.status).toBe(401);
@@ -354,6 +355,105 @@ integrationDescribe("polls", () => {
         for (const page of rendered) {
           expect(page.html).not.toMatch(/data-poll-count="[^"]*">\s*\d+/);
         }
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("results require current read access and deny revoked voters", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const moderator = await memberSession(database, "super-mod");
+      const staff = await forumId(database, "staff-room");
+      const privateTopic = await startTopic(database.sql, {
+        actorId: moderator.memberId,
+        forumId: staff,
+        title: "Private poll",
+        bodyMd: "Body.",
+        poll: poll(),
+      });
+
+      if (!privateTopic.ok) {
+        throw new Error("Could not create the private poll");
+      }
+
+      const privatePoll = await readPollForTopic(database.sql, privateTopic.result.topicId);
+
+      if (privatePoll === null) {
+        throw new Error("Missing private poll");
+      }
+
+      expect(
+        await pollResults(database.sql, {
+          pollId: privatePoll.id,
+          actorId: member.memberId,
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+
+      const publicTopic = await createPollTopic(database, poll(), "Revoked voter poll");
+      const publicPoll = await readPollForTopic(database.sql, publicTopic.topicId);
+
+      if (publicPoll === null) {
+        throw new Error("Missing public poll");
+      }
+
+      await vote(database.sql, {
+        actorId: member.memberId,
+        pollId: publicPoll.id,
+        selections: selectionsFor(publicPoll),
+      });
+      expect(
+        await pollResults(database.sql, {
+          pollId: publicPoll.id,
+          actorId: member.memberId,
+        }),
+      ).toMatchObject({ ok: true });
+
+      await database.sql`
+        UPDATE core.forum_permissions
+        SET actions = 0
+        WHERE mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+          AND forum_id = (SELECT id FROM core.forums WHERE slug = 'community')
+      `;
+      expect(
+        await pollResults(database.sql, {
+          pollId: publicPoll.id,
+          actorId: member.memberId,
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+    });
+  }, 30_000);
+
+  test("poll fragments are cached per locale", async () => {
+    await withSeededDb(async (database) => {
+      const created = await createPollTopic(database, poll(), "Locale poll");
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const labels: string[] = [];
+
+        for (const locale of ["en", "es", "fr"] as const) {
+          const translator = createServerT(locale, { shipped: USER_CATALOGS });
+          const html = await renderPollFragment(
+            database.sql,
+            cache,
+            created.pollId,
+            locale,
+            translator,
+          );
+          labels.push(html);
+        }
+
+        expect(labels[0]).toContain("Poll");
+        expect(labels[1]).toContain("Encuesta");
+        expect(labels[2]).toContain("Sondage");
+        expect(new Set(labels).size).toBe(3);
       } finally {
         await versions.close();
       }
@@ -474,7 +574,14 @@ integrationDescribe("polls", () => {
 
       try {
         const cache = createRenderCache({ tags: versions, now: () => now.getTime() });
-        const open = await renderPollFragment(database.sql, cache, created.pollId, translate, now);
+        const open = await renderPollFragment(
+          database.sql,
+          cache,
+          created.pollId,
+          "en",
+          translate,
+          now,
+        );
         expect(open).toContain("data-poll-form");
         expect(open).toContain("data-poll-results hidden");
 
@@ -483,6 +590,7 @@ integrationDescribe("polls", () => {
           database.sql,
           cache,
           created.pollId,
+          "en",
           translate,
           now,
         );

@@ -16,6 +16,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "home",
   "forum",
   "topic",
+  "post",
   "login",
   "callback",
   "demo",

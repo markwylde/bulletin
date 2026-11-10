@@ -1,3 +1,4 @@
+import { forumTag, postSnapshotsTag, postTag, topicTag } from "@bulletin/cache";
 import { ensureCurrentRendering, resolveQuotePlaceholders } from "@bulletin/content";
 import { listEmbedProviders, loadQuoteSnapshot } from "@bulletin/domain/content";
 import { listVisibleForums } from "@bulletin/domain/forums";
@@ -98,6 +99,7 @@ export interface TopicPageData {
   readonly pollId: string | null;
   readonly quoteTopicIds: readonly string[];
   readonly quotePostIds: readonly string[];
+  readonly postTags: ReadonlyMap<string, readonly string[]>;
 }
 
 function formatDate(locale: Locale, value: Date): string {
@@ -263,8 +265,12 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
 
       if (
         source.visibility === "unapproved" &&
-        source.authorId !== input.principal &&
-        !seeUnapproved
+        !(await can(input.sql, input.principal, "see_unapproved", {
+          forumId: source.forumId,
+          tree,
+          sessionId: input.sessionId,
+          snapshot: input.snapshot,
+        }))
       ) {
         return false;
       }
@@ -276,6 +282,16 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
         snapshot: input.snapshot,
       });
       view.track(source.forumId, "read", allowed);
+      view.track(
+        source.forumId,
+        "see_unapproved",
+        await can(input.sql, input.principal, "see_unapproved", {
+          forumId: source.forumId,
+          tree,
+          sessionId: input.sessionId,
+          snapshot: input.snapshot,
+        }),
+      );
       return allowed;
     },
     sourceUrl(ref: { readonly kind: string; readonly id: string }): string | null {
@@ -313,6 +329,23 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     canonicalUrl("topic", input.topic.id, input.topic.slug, { page: target });
   const quoteTopicIds = [...new Set([...sources.values()].map((source) => source.topicId))];
   const quotePostIds = [...new Set(sourceIds)];
+  const postTags = new Map<string, readonly string[]>();
+
+  for (const { post, html: body } of rendered) {
+    const tags = new Set<string>([postTag(post.id)]);
+
+    for (const sourceId of quoteSourceIds(body)) {
+      const source = sources.get(sourceId);
+
+      if (source !== undefined) {
+        tags.add(topicTag(source.topicId));
+        tags.add(forumTag(source.forumId));
+        tags.add(postSnapshotsTag(sourceId));
+      }
+    }
+
+    postTags.set(post.id, [...tags]);
+  }
   const memberIds = posts.rows.flatMap((post) => (post.authorId === null ? [] : [post.authorId]));
   const poll = pollsEnabled ? await readPollForTopic(input.sql, input.topic.id) : null;
 
@@ -324,6 +357,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     pageCount,
     memberIds,
     pollId: poll?.id ?? null,
+    postTags,
     quoteTopicIds: quoteTopicIds,
     quotePostIds,
     viewModel: {
@@ -420,16 +454,17 @@ function postActions(input: {
   | "canViewHistory"
 > {
   const isAuthor = input.post.authorId !== null && input.post.authorId === input.viewerId;
-  const ageMinutes = (Date.now() - input.post.createdAt.getTime()) / 60_000;
-  const withinWindow = input.editWindow <= 0 || ageMinutes <= input.editWindow;
-  const canEdit = (isAuthor && withinWindow) || input.canEditMod;
   const visible = input.post.visibility === "visible";
+  void input.editWindow;
+  void input.canDeleteOwn;
 
+  // Ownership-dependent controls and raw Markdown are delivered through the private overlay,
+  // never in the shared page fragment (task 5.1 reviewer finding).
   return {
-    canEdit,
-    editBody: canEdit ? input.post.bodyMd : null,
+    canEdit: input.canEditMod,
+    editBody: input.canEditMod ? input.post.bodyMd : null,
     canRedact: input.canEditMod && !isAuthor,
-    canDelete: visible && ((isAuthor && input.canDeleteOwn) || input.canSoftDelete),
+    canDelete: visible && input.canSoftDelete,
     canRestore: !visible && input.canRestore,
     canHardDelete: input.canHardDelete && input.post.position !== 1,
     canViewHistory: input.canViewHistory || input.publicEditHistory,

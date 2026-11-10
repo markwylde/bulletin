@@ -11,6 +11,7 @@ function target(): {
   readonly polls: string[];
   readonly unreadForums: string[];
   readonly firstUnread: string[];
+  readonly editable: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
@@ -20,6 +21,7 @@ function target(): {
   const polls: string[] = [];
   const unreadForums: string[] = [];
   const firstUnread: string[] = [];
+  const editable: string[] = [];
 
   return {
     unread,
@@ -30,6 +32,7 @@ function target(): {
     polls,
     unreadForums,
     firstUnread,
+    editable,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -42,6 +45,8 @@ function target(): {
       setDraft: (draft) => drafts.push(`${draft.contextKey}:${draft.bodyMd}`),
       setPollVoted: (pollId, hasVoted) => polls.push(`${pollId}:${hasVoted ? "yes" : "no"}`),
       setFirstUnread: (topicId, url) => firstUnread.push(`${topicId}:${url}`),
+      setEditablePosts: (posts) =>
+        editable.push(...posts.map((post) => `${post.postId}:${post.canEdit ? "edit" : "read"}`)),
     },
   };
 }
@@ -97,6 +102,26 @@ describe("overlay applier", () => {
 
     expect(fixture.unreadForums).toEqual(["3"]);
     expect(fixture.firstUnread).toEqual(["9:/topic/9-hello/page/2#post-30"]);
+  });
+
+  test("delivers private editable-post controls", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, {
+      editablePosts: [
+        {
+          postId: "7",
+          bodyMd: "x",
+          canEdit: true,
+          canDelete: true,
+          canRedact: false,
+          canViewHistory: false,
+        },
+        { postId: "8", canEdit: false, canDelete: true, canRedact: false, canViewHistory: false },
+      ],
+    });
+
+    expect(fixture.editable).toEqual(["7:edit", "8:read"]);
   });
 
   test("applies the member's poll vote state and ignores unsafe ids", () => {

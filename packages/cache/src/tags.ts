@@ -58,6 +58,10 @@ export function topicViewsTag(topicId: string): string {
  * A post's quote snapshots. Redacting a post bumps this tag, so every fragment that quotes
  * it rebuilds without touching the post itself (ADR 0007).
  */
+export function postTag(postId: string): string {
+  return resourceTag("post", postId);
+}
+
 export function postSnapshotsTag(postId: string): string {
   return `${resourceTag("post", postId)}:snapshots`;
 }

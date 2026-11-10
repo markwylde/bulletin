@@ -22,6 +22,7 @@ export async function renderTopicViewsFragment(
     prepare: async () => ({
       key: `topic-views:${topicId}:${locale}`,
       data: await readTopicViewCount(sql, topicId),
+      ttlMs: 60_000,
     }),
     render: (count) =>
       `<span class="bl-topic__views" data-topic-views="${topicId}">${escapeHtml(

@@ -3,6 +3,7 @@ import {
   GLOBAL_CACHE_TAGS,
   memberTag,
   postSnapshotsTag,
+  postTag,
   topicPagesTag,
   topicTag,
 } from "@bulletin/cache";
@@ -78,6 +79,7 @@ export const postEditMutation: Mutation<PostEditSummary, PostEditSummary> = {
     uniqueTags([
       topicTag(result.topicId),
       topicPagesTag(result.topicId),
+      postTag(result.postId),
       ...(result.redacted ? [postSnapshotsTag(result.postId)] : []),
     ]),
 };

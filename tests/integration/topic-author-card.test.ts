@@ -16,6 +16,7 @@ import { startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { isNotModified } from "../../apps/user-app/src/http/cache.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
 import { renderMemberCards } from "../../apps/user-app/src/topics/fragments.ts";
 import { renderTopicRoute } from "../../apps/user-app/src/topics/route.ts";
@@ -124,6 +125,9 @@ integrationDescribe("author card fragment", () => {
         expect(first.kind === "page" ? first.cache : null).toBe("miss");
         expect(warm.kind === "page" ? warm.cache : null).toBe("hit");
         expect(warm.kind === "page" ? warm.html : "").toContain("data-member-card");
+        expect(warm.kind === "page" ? warm.etag : null).toBe(
+          first.kind === "page" ? first.etag : null,
+        );
 
         await database.sql`
           UPDATE core.members SET post_count = 987 WHERE id = ${member.memberId}
@@ -136,6 +140,15 @@ integrationDescribe("author card fragment", () => {
         // The topic page's own tags did not move, so only the referenced card rebuilt.
         expect(after.kind === "page" ? after.cache : null).toBe("hit");
         expect(after.kind === "page" ? after.html : "").toContain("987 posts");
+        expect(after.kind === "page" ? after.etag : null).not.toBe(
+          warm.kind === "page" ? warm.etag : null,
+        );
+        expect(
+          isNotModified(
+            warm.kind === "page" ? warm.etag : null,
+            after.kind === "page" ? after.etag : null,
+          ),
+        ).toBe(false);
       } finally {
         await versions.close();
       }

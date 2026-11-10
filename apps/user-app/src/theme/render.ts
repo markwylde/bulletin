@@ -134,6 +134,8 @@ export interface ThemedPageInput {
   readonly viewModel: object;
   readonly breadcrumbs: readonly BreadcrumbItem[];
   readonly route: RouteDeclaration;
+  /** Fragment renders override the default page regions with none. */
+  readonly regions?: readonly ThemeRegion[];
   /** Hook-fragment generation (ADR 0009); the demo route varies it for variants. */
   readonly pluginsGeneration?: number;
   /** A theme already loaded for the cache variant key, to avoid a second query. */
@@ -281,7 +283,7 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
       name: input.template,
       viewModel: input.viewModel,
       runtime,
-      regions: pageRegions(input),
+      regions: input.regions ?? pageRegions(input),
       trustedFrameOrigins,
     });
   } catch (error) {

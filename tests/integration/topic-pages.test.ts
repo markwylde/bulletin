@@ -12,7 +12,7 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
-import { pin, reply, startTopic } from "@bulletin/domain/topics";
+import { editPost, pin, reply, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -428,6 +428,150 @@ integrationDescribe("forum topic list and topic view", () => {
     });
   }, 45_000);
 
+  test("editing one post preserves the other post-block cache entries", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Post block caching",
+          bodyMd: "First block.",
+        }),
+      );
+      const second = expectOk(
+        await reply(database.sql, {
+          actorId: author.memberId,
+          topicId: topic.topicId,
+          bodyMd: "Second block.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const base = createRenderCache({ tags: versions });
+        const calls: Array<{ readonly key: string; readonly status: string }> = [];
+        const counted = {
+          ...base,
+          getOrRender: async (request: Parameters<typeof base.getOrRender>[0]) => {
+            const result = await base.getOrRender(request);
+            calls.push({ key: result.key, status: result.status });
+            return result;
+          },
+        };
+        const render = () =>
+          topicCache(database, null, `${topic.topicId}-post-block-caching`, counted, versions);
+
+        await render();
+        expect(
+          calls.some(
+            (call) => call.key.startsWith(`post-block:${topic.postId}:`) && call.status === "miss",
+          ),
+        ).toBe(true);
+        expect(
+          calls.some(
+            (call) => call.key.startsWith(`post-block:${second.postId}:`) && call.status === "miss",
+          ),
+        ).toBe(true);
+
+        calls.length = 0;
+        expectOk(
+          await editPost(database.sql, {
+            actorId: author.memberId,
+            postId: second.postId,
+            bodyMd: "Second block edited.",
+          }),
+        );
+        await versions.refresh();
+        await render();
+
+        const firstBlock = calls.find((call) => call.key.startsWith(`post-block:${topic.postId}:`));
+        const editedBlock = calls.find((call) =>
+          call.key.startsWith(`post-block:${second.postId}:`),
+        );
+        expect(firstBlock?.status).toBe("hit");
+        expect(editedBlock?.status).toBe("miss");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 45_000);
+
+  test("unapproved quote sources never leak into shared variants", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+      const other = await memberSession(database, "member-2");
+      const moderator = await memberSession(database, "super-mod");
+      const source = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Quote source",
+          bodyMd: "Visible source.",
+        }),
+      );
+      const held = expectOk(
+        await reply(database.sql, {
+          actorId: author.memberId,
+          topicId: source.topicId,
+          bodyMd: "HELD-QUOTE-SECRET",
+        }),
+      );
+      await database.sql`
+        UPDATE core.posts SET visibility = 'unapproved' WHERE id = ${held.postId}
+      `;
+      const target = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Quoted held post",
+          bodyMd: `:::quote{source="post:${held.postId}"}
+:::
+
+The rest is public.`,
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const render = (
+          cache: ReturnType<typeof createRenderCache>,
+          session: UserAppSessionContext,
+        ) => topicCache(database, session, `${target.topicId}-quoted-held-post`, cache, versions);
+
+        for (const order of [
+          [author, other],
+          [other, author],
+        ] as const) {
+          const cache = createRenderCache({ tags: versions });
+
+          for (const session of order) {
+            const page = await render(cache, session);
+            const html = page.kind === "page" ? page.html : "";
+            expect(html).not.toContain("HELD-QUOTE-SECRET");
+          }
+        }
+
+        const moderatorPage = await render(createRenderCache({ tags: versions }), moderator);
+        expect(moderatorPage.kind === "page" ? moderatorPage.html : "").toContain(
+          "HELD-QUOTE-SECRET",
+        );
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 45_000);
+
   test("shows author and moderator post controls with redaction on by default", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");
@@ -439,7 +583,7 @@ integrationDescribe("forum topic list and topic view", () => {
           actorId: author.memberId,
           forumId: offTopic,
           title: "Controls topic",
-          bodyMd: "Body.",
+          bodyMd: "**secret markdown**",
         }),
       );
       const versions = await createTagVersions({
@@ -452,12 +596,33 @@ integrationDescribe("forum topic list and topic view", () => {
         const cache = createRenderCache({ tags: versions });
         const render = (session: UserAppSessionContext) =>
           topicCache(database, session, `${topic.topicId}-controls-topic`, cache, versions);
+        const renderWithCache = (
+          renderCache: ReturnType<typeof createRenderCache>,
+          session: UserAppSessionContext,
+        ) =>
+          topicCache(database, session, `${topic.topicId}-controls-topic`, renderCache, versions);
 
         const authorPage = await render(author);
         const authorHtml = authorPage.kind === "page" ? authorPage.html : "";
-        expect(authorHtml).toContain(`data-post-edit="${topic.postId}"`);
-        expect(authorHtml).toContain(`data-post-action="soft"`);
+        expect(authorHtml).not.toContain(`data-post-edit="${topic.postId}"`);
+        expect(authorHtml).not.toContain(`data-post-action="soft"`);
         expect(authorHtml).not.toContain('name="redact"');
+        expect(authorHtml).not.toContain("**secret markdown**");
+        expect(authorHtml).toContain("<strong>secret markdown</strong>");
+
+        const memberPage = await render(other);
+        const memberHtml = memberPage.kind === "page" ? memberPage.html : "";
+        expect(memberHtml).toBe(authorHtml);
+
+        const reverseCache = createRenderCache({ tags: versions });
+        const reverseMember = await renderWithCache(reverseCache, other);
+        const reverseAuthor = await renderWithCache(reverseCache, author);
+        expect(reverseMember.kind === "page" ? reverseMember.html : "").not.toContain(
+          "**secret markdown**",
+        );
+        expect(reverseAuthor.kind === "page" ? reverseAuthor.html : "").toBe(
+          reverseMember.kind === "page" ? reverseMember.html : "",
+        );
 
         const moderatorPage = await render(moderator);
         const moderatorHtml = moderatorPage.kind === "page" ? moderatorPage.html : "";

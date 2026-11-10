@@ -4,6 +4,7 @@ import { runMutation } from "../mutations/index.ts";
 import { pollEditMutation, pollVoteMutation } from "../mutations/polls.ts";
 import {
   canModeratePoll,
+  canReadPoll,
   canVoteInPoll,
   insertPollVote,
   type PollInput,
@@ -313,7 +314,7 @@ export async function pollResults(
     return { ok: false, code: "not_found" };
   }
 
-  if (input.actorId === null) {
+  if (input.actorId === null || !(await canReadPoll(sql, input.actorId, poll.forumId))) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -356,6 +357,10 @@ export async function editPoll(
 
   const moderator = await canModeratePoll(sql, input.actorId, poll.forumId);
   const starter = poll.starterId === input.actorId;
+
+  if (!(await canReadPoll(sql, input.actorId, poll.forumId))) {
+    return { ok: false, code: "forbidden" };
+  }
 
   if (!moderator) {
     if (!starter) {

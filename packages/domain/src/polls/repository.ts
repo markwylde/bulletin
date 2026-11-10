@@ -226,10 +226,18 @@ export async function readPollVote(
     : { pollId: row.poll_id, memberId: row.member_id, createdAt: row.created_at };
 }
 
+export async function canReadPoll(sql: SQL, memberId: string, forumId: string): Promise<boolean> {
+  const tree = await loadForumTree(sql);
+  return can(sql, memberId, "read", { forumId, tree });
+}
+
 export async function canVoteInPoll(sql: SQL, memberId: string, forumId: string): Promise<boolean> {
   const tree = await loadForumTree(sql);
 
-  return can(sql, memberId, "vote", { forumId, tree });
+  return (
+    (await can(sql, memberId, "read", { forumId, tree })) &&
+    (await can(sql, memberId, "vote", { forumId, tree }))
+  );
 }
 
 export async function canModeratePoll(

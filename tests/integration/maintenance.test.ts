@@ -9,6 +9,7 @@ import { baseSeedModule, runSeeds, SeedRegistry } from "@bulletin/db/seed";
 import { forwardSystemAudits, queueSystemAudit } from "@bulletin/domain/audit";
 import { recordVisit } from "@bulletin/domain/visits";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -72,6 +73,64 @@ integrationDescribe("maintenance sweep (ADR 0012)", () => {
       expect(presence.map((row) => row.viewer_key)).toEqual(["guest:fresh"]);
     });
   });
+
+  test("runs as the worker role and can flush views and expire stubs", async () => {
+    await withDb(async (database) => {
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name) VALUES ('Maintenance Worker') RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [forum] = (await database.sql`
+        INSERT INTO core.forums (type, title, slug) VALUES ('forum', 'Worker Forum', 'worker-forum')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined || forum === undefined) {
+        throw new Error("Could not create maintenance fixtures");
+      }
+
+      const [topic] = (await database.sql`
+        INSERT INTO core.topics (forum_id, title, slug, starter_id)
+        VALUES (${forum.id}, 'Worker topic', 'worker-topic', ${member.id})
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (topic === undefined) {
+        throw new Error("Could not create the worker topic");
+      }
+
+      await database.sql`
+        INSERT INTO core.topic_view_buffer (topic_id, viewer_key, bucket)
+        VALUES (${topic.id}, 'guest:maintenance', now())
+      `;
+      await database.sql`
+        INSERT INTO core.topics (
+          forum_id, title, slug, starter_id, locked, moved_to, stub_expires_at
+        )
+        VALUES (
+          ${forum.id}, 'Expired stub', 'expired-stub', ${member.id}, true,
+          ${topic.id}, now() - interval '1 minute'
+        )
+      `;
+
+      const url = new URL(database.url);
+      url.username = "workers";
+      url.password = "";
+      const worker = new SQL(url.toString());
+
+      try {
+        const result = await runMaintenance(worker);
+        expect(result.flushedTopicViews).toBe(1);
+        expect(result.expiredTopicStubs).toBe(1);
+      } finally {
+        await worker.close();
+      }
+
+      const [view] = (await database.sql`
+        SELECT view_count FROM core.topics WHERE id = ${topic.id}
+      `) as Array<{ view_count: string }>;
+      expect(view?.view_count).toBe("1");
+    });
+  }, 30_000);
 
   test("registers the sweep on the every-minute pg-boss schedule", async () => {
     await withDb(async (database) => {

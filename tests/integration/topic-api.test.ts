@@ -321,6 +321,157 @@ integrationDescribe("topic posting API", () => {
     });
   }, 30_000);
 
+  test("history denies private, held and deleted posts", async () => {
+    await withSeededDb(async (database) => {
+      const staff = await forumId(database, "staff-room");
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const moderator = await memberId(database, "super-mod");
+      const other = await memberId(database, "member-2");
+
+      const privateTopic = await startTopic(database.sql, {
+        actorId: moderator,
+        forumId: staff,
+        title: "Private history",
+        bodyMd: "Private body.",
+      });
+
+      if (!privateTopic.ok) {
+        throw new Error("Could not create the private topic");
+      }
+
+      expect(
+        (await postHistoryResponse(database.sql, session(other), privateTopic.result.postId))
+          .status,
+      ).toBe(403);
+
+      const heldTopic = await startTopic(database.sql, {
+        actorId: author,
+        forumId: offTopic,
+        title: "Held history",
+        bodyMd: "Held body.",
+      });
+
+      if (!heldTopic.ok) {
+        throw new Error("Could not create the held topic");
+      }
+
+      await database.sql`
+        UPDATE core.posts SET visibility = 'unapproved' WHERE id = ${heldTopic.result.postId}
+      `;
+      expect(
+        (await postHistoryResponse(database.sql, session(other), heldTopic.result.postId)).status,
+      ).toBe(403);
+
+      await database.sql`
+        UPDATE core.posts SET visibility = 'soft_deleted' WHERE id = ${heldTopic.result.postId}
+      `;
+      expect(
+        (await postHistoryResponse(database.sql, session(other), heldTopic.result.postId)).status,
+      ).toBe(403);
+    });
+  }, 30_000);
+
+  test("authors lose edit and delete access when forum access is revoked", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const created = await startTopic(database.sql, {
+        actorId: author,
+        forumId: offTopic,
+        title: "Revoked topic",
+        bodyMd: "Body.",
+      });
+
+      if (!created.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await database.sql`
+        UPDATE core.forum_permissions
+        SET actions = 0
+        WHERE mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+          AND forum_id = (SELECT id FROM core.forums WHERE slug = 'community')
+      `;
+
+      expect(
+        (
+          await editPostResponse(
+            database.sql,
+            session(author),
+            created.result.postId,
+            request("POST", { bodyMd: "Changed." }),
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await postDeleteResponse(
+            database.sql,
+            session(author),
+            created.result.postId,
+            request("POST", { action: "soft" }),
+          )
+        ).status,
+      ).toBe(403);
+    });
+  }, 30_000);
+
+  test("concurrent replies cannot both pass flood control", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const created = await startTopic(database.sql, {
+        actorId: author,
+        forumId: offTopic,
+        title: "Concurrent flood",
+        bodyMd: "Body.",
+      });
+
+      if (!created.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'posting.flood_control_seconds', to_jsonb(30)
+        FROM core.groups WHERE key = 'members'
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      await database.sql`DELETE FROM core.rate_buckets`;
+
+      const attempts = await Promise.all(
+        Array.from({ length: 6 }, (_value, index) =>
+          replyResponse(
+            database.sql,
+            session(author),
+            created.result.topicId,
+            request("POST", { bodyMd: `Concurrent reply ${index}` }),
+          ),
+        ),
+      );
+      const statuses = attempts.map((response) => response.status).sort();
+
+      expect(statuses.filter((status) => status === 200)).toHaveLength(1);
+      expect(statuses.filter((status) => status === 429)).toHaveLength(5);
+
+      await database.sql`DELETE FROM core.rate_buckets`;
+      const starts = await Promise.all(
+        Array.from({ length: 6 }, (_value, index) =>
+          createTopicResponse(
+            database.sql,
+            session(author),
+            offTopic,
+            request("POST", { title: `Concurrent start ${index}`, bodyMd: "Body." }),
+          ),
+        ),
+      );
+      const startStatuses = starts.map((response) => response.status).sort();
+      expect(startStatuses.filter((status) => status === 200)).toHaveLength(1);
+      expect(startStatuses.filter((status) => status === 429)).toHaveLength(5);
+    });
+  }, 30_000);
+
   test("promotes a member exactly once when the approved post count reaches the rule", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");

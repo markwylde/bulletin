@@ -7,6 +7,7 @@ import {
   pollResultsTag,
   pollTag,
   postSnapshotsTag,
+  postTag,
   themeTag,
   topicPagesTag,
   topicTag,
@@ -19,6 +20,7 @@ describe("cache tags", () => {
     expect(topicTag("345")).toBe("topic:345");
     expect(topicPagesTag("345")).toBe("topic:345:pages");
     expect(topicViewsTag("345")).toBe("topic:345:views");
+    expect(postTag("9876")).toBe("post:9876");
     expect(postSnapshotsTag("9876")).toBe("post:9876:snapshots");
     expect(memberTag("7")).toBe("member:7");
     expect(pollTag("4")).toBe("poll:4");

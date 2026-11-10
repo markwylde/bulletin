@@ -1,6 +1,6 @@
-import { pollResultsTag, pollTag, type RenderCache } from "@bulletin/cache";
+import { i18nTag, pollResultsTag, pollTag, type RenderCache } from "@bulletin/cache";
 import { type PollRecord, readPoll } from "@bulletin/domain/polls";
-import type { Translator } from "@bulletin/i18n";
+import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
 
@@ -40,7 +40,7 @@ function resultsHtml(poll: PollRecord, translate: Translator, revealed: boolean)
     .join("");
 
   return `<div class="bl-poll__results" data-poll-results ${revealed ? "" : "hidden"} aria-label="${escapeHtml(translate("poll.results"))}">
-    <p class="bl-muted"><span data-poll-total>${poll.totalVoters}</span> ${escapeHtml(translate("poll.voters"))}</p>
+    <p class="bl-muted"><span data-poll-total>${revealed ? poll.totalVoters : ""}</span> ${escapeHtml(translate("poll.voters"))}</p>
     <ul class="bl-poll__result-questions">${questions}</ul>
   </div>`;
 }
@@ -49,11 +49,12 @@ export async function renderPollFragment(
   sql: SQL,
   cache: RenderCache,
   pollId: string,
+  locale: Locale,
   translate: Translator,
   now: Date = new Date(),
 ): Promise<string> {
   const rendered = await cache.getOrRender({
-    tags: [pollTag(pollId), pollResultsTag(pollId)],
+    tags: [pollTag(pollId), pollResultsTag(pollId), i18nTag(locale)],
     prepare: async () => {
       const poll = await readPoll(sql, pollId);
       const closed =
@@ -63,7 +64,7 @@ export async function renderPollFragment(
       const revealed = poll !== null && (poll.resultsVisibleBeforeVoting || closed);
 
       return {
-        key: `poll:${pollId}:${revealed ? 1 : 0}:${closed ? 1 : 0}`,
+        key: `poll:${pollId}:${locale}:${revealed ? 1 : 0}:${closed ? 1 : 0}`,
         data: { poll, closed, revealed },
         ...(poll?.closesAt === null || poll?.closesAt === undefined
           ? {}

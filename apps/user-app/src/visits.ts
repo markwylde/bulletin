@@ -46,6 +46,20 @@ function pageForumIds(): string[] {
   return [...ids];
 }
 
+function pagePostIds(): string[] {
+  const ids = new Set<string>();
+
+  for (const element of document.querySelectorAll("[data-post]")) {
+    const id = element.getAttribute("data-post") ?? "";
+
+    if (/^[1-9]\d{0,18}$/.test(id)) {
+      ids.add(id);
+    }
+  }
+
+  return [...ids];
+}
+
 function pageTopicIds(): string[] {
   const ids = new Set<string>();
 
@@ -139,6 +153,10 @@ const overlayTarget: OverlayTarget = {
       link.hidden = false;
     }
   },
+
+  setEditablePosts(posts) {
+    window.dispatchEvent(new CustomEvent("bulletin:editable-posts", { detail: posts }));
+  },
 };
 
 function draftContext(): string | null {
@@ -154,6 +172,7 @@ async function loadOverlay(ctx: string): Promise<void> {
         ctx,
         topics: pageTopicIds(),
         forums: pageForumIds(),
+        posts: pagePostIds(),
         ...overlayReadMarker(),
         ...(draftContext() === null ? {} : { draftContext: draftContext() }),
       }),

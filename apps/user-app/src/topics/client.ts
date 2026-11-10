@@ -374,22 +374,55 @@ function renderHistory(panel: HTMLElement, payload: HistoryPayload): void {
     },
   ];
 
+  if (versions.length === 0) {
+    return;
+  }
+
+  const controls = document.createElement("div");
+  controls.className = "bl-actions";
+  const from = document.createElement("select");
+  from.className = "bl-input";
+  from.dataset.historyFrom = "true";
+  from.setAttribute("aria-label", panel.dataset.labelFrom ?? "");
+  const to = document.createElement("select");
+  to.className = "bl-input";
+  to.dataset.historyTo = "true";
+  to.setAttribute("aria-label", panel.dataset.labelTo ?? "");
+
   for (const [index, version] of versions.entries()) {
-    const section = document.createElement("section");
-    section.dataset.historyVersion = String(index);
-    const heading = document.createElement("p");
-    heading.textContent = version.label;
-    section.append(heading);
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = `${panel.dataset.labelVersion ?? ""} ${index + 1}: ${version.label}`;
+    from.append(option);
+    to.append(option.cloneNode(true));
+  }
 
-    if (index > 0) {
-      const previous = versions[index - 1];
+  from.value = "0";
+  to.value = String(versions.length - 1);
+  const diff = document.createElement("div");
+  diff.dataset.historyDiff = "true";
+  const update = (): void => {
+    const before = versions[Number(from.value)]?.body ?? "";
+    const after = versions[Number(to.value)]?.body ?? "";
+    diff.replaceChildren(diffLines(before, after));
+  };
 
-      if (previous !== undefined) {
-        section.append(diffLines(previous.body, version.body));
-      }
-    }
+  from.addEventListener("change", update);
+  to.addEventListener("change", update);
+  controls.append(from, to);
+  diff.append(diffLines(versions[0]?.body ?? "", versions[versions.length - 1]?.body ?? ""));
+  panel.append(controls, diff);
 
-    panel.append(section);
+  for (const [index, version] of versions.entries()) {
+    const details = document.createElement("details");
+    details.dataset.historyVersion = String(index);
+    const summary = document.createElement("summary");
+    summary.textContent = `${panel.dataset.labelVersion ?? ""} ${index + 1}: ${version.label}`;
+    const body = document.createElement("pre");
+    body.className = "bl-diff";
+    body.textContent = version.body;
+    details.append(summary, body);
+    panel.append(details);
   }
 }
 
@@ -527,3 +560,109 @@ const activeTopic = topicId();
 if (activeTopic !== "") {
   markQuoteButtons(activeTopic);
 }
+interface EditablePost {
+  readonly postId: string;
+  readonly bodyMd?: string;
+  readonly canEdit: boolean;
+  readonly canDelete: boolean;
+  readonly canRedact: boolean;
+}
+
+function privatePostControls(post: EditablePost): void {
+  const article = document.querySelector<HTMLElement>(`[data-post="${post.postId}"]`);
+
+  if (article === null) {
+    return;
+  }
+
+  const labels = article.dataset;
+
+  if (post.canEdit && post.bodyMd !== undefined) {
+    const existing = article.querySelector("[data-post-edit]");
+
+    if (existing === null) {
+      const details = document.createElement("details");
+      details.className = "bl-post__edit";
+      details.dataset.postEdit = post.postId;
+      const summary = document.createElement("summary");
+      summary.textContent = labels.labelEdit ?? "";
+      const form = document.createElement("form");
+      form.className = "bl-topic-form";
+      form.dataset.editForm = "true";
+      form.dataset.postId = post.postId;
+      const label = document.createElement("label");
+      label.className = "bl-label";
+      label.htmlFor = `edit-body-${post.postId}`;
+      label.textContent = labels.labelBody ?? "";
+      const textarea = document.createElement("textarea");
+      textarea.className = "bl-input";
+      textarea.id = `edit-body-${post.postId}`;
+      textarea.name = "bodyMd";
+      textarea.rows = 6;
+      textarea.required = true;
+      textarea.value = post.bodyMd;
+      form.append(label, textarea);
+
+      if (post.canRedact) {
+        const redactLabel = document.createElement("label");
+        redactLabel.className = "bl-check";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.name = "redact";
+        checkbox.checked = true;
+        redactLabel.append(checkbox, ` ${labels.labelRedact ?? ""}`);
+        form.append(redactLabel);
+      }
+
+      const submit = document.createElement("button");
+      submit.className = "bl-button";
+      submit.type = "submit";
+      submit.dataset.editSubmit = "true";
+      submit.textContent = labels.labelSave ?? "";
+      const error = document.createElement("p");
+      error.className = "bl-error-text";
+      error.dataset.formError = "true";
+      error.hidden = true;
+      error.textContent = labels.labelEditFailed ?? "";
+      form.append(submit, error);
+      details.append(summary, form);
+      const main = article.querySelector(".bl-post__main");
+      const history = main?.querySelector("[data-post-history-panel]") ?? null;
+
+      if (main !== null) {
+        if (history !== null) {
+          main.insertBefore(details, history);
+        } else {
+          main.append(details);
+        }
+      }
+    }
+  }
+
+  if (post.canDelete && article.querySelector('[data-post-action="soft"]') === null) {
+    const actions = article.querySelector(".bl-post__meta");
+
+    if (actions !== null) {
+      const button = document.createElement("button");
+      button.className = "bl-button bl-button--quiet bl-button--small";
+      button.type = "button";
+      button.dataset.postAction = "soft";
+      button.dataset.postId = post.postId;
+      button.dataset.confirm = labels.labelConfirmDelete ?? "";
+      button.textContent = labels.labelDelete ?? "";
+      actions.append(button);
+    }
+  }
+}
+
+window.addEventListener("bulletin:editable-posts", (event) => {
+  const posts = (event as CustomEvent<readonly EditablePost[]>).detail;
+
+  if (!Array.isArray(posts)) {
+    return;
+  }
+
+  for (const post of posts) {
+    privatePostControls(post);
+  }
+});

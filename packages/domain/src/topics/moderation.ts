@@ -43,17 +43,20 @@ import { reject, rejectOutcome, type TopicMutationOutcome } from "./result.ts";
 export interface PostTargetInput {
   readonly actorId: string;
   readonly postId: string;
+  readonly sessionId?: string | null;
 }
 
 export interface TopicTargetInput {
   readonly actorId: string;
   readonly topicId: string;
+  readonly sessionId?: string | null;
 }
 
 export interface HardDeleteInput {
   readonly actorId: string;
   readonly postId?: string;
   readonly topicId?: string;
+  readonly sessionId?: string | null;
 }
 
 export interface MoveInput extends TopicTargetInput {
@@ -81,10 +84,27 @@ export async function softDelete(
   }
 
   const tree = await loadForumTree(sql);
+  const readable = await actorCanForumAction(
+    sql,
+    input.actorId,
+    "read",
+    post.forumId,
+    tree,
+    input.sessionId ?? null,
+  );
   const isAuthor = post.authorId !== null && post.authorId === input.actorId;
-  const allowed = isAuthor
-    ? await memberMayDeleteOwnPosts(sql, input.actorId)
-    : await actorCanModerate(sql, input.actorId, "soft_delete", post.forumId, tree);
+  const allowed =
+    readable &&
+    (isAuthor
+      ? await memberMayDeleteOwnPosts(sql, input.actorId)
+      : await actorCanModerate(
+          sql,
+          input.actorId,
+          "soft_delete",
+          post.forumId,
+          tree,
+          input.sessionId ?? null,
+        ));
 
   if (!allowed) {
     return { ok: false, code: "forbidden" };
@@ -159,7 +179,16 @@ export async function restore(
 
   const tree = await loadForumTree(sql);
 
-  if (!(await actorCanModerate(sql, input.actorId, "restore", post.forumId, tree))) {
+  if (
+    !(await actorCanModerate(
+      sql,
+      input.actorId,
+      "restore",
+      post.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -234,7 +263,16 @@ async function hardDeletePost(
 
   const tree = await loadForumTree(sql);
 
-  if (!(await actorCanModerate(sql, input.actorId, "hard_delete", post.forumId, tree))) {
+  if (
+    !(await actorCanModerate(
+      sql,
+      input.actorId,
+      "hard_delete",
+      post.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -306,7 +344,16 @@ async function hardDeleteTopic(
 
   const tree = await loadForumTree(sql);
 
-  if (!(await actorCanModerate(sql, input.actorId, "hard_delete", topic.forumId, tree))) {
+  if (
+    !(await actorCanModerate(
+      sql,
+      input.actorId,
+      "hard_delete",
+      topic.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -364,11 +411,19 @@ export async function hardDelete(
   input: HardDeleteInput,
 ): Promise<TopicMutationOutcome<TopicContentSummary>> {
   if (input.postId !== undefined) {
-    return hardDeletePost(sql, { actorId: input.actorId, postId: input.postId });
+    return hardDeletePost(sql, {
+      actorId: input.actorId,
+      postId: input.postId,
+      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+    });
   }
 
   if (input.topicId !== undefined) {
-    return hardDeleteTopic(sql, { actorId: input.actorId, topicId: input.topicId });
+    return hardDeleteTopic(sql, {
+      actorId: input.actorId,
+      topicId: input.topicId,
+      ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
+    });
   }
 
   return { ok: false, code: "post_not_found" };
@@ -386,7 +441,16 @@ export async function lock(
 
   const tree = await loadForumTree(sql);
 
-  if (!(await actorCanModerate(sql, input.actorId, "lock", topic.forumId, tree))) {
+  if (
+    !(await actorCanModerate(
+      sql,
+      input.actorId,
+      "lock",
+      topic.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -421,7 +485,16 @@ export async function pin(
 
   const tree = await loadForumTree(sql);
 
-  if (!(await actorCanModerate(sql, input.actorId, "pin", topic.forumId, tree))) {
+  if (
+    !(await actorCanModerate(
+      sql,
+      input.actorId,
+      "pin",
+      topic.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -462,11 +535,29 @@ export async function move(
 
   const tree = await loadForumTree(sql);
 
-  if (!(await actorCanModerate(sql, input.actorId, "move", topic.forumId, tree))) {
+  if (
+    !(await actorCanModerate(
+      sql,
+      input.actorId,
+      "move",
+      topic.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
-  if (!(await actorCanForumAction(sql, input.actorId, "show", destination.id, tree))) {
+  if (
+    !(await actorCanForumAction(
+      sql,
+      input.actorId,
+      "show",
+      destination.id,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 

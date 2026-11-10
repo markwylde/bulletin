@@ -6,6 +6,15 @@
 
 export type OverlayCount = "notifications" | "conversations";
 
+export interface OverlayEditablePost {
+  readonly postId: string;
+  readonly bodyMd?: string;
+  readonly canEdit: boolean;
+  readonly canDelete: boolean;
+  readonly canRedact: boolean;
+  readonly canViewHistory: boolean;
+}
+
 export interface OverlayFirstUnread {
   readonly topicId: string;
   readonly url: string;
@@ -36,6 +45,8 @@ export interface OverlayPayload {
   readonly unreadForums?: readonly string[];
   /** First unread post links for topic rows on this page (task 5.1). */
   readonly firstUnread?: readonly OverlayFirstUnread[];
+  /** Ownership-dependent post controls and raw Markdown (reviewer finding 5). */
+  readonly editablePosts?: readonly OverlayEditablePost[];
 }
 
 export interface UnreadSlot {
@@ -55,6 +66,7 @@ export interface OverlayTarget {
   setDraft(draft: OverlayDraft): void;
   setPollVoted(pollId: string, hasVoted: boolean): void;
   setFirstUnread(topicId: string, url: string): void;
+  setEditablePosts(posts: readonly OverlayEditablePost[]): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -97,6 +109,10 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
     ) {
       target.setFirstUnread(link.topicId, link.url);
     }
+  }
+
+  if (payload.editablePosts !== undefined) {
+    target.setEditablePosts(payload.editablePosts);
   }
 
   const counts = payload.counts ?? {};

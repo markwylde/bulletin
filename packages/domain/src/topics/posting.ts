@@ -68,6 +68,7 @@ export interface ReplyInput {
 export interface EditPostInput {
   readonly actorId: string;
   readonly postId: string;
+  readonly sessionId?: string | null;
   readonly bodyMd: string;
   /** Defaults to true for a moderator editing someone else's post (ADR 0007). */
   readonly redact?: boolean;
@@ -339,8 +340,29 @@ export async function editPost(
   }
 
   const tree = await loadForumTree(sql);
+
+  if (
+    !(await actorCanForumAction(
+      sql,
+      input.actorId,
+      "read",
+      post.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
+    return { ok: false, code: "forbidden" };
+  }
+
   const isAuthor = post.authorId !== null && post.authorId === input.actorId;
-  const canModerate = await actorCanModerate(sql, input.actorId, "edit", post.forumId, tree);
+  const canModerate = await actorCanModerate(
+    sql,
+    input.actorId,
+    "edit",
+    post.forumId,
+    tree,
+    input.sessionId ?? null,
+  );
 
   if (isAuthor) {
     const windowMinutes = await editWindowMinutes(sql, input.actorId);

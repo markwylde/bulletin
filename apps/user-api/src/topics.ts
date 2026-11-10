@@ -60,6 +60,27 @@ function failure(code: TopicMutationCode, retryAfterSeconds?: number): Response 
   return json({ code, ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }) }, status);
 }
 
+/** Serialises the flood check and the accepted write for one member across processes. */
+async function withPostFloodLock<T>(
+  sql: SQL,
+  memberId: string,
+  run: (locked: SQL) => Promise<T>,
+): Promise<T> {
+  const reserved = await sql.reserve();
+  const key = `bulletin.post_flood:${memberId}`;
+
+  try {
+    await reserved`SELECT pg_advisory_lock(hashtext(${key}))`;
+    return await run(reserved);
+  } finally {
+    try {
+      await reserved`SELECT pg_advisory_unlock(hashtext(${key}))`;
+    } finally {
+      await reserved.release();
+    }
+  }
+}
+
 async function permissionSnapshot(
   sql: SQL,
   session: Session,
@@ -128,12 +149,6 @@ export async function createTopicResponse(
     return json({ code: "invalid_request" }, 400);
   }
 
-  const wait = await postFloodWait(sql, session.memberId);
-
-  if (wait > 0) {
-    return json({ code: "flood_control", retryAfterSeconds: wait }, 429);
-  }
-
   if (body.poll !== undefined && body.poll !== null && options.pollsEnabled === false) {
     return json({ code: "not_found" }, 404);
   }
@@ -145,30 +160,44 @@ export async function createTopicResponse(
     return json({ code: "invalid_poll" }, 400);
   }
 
-  const result = await startTopic(sql, {
-    actorId: session.memberId,
-    forumId,
-    title: typeof body.title === "string" ? body.title : "",
-    bodyMd: typeof body.bodyMd === "string" ? body.bodyMd : "",
-    ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
-    ...(poll === null || poll === undefined ? {} : { poll }),
+  const result = await withPostFloodLock(sql, session.memberId, async (locked) => {
+    const wait = await postFloodWait(locked, session.memberId);
+
+    if (wait > 0) {
+      return json({ code: "flood_control", retryAfterSeconds: wait }, 429);
+    }
+
+    const created = await startTopic(locked, {
+      actorId: session.memberId,
+      forumId,
+      title: typeof body.title === "string" ? body.title : "",
+      bodyMd: typeof body.bodyMd === "string" ? body.bodyMd : "",
+      ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
+      ...(poll === null || poll === undefined ? {} : { poll }),
+    });
+
+    if (!created.ok) {
+      return failure(created.code);
+    }
+
+    await recordPostFlood(locked, session.memberId);
+    return created.result;
   });
 
-  if (!result.ok) {
-    return failure(result.code);
+  if (result instanceof Response) {
+    return result;
   }
 
-  await recordPostFlood(sql, session.memberId);
   await evaluatePromotion(sql, session.memberId).catch(() => undefined);
-  const topic = await readTopic(sql, result.result.topicId);
+  const topic = await readTopic(sql, result.topicId);
 
   return json({
     ok: true,
-    topicId: result.result.topicId,
-    postId: result.result.postId,
+    topicId: result.topicId,
+    postId: result.postId,
     url:
       topic === null
-        ? canonicalUrl("topic", result.result.topicId, "")
+        ? canonicalUrl("topic", result.topicId, "")
         : canonicalUrl("topic", topic.id, topic.slug),
   });
 }
@@ -186,30 +215,40 @@ export async function replyResponse(
     return json({ code: "invalid_request" }, 400);
   }
 
-  const wait = await postFloodWait(sql, session.memberId);
+  const bodyMd = body.bodyMd;
 
-  if (wait > 0) {
-    return json({ code: "flood_control", retryAfterSeconds: wait }, 429);
-  }
+  const result = await withPostFloodLock(sql, session.memberId, async (locked) => {
+    const wait = await postFloodWait(locked, session.memberId);
 
-  const result = await reply(sql, {
-    actorId: session.memberId,
-    topicId,
-    bodyMd: body.bodyMd,
+    if (wait > 0) {
+      return json({ code: "flood_control", retryAfterSeconds: wait }, 429);
+    }
+
+    const created = await reply(locked, {
+      actorId: session.memberId,
+      topicId,
+      bodyMd,
+    });
+
+    if (!created.ok) {
+      return failure(created.code);
+    }
+
+    await recordPostFlood(locked, session.memberId);
+    return created.result;
   });
 
-  if (!result.ok) {
-    return failure(result.code);
+  if (result instanceof Response) {
+    return result;
   }
 
-  await recordPostFlood(sql, session.memberId);
   await evaluatePromotion(sql, session.memberId).catch(() => undefined);
 
   return json({
     ok: true,
-    topicId: result.result.topicId,
-    postId: result.result.postId,
-    url: await postUrl(sql, session, result.result.topicId, result.result.postId),
+    topicId: result.topicId,
+    postId: result.postId,
+    url: await postUrl(sql, session, result.topicId, result.postId),
   });
 }
 
@@ -229,6 +268,7 @@ export async function editPostResponse(
   const result = await editPost(sql, {
     actorId: session.memberId,
     postId,
+    sessionId: session.id ?? session.sessionId ?? null,
     bodyMd: body.bodyMd,
     ...(typeof body.redact === "boolean" ? { redact: body.redact } : {}),
   });
@@ -252,10 +292,32 @@ export async function postHistoryResponse(
     return json({ code: "post_not_found" }, 404);
   }
 
-  const [{ tree }, settings] = await Promise.all([
+  const [{ tree, snapshot }, settings] = await Promise.all([
     permissionSnapshot(sql, session),
     readBoardSettings(sql),
   ]);
+  const sessionId = session.id ?? session.sessionId ?? null;
+  const permissionScope = { forumId: post.forumId, tree, sessionId, snapshot };
+
+  if (!(await can(sql, session.memberId, "read", permissionScope))) {
+    return json({ code: "forbidden" }, 403);
+  }
+
+  if (
+    post.visibility === "soft_deleted" &&
+    !(await can(sql, session.memberId, "see_deleted", permissionScope))
+  ) {
+    return json({ code: "forbidden" }, 403);
+  }
+
+  if (
+    post.visibility === "unapproved" &&
+    post.authorId !== session.memberId &&
+    !(await can(sql, session.memberId, "see_unapproved", permissionScope))
+  ) {
+    return json({ code: "forbidden" }, 403);
+  }
+
   const allowed = await viewerCanReadPostHistory(sql, {
     viewerId: session.memberId,
     forumId: post.forumId,
@@ -305,17 +367,29 @@ export async function postDeleteResponse(
   const action = body?.action;
 
   if (action === "soft") {
-    const result = await softDelete(sql, { actorId: session.memberId, postId });
+    const result = await softDelete(sql, {
+      actorId: session.memberId,
+      postId,
+      sessionId: session.id ?? session.sessionId ?? null,
+    });
     return result.ok ? json({ ok: true }) : failure(result.code);
   }
 
   if (action === "restore") {
-    const result = await restore(sql, { actorId: session.memberId, postId });
+    const result = await restore(sql, {
+      actorId: session.memberId,
+      postId,
+      sessionId: session.id ?? session.sessionId ?? null,
+    });
     return result.ok ? json({ ok: true }) : failure(result.code);
   }
 
   if (action === "hard") {
-    const result = await hardDelete(sql, { actorId: session.memberId, postId });
+    const result = await hardDelete(sql, {
+      actorId: session.memberId,
+      postId,
+      sessionId: session.id ?? session.sessionId ?? null,
+    });
     return result.ok ? json({ ok: true }) : failure(result.code);
   }
 
@@ -335,6 +409,10 @@ export async function topicDeleteResponse(
     return json({ code: "invalid_action" }, 400);
   }
 
-  const result = await hardDelete(sql, { actorId: session.memberId, topicId });
+  const result = await hardDelete(sql, {
+    actorId: session.memberId,
+    topicId,
+    sessionId: session.id ?? session.sessionId ?? null,
+  });
   return result.ok ? json({ ok: true }) : failure(result.code);
 }

@@ -627,6 +627,24 @@ export async function latestReadablePost(
       };
 }
 
+/** Topic id to forum id for the given IDs, used to filter client-supplied overlay IDs. */
+export async function readTopicForumIds(
+  sql: SQL,
+  topicIds: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  if (topicIds.length === 0) {
+    return new Map();
+  }
+
+  const rows = (await sql`
+    SELECT id::text AS id, forum_id::text AS forum_id
+    FROM core.topics
+    WHERE id = ANY(${`{${topicIds.join(",")}}`}::bigint[])
+  `) as Array<{ id: string; forum_id: string }>;
+
+  return new Map(rows.map((row) => [row.id, row.forum_id]));
+}
+
 export async function loadQuoteSources(
   sql: SQL,
   postIds: readonly string[],
@@ -1085,34 +1103,30 @@ export async function unreadForumIds(
  * transaction so a crash cannot count a bucket twice.
  */
 export async function flushTopicViews(sql: SQL): Promise<number> {
-  return sql.begin(async (tx) => {
-    await tx`SELECT pg_advisory_xact_lock(hashtext('bulletin.topic_views'))`;
-
-    const rows = (await tx`
-      SELECT topic_id::text AS topic_id, count(*)::int AS count
-      FROM core.topic_view_buffer
+  const rows = (await sql`
+    WITH claimed AS (
+      UPDATE core.topic_view_buffer
+      SET flushed_at = now()
+      WHERE flushed_at IS NULL
+      RETURNING topic_id
+    ),
+    counts AS (
+      SELECT topic_id, count(*)::int AS count
+      FROM claimed
       GROUP BY topic_id
-    `) as Array<{ topic_id: string; count: number }>;
-
-    if (rows.length === 0) {
-      return 0;
-    }
-
-    const flushed = await tx`
-      DELETE FROM core.topic_view_buffer
+    ),
+    updated AS (
+      UPDATE core.topics t
+      SET view_count = t.view_count + counts.count
+      FROM counts
+      WHERE t.id = counts.topic_id
       RETURNING 1
-    `;
+    )
+    SELECT coalesce(sum(counts.count), 0)::int AS count, (SELECT count(*) FROM updated) AS topics
+    FROM counts
+  `) as Array<{ count: number }>;
 
-    for (const row of rows) {
-      await tx`
-        UPDATE core.topics
-        SET view_count = view_count + ${row.count}
-        WHERE id = ${row.topic_id}
-      `;
-    }
-
-    return flushed.length;
-  });
+  return rows[0]?.count ?? 0;
 }
 
 /** Removes redirect stubs whose chosen lifetime has elapsed (ADR 0001). */

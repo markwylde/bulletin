@@ -163,8 +163,9 @@ export async function actorCanForumAction(
   action: ForumAction,
   forumId: string,
   tree: ForumTree,
+  sessionId: string | null = null,
 ): Promise<boolean> {
-  return can(sql, actorId, action, { forumId, tree });
+  return can(sql, actorId, action, { forumId, tree, sessionId });
 }
 
 export async function actorCanModerate(
@@ -173,8 +174,9 @@ export async function actorCanModerate(
   power: ModeratorPower,
   forumId: string,
   tree: ForumTree,
+  sessionId: string | null = null,
 ): Promise<boolean> {
-  return can(sql, actorId, power, { forumId, tree });
+  return can(sql, actorId, power, { forumId, tree, sessionId });
 }
 
 /** The author's edit window in minutes; zero means no time limit (IPB semantics). */

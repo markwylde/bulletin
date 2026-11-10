@@ -26,6 +26,7 @@ import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/databa
 import { beaconResponse } from "../../apps/user-api/src/beacon.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
+import { renderTopicViewsFragment } from "../../apps/user-app/src/topics/fragments.ts";
 import { renderTopicRoute } from "../../apps/user-app/src/topics/route.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -245,7 +246,75 @@ integrationDescribe("topic routing, stubs, view counts and permalinks", () => {
       expect(await flushTopicViews(database.sql)).toBe(1);
       expect((await readTopic(database.sql, topic.topicId))?.viewCount).toBe("1");
       expect(await readTagVersion(database.sql, `topic:${topic.topicId}`)).toBe(contentTagBefore);
+
+      // A reload in the same 30-minute bucket is still deduplicated after the flush.
+      expect((await beacon(beaconRequest(cookie), 120_000)).status).toBe(204);
       expect(await flushTopicViews(database.sql)).toBe(0);
+      expect((await readTopic(database.sql, topic.topicId))?.viewCount).toBe("1");
+    });
+  }, 30_000);
+
+  test("the view fragment expires after sixty seconds so a flush becomes visible", async () => {
+    await withSeededDb(async (database) => {
+      let now = new Date("2026-11-10T12:00:00Z");
+      const member = await memberSession(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member.memberId,
+          forumId: await forumId(database, "off-topic"),
+          title: "View fragment topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions, now: () => now.getTime() });
+        const first = await renderTopicViewsFragment(
+          database.sql,
+          cache,
+          topic.topicId,
+          "en",
+          translate,
+        );
+        expect(first).toContain(">0 views<");
+
+        await beaconResponse(
+          database.sql,
+          new Request("http://bulletin.localhost/api/beacon", {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-forwarded-for": "203.0.113.9" },
+            body: JSON.stringify({ ctx: `topic:${topic.topicId}` }),
+          }),
+          { session: null, nodeEnv: "test", rateLimitSecret: "view-secret", now },
+        );
+        expect(await flushTopicViews(database.sql)).toBe(1);
+
+        const warm = await renderTopicViewsFragment(
+          database.sql,
+          cache,
+          topic.topicId,
+          "en",
+          translate,
+        );
+        expect(warm).toContain(">0 views<");
+
+        now = new Date(now.getTime() + 61_000);
+        const refreshed = await renderTopicViewsFragment(
+          database.sql,
+          cache,
+          topic.topicId,
+          "en",
+          translate,
+        );
+        expect(refreshed).toContain(">1 view<");
+      } finally {
+        await versions.close();
+      }
     });
   }, 30_000);
 

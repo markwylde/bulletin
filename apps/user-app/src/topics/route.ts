@@ -23,6 +23,7 @@ import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { topicContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
+import { etagWithFragments } from "../http/cache.ts";
 import { renderPollFragment } from "../polls/fragment.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
@@ -30,6 +31,7 @@ import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/rende
 import { topicCapabilityDeps } from "./capability.ts";
 import { renderMemberCards, renderTopicViewsFragment } from "./fragments.ts";
 import { buildTopicPage, type TopicPageData } from "./page.ts";
+import { renderPostBlock } from "./post-block.ts";
 
 export interface TopicRouteInput {
   readonly sql: SQL;
@@ -393,8 +395,28 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
   }
 
   let html = rendered.html;
+  let fragmentState: readonly string[] = [];
 
   if (latest.page !== null) {
+    const postBlocks = new Map<string, string>();
+    await Promise.all(
+      latest.page.viewModel.posts.map(async (post) => {
+        const html = await renderPostBlock({
+          sql: input.sql,
+          cache: input.cache,
+          theme: latest?.theme ?? null,
+          post,
+          visibilityKey: latest?.page?.visibilityKey ?? "",
+          locale: input.locale,
+          translate: input.translate,
+          pluginsGeneration: input.pluginsGeneration,
+          colourScheme: input.colourScheme,
+          flagsHash: latest?.flags.hash ?? "",
+          tags: latest?.page?.postTags.get(post.id) ?? [],
+        });
+        postBlocks.set(post.id, html);
+      }),
+    );
     const [views, cards, poll] = await Promise.all([
       renderTopicViewsFragment(input.sql, input.cache, topic.id, input.locale, input.translate),
       renderMemberCards(
@@ -406,15 +428,32 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       ),
       latest.page.pollId === null
         ? Promise.resolve(null)
-        : renderPollFragment(input.sql, input.cache, latest.page.pollId, input.translate),
+        : renderPollFragment(
+            input.sql,
+            input.cache,
+            latest.page.pollId,
+            input.locale,
+            input.translate,
+          ),
     ]);
 
     html = html.replace("<bl-topic-views></bl-topic-views>", views);
+    html = html.replace(
+      /<bl-post-block data-post="(\d+)"><\/bl-post-block>/g,
+      (match, postId: string) => postBlocks.get(postId) ?? match,
+    );
     html = replaceMemberCards(html, cards);
 
     if (poll !== null) {
       html = html.replace("<bl-poll></bl-poll>", poll);
     }
+
+    fragmentState = [
+      views,
+      poll ?? "",
+      ...postBlocks.values(),
+      ...latest.page.memberIds.map((id) => cards.get(id) ?? ""),
+    ];
   }
 
   return {
@@ -426,7 +465,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     cache: rendered.cache,
     variant: rendered.variant,
     tags: rendered.tags,
-    etag: rendered.etag,
+    etag: etagWithFragments(rendered.etag, fragmentState),
     hasUnlockGrant: latest.page?.hasUnlockGrant ?? false,
     errors: rendered.errors,
   };

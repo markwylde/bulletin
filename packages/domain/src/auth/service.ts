@@ -18,8 +18,16 @@ import {
 } from "../permissions/acp.ts";
 import { listDismissedAnnouncementIds } from "../permissions/announcements.ts";
 import { can } from "../permissions/can.ts";
+import { loadPermissionSnapshot } from "../permissions/snapshot.ts";
+import { loadForumTree } from "../permissions/tree-store.ts";
 import { pollVoteStateForTopic } from "../polls/repository.ts";
-import { firstUnreadForTopics, unreadForumIds } from "../topics/reading/repository.ts";
+import {
+  firstUnreadForTopics,
+  readPostContext,
+  readTopicForumIds,
+  unreadForumIds,
+  unreadTopicIds,
+} from "../topics/reading/repository.ts";
 import { canonicalUrl } from "../urls/index.ts";
 import { memberViewerKey, parseTopicIds, parseVisitContext, recordVisit } from "../visits/index.ts";
 import type { AuthRouterOptions, SessionCapabilities } from "./router.ts";
@@ -392,12 +400,73 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           ? body.lastReadPostId
           : undefined;
       const visitContext = parseVisitContext(ctx);
-      const forums = parseTopicIds(body?.forums);
+      const requestedForums = parseTopicIds(body?.forums);
+      const requestedPosts = parseTopicIds(body?.posts);
+      const [tree, settings] = await Promise.all([
+        loadForumTree(options.sql),
+        readBoardSettings(options.sql),
+      ]);
+      const snapshot = await loadPermissionSnapshot(options.sql, session.memberId, {
+        tree,
+        sessionId: session.id,
+      });
+      const scope = { tree, sessionId: session.id, snapshot };
+      const topicForums = await readTopicForumIds(options.sql, topics);
+      const readableTopics: string[] = [];
+
+      for (const topicId of topics) {
+        const forumId = topicForums.get(topicId);
+
+        if (
+          forumId !== undefined &&
+          (await can(options.sql, session.memberId, "read", {
+            ...scope,
+            forumId,
+          }))
+        ) {
+          readableTopics.push(topicId);
+        }
+      }
+
+      const readableForums: string[] = [];
+
+      for (const forumId of requestedForums) {
+        if (
+          tree.get(forumId) !== undefined &&
+          (await can(options.sql, session.memberId, "read", { ...scope, forumId }))
+        ) {
+          readableForums.push(forumId);
+        }
+      }
+
+      if (visitContext?.kind === "topic") {
+        const forumId = (await readTopicForumIds(options.sql, [visitContext.id])).get(
+          visitContext.id,
+        );
+
+        if (
+          forumId === undefined ||
+          !(await can(options.sql, session.memberId, "read", { ...scope, forumId }))
+        ) {
+          return json({ code: "not_found" }, 404);
+        }
+      } else if (visitContext?.kind === "forum") {
+        if (
+          tree.get(visitContext.id) === undefined ||
+          !(await can(options.sql, session.memberId, "read", {
+            ...scope,
+            forumId: visitContext.id,
+          }))
+        ) {
+          return json({ code: "not_found" }, 404);
+        }
+      }
+
       const [visits, dismissedAnnouncements, draft, poll] = await Promise.all([
         recordVisit(options.sql, {
           viewerKey: memberViewerKey(session.memberId),
           ctx,
-          topics,
+          topics: readableTopics,
           memberId: session.memberId,
           ...(lastReadAt === undefined ? {} : { lastReadAt }),
           ...(lastReadPostId === undefined ? {} : { lastReadPostId }),
@@ -410,22 +479,69 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           ? pollVoteStateForTopic(options.sql, visitContext.id, session.memberId)
           : Promise.resolve(null),
       ]);
-      const [unreadForums, firstUnreadRows] = await Promise.all([
-        unreadForumIds(options.sql, { memberId: session.memberId, forumIds: forums }),
-        topics.length === 0
+      void visits;
+      const [unreadIds, unreadForums, firstUnreadRows] = await Promise.all([
+        unreadTopicIds(options.sql, {
+          memberId: session.memberId,
+          topicIds: readableTopics,
+        }),
+        unreadForumIds(options.sql, { memberId: session.memberId, forumIds: readableForums }),
+        readableTopics.length === 0
           ? Promise.resolve([])
-          : readBoardSettings(options.sql).then((settings) =>
-              firstUnreadForTopics(options.sql, {
-                memberId: session.memberId,
-                topicIds: topics,
-                perPage: settings.postsPerPage,
-              }),
-            ),
+          : firstUnreadForTopics(options.sql, {
+              memberId: session.memberId,
+              topicIds: readableTopics,
+              perPage: settings.postsPerPage,
+            }),
       ]);
+      const editWindow = Number(snapshot.settings["posting.edit_window_minutes"] ?? 0);
+      const canDeleteOwn = snapshot.settings["posting.can_delete_own"] === true;
+      const editablePosts: Array<Record<string, unknown>> = [];
+
+      for (const postId of requestedPosts) {
+        const post = await readPostContext(options.sql, postId);
+
+        if (post === null || post.visibility !== "visible") {
+          continue;
+        }
+
+        const postScope = { ...scope, forumId: post.forumId };
+
+        if (!(await can(options.sql, session.memberId, "read", postScope))) {
+          continue;
+        }
+
+        const isAuthor = post.authorId === session.memberId;
+        const moderatorEdit = await can(options.sql, session.memberId, "edit", postScope);
+        const ageMinutes = (Date.now() - post.createdAt.getTime()) / 60_000;
+        const withinWindow = editWindow <= 0 || ageMinutes <= editWindow;
+        const canEdit = moderatorEdit || (isAuthor && withinWindow);
+        const canDelete =
+          (isAuthor && canDeleteOwn) ||
+          (await can(options.sql, session.memberId, "soft_delete", postScope));
+        const canViewHistory =
+          (await can(options.sql, session.memberId, "view_edit_history", postScope)) ||
+          settings.publicEditHistory;
+
+        if (!canEdit && !canDelete && !canViewHistory) {
+          continue;
+        }
+
+        editablePosts.push({
+          postId: post.id,
+          ...(canEdit ? { bodyMd: post.bodyMd } : {}),
+          canEdit,
+          canDelete,
+          canRedact: moderatorEdit && !isAuthor,
+          canViewHistory,
+        });
+      }
+
+      const unreadSet = new Set(unreadIds);
       const payload = {
         ctx,
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
-        unread: visits.unread,
+        unread: readableTopics.filter((topicId) => unreadSet.has(topicId)),
         unreadForums,
         firstUnread: firstUnreadRows.map((row) => ({
           topicId: row.topicId,
@@ -435,6 +551,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         // Counts arrive with `events-notifications`; the overlay shape is fixed now.
         counts: { notifications: 0, conversations: 0 },
         polls: poll === null ? [] : [poll],
+        editablePosts,
         ...(draft === null ? {} : { draft }),
       };
       const text = JSON.stringify(payload);

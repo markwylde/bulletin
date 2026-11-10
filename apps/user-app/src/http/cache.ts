@@ -105,6 +105,25 @@ export function requestHasSession(
   return parseCookieHeader(cookieHeader)[sessionCookieName("user", nodeEnv)] !== undefined;
 }
 
+/**
+ * Folds separately cached fragments into the page validator. Their HTML can change without
+ * moving a page tag (views TTL, a member card or a poll result), so a 304 must not ignore them.
+ */
+export function etagWithFragments(
+  pageEtag: string | null,
+  fragments: readonly string[],
+): string | null {
+  if (pageEtag === null) {
+    return null;
+  }
+
+  const digest = new Bun.CryptoHasher("sha256")
+    .update(`${pageEtag}\u0000${fragments.join("\u0000")}`)
+    .digest("hex");
+
+  return `"${digest}"`;
+}
+
 /** True when the request's `If-None-Match` covers the response ETag. */
 export function isNotModified(ifNoneMatch: string | null, etag: string | null): boolean {
   if (ifNoneMatch === null || etag === null) {
