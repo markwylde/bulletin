@@ -26,7 +26,7 @@
 
 ## 5. Cache stack
 
-- [ ] 5.1 Implement `packages/cache` (byte-bounded LRU, variant keys, tag versions, `getOrRender`) with unit tests
+- [x] 5.1 Implement `packages/cache` (byte-bounded LRU, variant keys, tag versions, `getOrRender`) with unit tests
 - [ ] 5.2 Implement the listener protocol (LISTEN-then-load, heartbeat, untrusted/BYPASS mode, reconnect) and the 1 s `perm` backstop, with integration tests that kill the listener connection
 - [ ] 5.3 Implement `runMutation` with declared tags and the lint rule against direct tag writes; integration tests for the new-reply invalidation scenario using a stub mutation
 - [ ] 5.4 Implement cache variant tests as a reusable harness (permission change, password unlock, member mod assignment, flag change and plugin generation each produce a distinct variant with no leaked content), and apply it to the demo route; later changes register their routes with it

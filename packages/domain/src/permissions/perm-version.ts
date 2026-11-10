@@ -1,4 +1,4 @@
-import { CACHE_TAG_NOTIFY_CHANNEL } from "@bulletin/cache";
+import { bumpCacheTags } from "@bulletin/cache";
 import type { SQL } from "bun";
 
 export const PERM_TAG = "perm";
@@ -24,19 +24,12 @@ export async function readPermVersion(sql: SQL): Promise<string> {
  * also checks the tag once per second as a NOTIFY-independent backstop.
  */
 export async function bumpPermVersion(sql: SQL): Promise<string> {
-  const [row] = (await sql`
-    INSERT INTO core.cache_tags (tag, version, updated_at)
-    VALUES (${PERM_TAG}, 1, now())
-    ON CONFLICT (tag) DO UPDATE
-      SET version = core.cache_tags.version + 1, updated_at = now()
-    RETURNING version
-  `) as VersionRow[];
+  const versions = await bumpCacheTags(sql, [PERM_TAG]);
+  const version = versions.get(PERM_TAG);
 
-  if (row === undefined) {
+  if (version === undefined) {
     throw new Error("Could not bump the perm tag");
   }
 
-  await sql`SELECT pg_notify(${CACHE_TAG_NOTIFY_CHANNEL}, ${`${PERM_TAG}:${row.version}`})`;
-
-  return row.version;
+  return version;
 }

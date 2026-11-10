@@ -1,3 +1,4 @@
+import { bumpCacheTags } from "@bulletin/cache";
 import {
   CATALOGS,
   type Catalog,
@@ -34,15 +35,7 @@ export class StringOverrideError extends Error {
 }
 
 async function bumpTag(sql: SQL, locale: Locale): Promise<void> {
-  const tag = stringOverrideTag(locale);
-
-  await sql`
-    INSERT INTO core.cache_tags (tag, version)
-    VALUES (${tag}, 1)
-    ON CONFLICT (tag) DO UPDATE
-    SET version = core.cache_tags.version + 1, updated_at = now()
-  `;
-  await sql`SELECT pg_notify(${STRING_OVERRIDE_NOTIFY_CHANNEL}, ${tag})`;
+  await bumpCacheTags(sql, [stringOverrideTag(locale)]);
 }
 
 export async function readStringOverrideVersion(sql: SQL, locale: Locale): Promise<string> {

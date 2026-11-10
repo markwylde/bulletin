@@ -1,4 +1,4 @@
-import { CACHE_TAG_NOTIFY_CHANNEL } from "@bulletin/cache";
+import { bumpCacheTags, CACHE_TAG_NOTIFY_CHANNEL } from "@bulletin/cache";
 import {
   assertFlagDefinitions,
   FLAG_CACHE_TAG,
@@ -76,13 +76,7 @@ export async function loadStoredFlags(sql: SQL): Promise<StoredFlag[]> {
 
 /** Bumps the `flags` tag in the caller's transaction and wakes every process (ADR 0006). */
 export async function bumpFlagTag(sql: SQL): Promise<void> {
-  await sql`
-    INSERT INTO core.cache_tags (tag, version)
-    VALUES (${FLAG_CACHE_TAG}, 1)
-    ON CONFLICT (tag) DO UPDATE
-    SET version = core.cache_tags.version + 1, updated_at = now()
-  `;
-  await sql`SELECT pg_notify(${CACHE_TAG_NOTIFY_CHANNEL}, ${FLAG_CACHE_TAG})`;
+  await bumpCacheTags(sql, [FLAG_CACHE_TAG]);
 }
 
 /**
