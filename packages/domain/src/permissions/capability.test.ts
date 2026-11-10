@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { forumActionMask } from "./actions.ts";
-import { announcementAudience, CapabilityView } from "./capability.ts";
+import { announcementAudience, CapabilityView, UndeclaredCapabilityError } from "./capability.ts";
 import { FIXTURE_FORUM_TREE, FIXTURE_PASSWORD_FORUM_ID } from "./fixtures.ts";
 
 const READ_AND_SHOW = forumActionMask(["show", "read"]);
@@ -126,6 +126,89 @@ describe("visibility variants", () => {
     second.has("1", "show");
 
     expect(first.visibilityKey()).toBe(second.visibilityKey());
+  });
+});
+
+describe("declared capability dependencies", () => {
+  const deps = [
+    { forumId: "1", bit: "show" as const },
+    { forumId: "1", bit: "read" as const },
+  ];
+
+  function declared(bits: Readonly<Record<string, number>>, unlocked: readonly string[] = []) {
+    return new CapabilityView({
+      tree: FIXTURE_FORUM_TREE,
+      bits: new Map(Object.entries(bits)),
+      unlocked: new Set(unlocked),
+      view: "topic",
+      deps,
+    });
+  }
+
+  test("throws naming the view and the undeclared bit", () => {
+    const capability = declared({ "1": READ_AND_SHOW });
+
+    expect(capability.read("1")).toBe(true);
+    expect(() => capability.has("1", "reply")).toThrow(UndeclaredCapabilityError);
+    expect(() => capability.has("1", "reply")).toThrow(/topic/);
+    expect(() => capability.has("1", "reply")).toThrow(/reply/);
+  });
+
+  test("visibilityKey hashes only the declared bits", () => {
+    const withExtraBit = declared({ "1": forumActionMask(["show", "read", "reply"]) });
+    const withoutExtraBit = declared({ "1": READ_AND_SHOW });
+
+    expect(withExtraBit.visibilityKey()).toBe(withoutExtraBit.visibilityKey());
+  });
+
+  test("a declared read that is denied produces a different variant", () => {
+    const reader = declared({ "1": READ_AND_SHOW });
+    const viewer = declared({ "1": forumActionMask(["show"]) });
+
+    expect(reader.visibilityKey()).not.toBe(viewer.visibilityKey());
+  });
+
+  test("an explicit dep list overrides the view's declared deps", () => {
+    const capability = declared({ "1": READ_AND_SHOW });
+
+    expect(capability.visibilityKey([{ forumId: "1", bit: "reply" }])).not.toBe(
+      capability.visibilityKey(),
+    );
+  });
+
+  test("declared deps include the password unlock in the variant", () => {
+    const deps = [{ forumId: FIXTURE_PASSWORD_FORUM_ID, bit: "read" as const }];
+    const locked = new CapabilityView({
+      tree: FIXTURE_FORUM_TREE,
+      bits: new Map([[FIXTURE_PASSWORD_FORUM_ID, READ_AND_SHOW]]),
+      unlocked: new Set(),
+      view: "forum",
+      deps,
+    });
+    const unlocked = new CapabilityView({
+      tree: FIXTURE_FORUM_TREE,
+      bits: new Map([[FIXTURE_PASSWORD_FORUM_ID, READ_AND_SHOW]]),
+      unlocked: new Set([FIXTURE_PASSWORD_FORUM_ID]),
+      view: "forum",
+      deps,
+    });
+
+    expect(locked.visibilityKey()).not.toBe(unlocked.visibilityKey());
+    expect(locked.isCdnCacheable()).toBe(true);
+    expect(unlocked.isCdnCacheable()).toBe(false);
+  });
+
+  test("enforcement can be turned off outside dev and test", () => {
+    const capability = new CapabilityView({
+      tree: FIXTURE_FORUM_TREE,
+      bits: new Map([["1", READ_AND_SHOW]]),
+      unlocked: new Set(),
+      view: "topic",
+      deps,
+      enforceDeps: false,
+    });
+
+    expect(capability.has("1", "reply")).toBe(false);
   });
 });
 

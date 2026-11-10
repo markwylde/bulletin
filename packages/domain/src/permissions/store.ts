@@ -4,6 +4,7 @@ import {
   globalModeratorPowers,
   type ModeratorAssignment,
   type ModeratorContext,
+  memberBanned,
 } from "./moderator.ts";
 import {
   type GroupSettingsSource,
@@ -103,10 +104,29 @@ export async function loadModeratorContext(
   return {
     memberId,
     groupIds: groups.map((group) => group.groupId),
-    banned:
-      merged["restrictions.banned"] === true || groups.some((group) => group.key === "banned"),
+    banned: memberBanned(groups, merged),
     globalPowers: globalModeratorPowers(merged),
     assignments: await loadModeratorAssignments(sql, memberId),
     tree,
   };
+}
+
+/** The password-forum unlocks attached to a session (ADR 0018); empty without a session. */
+export async function loadSessionUnlocks(
+  sql: SQL,
+  sessionId: string | null,
+): Promise<ReadonlySet<string>> {
+  if (sessionId === null) {
+    return new Set();
+  }
+
+  const rows = (await sql`
+    SELECT resource_id::text AS resource_id
+    FROM core.session_grants
+    WHERE session_id = ${sessionId}
+      AND kind = 'forum_password'
+      AND (expires_at IS NULL OR expires_at > now())
+  `) as Array<{ resource_id: string }>;
+
+  return new Set(rows.map((row) => row.resource_id));
 }

@@ -9,11 +9,11 @@
 
 ## 2. Evaluation
 
-- [ ] 2.1 Implement snapshot compilation (group, member and session layers; ancestor AND) and `can()`, with property tests against a reference implementation over random trees
-- [ ] 2.2 Implement the capability accessor with dependency tracking and `visibilityKey(deps)`, with unit tests for the undeclared-bit scenario
-- [ ] 2.3 Implement snapshot caching with `perm` tag invalidation and the 1 s backstop; integration test for the revoke-read scenario timing
-- [ ] 2.4 Implement password unlocks (session grants, throttling) with integration tests for unlock, session end and throttling
-- [ ] 2.5 Add the architecture test that fails when content queries bypass permission-filtered repositories, and verify it catches a planted bypass
+- [x] 2.1 Implement snapshot compilation (group, member and session layers; ancestor AND) and `can()`, with property tests against a reference implementation over random trees
+- [x] 2.2 Implement the capability accessor with dependency tracking and `visibilityKey(deps)`, with unit tests for the undeclared-bit scenario
+- [x] 2.3 Implement snapshot caching with `perm` tag invalidation and the 1 s backstop; integration test for the revoke-read scenario timing
+- [x] 2.4 Implement password unlocks (session grants, throttling) with integration tests for unlock, session end and throttling
+- [x] 2.5 Add the architecture test that fails when content queries bypass permission-filtered repositories, and verify it catches a planted bypass
 
 ## 3. Promotion
 

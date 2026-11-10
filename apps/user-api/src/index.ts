@@ -11,6 +11,7 @@ import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { boardView } from "./board.ts";
+import { forumUnlockResponse } from "./forum-unlock.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
@@ -44,6 +45,20 @@ await startService({
   port,
   async fetch(request) {
     const { pathname } = new URL(request.url);
+
+    const unlockMatch = /^\/api\/forums\/(\d+)\/unlock$/.exec(pathname);
+
+    if (request.method === "POST" && unlockMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return forumUnlockResponse(sql, session, unlockMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
 
     if (request.method === "GET" && pathname === "/api/board") {
       const response = await auth.handle(request, async ({ session }) =>

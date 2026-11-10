@@ -1,25 +1,34 @@
 import type { SQL } from "bun";
-import { isModeratorPower, type ModeratorPower } from "./actions.ts";
+import {
+  type ForumAction,
+  hasCapabilityBit,
+  isForumAction,
+  isModeratorPower,
+  type ModeratorPower,
+} from "./actions.ts";
 import { moderatorPowerAllowed } from "./moderator.ts";
 import { isPermissionKey, type PermissionKey } from "./registry.ts";
+import { capabilityAnswer, loadPermissionSnapshot, type PermissionSnapshot } from "./snapshot.ts";
 import { loadModeratorContext } from "./store.ts";
 import type { ForumTree } from "./tree.ts";
 
 /**
- * A permission key plus the forum scope moderator powers need. Forum actions are evaluated by
- * the snapshot compiler in task group 2; group and staff permissions and moderator powers are
- * available here.
+ * A permission key, forum action or moderator power, plus the forum scope the forum-level
+ * checks need. A view that already holds a compiled snapshot passes it to keep checks O(1).
  */
-export type PermissionAction = PermissionKey | ModeratorPower;
+export type PermissionAction = PermissionKey | ModeratorPower | ForumAction;
 
 export interface PermissionScope {
   readonly forumId: string;
   readonly tree: ForumTree;
+  /** Loads the session layer (password unlocks) when no snapshot is supplied. */
+  readonly sessionId?: string | null;
+  readonly snapshot?: PermissionSnapshot;
 }
 
 /**
  * The single authorisation entry point (ADR 0005). Callers never inspect groups or masks.
- * A moderator power without a forum scope is denied.
+ * Forum-level checks without a scope are denied.
  */
 export async function can(
   sql: SQL,
@@ -28,7 +37,33 @@ export async function can(
   scope?: PermissionScope,
 ): Promise<boolean> {
   if (isModeratorPower(action)) {
-    return scope === undefined ? false : canModerate(sql, memberId, action, scope);
+    if (scope === undefined) {
+      return false;
+    }
+
+    const snapshot =
+      scope.snapshot ??
+      (await loadPermissionSnapshot(sql, memberId, {
+        tree: scope.tree,
+        sessionId: scope.sessionId ?? null,
+      }));
+
+    return hasCapabilityBit(snapshot.bits.get(scope.forumId) ?? 0, action);
+  }
+
+  if (isForumAction(action)) {
+    if (scope === undefined) {
+      return false;
+    }
+
+    const snapshot =
+      scope.snapshot ??
+      (await loadPermissionSnapshot(sql, memberId, {
+        tree: scope.tree,
+        sessionId: scope.sessionId ?? null,
+      }));
+
+    return capabilityAnswer(snapshot, scope.forumId, action);
   }
 
   if (!isPermissionKey(action)) {
@@ -48,7 +83,11 @@ export async function can(
   return rows.length > 0;
 }
 
-/** Moderator powers for one forum, sharing the SQL mirror's semantics (ADR 0005, 0012). */
+/**
+ * The lower-level moderator check that mirrors `core.has_mod_power` (ADR 0005, 0012): it does
+ * not apply mask-based `read`. Application checks use `can()`, which requires the effective
+ * read bit; `pii` definer functions use the SQL mirror after establishing access.
+ */
 export async function canModerate(
   sql: SQL,
   memberId: string,

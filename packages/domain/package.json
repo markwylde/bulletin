@@ -8,6 +8,7 @@
     "./auth": "./src/auth/index.ts",
     "./permissions": "./src/permissions/index.ts",
     "./permissions/fixtures": "./src/permissions/fixtures.ts",
+    "./forums": "./src/forums/index.ts",
     "./auth/browser": "./src/auth/browser.ts",
     "./auth/silent": "./src/auth/silent.ts",
     "./member": "./src/member/index.ts",
@@ -19,6 +20,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bulletin/cache": "workspace:*",
     "@bulletin/i18n": "workspace:*",
     "@darkauth/client": "1.32.0",
     "jose": "6.2.16"

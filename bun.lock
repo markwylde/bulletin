@@ -159,6 +159,7 @@
     "packages/domain": {
       "name": "@bulletin/domain",
       "dependencies": {
+        "@bulletin/cache": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "@darkauth/client": "1.32.0",
         "jose": "6.2.16",

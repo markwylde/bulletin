@@ -11,6 +11,19 @@ export interface CapabilitySnapshot {
   readonly unlocked: ReadonlySet<string>;
 }
 
+export interface CapabilityDep {
+  readonly forumId: string;
+  readonly bit: CapabilityBit;
+}
+
+export interface CapabilityViewOptions extends CapabilitySnapshot {
+  /** The view-model name used in undeclared-bit errors. */
+  readonly view?: string;
+  /** Every bit this view may read (ADR 0005). Declaring deps enables tracking by default. */
+  readonly deps?: readonly CapabilityDep[];
+  readonly enforceDeps?: boolean;
+}
+
 export interface RecordedCapabilityRead {
   readonly forumId: string;
   readonly bit: CapabilityBit;
@@ -20,8 +33,37 @@ export interface RecordedCapabilityRead {
   readonly unlocked: boolean;
 }
 
+interface Resolution {
+  readonly allowed: boolean;
+  readonly unlockDependent: boolean;
+  readonly unlocked: boolean;
+}
+
+export class UndeclaredCapabilityError extends Error {
+  readonly view: string;
+  readonly forumId: string;
+  readonly bit: CapabilityBit;
+
+  constructor(view: string, forumId: string, bit: CapabilityBit) {
+    super(`View "${view}" read capability "${bit}" on forum ${forumId} without declaring it`);
+    this.name = "UndeclaredCapabilityError";
+    this.view = view;
+    this.forumId = forumId;
+    this.bit = bit;
+  }
+}
+
 function digest(value: string): string {
   return new Bun.CryptoHasher("sha256").update(value).digest("hex");
+}
+
+function depKey(forumId: string, bit: CapabilityBit): string {
+  return `${forumId}:${bit}`;
+}
+
+function compareDeps(left: CapabilityDep, right: CapabilityDep): number {
+  const forum = left.forumId.localeCompare(right.forumId);
+  return forum === 0 ? capabilityBitIndex(left.bit) - capabilityBitIndex(right.bit) : forum;
 }
 
 /**
@@ -31,13 +73,27 @@ function digest(value: string): string {
  * a password forum additionally requires the session unlock. Reading a password forum records
  * the unlock state, so locked and unlocked viewers never share a variant, and any request that
  * carries an unlock grant is excluded from the CDN.
+ *
+ * With declared `deps`, any undeclared bit read during rendering throws in dev/test. The
+ * variant key then hashes only the declared bits.
  */
 export class CapabilityView {
   private readonly snapshot: CapabilitySnapshot;
+  private readonly viewName: string;
+  private readonly deps: readonly CapabilityDep[] | null;
+  private readonly depKeys: ReadonlySet<string> | null;
+  private readonly enforceDeps: boolean;
   private readonly reads = new Map<string, Map<CapabilityBit, RecordedCapabilityRead>>();
 
-  constructor(snapshot: CapabilitySnapshot) {
-    this.snapshot = snapshot;
+  constructor(options: CapabilityViewOptions) {
+    this.snapshot = options;
+    this.viewName = options.view ?? "view";
+    this.deps = options.deps ?? null;
+    this.depKeys =
+      options.deps === undefined
+        ? null
+        : new Set(options.deps.map((dep) => depKey(dep.forumId, dep.bit)));
+    this.enforceDeps = options.enforceDeps ?? options.deps !== undefined;
   }
 
   get tree(): ForumTree {
@@ -58,63 +114,77 @@ export class CapabilityView {
   }
 
   has(forumId: string, bit: CapabilityBit): boolean {
-    const node = this.snapshot.tree.get(forumId);
-    const base = hasCapabilityBit(this.snapshot.bits.get(forumId) ?? 0, bit);
-
-    if (node === undefined) {
-      this.record(forumId, bit, false, false, false);
-      return false;
+    if (this.depKeys !== null && this.enforceDeps && !this.depKeys.has(depKey(forumId, bit))) {
+      throw new UndeclaredCapabilityError(this.viewName, forumId, bit);
     }
 
-    if (bit === "read" && node.passwordProtected) {
-      const unlocked = this.snapshot.unlocked.has(forumId);
-      const allowed = base && unlocked;
-      this.record(forumId, bit, allowed, true, unlocked);
-      return allowed;
-    }
-
-    this.record(forumId, bit, base, false, false);
-    return base;
+    const resolution = this.resolve(forumId, bit);
+    this.record(forumId, bit, resolution);
+    return resolution.allowed;
   }
 
   /** Every bit read during this render, in a stable order. */
   recordedReads(): readonly RecordedCapabilityRead[] {
     return [...this.reads.values()]
       .flatMap((byBit) => [...byBit.values()])
-      .sort((left, right) => {
-        const forum = left.forumId.localeCompare(right.forumId);
-        return forum === 0 ? capabilityBitIndex(left.bit) - capabilityBitIndex(right.bit) : forum;
-      });
+      .sort((left, right) => compareDeps(left, right));
   }
 
   /**
-   * A hash of the capability answers this render actually used, including the unlock state of
-   * password forums. Two viewers with the same answers share a variant; a locked viewer never
-   * shares one with an unlocked viewer (ADR 0005, 0006).
+   * Hashes only the declared capability answers, including the unlock state of password
+   * forums. Without declared deps it falls back to the bits actually read during the render.
    */
-  visibilityKey(): string {
-    const parts = this.recordedReads().flatMap((read) => {
-      const entries = [`${read.forumId}|${capabilityBitIndex(read.bit)}|${read.allowed ? 1 : 0}`];
+  visibilityKey(deps?: readonly CapabilityDep[]): string {
+    const declared = deps ?? this.deps;
+    const parts: string[] = [];
 
-      if (read.unlockDependent) {
-        entries.push(`${read.forumId}|unlock|${read.unlocked ? 1 : 0}`);
+    if (declared !== null) {
+      const unique = new Map<string, CapabilityDep>();
+
+      for (const dep of declared) {
+        unique.set(depKey(dep.forumId, dep.bit), dep);
       }
 
-      return entries;
-    });
+      for (const dep of [...unique.values()].sort(compareDeps)) {
+        const resolution = this.resolve(dep.forumId, dep.bit);
+        parts.push(`${dep.forumId}|${capabilityBitIndex(dep.bit)}|${resolution.allowed ? 1 : 0}`);
+
+        if (resolution.unlockDependent) {
+          parts.push(`${dep.forumId}|unlock|${resolution.unlocked ? 1 : 0}`);
+        }
+      }
+    } else {
+      for (const read of this.recordedReads()) {
+        parts.push(`${read.forumId}|${capabilityBitIndex(read.bit)}|${read.allowed ? 1 : 0}`);
+
+        if (read.unlockDependent) {
+          parts.push(`${read.forumId}|unlock|${read.unlocked ? 1 : 0}`);
+        }
+      }
+    }
 
     return digest(`capabilities|${parts.join(";")}`);
   }
 
-  private record(
-    forumId: string,
-    bit: CapabilityBit,
-    allowed: boolean,
-    unlockDependent: boolean,
-    unlocked: boolean,
-  ): void {
+  private resolve(forumId: string, bit: CapabilityBit): Resolution {
+    const node = this.snapshot.tree.get(forumId);
+    const base = hasCapabilityBit(this.snapshot.bits.get(forumId) ?? 0, bit);
+
+    if (node === undefined) {
+      return { allowed: false, unlockDependent: false, unlocked: false };
+    }
+
+    if (bit === "read" && node.passwordProtected) {
+      const unlocked = this.snapshot.unlocked.has(forumId);
+      return { allowed: base && unlocked, unlockDependent: true, unlocked };
+    }
+
+    return { allowed: base, unlockDependent: false, unlocked: false };
+  }
+
+  private record(forumId: string, bit: CapabilityBit, resolution: Resolution): void {
     const byBit = this.reads.get(forumId) ?? new Map<CapabilityBit, RecordedCapabilityRead>();
-    byBit.set(bit, { forumId, bit, allowed, unlockDependent, unlocked });
+    byBit.set(bit, { forumId, bit, ...resolution });
     this.reads.set(forumId, byBit);
   }
 }

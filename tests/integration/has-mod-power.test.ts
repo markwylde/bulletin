@@ -10,6 +10,7 @@ import { displayNameSkeleton } from "@bulletin/domain/member";
 import {
   can,
   createForumTree,
+  forumActionMask,
   loadModeratorContext,
   MODERATOR_POWERS,
   type ModeratorPower,
@@ -343,6 +344,32 @@ integrationDescribe("core.has_mod_power", () => {
         SELECT id, key FROM core.groups ORDER BY id
       `) as Array<{ id: string; key: string }>;
       const forumIds = tree.ids;
+
+      // Give every group read/show on every fixture forum so the app-level `can()` (which
+      // gates moderator powers on read) and the lower-level SQL mirror can be compared.
+      const [readMask] = (await database.sql`
+        INSERT INTO core.masks (key, title)
+        VALUES ('property_read', 'Property Read')
+        ON CONFLICT (key) DO UPDATE SET title = EXCLUDED.title
+        RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (readMask === undefined) {
+        throw new Error("Could not create the property read mask");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_masks (group_id, mask_id)
+        SELECT g.id, ${readMask.id} FROM core.groups g
+        ON CONFLICT DO NOTHING
+      `;
+
+      for (const forumId of forumIds) {
+        await database.sql`
+          INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+          VALUES (${forumId}, ${readMask.id}, ${forumActionMask(["show", "read"])}, false)
+        `;
+      }
 
       const usedAssignments = new Set<string>();
 

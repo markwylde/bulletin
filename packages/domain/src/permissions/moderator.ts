@@ -20,6 +20,14 @@ export interface ModeratorContext {
   readonly tree: ForumTree;
 }
 
+/** True when any group sets the `banned` restriction or the member is in the Banned group. */
+export function memberBanned(
+  groups: readonly { readonly key: string }[],
+  settings: MergedGroupSettings,
+): boolean {
+  return settings["restrictions.banned"] === true || groups.some((group) => group.key === "banned");
+}
+
 /** The powers a group setting grants globally, i.e. super-moderator powers. */
 export function globalModeratorPowers(merged: MergedGroupSettings): ReadonlySet<ModeratorPower> {
   const powers = new Set<ModeratorPower>();
