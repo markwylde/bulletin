@@ -8,15 +8,10 @@ import {
   type TopLevelToken,
   Value,
 } from "liquidjs";
+import { readRuntime } from "./runtime.ts";
 
 /** Hook bodies keyed by hook name, contributed by plugins for the current generation. */
 export type HookFragments = Readonly<Record<string, string>>;
-
-export interface HookTagOptions {
-  readonly fragments: HookFragments;
-  /** Reports a hook without a fragment, or a fragment that fails to render. */
-  readonly onError?: (error: HookRenderError) => void;
-}
 
 export interface HookRenderError {
   readonly hook: string;
@@ -26,20 +21,14 @@ export interface HookRenderError {
 
 /**
  * `{% hook "post.userbar.after" %}` renders the plugin fragments registered for that hook
- * point (ADR 0008). Fragment output goes through the same escaping rules as the theme.
+ * point (ADR 0008). Fragments come from the render runtime, so a plugin-generation change is
+ * data, not a recompile.
  */
 class HookTag extends Tag {
-  private readonly options: HookTagOptions;
   private readonly hookName: Value;
 
-  constructor(
-    token: TagToken,
-    remainingTokens: TopLevelToken[],
-    liquid: Liquid,
-    options: HookTagOptions,
-  ) {
+  constructor(token: TagToken, remainingTokens: TopLevelToken[], liquid: Liquid) {
     super(token, remainingTokens, liquid);
-    this.options = options;
 
     const tokenizer = new Tokenizer(token.args, liquid.options.operators);
 
@@ -53,23 +42,17 @@ class HookTag extends Tag {
   *render(context: Context, emitter: Emitter) {
     const name = (yield this.hookName.value(context)) as unknown;
 
+    const runtime = readRuntime(context);
+
     if (typeof name !== "string" || name === "") {
-      this.options.onError?.({
-        hook: "",
-        reason: "unregistered",
-        message: "hook name is not a string",
-      });
+      runtime.report?.("unregistered: hook name is not a string");
       return;
     }
 
-    const body = this.options.fragments[name];
+    const body = runtime.hooks[name];
 
     if (body === undefined) {
-      this.options.onError?.({
-        hook: name,
-        reason: "unregistered",
-        message: `no fragment registered for hook "${name}"`,
-      });
+      runtime.report?.(`unregistered: no fragment registered for hook "${name}"`);
       return;
     }
 
@@ -77,22 +60,12 @@ class HookTag extends Tag {
       emitter.write((yield this.liquid.parseAndRender(body, context)) as string);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      this.options.onError?.({
-        hook: name,
-        reason: "render_failed",
-        message: `hook "${name}" failed to render: ${detail}`,
-      });
+      runtime.report?.(`render_failed: hook "${name}" failed to render: ${detail}`);
     }
   }
 }
 
 /** Registers `{% hook "name" %}` on a LiquidJS engine (ADR 0008). */
-export function registerHookTag(engine: Liquid, options: HookTagOptions): void {
-  class BoundHookTag extends HookTag {
-    constructor(token: TagToken, remainingTokens: TopLevelToken[], liquid: Liquid) {
-      super(token, remainingTokens, liquid, options);
-    }
-  }
-
-  engine.registerTag("hook", BoundHookTag);
+export function registerHookTag(engine: Liquid): void {
+  engine.registerTag("hook", HookTag);
 }

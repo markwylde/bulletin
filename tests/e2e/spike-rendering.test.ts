@@ -47,12 +47,17 @@ integrationDescribe("spike S1 rendering", () => {
     expect(html).toContain('data-spike-layout="alt"');
     expect(html).toContain('data-spike-hook="2"');
     expect(html).toContain('data-spike-plugin="installed"');
+    // `alt` overrides only `page`, so its footer comes from the parent theme.
+    expect(html).toContain('data-spike-footer-template="default"');
 
     // The template's hostile sample is text, escaped, not markup.
     const themed = await fetchSpike({ theme: "default", plugins: 1, bust: run });
 
-    expect(themed.html).toContain("&lt;script&gt;alert(&#34;spike&#34;)&lt;/script&gt;");
+    expect(themed.html).toContain("&lt;script&gt;alert(&quot;spike&quot;)&lt;/script&gt;");
     expect(themed.html).not.toContain('<script>alert("spike")</script>');
+    // A SafeHtml view-model field is the only way to raw markup.
+    expect(themed.html).toContain("<strong data-spike-safe>Already sanitised HTML</strong>");
+    expect(themed.html).toContain('data-spike-footer-template="default"');
   });
 
   test("hydrates the server-rendered island at 360 px", async () => {

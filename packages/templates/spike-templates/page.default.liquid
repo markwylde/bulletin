@@ -6,6 +6,8 @@
     {% t "spike.rendering.plugins" %} <strong>{{ generation }}</strong>
   </p>
   <p class="spike-escaped" data-spike-escaped>{{ escapedSample }}</p>
+  <p class="spike-trusted" data-spike-trusted>{{ trustedHtml }}</p>
   {% island "SpikeCounter" island %}
   {% hook "spike.after.counter" %}
+  {{ footer }}
 </article>

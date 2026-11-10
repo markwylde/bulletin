@@ -3,5 +3,7 @@
   <h1 data-spike-title>{% t "spike.rendering.altTitle" %}</h1>
   <p data-spike-body>{% t "spike.rendering.body" %}</p>
   <p class="spike-meta" data-spike-meta>{{ theme }}@{{ version }} · {{ generation }}</p>
+  <p class="spike-trusted" data-spike-trusted>{{ trustedHtml }}</p>
   {% island "SpikeCounter" island %}
+  {{ footer }}
 </section>

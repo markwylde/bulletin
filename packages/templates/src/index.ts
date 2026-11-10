@@ -1,9 +1,16 @@
 /** Liquid template engine, view-model contracts and hook points. */
+export * from "./compile.ts";
+export * from "./contract.ts";
 export * from "./engine.ts";
 export * from "./flag-context.ts";
 export * from "./hook-tag.ts";
+export * from "./hooks.ts";
 export * from "./html.ts";
 export * from "./island-tag.ts";
+export * from "./render.ts";
+export * from "./runtime.ts";
+export * from "./safe-html.ts";
 export * from "./spike-fixtures.ts";
-export * from "./spike-store.ts";
+export * from "./store.ts";
 export * from "./translation-tag.ts";
+export * from "./validate.ts";

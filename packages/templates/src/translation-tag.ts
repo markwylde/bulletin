@@ -1,4 +1,4 @@
-import type { MessageValues, Translator } from "@bulletin/i18n";
+import type { MessageValues } from "@bulletin/i18n";
 import {
   type Context,
   type Emitter,
@@ -11,21 +11,15 @@ import {
   Value,
 } from "liquidjs";
 import { escapeHtml } from "./html.ts";
+import { readRuntime } from "./runtime.ts";
 
 class TranslationTag extends Tag {
-  private readonly translate: Translator;
   private readonly key: Value;
   private readonly values: Hash | undefined;
   private readonly vars: Value | undefined;
 
-  constructor(
-    token: TagToken,
-    remainingTokens: TopLevelToken[],
-    liquid: Liquid,
-    translate: Translator,
-  ) {
+  constructor(token: TagToken, remainingTokens: TopLevelToken[], liquid: Liquid) {
     super(token, remainingTokens, liquid);
-    this.translate = translate;
 
     const tokenizer = new Tokenizer(token.args, liquid.options.operators);
 
@@ -47,6 +41,7 @@ class TranslationTag extends Tag {
 
   *render(context: Context, emitter: Emitter) {
     const key = (yield this.key.value(context)) as unknown;
+    const { translate } = readRuntime(context);
     let values: MessageValues = {};
 
     if (this.vars !== undefined) {
@@ -63,24 +58,14 @@ class TranslationTag extends Tag {
       throw new Error("{% t %} requires a non-empty message key");
     }
 
-    emitter.write(escapeHtml(this.translate(key, values)));
+    emitter.write(escapeHtml(translate(key, values)));
   }
-}
-
-export interface TranslationTagOptions {
-  readonly translate: Translator;
 }
 
 /**
- * Registers `{% t "key" vars %}`, `{% t "key" count: n %}` and the no-arguments form on a
- * LiquidJS engine. Output is always HTML-escaped, matching the template autoescape contract.
+ * Registers `{% t "key" vars %}`, `{% t "key" count: n %}` and the no-arguments form. The
+ * translator comes from the render runtime, and output is always HTML-escaped (ADR 0008).
  */
-export function registerTranslationTag(engine: Liquid, options: TranslationTagOptions): void {
-  class BoundTranslationTag extends TranslationTag {
-    constructor(token: TagToken, remainingTokens: TopLevelToken[], liquid: Liquid) {
-      super(token, remainingTokens, liquid, options.translate);
-    }
-  }
-
-  engine.registerTag("t", BoundTranslationTag);
+export function registerTranslationTag(engine: Liquid): void {
+  engine.registerTag("t", TranslationTag);
 }

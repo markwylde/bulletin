@@ -1,64 +1,89 @@
-import type { Translator } from "@bulletin/i18n";
-import { Liquid } from "liquidjs";
-import { type HookRenderError, type HookTagOptions, registerHookTag } from "./hook-tag.ts";
-import { type IslandRenderError, type IslandTagOptions, registerIslandTag } from "./island-tag.ts";
+import { Liquid, type Template } from "liquidjs";
+import { registerHookTag } from "./hook-tag.ts";
+import { type IslandRegistry, registerIslandTag } from "./island-tag.ts";
+import { runtimeGlobals, type TemplateRuntime } from "./runtime.ts";
+import { escapeOutput } from "./safe-html.ts";
 import { registerTranslationTag } from "./translation-tag.ts";
 
-/** ADR 0008 resource limits, measured like the engine option they map to. */
-export const TEMPLATE_LIMITS = {
+/** ADR 0008 resource limits. Lowering them through the options keeps tests fast. */
+export interface TemplateLimits {
   /** Total characters parsed in one `parse()` call (1 MB). */
-  parseLimit: 1_000_000,
+  readonly parseLimit: number;
   /** Milliseconds for one `render()` call. */
-  renderLimit: 50,
+  readonly renderLimit: number;
   /** New objects created in one render (10 MB). */
-  memoryLimit: 10_000_000,
-} as const;
-
-export interface TemplateEngineOptions {
-  readonly translate: Translator;
-  readonly islands: IslandTagOptions["islands"];
-  readonly hooks: HookTagOptions["fragments"];
-  readonly onIslandError?: (error: IslandRenderError) => void;
-  readonly onHookError?: (error: HookRenderError) => void;
+  readonly memoryLimit: number;
+  /** UTF-8 bytes in one rendered fragment (2 MB). */
+  readonly outputLimit: number;
 }
 
+export const DEFAULT_TEMPLATE_LIMITS: TemplateLimits = {
+  parseLimit: 1_000_000,
+  renderLimit: 50,
+  memoryLimit: 10_000_000,
+  outputLimit: 2 * 1024 * 1024,
+};
+
+export interface TemplateEngineOptions {
+  readonly islands: IslandRegistry;
+  readonly limits?: Partial<TemplateLimits>;
+}
+
+/** Per-render overrides; used by tests and by routes that tighten a limit. */
+export type TemplateRenderOverrides = Partial<Pick<TemplateLimits, "renderLimit" | "memoryLimit">>;
+
 export interface TemplateEngine {
-  /** Parses and renders one template body against the view model. */
-  render(template: string, viewModel: Readonly<Record<string, unknown>>): Promise<string>;
-  /** The underlying engine, for callers that want to parse once and render repeatedly. */
+  /** The underlying engine, for callers that need its options or tag registry. */
   readonly liquid: Liquid;
+  readonly limits: TemplateLimits;
+  /** Parses one template body; throws on syntax errors and on the parse limit. */
+  compile(source: string): Template[];
+  /** Renders compiled templates against a view model (never escapes SafeHtml twice). */
+  render(
+    parsed: Template[],
+    viewModel: object,
+    runtime: TemplateRuntime,
+    overrides?: TemplateRenderOverrides,
+  ): Promise<string>;
 }
 
 /**
- * Builds the LiquidJS engine themes run on (ADR 0008): strict filters and variables,
- * prototype access off, and autoescaping on for every `{{ }}` output. Raw HTML only enters a
- * page through `SafeHtml` view-model fields, islands and hook fragments.
+ * Builds the LiquidJS engine every theme runs on (ADR 0008): strict filters and variables,
+ * prototype access off, limits on, autoescaping for every `{{ }}` output, and no way for a
+ * template to mark arbitrary text safe.
  */
 export function createTemplateEngine(options: TemplateEngineOptions): TemplateEngine {
+  const limits: TemplateLimits = { ...DEFAULT_TEMPLATE_LIMITS, ...options.limits };
   const liquid = new Liquid({
     strictFilters: true,
     strictVariables: true,
     ownPropertyOnly: true,
-    outputEscape: "escape",
-    parseLimit: TEMPLATE_LIMITS.parseLimit,
-    renderLimit: TEMPLATE_LIMITS.renderLimit,
-    memoryLimit: TEMPLATE_LIMITS.memoryLimit,
+    outputEscape: escapeOutput,
+    parseLimit: limits.parseLimit,
+    renderLimit: limits.renderLimit,
+    memoryLimit: limits.memoryLimit,
   });
 
-  registerTranslationTag(liquid, { translate: options.translate });
-  registerIslandTag(liquid, {
-    islands: options.islands,
-    ...(options.onIslandError === undefined ? {} : { onError: options.onIslandError }),
-  });
-  registerHookTag(liquid, {
-    fragments: options.hooks,
-    ...(options.onHookError === undefined ? {} : { onError: options.onHookError }),
-  });
+  // LiquidJS ships a `raw` filter that skips output escaping. ADR 0008 allows raw HTML only
+  // through SafeHtml fields, islands and hook fragments, so the filter must not exist.
+  liquid.unregisterFilter("raw");
+
+  registerTranslationTag(liquid);
+  registerIslandTag(liquid, { islands: options.islands });
+  registerHookTag(liquid);
 
   return {
     liquid,
-    render(template, viewModel) {
-      return liquid.parseAndRender(template, viewModel) as Promise<string>;
+    limits,
+    compile(source) {
+      return liquid.parse(source);
+    },
+    render(parsed, viewModel, runtime, overrides = {}) {
+      return liquid.render(parsed, viewModel, {
+        globals: runtimeGlobals(runtime),
+        renderLimit: overrides.renderLimit ?? limits.renderLimit,
+        memoryLimit: overrides.memoryLimit ?? limits.memoryLimit,
+      }) as Promise<string>;
     },
   };
 }

@@ -23,10 +23,12 @@
   "spike.rendering.altTitle": "Tema alternativo",
   "spike.rendering.body": "Este cuerpo proviene de una plantilla Liquid guardada en Postgres. La isla de abajo se renderiza en el servidor y después se hidrata en el navegador.",
   "spike.rendering.counter": "Clics",
+  "spike.rendering.footer": "Pie de página renderizado por el tema padre",
   "spike.rendering.hook": "Renderizado por un fragmento de plugin",
   "spike.rendering.plugins": "Generación de plugins",
   "spike.rendering.theme": "Tema",
   "spike.rendering.title": "Prueba de renderizado",
+  "spike.rendering.trusted": "HTML ya saneado",
   "user.placeholder.body": "La comunidad de Bulletin se está preparando.",
   "user.placeholder.title": "Bulletin"
 }

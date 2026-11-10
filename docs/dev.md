@@ -33,8 +33,9 @@ bun scripts/spike-rendering.ts
 ```
 
 The templates live in [`packages/templates/spike-templates`](../packages/templates/spike-templates)
-and the seed copies them into `core.render_spike_*`. Tasks 2.1-2.3 replace this scaffolding with
-the real engine and default theme.
+and the seed copies them into `core.themes`/`core.theme_templates`, with `alt` a child of
+`default` that overrides only the page template. Task 8.2 replaces this scaffolding with the
+default theme in the repo.
 
 ## The plugin sandbox
 

@@ -10,6 +10,7 @@ import {
   Value,
 } from "liquidjs";
 import { escapeAttribute } from "./html.ts";
+import { readRuntime } from "./runtime.ts";
 
 /** The result of validating an island's props against its schema. */
 export type IslandProps =
@@ -34,8 +35,6 @@ export interface IslandRenderError {
 
 export interface IslandTagOptions {
   readonly islands: IslandRegistry;
-  /** Reports a rejected island; the page still renders without it (ADR 0008). */
-  readonly onError?: (error: IslandRenderError) => void;
 }
 
 /**
@@ -81,26 +80,28 @@ class IslandTag extends Tag {
   }
 
   /** Reports the rejection and omits the island; the rest of the page renders (ADR 0008). */
-  private fail(error: IslandRenderError): void {
-    this.options.onError?.(error);
+  private fail(error: IslandRenderError, context: Context): void {
+    readRuntime(context).report?.(`${error.reason}: ${error.message}`);
   }
 
   *render(context: Context, emitter: Emitter) {
     const name = (yield this.islandName.value(context)) as unknown;
 
     if (typeof name !== "string" || name === "") {
-      this.fail({ island: "", reason: "unknown_island", message: "island name is not a string" });
+      this.fail(
+        { island: "", reason: "unknown_island", message: "island name is not a string" },
+        context,
+      );
       return;
     }
 
     const definition = this.options.islands[name];
 
     if (definition === undefined) {
-      this.fail({
-        island: name,
-        reason: "unknown_island",
-        message: `unknown island "${name}"`,
-      });
+      this.fail(
+        { island: name, reason: "unknown_island", message: `unknown island "${name}"` },
+        context,
+      );
       return;
     }
 
@@ -115,11 +116,14 @@ class IslandTag extends Tag {
     const parsed = definition.parse(input);
 
     if (!parsed.ok) {
-      this.fail({
-        island: name,
-        reason: "invalid_props",
-        message: `invalid props for island "${name}": ${parsed.reason}`,
-      });
+      this.fail(
+        {
+          island: name,
+          reason: "invalid_props",
+          message: `invalid props for island "${name}": ${parsed.reason}`,
+        },
+        context,
+      );
       return;
     }
 
@@ -129,11 +133,14 @@ class IslandTag extends Tag {
       html = definition.render(parsed.props);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      this.fail({
-        island: name,
-        reason: "render_failed",
-        message: `island "${name}" failed to render: ${detail}`,
-      });
+      this.fail(
+        {
+          island: name,
+          reason: "render_failed",
+          message: `island "${name}" failed to render: ${detail}`,
+        },
+        context,
+      );
       return;
     }
 

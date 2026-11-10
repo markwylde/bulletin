@@ -19,7 +19,9 @@ import {
   createTemplateEngine,
   loadSpikeFixtures,
   SPIKE_HOOK_NAME,
+  SPIKE_PAGE_TEMPLATE,
   type SpikeHookFixture,
+  safeHtml,
 } from "@bulletin/templates";
 import { SERVER_ISLANDS } from "@bulletin/ui/islands/server";
 
@@ -89,34 +91,39 @@ async function measureRenderCost(): Promise<readonly Timing[]> {
   const fixtures = await loadSpikeFixtures();
   const theme = fixtures.themes[0];
   const hook = fixtures.hooks.find((fixture: SpikeHookFixture) => fixture.generation === 1);
+  const source = theme?.templates[SPIKE_PAGE_TEMPLATE];
 
-  if (theme === undefined || hook === undefined) {
+  if (theme === undefined || hook === undefined || source === undefined) {
     throw new Error("Spike fixtures are incomplete");
   }
 
   const viewModel = {
-    theme: theme.theme,
+    theme: theme.name,
     version: theme.version,
     generation: 1,
     escapedSample: '<script>alert("spike")</script>',
+    trustedHtml: safeHtml("<strong>Trusted</strong>"),
     island: { label: "Clicks", start: 0 },
+    footer: safeHtml("<footer>Footer</footer>"),
   };
-  const engine = createTemplateEngine({
+  const engine = createTemplateEngine({ islands: SERVER_ISLANDS });
+  const compiled = engine.compile(source);
+  const runtime = {
     translate: createServerT("en"),
-    islands: SERVER_ISLANDS,
     hooks: { [SPIKE_HOOK_NAME]: hook.body },
-  });
+  };
 
+  const render = (): Promise<string> => engine.render(compiled, viewModel, runtime);
   const renderDurations: number[] = [];
 
   for (let index = 0; index < RENDER_SAMPLES; index += 1) {
     const started = performance.now();
-    await engine.render(theme.template, viewModel);
+    await render();
     renderDurations.push(performance.now() - started);
   }
 
   const cache = createFragmentCache();
-  await cache.getOrRender("render-cost", () => engine.render(theme.template, viewModel));
+  await cache.getOrRender("render-cost", render);
 
   const cacheDurations: number[] = [];
 

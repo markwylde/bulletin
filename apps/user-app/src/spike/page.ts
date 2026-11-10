@@ -1,14 +1,21 @@
 import { createFragmentCache, type FragmentCache, fragmentKey } from "@bulletin/cache";
 import type { Locale, Translator } from "@bulletin/i18n";
 import {
+  createCompileCache,
   createTemplateEngine,
+  escapeHtml,
   loadHookFragments,
-  loadStoredTheme,
+  loadTheme,
+  renderThemeTemplate,
+  SPIKE_FOOTER_TEMPLATE,
+  SPIKE_PAGE_TEMPLATE,
   SPIKE_PLUGIN_GENERATIONS,
   SPIKE_ROUTE,
-  SPIKE_TEMPLATE_NAME,
   SPIKE_THEMES,
   type SpikeThemeName,
+  safeHtml,
+  type TemplateRuntime,
+  type TemplateViolation,
 } from "@bulletin/templates";
 import { SERVER_ISLANDS } from "@bulletin/ui/islands/server";
 import type { SQL } from "bun";
@@ -80,64 +87,85 @@ export type SpikeRenderOutcome =
     }
   | { readonly status: "not_found" };
 
+/** One engine and compile cache per process, shared by every locale (ADR 0008). */
+const engine = createTemplateEngine({ islands: SERVER_ISLANDS });
+const compiledThemes = createCompileCache(engine);
 const fragments = createFragmentCache();
 
 /**
- * Renders the spike page body from the database-stored theme template (task 1.1) and caches it
- * per variant (task 1.2). A theme switch or a plugin-generation bump changes the cache key, so
- * neither can serve the other's HTML.
+ * Renders the spike page from the database-stored theme (tasks 1.1, 2.1) and caches it per
+ * variant (task 1.2). The footer comes from the theme chain, so a child theme that overrides
+ * only the page still shows the parent's footer.
  */
 export async function renderSpikePage(
   input: SpikeRenderInput,
   cache: FragmentCache = fragments,
 ): Promise<SpikeRenderOutcome> {
-  const errors: string[] = [];
-  const reportError = (message: string): void => {
-    errors.push(message);
-    console.warn(`[spike-rendering] ${message}`);
-  };
+  const theme = await loadTheme(input.sql, input.theme);
 
-  const storedTheme = await loadStoredTheme(input.sql, input.theme);
-
-  if (storedTheme === null) {
+  if (theme === null) {
     return { status: "not_found" };
   }
 
   const variant = fragmentKey({
     route: SPIKE_ROUTE,
-    theme: input.theme,
-    themeVersion: storedTheme.version,
+    theme: theme.theme.name,
+    themeVersion: theme.theme.version,
     plugins: input.plugins,
     locale: input.locale,
     bust: input.bust,
   });
-
-  const template = storedTheme.templates.get(SPIKE_TEMPLATE_NAME);
-
-  if (template === undefined) {
-    return { status: "not_found" };
-  }
-
-  const islandLabel = input.translate("spike.rendering.counter");
-  const viewModel = {
-    theme: input.theme,
-    version: storedTheme.version,
-    generation: input.plugins,
-    // The theme escapes this; the page must show it as text, never execute it.
-    escapedSample: '<script>alert("spike")</script>',
-    island: { label: islandLabel, start: 0 },
+  const errors: string[] = [];
+  const report = (message: string): void => {
+    errors.push(message);
+    console.warn(`[spike-rendering] ${message}`);
   };
 
   const rendered = await cache.getOrRender(variant, async () => {
-    const engine = createTemplateEngine({
+    const runtime: TemplateRuntime = {
       translate: input.translate,
-      islands: SERVER_ISLANDS,
       hooks: await loadHookFragments(input.sql, input.plugins),
-      onIslandError: (error) => reportError(`${error.reason}: ${error.message}`),
-      onHookError: (error) => reportError(`${error.reason}: ${error.message}`),
-    });
+      report,
+    };
+    const compiled = compiledThemes.compile(theme, input.plugins);
+    const islandLabel = input.translate("spike.rendering.counter");
+    const viewModel = {
+      theme: theme.theme.name,
+      version: theme.theme.version,
+      generation: input.plugins,
+      // The theme escapes this; the page must show it as text, never execute it.
+      escapedSample: '<script>alert("spike")</script>',
+      // The only way to raw markup: a SafeHtml field, built from escaped content here.
+      trustedHtml: safeHtml(
+        `<strong data-spike-safe>${escapeHtml(input.translate("spike.rendering.trusted"))}</strong>`,
+      ),
+      island: { label: islandLabel, start: 0 },
+    };
+    const reportViolations = (violations: readonly TemplateViolation[]): void => {
+      for (const violation of violations) {
+        report(`${violation.kind}: ${violation.theme}/${violation.template}: ${violation.message}`);
+      }
+    };
 
-    return engine.render(template, viewModel);
+    const footer = await renderThemeTemplate({
+      engine,
+      compiled,
+      name: SPIKE_FOOTER_TEMPLATE,
+      viewModel,
+      runtime,
+    });
+    reportViolations(footer.violations);
+
+    const page = await renderThemeTemplate({
+      engine,
+      compiled,
+      name: SPIKE_PAGE_TEMPLATE,
+      viewModel: { ...viewModel, footer: safeHtml(footer.html) },
+      runtime,
+    });
+    reportViolations(page.violations);
+
+    return page.html;
   });
 
   return {
