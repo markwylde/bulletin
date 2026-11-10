@@ -18,14 +18,14 @@ export type IslandProps =
   | { readonly ok: false; readonly reason: string };
 
 /** One entry of the fixed island registry (ADR 0008). */
-export interface IslandDefinition {
+export interface ServerIslandDefinition {
   /** Validates untrusted template props; never throws. */
   readonly parse: (input: unknown) => IslandProps;
   /** Server-renders the component; the same component hydrates in the browser. */
   readonly render: (props: object) => string;
 }
 
-export type IslandRegistry = Readonly<Record<string, IslandDefinition>>;
+export type ServerIslandRegistry = Readonly<Record<string, ServerIslandDefinition>>;
 
 export interface IslandRenderError {
   readonly island: string;
@@ -34,7 +34,7 @@ export interface IslandRenderError {
 }
 
 export interface IslandTagOptions {
-  readonly islands: IslandRegistry;
+  readonly islands: ServerIslandRegistry;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { Liquid, type Template } from "liquidjs";
 import { registerHookTag } from "./hook-tag.ts";
-import { type IslandRegistry, registerIslandTag } from "./island-tag.ts";
+import { registerIslandTag, type ServerIslandRegistry } from "./island-tag.ts";
 import { runtimeGlobals, type TemplateRuntime } from "./runtime.ts";
 import { escapeOutput } from "./safe-html.ts";
 import { registerTranslationTag } from "./translation-tag.ts";
@@ -25,7 +25,7 @@ export const DEFAULT_TEMPLATE_LIMITS: TemplateLimits = {
 };
 
 export interface TemplateEngineOptions {
-  readonly islands: IslandRegistry;
+  readonly islands: ServerIslandRegistry;
   readonly limits?: Partial<TemplateLimits>;
 }
 

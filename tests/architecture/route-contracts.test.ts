@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { findContract, validateContracts } from "@bulletin/templates";
-import { SERVER_ISLANDS } from "@bulletin/ui/islands/server";
+import { ISLAND_NAMES } from "@bulletin/ui/islands";
 import { ROUTE_CONTRACTS } from "../../apps/user-app/src/contracts.ts";
 
 // Task 2.4: CI fails when a user-app page has no view-model contract, or a contract has no
@@ -65,7 +65,7 @@ describe("route contract coverage", () => {
   });
 
   test("every contract passes the platform checks", () => {
-    expect(validateContracts(ROUTE_CONTRACTS, Object.keys(SERVER_ISLANDS))).toEqual([]);
+    expect(validateContracts(ROUTE_CONTRACTS, ISLAND_NAMES)).toEqual([]);
   });
 
   test("maps page files to routes", () => {

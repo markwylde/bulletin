@@ -2,40 +2,15 @@ import { useState } from "react";
 
 export interface SpikeCounterProps {
   readonly label: string;
-  readonly start?: number;
-}
-
-/** Validates untrusted template props for the spike island; returns null when invalid. */
-export function parseSpikeCounterProps(input: unknown): SpikeCounterProps | null {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    return null;
-  }
-
-  const record = input as Record<string, unknown>;
-  const label = record.label;
-
-  if (typeof label !== "string" || label.trim() === "") {
-    return null;
-  }
-
-  const start = record.start;
-
-  if (start === undefined) {
-    return { label };
-  }
-
-  if (typeof start !== "number" || !Number.isSafeInteger(start)) {
-    return null;
-  }
-
-  return { label, start };
+  readonly start: number;
 }
 
 /**
  * Spike S1 island: a counter that proves server HTML is visible first and becomes
- * interactive after hydration (ADR 0008). Every label comes from the view model.
+ * interactive after hydration (ADR 0008). Every label comes from the view model; the schema
+ * in `schemas.ts` supplies the default start.
  */
-export function SpikeCounter({ label, start = 0 }: SpikeCounterProps) {
+export function SpikeCounter({ label, start }: SpikeCounterProps) {
   const [count, setCount] = useState(start);
 
   return (

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { contractTags, findContract, validateContracts } from "@bulletin/templates";
-import { SERVER_ISLANDS } from "@bulletin/ui/islands/server";
+import { ISLAND_NAMES } from "@bulletin/ui/islands";
 import {
   callbackContract,
   homeContract,
@@ -8,8 +8,6 @@ import {
   ROUTE_CONTRACTS,
   spikeRenderingContract,
 } from "./contracts.ts";
-
-const ISLAND_NAMES = Object.keys(SERVER_ISLANDS);
 
 describe("route contracts", () => {
   test("every contract passes the platform checks", () => {

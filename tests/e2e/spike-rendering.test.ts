@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { clickSelector, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
+import {
+  clickSelector,
+  VIEWPORTS,
+  type ViewportName,
+  waitForSelector,
+  withPage,
+} from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
 
 // Spike S1 proof (ADR 0008): a DB-stored Liquid template places an island that SSRs and
@@ -74,25 +80,40 @@ integrationDescribe("spike S1 rendering", () => {
     expect(themed.html).toContain('data-spike-footer-template="default"');
   });
 
-  test("hydrates the server-rendered island at 360 px", async () => {
-    const url = spikeUrl({ theme: "default", plugins: 1, bust: bust() });
+  const viewportNames = Object.keys(VIEWPORTS) as ViewportName[];
 
-    await withPage({ url, viewport: "mobile360" }, async (view) => {
-      await waitForSelector(view, "[data-spike-increment]");
-      expect(
-        await view.evaluate<string>("document.querySelector('[data-spike-count]').textContent"),
-      ).toBe("0");
+  for (const viewportName of viewportNames) {
+    const viewport = VIEWPORTS[viewportName];
 
-      await clickSelector(view, "[data-spike-increment]");
+    test(`hydrates the server-rendered island at ${viewportName} (${viewport.width}px)`, async () => {
+      const url = spikeUrl({ theme: "default", plugins: 1, bust: bust() });
 
-      expect(
-        await view.evaluate<string>("document.querySelector('[data-spike-count]').textContent"),
-      ).toBe("1");
-      expect(await view.evaluate<boolean>("document.documentElement.clientWidth === 360")).toBe(
-        true,
-      );
+      await withPage({ url, viewport: viewportName }, async (view) => {
+        // The server HTML is there before any hydration happened.
+        await waitForSelector(view, "[data-spike-increment]");
+        expect(
+          await view.evaluate<string>("document.querySelector('[data-spike-count]').textContent"),
+        ).toBe("0");
+
+        // Below-the-fold islands hydrate when they approach the viewport (ADR 0008).
+        await view.evaluate(
+          'document.querySelector("[data-spike-counter]")?.scrollIntoView({ block: "center" })',
+        );
+        await waitForSelector(view, 'bl-island[data-hydrated="true"]', 20_000);
+
+        await clickSelector(view, "[data-spike-increment]");
+
+        expect(
+          await view.evaluate<string>("document.querySelector('[data-spike-count]').textContent"),
+        ).toBe("1");
+        expect(
+          await view.evaluate<boolean>(
+            `document.documentElement.clientWidth === ${viewport.width}`,
+          ),
+        ).toBe(true);
+      });
     });
-  });
+  }
 
   test("keeps a distinct cache entry per theme and plugin generation", async () => {
     const run = bust();
@@ -124,6 +145,7 @@ integrationDescribe("spike S1 rendering", () => {
 
     await withPage({ url, viewport: "mobile390" }, async (view) => {
       await waitForSelector(view, '[data-spike-hook="2"]');
+      await waitForSelector(view, 'bl-island[data-hydrated="true"]');
       await clickSelector(view, "[data-spike-increment]");
 
       expect(

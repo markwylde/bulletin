@@ -1,18 +1,48 @@
-import { createElement } from "react";
+import { type ComponentType, createElement } from "react";
 import { hydrateRoot } from "react-dom/client";
-import { parseSpikeCounterProps, SpikeCounter } from "./SpikeCounter.tsx";
+import * as v from "valibot";
+import { type IslandPropsSchema, spikeCounterSchema } from "./schemas.ts";
 
-/** Hydrates one `<bl-island>` element; props are re-validated in the browser. */
-export type IslandHydrator = (container: Element, props: unknown) => void;
+/** The result of validating an island's props in the browser. */
+export type IslandPreparation =
+  | { readonly ok: true; readonly hydrate: (container: Element) => Promise<void> }
+  | { readonly ok: false; readonly reason: string };
 
-export const CLIENT_ISLANDS: Readonly<Record<string, IslandHydrator>> = {
-  SpikeCounter(container, props) {
-    const parsed = parseSpikeCounterProps(props);
+export interface ClientIsland {
+  /** Validates the props carried in `data-props`; the chunk loads only when they pass. */
+  readonly prepare: (input: unknown) => IslandPreparation;
+}
 
-    if (parsed === null) {
-      return;
-    }
+function defineClientIsland<TProps extends object>(
+  schema: IslandPropsSchema<TProps>,
+  load: () => Promise<ComponentType<TProps>>,
+): ClientIsland {
+  return {
+    prepare(input) {
+      const parsed = v.safeParse(schema, input);
 
-    hydrateRoot(container, createElement(SpikeCounter, parsed));
-  },
+      if (!parsed.success) {
+        return { ok: false, reason: v.summarize(parsed.issues) };
+      }
+
+      return {
+        ok: true,
+        async hydrate(container) {
+          const Component = await load();
+          hydrateRoot(container, createElement(Component, parsed.output));
+        },
+      };
+    },
+  };
+}
+
+/**
+ * The client half of the fixed island registry (ADR 0008). Each island imports its component
+ * dynamically, so Astro/Vite emits one chunk per island instead of one bundle for all of them.
+ */
+export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
+  SpikeCounter: defineClientIsland(spikeCounterSchema, async () => {
+    const module = await import("./SpikeCounter.tsx");
+    return module.SpikeCounter;
+  }),
 };

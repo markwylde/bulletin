@@ -5,7 +5,7 @@ import {
   DEFAULT_TEMPLATE_LIMITS,
   escapeHtml,
   escapeOutput,
-  type IslandRegistry,
+  type ServerIslandRegistry,
   safeHtml,
   type TemplateRuntime,
 } from "./index.ts";
@@ -21,7 +21,7 @@ const SHIPPED = {
   },
 } as const;
 
-const ISLANDS: IslandRegistry = {
+const ISLANDS: ServerIslandRegistry = {
   Counter: {
     parse: (input) => {
       if (typeof input !== "object" || input === null) {
@@ -52,7 +52,7 @@ function runtime(overrides: Partial<TemplateRuntime> = {}): TemplateRuntime {
 function render(
   source: string,
   viewModel: object = {},
-  options: { readonly runtime?: TemplateRuntime; readonly islands?: IslandRegistry } = {},
+  options: { readonly runtime?: TemplateRuntime; readonly islands?: ServerIslandRegistry } = {},
 ): Promise<string> {
   const engine = createTemplateEngine({ islands: options.islands ?? ISLANDS });
   return engine.render(engine.compile(source), viewModel, options.runtime ?? runtime());

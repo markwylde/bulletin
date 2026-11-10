@@ -9,6 +9,7 @@
     "./forms": "./src/forms/index.ts",
     "./islands": "./src/islands/index.ts",
     "./islands/client": "./src/islands/client.ts",
+    "./islands/runtime": "./src/islands/runtime.ts",
     "./islands/server": "./src/islands/server.tsx",
     "./table": "./src/table/index.ts"
   },
@@ -18,7 +19,8 @@
   "dependencies": {
     "@bulletin/i18n": "workspace:*",
     "@bulletin/templates": "workspace:*",
-    "react": "19.3.1"
+    "react": "19.3.1",
+    "valibot": "1.5.0"
   },
   "devDependencies": {
     "@types/react": "19.3.0",
