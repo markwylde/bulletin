@@ -31,6 +31,7 @@ export interface RunMutationOptions<TInput, TResult> {
  * rolls back the invalidation and a commit is followed by the NOTIFY (ADR 0006).
  */
 export * from "./board.ts";
+export * from "./emoticons.ts";
 export * from "./forums.ts";
 export * from "./topics.ts";
 

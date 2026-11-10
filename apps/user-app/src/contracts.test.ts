@@ -57,6 +57,12 @@ describe("route contracts", () => {
     expect(contract?.requiredIslands).toEqual(["LanguageSwitcher", "SpikeCounter"]);
     // The demo header/footer carry the board name, so a board save invalidates it too.
     expect(contractTags(demoContract, { forumId: "2" })).toEqual(["forum:2", "board"]);
+    // Only the editor demo embeds the emoticon picker, so only it carries the emoticon tag.
+    expect(contractTags(demoContract, { forumId: "editor", embedsEditor: true })).toEqual([
+      "forum:editor",
+      "board",
+      "emoticons",
+    ]);
     expect(ISLAND_NAMES).toContain("SpikeCounter");
     expect(ISLAND_NAMES).toContain("LanguageSwitcher");
   });

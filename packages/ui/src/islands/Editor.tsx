@@ -6,6 +6,7 @@ import {
   type EditorDraft,
   readDraft,
   readEditorSession,
+  serializeDraftWrite,
   writeDraft,
 } from "./editor/drafts.ts";
 import type { EditorCommand, EditorController, EditorMode, EditorProps } from "./editor/types.ts";
@@ -212,12 +213,16 @@ function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: Edito
 
       const write =
         mode === "clear"
-          ? clearDraft(contextKey, csrfToken).then((ok) => ok)
-          : writeDraft(contextKey, markdown, csrfToken).then((saved) => saved !== null);
+          ? serializeDraftWrite(contextKey, async () =>
+              (await clearDraft(contextKey, csrfToken)) ? "saved" : "failed",
+            )
+          : serializeDraftWrite(contextKey, async () =>
+              (await writeDraft(contextKey, markdown, csrfToken)) !== null ? "saved" : "failed",
+            );
 
       void write
-        .then((ok) => {
-          setStatus(ok ? "saved" : "failed");
+        .then((nextStatus) => {
+          setStatus(nextStatus);
         })
         .catch(() => {
           setStatus("failed");

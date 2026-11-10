@@ -161,7 +161,10 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
   // `prepare` also runs on a hit, so this holds the data the final key was built from.
   let latest: DemoData | undefined;
   const rendered = await renderCachedPage<DemoData>({
-    tags: contractTags(demoContract, { forumId: input.forumId }),
+    tags: contractTags(demoContract, {
+      forumId: input.forumId,
+      embedsEditor: input.forumId === "editor",
+    }),
     cache: input.cache,
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },

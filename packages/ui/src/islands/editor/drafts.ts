@@ -74,6 +74,31 @@ export async function clearDraft(contextKey: string, csrfToken: string): Promise
 
 export type DraftWrite = "save" | "clear" | "none";
 
+const writeChains = new Map<string, Promise<void>>();
+
+/**
+ * Serialises saves and clears per draft context. Without this, a delayed save of an older body
+ * can complete after a newer save or a clear and put stale content back on the server (task:
+ * autosave ordering). Writes for different contexts still run independently.
+ */
+export function serializeDraftWrite<T>(contextKey: string, write: () => Promise<T>): Promise<T> {
+  const previous = writeChains.get(contextKey) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(write);
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+
+  writeChains.set(contextKey, tail);
+  void tail.then(() => {
+    if (writeChains.get(contextKey) === tail) {
+      writeChains.delete(contextKey);
+    }
+  });
+
+  return run;
+}
+
 /** Undoing back to the original content clears the saved draft instead of leaving it behind. */
 export function draftWriteFor(initial: string, current: string, dirty: boolean): DraftWrite {
   if (!dirty) {

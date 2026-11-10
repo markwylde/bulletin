@@ -13,6 +13,8 @@ export const GLOBAL_CACHE_TAGS = {
   flags: "flags",
   plugins: "plugins",
   announcements: "announcements",
+  /** Editor emoticon sets: every page that embeds the picker carries this tag. */
+  emoticons: "emoticons",
   /** Board name, description, locale and offline state: the shared home shell. */
   board: "board",
 } as const;

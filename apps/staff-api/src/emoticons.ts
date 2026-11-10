@@ -9,6 +9,7 @@ import {
   saveEmoticon,
   saveEmoticonSet,
 } from "@bulletin/domain/content";
+import { emoticonMutation, runMutation } from "@bulletin/domain/mutations";
 import { opaqueKey, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import sharp from "sharp";
@@ -115,6 +116,20 @@ export async function emoticonImageForStaff(
   }
 }
 
+/** Runs one emoticon write and its cache-tag bump in a single transaction (ADR 0006). */
+function mutateWithTag(
+  sql: SQL,
+  action: string,
+  apply: (tx: SQL) => Promise<EmoticonMutation>,
+): Promise<EmoticonMutation> {
+  return runMutation({
+    sql,
+    mutation: emoticonMutation,
+    input: { action },
+    apply,
+  });
+}
+
 function log(
   sql: SQL,
   actorMemberId: string,
@@ -144,7 +159,7 @@ export async function mutateEmoticon(
 
   switch (body.action) {
     case "set-save": {
-      const result = await saveEmoticonSet(sql, body.set);
+      const result = await mutateWithTag(sql, "set-save", (tx) => saveEmoticonSet(tx, body.set));
 
       if (result.ok && result.id !== undefined) {
         await log(sql, actorMemberId, "emoticon.set.save", result.id, {
@@ -156,7 +171,7 @@ export async function mutateEmoticon(
     }
     case "set-delete": {
       const id = typeof body.id === "string" ? body.id : "";
-      const result = await deleteEmoticonSet(sql, id);
+      const result = await mutateWithTag(sql, "set-delete", (tx) => deleteEmoticonSet(tx, id));
 
       if (result.ok) {
         await log(sql, actorMemberId, "emoticon.set.delete", id, { id });
@@ -166,7 +181,7 @@ export async function mutateEmoticon(
     }
     case "emoticon-delete": {
       const id = typeof body.id === "string" ? body.id : "";
-      const result = await deleteEmoticon(sql, id);
+      const result = await mutateWithTag(sql, "emoticon-delete", (tx) => deleteEmoticon(tx, id));
 
       if (result.ok) {
         await log(sql, actorMemberId, "emoticon.delete", id, { id });
@@ -211,15 +226,17 @@ export async function mutateEmoticon(
         return { ok: false, code: "invalid", fields: ["image"] };
       }
 
-      const result = await saveEmoticon(sql, {
-        ...(id === undefined ? {} : { id }),
-        setId,
-        code,
-        alt,
-        storageKey: key,
-        contentType: finalType,
-        position,
-      });
+      const result = await mutateWithTag(sql, "emoticon-save", (tx) =>
+        saveEmoticon(tx, {
+          ...(id === undefined ? {} : { id }),
+          setId,
+          code,
+          alt,
+          storageKey: key,
+          contentType: finalType,
+          position,
+        }),
+      );
 
       if (!result.ok) {
         if (type !== null && bytes !== null) {

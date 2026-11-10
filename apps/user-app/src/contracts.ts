@@ -4,6 +4,8 @@ import { defineContract, type ViewModelContractRegistry } from "@bulletin/templa
 /** The view-model fields the demo route's cache tags depend on. */
 export interface DemoViewModel {
   readonly forumId: string;
+  /** The editor demo embeds the emoticon picker, so it also carries the emoticon tag. */
+  readonly embedsEditor?: boolean;
 }
 
 /** The view-model fields the forum page's tags depend on. */
@@ -58,7 +60,11 @@ export const demoContract = defineContract<DemoViewModel>({
   templates: { page: "demo", regions: ["header", "breadcrumbs", "empty", "footer"] },
   deps: [],
   // The header/footer carry the board name, so a board settings save must invalidate it too.
-  tags: (model) => [`forum:${model.forumId}`, GLOBAL_CACHE_TAGS.board],
+  tags: (model) => [
+    `forum:${model.forumId}`,
+    GLOBAL_CACHE_TAGS.board,
+    ...(model.embedsEditor === true ? [GLOBAL_CACHE_TAGS.emoticons] : []),
+  ],
   // Guests share the fixture forum page; members and unlock grants stay private (ADR 0006).
   cdnCacheable: true,
   requiredIslands: [...DEMO_SHELL_ISLANDS, "SpikeCounter"],
