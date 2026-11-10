@@ -12,15 +12,29 @@ import { mutateEmoticon } from "../../apps/staff-api/src/emoticons.ts";
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
-function fakeStorage(): StorageClient & { readonly puts: string[]; readonly deletes: string[] } {
+/** A 1x1 transparent GIF, so the test can prove the upload is re-encoded as PNG. */
+const GIF_IMAGE = "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+function fakeStorage(): StorageClient & {
+  readonly puts: string[];
+  readonly putBodies: string[];
+  readonly putTypes: Array<string | undefined>;
+  readonly deletes: string[];
+} {
   const puts: string[] = [];
+  const putBodies: string[] = [];
+  const putTypes: Array<string | undefined> = [];
   const deletes: string[] = [];
 
   return {
     puts,
+    putBodies,
+    putTypes,
     deletes,
-    async put(key) {
+    async put(key, data, options) {
       puts.push(key);
+      putBodies.push(typeof data === "string" ? data : Buffer.from(data).toString("base64"));
+      putTypes.push(options?.contentType);
       return 1;
     },
     async get() {
@@ -125,7 +139,7 @@ integrationDescribe("emoticon management", () => {
         throw new Error("Set missing");
       }
 
-      const image = Buffer.from("fake-png").toString("base64");
+      const image = GIF_IMAGE;
       const saved = await mutateEmoticon(database.sql, storage, actor, {
         action: "emoticon-save",
         setId,
@@ -137,6 +151,15 @@ integrationDescribe("emoticon management", () => {
       });
       expect(saved).toMatchObject({ ok: true });
       expect(storage.puts).toHaveLength(1);
+      expect(storage.putTypes).toEqual(["image/png"]);
+
+      const stored = Buffer.from(storage.putBodies[0] ?? "", "base64");
+      expect(stored.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+
+      const [storedRow] = (await database.sql`
+        SELECT content_type FROM core.emoticons WHERE code = 'wave'
+      `) as Array<{ content_type: string }>;
+      expect(storedRow?.content_type).toBe("image/png");
 
       const savedId = saved.ok ? saved.id : undefined;
 

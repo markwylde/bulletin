@@ -1,6 +1,6 @@
 import { refreshStoredHtml } from "./refresh.ts";
 import { renderVersionFor, SANITISER_VERSION } from "./replace-words.ts";
-import type { ContentProfile, ReplaceWords } from "./types.ts";
+import type { ContentProfile, EmbedProvider, ReplaceWords } from "./types.ts";
 
 export interface ContentVersions {
   readonly renderVersion: number;
@@ -38,6 +38,7 @@ export function isContentStale(stored: ContentVersions, current: ContentVersions
 export interface EnsureCurrentRenderingOptions {
   readonly profile: ContentProfile;
   readonly replaceWords?: ReplaceWords;
+  readonly embedProviders?: readonly EmbedProvider[];
   /** Test/deployment override; production uses the code constants. */
   readonly versions?: ContentVersions;
 }
@@ -64,6 +65,7 @@ export async function ensureCurrentRendering(
   const refreshed = await refreshStoredHtml(stored.bodyHtml, {
     profile: options.profile,
     ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+    ...(options.embedProviders === undefined ? {} : { embedProviders: options.embedProviders }),
   });
 
   return { ...refreshed, refreshed: true };

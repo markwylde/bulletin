@@ -1,4 +1,10 @@
-import type { ContentProfile, QuoteSourceKind, QuoteSourceRef, ReplaceWords } from "./types.ts";
+import type {
+  ContentProfile,
+  EmbedProvider,
+  QuoteSourceKind,
+  QuoteSourceRef,
+  ReplaceWords,
+} from "./types.ts";
 import { type ContentVersions, ensureCurrentRendering } from "./versioning.ts";
 
 export interface QuoteSnapshotView {
@@ -30,6 +36,7 @@ export interface ResolvedQuote {
 export interface QuoteRefreshOptions {
   readonly profile?: ContentProfile;
   readonly replaceWords?: ReplaceWords;
+  readonly embedProviders?: readonly EmbedProvider[];
   readonly versions?: ContentVersions;
 }
 
@@ -142,6 +149,9 @@ async function resolveOne(
     ...(options.refresh?.replaceWords === undefined
       ? {}
       : { replaceWords: options.refresh.replaceWords }),
+    ...(options.refresh?.embedProviders === undefined
+      ? {}
+      : { embedProviders: options.refresh.embedProviders }),
     ...(options.refresh?.versions === undefined ? {} : { versions: options.refresh.versions }),
   });
   const link = sourceLink(ref, options.resolver, options.translate);

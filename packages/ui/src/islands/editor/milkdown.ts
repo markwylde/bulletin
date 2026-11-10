@@ -1,5 +1,4 @@
 import { defaultValueCtx, Editor, editorViewCtx, rootCtx } from "@milkdown/kit/core";
-import type { MilkdownPlugin } from "@milkdown/kit/ctx";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import {
   commonmark,
@@ -13,7 +12,7 @@ import {
 import { gfm } from "@milkdown/kit/preset/gfm";
 import { Fragment } from "@milkdown/kit/prose/model";
 import { callCommand, getMarkdown, insert, replaceAll } from "@milkdown/kit/utils";
-import { createBulletinTokenPlugins } from "./tokens.ts";
+import { bulletinTokenPlugins } from "./plugins.ts";
 import type { EditorController, EditorEmoticon } from "./types.ts";
 
 const RAW_BLOCK = /^:::[a-z0-9-]+[^\n]*\n[\s\S]*?\n:::[ \t]*$/gim;
@@ -63,7 +62,7 @@ export async function createMilkdownEditor(
 ): Promise<EditorController> {
   const preprocessed = preprocessRawBlocks(options.markdown);
   const raw = new Map(preprocessed.raw);
-  const tokenPlugins = createBulletinTokenPlugins(options.emoticons).flat() as MilkdownPlugin[];
+  const tokenPlugins = bulletinTokenPlugins(options.emoticons);
   const editor = await Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, options.element);

@@ -13,6 +13,7 @@
     "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
     "@bulletin/content": "workspace:*",
-    "@bulletin/storage": "workspace:*"
+    "@bulletin/storage": "workspace:*",
+    "sharp": "0.35.5"
   }
 }

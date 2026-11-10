@@ -1,4 +1,5 @@
 import { ensureCurrentRendering } from "@bulletin/content";
+import { listEmbedProviders } from "@bulletin/domain/content";
 import {
   type ForumPrefix,
   type ForumRecord,
@@ -217,6 +218,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
   view.track(input.forum.id, "see_unapproved", isModerator);
 
   const blocks = input.forum.type === "category" ? [] : pageAnnouncements;
+  const embedProviders = await listEmbedProviders(input.sql);
   const rules = await ensureCurrentRendering(
     {
       bodyHtml: input.forum.rulesHtml,
@@ -224,7 +226,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
       renderVersion: input.forum.rulesRenderVersion,
       sanitiserVersion: input.forum.rulesSanitiserVersion,
     },
-    { profile: "rules" },
+    { profile: "rules", embedProviders },
   );
   const announcementViews = await Promise.all(
     blocks.map(async (announcement) => ({
@@ -236,7 +238,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
           renderVersion: announcement.renderVersion,
           sanitiserVersion: announcement.sanitiserVersion,
         },
-        { profile: "rules" },
+        { profile: "rules", embedProviders },
       ),
     })),
   );

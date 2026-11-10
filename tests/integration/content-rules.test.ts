@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { forumAnnouncementsTag, forumTag, postSnapshotsTag, readTagVersion } from "@bulletin/cache";
 import { currentContentVersions } from "@bulletin/content";
 import {
   announcementRerenderSource,
   forumRulesRerenderSource,
+  quoteSnapshotRerenderSource,
   runContentRerenderJob,
 } from "@bulletin/db/jobs";
 import { loadAnnouncements } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import { saveAnnouncement } from "../../apps/staff-api/src/announcements.ts";
 import { saveForumSettings } from "../../apps/staff-api/src/forums.ts";
 
@@ -19,6 +22,13 @@ async function withDb(run: (database: TestDatabase) => Promise<void>): Promise<v
   }
 
   await withTestDatabase({ adminUrl, prefix: "content_rules" }, run);
+}
+
+function roleUrl(databaseUrl: string, role: string): string {
+  const url = new URL(databaseUrl);
+  url.username = role;
+  url.password = "";
+  return url.toString();
 }
 
 async function createMember(database: TestDatabase, name: string): Promise<string> {
@@ -255,6 +265,96 @@ integrationDescribe("rules and announcements through the pipeline", () => {
       expect(announcement?.bodyText).toContain("Tonight");
       expect(announcement?.renderVersion).toBeGreaterThan(0);
       expect(announcement?.sanitiserVersion).toBeGreaterThan(0);
+    });
+  });
+});
+
+integrationDescribe("content re-render job grants and invalidation", () => {
+  test("re-renders rules and announcements using the workers login role", async () => {
+    await withDb(async (database) => {
+      const [forum] = (await database.sql`
+        INSERT INTO core.forums (title, slug, description, rules, rules_html)
+        VALUES ('Worker forum', 'worker-forum', '', '**Worker rules**', '<p>old</p>')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [announcement] = (await database.sql`
+        INSERT INTO core.announcements (title, body, body_html, scope, starts_at)
+        VALUES ('Worker announcement', '**Worker news**', '<p>old</p>', 'global', now())
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (forum === undefined || announcement === undefined) {
+        throw new Error("Could not create stale rows");
+      }
+
+      const worker = new SQL(roleUrl(database.url, "workers"));
+
+      try {
+        const result = await runContentRerenderJob(worker, {
+          sources: [forumRulesRerenderSource, announcementRerenderSource],
+        });
+        expect(result.rerendered).toBe(2);
+      } finally {
+        await worker.close();
+      }
+
+      const [renderedForum] = (await database.sql`
+        SELECT rules_html FROM core.forums WHERE id = ${forum.id}
+      `) as Array<{ rules_html: string }>;
+      const [renderedAnnouncement] = (await database.sql`
+        SELECT body_html FROM core.announcements WHERE id = ${announcement.id}
+      `) as Array<{ body_html: string }>;
+
+      expect(renderedForum?.rules_html).toContain("<strong>Worker rules</strong>");
+      expect(renderedAnnouncement?.body_html).toContain("<strong>Worker news</strong>");
+    });
+  });
+
+  test("bumps the forum, announcement and snapshot tags in the same write", async () => {
+    await withDb(async (database) => {
+      const [forum] = (await database.sql`
+        INSERT INTO core.forums (title, slug, description, rules)
+        VALUES ('Tagged forum', 'tagged-forum', '', '**Tagged rules**')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (forum === undefined) {
+        throw new Error("Could not create forum");
+      }
+
+      const [announcement] = (await database.sql`
+        INSERT INTO core.announcements (title, body, scope, starts_at)
+        VALUES ('Tagged announcement', '**Tagged news**', 'forums', now())
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (announcement === undefined) {
+        throw new Error("Could not create announcement");
+      }
+
+      await database.sql`
+        INSERT INTO core.announcement_targets (announcement_id, forum_id, include_subforums)
+        VALUES (${announcement.id}, ${forum.id}, false)
+      `;
+      await database.sql`
+        INSERT INTO core.quote_snapshots (
+          source_kind, source_id, body_md, body_html, render_version, sanitiser_version
+        )
+        VALUES ('post', 5, '**Quoted**', '<p>old</p>', 1, 1)
+      `;
+
+      const result = await runContentRerenderJob(database.sql, {
+        sources: [
+          quoteSnapshotRerenderSource,
+          forumRulesRerenderSource,
+          announcementRerenderSource,
+        ],
+      });
+      expect(result.rerendered).toBe(3);
+
+      expect(await readTagVersion(database.sql, forumTag(forum.id))).toBe("1");
+      expect(await readTagVersion(database.sql, forumAnnouncementsTag(forum.id))).toBe("1");
+      expect(await readTagVersion(database.sql, postSnapshotsTag("5"))).toBe("1");
     });
   });
 });

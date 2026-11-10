@@ -1,7 +1,8 @@
+import { bumpCacheTags, forumAnnouncementsTag, forumTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
 import type { Logger } from "@bulletin/config";
 import type { ContentVersions, Emoticon, MentionResolver, ReplaceWords } from "@bulletin/content";
 import { currentContentVersions, renderContent, renderSnapshot } from "@bulletin/content";
-import { listStaleQuoteSnapshots } from "@bulletin/domain/content";
+import { listStaleQuoteSnapshots, quoteSnapshotTags } from "@bulletin/domain/content";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
@@ -72,19 +73,34 @@ export const quoteSnapshotRerenderSource: ContentRerenderSource = {
     };
   },
   async save(sql, row, value) {
-    const rows = (await sql`
-      UPDATE core.quote_snapshots
-      SET body_html = ${value.bodyHtml},
-        render_version = ${value.renderVersion},
-        sanitiser_version = ${value.sanitiserVersion}
-      WHERE id = ${row.id}
-        AND body_md = ${row.bodyMd}
-        AND render_version = ${row.renderVersion}
-        AND sanitiser_version = ${row.sanitiserVersion}
-      RETURNING id
-    `) as Array<{ id: string }>;
+    return sql.begin(async (tx) => {
+      const rows = (await tx`
+        UPDATE core.quote_snapshots
+        SET body_html = ${value.bodyHtml},
+          render_version = ${value.renderVersion},
+          sanitiser_version = ${value.sanitiserVersion}
+        WHERE id = ${row.id}
+          AND body_md = ${row.bodyMd}
+          AND render_version = ${row.renderVersion}
+          AND sanitiser_version = ${row.sanitiserVersion}
+        RETURNING source_kind, source_id::text AS source_id
+      `) as Array<{ source_kind: string; source_id: string }>;
 
-    return rows.length > 0;
+      const source = rows[0];
+
+      if (
+        source !== undefined &&
+        (source.source_kind === "post" || source.source_kind === "message")
+      ) {
+        const tags = quoteSnapshotTags({ kind: source.source_kind, id: source.source_id });
+
+        if (tags.length > 0) {
+          await bumpCacheTags(tx, tags);
+        }
+      }
+
+      return rows.length > 0;
+    });
   },
 };
 
@@ -156,20 +172,26 @@ export const forumRulesRerenderSource: ContentRerenderSource = {
     );
   },
   async save(sql, row, value) {
-    const rows = (await sql`
-      UPDATE core.forums
-      SET rules_html = ${value.bodyHtml},
-        rules_text = ${value.bodyText ?? ""},
-        rules_render_version = ${value.renderVersion},
-        rules_sanitiser_version = ${value.sanitiserVersion}
-      WHERE id = ${row.id}
-        AND rules = ${row.bodyMd}
-        AND rules_render_version = ${row.renderVersion}
-        AND rules_sanitiser_version = ${row.sanitiserVersion}
-      RETURNING id
-    `) as Array<{ id: string }>;
+    return sql.begin(async (tx) => {
+      const rows = (await tx`
+        UPDATE core.forums
+        SET rules_html = ${value.bodyHtml},
+          rules_text = ${value.bodyText ?? ""},
+          rules_render_version = ${value.renderVersion},
+          rules_sanitiser_version = ${value.sanitiserVersion}
+        WHERE id = ${row.id}
+          AND rules = ${row.bodyMd}
+          AND rules_render_version = ${row.renderVersion}
+          AND rules_sanitiser_version = ${row.sanitiserVersion}
+        RETURNING id
+      `) as Array<{ id: string }>;
 
-    return rows.length > 0;
+      if (rows.length > 0) {
+        await bumpCacheTags(tx, [forumTag(row.id)]);
+      }
+
+      return rows.length > 0;
+    });
   },
 };
 
@@ -208,20 +230,41 @@ export const announcementRerenderSource: ContentRerenderSource = {
     );
   },
   async save(sql, row, value) {
-    const rows = (await sql`
-      UPDATE core.announcements
-      SET body_html = ${value.bodyHtml},
-        body_text = ${value.bodyText ?? ""},
-        render_version = ${value.renderVersion},
-        sanitiser_version = ${value.sanitiserVersion}
-      WHERE id = ${row.id}
-        AND body = ${row.bodyMd}
-        AND render_version = ${row.renderVersion}
-        AND sanitiser_version = ${row.sanitiserVersion}
-      RETURNING id
-    `) as Array<{ id: string }>;
+    return sql.begin(async (tx) => {
+      const rows = (await tx`
+        UPDATE core.announcements
+        SET body_html = ${value.bodyHtml},
+          body_text = ${value.bodyText ?? ""},
+          render_version = ${value.renderVersion},
+          sanitiser_version = ${value.sanitiserVersion}
+        WHERE id = ${row.id}
+          AND body = ${row.bodyMd}
+          AND render_version = ${row.renderVersion}
+          AND sanitiser_version = ${row.sanitiserVersion}
+        RETURNING id, scope
+      `) as Array<{ id: string; scope: string }>;
 
-    return rows.length > 0;
+      if (rows.length > 0) {
+        const forums = (await tx`
+          SELECT DISTINCT f.id::text AS id
+          FROM core.announcement_targets t
+          JOIN core.forums target ON target.id = t.forum_id
+          JOIN core.forums f
+            ON f.id = t.forum_id OR (t.include_subforums AND f.path <@ target.path)
+          WHERE t.announcement_id = ${row.id}
+        `) as Array<{ id: string }>;
+        const tags = [
+          ...(rows[0]?.scope === "global" ? [GLOBAL_CACHE_TAGS.announcements] : []),
+          ...forums.map((forum) => forumAnnouncementsTag(forum.id)),
+        ];
+
+        if (tags.length > 0) {
+          await bumpCacheTags(tx, tags);
+        }
+      }
+
+      return rows.length > 0;
+    });
   },
 };
 

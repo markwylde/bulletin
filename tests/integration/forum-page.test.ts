@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRenderCache, createTagVersions, type TagVersionSource } from "@bulletin/cache";
+import { forumRulesRerenderSource, runContentRerenderJob } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
   groupsSeedModule,
@@ -359,6 +360,61 @@ integrationDescribe("forum page", () => {
       if (page.kind === "page") {
         expect(page.html).toContain("Old safe rules");
         expect(page.html).not.toContain("<script>alert(1)</script>");
+      }
+    });
+  }, 30_000);
+
+  test("re-rendering rules invalidates the warm forum page", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberSession(database, "admin");
+      expect(
+        await saveForumSettings(database.sql, admin.memberId, {
+          id: "2",
+          prefixIds: [],
+          rules: "Old **rules**",
+        }),
+      ).toEqual({ ok: true });
+
+      const versions = await createTagVersions({ sql: database.sql });
+      const cache = createRenderCache({ tags: versions });
+      const member = await memberSession(database, "member-1");
+      const href = await forumHref(database, "2");
+
+      try {
+        const first = await render(database, href, member, { cache, tagVersions: versions });
+        expect(first.kind).toBe("page");
+        expect(first.cache).toBe("miss");
+
+        if (first.kind === "page") {
+          expect(first.html).toContain("Old <strong>rules</strong>");
+        }
+
+        // Only the re-render job writes from here: it must invalidate the fragment it updates.
+        await database.sql`
+          UPDATE core.forums
+          SET rules = 'New **rules**', rules_render_version = 1
+          WHERE id = 2
+        `;
+        const job = await runContentRerenderJob(database.sql, {
+          sources: [forumRulesRerenderSource],
+        });
+        expect(job.rerendered).toBe(1);
+        await versions.refresh();
+
+        const second = await render(database, href, member, { cache, tagVersions: versions });
+        expect(second.kind).toBe("page");
+        expect(second.cache).toBe("miss");
+
+        if (second.kind === "page") {
+          expect(second.html).toContain("New <strong>rules</strong>");
+          expect(second.html).not.toContain("Old <strong>rules</strong>");
+        }
+
+        // The refreshed fragment is cacheable again.
+        const third = await render(database, href, member, { cache, tagVersions: versions });
+        expect(third.cache).toBe("hit");
+      } finally {
+        await versions.close();
       }
     });
   }, 30_000);

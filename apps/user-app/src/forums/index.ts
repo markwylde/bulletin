@@ -1,4 +1,5 @@
 import { ensureCurrentRendering } from "@bulletin/content";
+import { listEmbedProviders } from "@bulletin/domain/content";
 import { type ForumRecord, listVisibleForums } from "@bulletin/domain/forums";
 import {
   announcementAudienceClass,
@@ -167,6 +168,7 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
     snapshot,
   });
   const notices = announcementsEnabled ? globalAnnouncements(announcements, now) : [];
+  const embedProviders = await listEmbedProviders(input.sql);
   const noticeViews = await Promise.all(
     notices.map(async (announcement) => ({
       announcement,
@@ -177,7 +179,7 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
           renderVersion: announcement.renderVersion,
           sanitiserVersion: announcement.sanitiserVersion,
         },
-        { profile: "rules" },
+        { profile: "rules", embedProviders },
       ),
     })),
   );

@@ -11,9 +11,13 @@ import {
 } from "@bulletin/domain/content";
 import { opaqueKey, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
+import sharp from "sharp";
 import { writeAdminLog } from "./admin-log.ts";
 
 const MAX_IMAGE_BYTES = 256 * 1024;
+const MAX_IMAGE_DIMENSION = 256;
+const MAX_INPUT_PIXELS = 4096 * 4096;
+const INPUT_FORMATS = new Set(["png", "jpeg", "gif", "webp"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -23,6 +27,38 @@ function contentType(value: unknown): EmoticonContentType | null {
   return typeof value === "string" && (EMOTICON_CONTENT_TYPES as readonly string[]).includes(value)
     ? (value as EmoticonContentType)
     : null;
+}
+
+export interface ProcessedEmoticonImage {
+  readonly bytes: Uint8Array;
+  readonly contentType: "image/png";
+}
+
+/**
+ * Decodes and re-encodes every upload as a PNG. Re-encoding drops EXIF (including GPS
+ * location) and every other metadata block, and only formats we can actually decode are
+ * accepted, so the declared content type is never trusted (ADR 0012).
+ */
+export async function processEmoticonImage(bytes: Uint8Array): Promise<ProcessedEmoticonImage> {
+  const image = sharp(bytes, { failOn: "error", limitInputPixels: MAX_INPUT_PIXELS, pages: 1 });
+  const { format, width, height } = await image.metadata();
+
+  if (format === undefined || !INPUT_FORMATS.has(format) || width === 0 || height === 0) {
+    throw new Error(`Unsupported emoticon image: ${format ?? "unknown"}`);
+  }
+
+  const output = await image
+    .rotate()
+    .resize({
+      width: MAX_IMAGE_DIMENSION,
+      height: MAX_IMAGE_DIMENSION,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .png({ compressionLevel: 9 })
+    .toBuffer({ resolveWithObject: true });
+
+  return { bytes: new Uint8Array(output.data), contentType: "image/png" };
 }
 
 function imageBytes(value: unknown): Uint8Array | null {
@@ -154,10 +190,11 @@ export async function mutateEmoticon(
 
       if (type !== null && bytes !== null) {
         key = opaqueKey("emoticon");
-        finalType = type;
 
         try {
-          await storage.put(key, bytes, { contentType: type });
+          const processed = await processEmoticonImage(bytes);
+          finalType = processed.contentType;
+          await storage.put(key, processed.bytes, { contentType: processed.contentType });
         } catch {
           return { ok: false, code: "invalid", fields: ["image"] };
         }
