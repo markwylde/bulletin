@@ -10,7 +10,12 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import { createServerT } from "@bulletin/i18n";
-import { loadDefaultThemeTemplates, loadHookFragments, loadTheme } from "@bulletin/templates";
+import {
+  loadDefaultThemeTemplates,
+  loadDemoHookFragments,
+  loadHookFragments,
+  loadTheme,
+} from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { buildAccountPage } from "../../apps/user-app/src/account/page.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
@@ -135,8 +140,10 @@ integrationDescribe("default theme templates", () => {
       }
 
       const hooks = await loadHookFragments(database.sql, SEEDED_PLUGIN_GENERATION);
+      const repoHooks = await loadDemoHookFragments();
 
-      expect(hooks["demo.after.topics"]).toContain("data-demo-hook");
+      expect(theme.theme.version).toBeGreaterThanOrEqual(1);
+      expect(hooks).toEqual(repoHooks);
     });
   });
 
