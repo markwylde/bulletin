@@ -118,6 +118,19 @@ integrationDescribe("flags seed", () => {
       });
       expect(byKey.get("compactTopicList")?.ageDays).toBeGreaterThanOrEqual(139);
 
+      const tracked = (await sql`
+        SELECT key, fully_on_since
+        FROM core.feature_flags
+        WHERE key IN ('compactTopicList', 'newEditor', 'quickReply')
+        ORDER BY key
+      `) as Array<{ key: string; fully_on_since: Date | string | null }>;
+      expect(tracked.map((row) => row.key)).toEqual([
+        "compactTopicList",
+        "newEditor",
+        "quickReply",
+      ]);
+      expect(tracked.map((row) => row.fully_on_since === null)).toEqual([false, true, true]);
+
       // A second start does not reseed, so staff edits survive (ADR 0002).
       await sql`
         UPDATE core.feature_flags

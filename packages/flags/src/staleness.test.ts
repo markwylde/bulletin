@@ -5,6 +5,7 @@ import {
   flagAgeDays,
   isFullyOn,
   isStaleFlag,
+  nextFullyOnSince,
   STALE_FLAG_DAYS,
   STALE_FLAG_MS,
 } from "./staleness.ts";
@@ -136,6 +137,38 @@ describe("flag staleness", () => {
         NOW,
       ),
     ).toBe(false);
+  });
+
+  test("keeps the fully-on instant across saves that stay fully on", () => {
+    const since = daysAgo(120);
+    const enabled = flag([{ type: "percentage", percent: 50, value: true }]);
+    const now = new Date(NOW);
+
+    // An identical save keeps the original instant and the removal highlight.
+    expect(nextFullyOnSince(enabled, enabled, since, now)).toBe(since);
+    expect(isStaleFlag(enabled, since, NOW)).toBe(true);
+
+    // An edit that keeps the flag fully enabled also keeps the instant.
+    const edited = flag([{ type: "percentage", percent: 80, value: true }]);
+    expect(nextFullyOnSince(enabled, edited, since, now)).toBe(since);
+    expect(isStaleFlag(edited, since, NOW)).toBe(true);
+  });
+
+  test("resets the fully-on instant when a save turns the flag off and back on", () => {
+    const since = daysAgo(120);
+    const enabled = flag();
+    const disabled = flag([], false);
+    const now = new Date(NOW);
+
+    expect(nextFullyOnSince(enabled, disabled, since, now)).toBeNull();
+    expect(isStaleFlag(disabled, since, NOW)).toBe(false);
+
+    // Becoming fully on again starts a new clock, so it is not immediately stale.
+    expect(nextFullyOnSince(disabled, enabled, null, now)).toBe(now);
+    expect(isStaleFlag(enabled, now, NOW)).toBe(false);
+
+    // A stale instantaneous value is ignored when the flag is not fully on.
+    expect(isStaleFlag(disabled, since, NOW)).toBe(false);
   });
 
   test("reports the age of the flag in whole days", () => {

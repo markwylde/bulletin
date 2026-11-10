@@ -106,13 +106,34 @@ export function flagAgeDays(createdAt: Date, now: number = Date.now()): number {
 }
 
 /**
- * Only `updated_at` is stored, so "100% on for over 90 days" is measured from the last rule
- * change: a flag that is fully on and has not been touched for 90 days is ready for removal.
+ * The `fully_on_since` value after a write. The instant is preserved while the flag stays
+ * fully on — an identical save or an edit that keeps it enabled must not reset the clock —
+ * and restarts when a flag becomes fully on again.
+ */
+export function nextFullyOnSince(
+  before: FlagDefinition,
+  after: FlagDefinition,
+  current: Date | null,
+  now: Date = new Date(),
+): Date | null {
+  if (!isFullyOn(after)) {
+    return null;
+  }
+
+  return isFullyOn(before) && current !== null ? current : now;
+}
+
+/**
+ * A flag is ready for removal when it has been fully on since an instant at least 90 days ago.
+ * `fully_on_since` is tracked independently of `updated_at`, so unrelated rule edits do not
+ * hide the highlight (ADR 0010: flag cleanup is part of a feature's definition of done).
  */
 export function isStaleFlag(
   definition: FlagDefinition,
-  updatedAt: Date,
+  fullyOnSince: Date | null,
   now: number = Date.now(),
 ): boolean {
-  return isFullyOn(definition) && now - updatedAt.getTime() >= STALE_FLAG_MS;
+  return (
+    isFullyOn(definition) && fullyOnSince !== null && now - fullyOnSince.getTime() >= STALE_FLAG_MS
+  );
 }

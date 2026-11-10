@@ -8,6 +8,7 @@ import {
   type FlagRuntime,
   type FlagViewer,
   GUEST_VIEWER,
+  isFullyOn,
   parseFlagRules,
 } from "@bulletin/flags";
 import type { SQL } from "bun";
@@ -16,6 +17,8 @@ import type { SQL } from "bun";
 export interface StoredFlag extends FlagDefinition {
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** When the flag last became fully on; drives the removal highlight (ADR 0010). */
+  readonly fullyOnSince: Date | null;
 }
 
 interface FlagRow {
@@ -28,6 +31,7 @@ interface FlagRow {
   rules: unknown;
   created_at: Date | string;
   updated_at: Date | string;
+  fully_on_since: Date | string | null;
 }
 
 function toDate(value: Date | string): Date {
@@ -45,6 +49,7 @@ function toStoredFlag(row: FlagRow): StoredFlag {
     rules: parseFlagRules(row.rules),
     createdAt: toDate(row.created_at),
     updatedAt: toDate(row.updated_at),
+    fullyOnSince: row.fully_on_since === null ? null : toDate(row.fully_on_since),
   };
 }
 
@@ -61,7 +66,7 @@ export async function readFlagVersion(sql: SQL): Promise<string> {
 export async function loadStoredFlags(sql: SQL): Promise<StoredFlag[]> {
   const rows = (await sql`
     SELECT key, description, owner, default_value, affects_render, client_visible,
-           rules, created_at, updated_at
+           rules, created_at, updated_at, fully_on_since
     FROM core.feature_flags
     ORDER BY key
   `) as FlagRow[];
@@ -93,14 +98,17 @@ export async function syncFlagDefinitions(
 
   await sql.begin(async (tx) => {
     for (const definition of definitions) {
+      // A new code-declared flag has no rules, so its code default decides full enablement.
+      const fullyOnSince = isFullyOn(definition) ? new Date() : null;
       const rows = (await tx`
         INSERT INTO core.feature_flags (
-          key, description, owner, default_value, affects_render, client_visible, rules
+          key, description, owner, default_value, affects_render, client_visible, rules,
+          fully_on_since
         )
         VALUES (
           ${definition.key}, ${definition.description}, ${definition.owner},
           ${definition.defaultValue}, ${definition.affectsRender}, ${definition.clientVisible},
-          ${definition.rules}::jsonb
+          ${definition.rules}::jsonb, ${fullyOnSince}
         )
         ON CONFLICT (key) DO NOTHING
         RETURNING key

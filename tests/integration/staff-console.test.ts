@@ -863,16 +863,17 @@ integrationDescribe("staff flags", () => {
     await database.sql`
       INSERT INTO core.feature_flags (
         key, description, owner, default_value, affects_render, client_visible, rules,
-        created_at, updated_at
+        created_at, updated_at, fully_on_since
       )
       VALUES
         (
           'freshFlag', 'Changed this week.', 'core', false, false, true, '[]'::jsonb,
-          now() - interval '3 days', now() - interval '3 days'
+          now() - interval '3 days', now() - interval '3 days', NULL
         ),
         (
           'staleFlag', 'Fully on for over ninety days.', 'core', true, false, false,
-          '[]'::jsonb, now() - interval '130 days', now() - interval '120 days'
+          '[]'::jsonb, now() - interval '130 days', now() - interval '120 days',
+          now() - interval '120 days'
         )
     `;
   }
@@ -982,7 +983,7 @@ integrationDescribe("staff flags", () => {
           rules: unknown[];
           stale: boolean;
         };
-        expect(savedFlag).toMatchObject({ key: "staleFlag", rules, stale: false });
+        expect(savedFlag).toMatchObject({ key: "staleFlag", rules, stale: true });
 
         expect(await readFlagVersion(database.sql)).toBe("1");
 
@@ -1033,8 +1034,76 @@ integrationDescribe("staff flags", () => {
         };
         expect(list.flags.find((flag) => flag.key === "staleFlag")).toMatchObject({
           rules,
-          stale: false,
+          stale: true,
         });
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("keeps the removal highlight across saves that stay fully on", async () => {
+    await withDb("staff_flags_stale_save", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        await seedFlags(database);
+        const adminId = await createMember(database, "Stale Flag Admin", ["administrators"]);
+        const admin = await createSession(database, adminId);
+
+        const readFullyOnSince = async (): Promise<string | null> => {
+          const [row] = (await database.sql`
+            SELECT fully_on_since FROM core.feature_flags WHERE key = 'staleFlag'
+          `) as Array<{ fully_on_since: Date | string | null }>;
+
+          return row?.fully_on_since === null || row?.fully_on_since === undefined
+            ? null
+            : new Date(row.fully_on_since).toISOString();
+        };
+
+        const originalSince = await readFullyOnSince();
+        expect(originalSince).not.toBeNull();
+
+        // An identical save keeps the flag fully on and must not reset the highlight.
+        const identical = await callRoute(api, route("flags.rules.update"), admin, {
+          key: "staleFlag",
+          rules: [],
+        });
+        expect(identical.status).toBe(200);
+        expect(await identical.json()).toMatchObject({ stale: true });
+        expect(await readFullyOnSince()).toBe(originalSince);
+
+        // An edit that keeps the flag fully enabled must not reset it either.
+        const fullyOnRules = [{ type: "percentage", percent: 50, value: true }];
+        const edited = await callRoute(api, route("flags.rules.update"), admin, {
+          key: "staleFlag",
+          rules: fullyOnRules,
+        });
+        expect(edited.status).toBe(200);
+        expect(await edited.json()).toMatchObject({ stale: true });
+        expect(await readFullyOnSince()).toBe(originalSince);
+
+        // Turning the flag off clears the instant and the highlight.
+        const off = await callRoute(api, route("flags.rules.update"), admin, {
+          key: "staleFlag",
+          rules: [{ type: "percentage", percent: 50, value: false }],
+        });
+        expect(off.status).toBe(200);
+        expect(await off.json()).toMatchObject({ stale: false });
+        expect(await readFullyOnSince()).toBeNull();
+
+        // Becoming fully on again starts a new clock, so it is not immediately stale.
+        const on = await callRoute(api, route("flags.rules.update"), admin, {
+          key: "staleFlag",
+          rules: fullyOnRules,
+        });
+        expect(on.status).toBe(200);
+        expect(await on.json()).toMatchObject({ stale: false });
+
+        const resetSince = await readFullyOnSince();
+        expect(resetSince).not.toBeNull();
+        expect(resetSince).not.toBe(originalSince);
       } finally {
         await auth.close();
         await sql.close();

@@ -12,12 +12,14 @@ interface SeededFlag {
   readonly rules: readonly FlagRule[];
   readonly createdDaysAgo: number;
   readonly updatedDaysAgo: number;
+  /** When the flag last became fully on, or null while it is not fully on. */
+  readonly fullyOnDaysAgo: number | null;
 }
 
 /**
  * One example of each rule shape, so a fresh `docker compose up --watch` shows a populated
- * staff section. `compactTopicList` is fully on and untouched for 120 days, which is exactly
- * the "ready for removal" highlight (spec `feature-flags`, stale flag visible).
+ * staff section. `compactTopicList` has been fully on for 120 days, which is exactly the
+ * "ready for removal" highlight (spec `feature-flags`, stale flag visible).
  */
 const FLAGS: readonly SeededFlag[] = [
   {
@@ -30,6 +32,7 @@ const FLAGS: readonly SeededFlag[] = [
     rules: [{ type: "group", groups: ["super_moderators"], value: true }],
     createdDaysAgo: 24,
     updatedDaysAgo: 6,
+    fullyOnDaysAgo: null,
   },
   {
     key: "quickReply",
@@ -41,6 +44,7 @@ const FLAGS: readonly SeededFlag[] = [
     rules: [{ type: "percentage", percent: 50, value: true }],
     createdDaysAgo: 40,
     updatedDaysAgo: 12,
+    fullyOnDaysAgo: null,
   },
   {
     key: "compactTopicList",
@@ -52,6 +56,7 @@ const FLAGS: readonly SeededFlag[] = [
     rules: [],
     createdDaysAgo: 140,
     updatedDaysAgo: 120,
+    fullyOnDaysAgo: 120,
   },
 ];
 
@@ -63,13 +68,17 @@ export const flagsSeedModule: SeedModule = {
       await sql`
         INSERT INTO core.feature_flags (
           key, description, owner, default_value, affects_render, client_visible, rules,
-          created_at, updated_at
+          created_at, updated_at, fully_on_since
         )
         VALUES (
           ${flag.key}, ${flag.description}, ${flag.owner}, ${flag.defaultValue},
           ${flag.affectsRender}, ${flag.clientVisible}, ${flag.rules}::jsonb,
           now() - make_interval(days => ${flag.createdDaysAgo}::int),
-          now() - make_interval(days => ${flag.updatedDaysAgo}::int)
+          now() - make_interval(days => ${flag.updatedDaysAgo}::int),
+          CASE
+            WHEN ${flag.fullyOnDaysAgo}::int IS NULL THEN NULL
+            ELSE now() - make_interval(days => ${flag.fullyOnDaysAgo}::int)
+          END
         )
         ON CONFLICT (key) DO NOTHING
       `;

@@ -61,7 +61,9 @@ integrationDescribe("feature flags", () => {
         clientVisible: true,
         rules: [],
       });
+      expect(first[0]?.fullyOnSince).toBeInstanceOf(Date);
       expect(first[0]?.createdAt).toBeInstanceOf(Date);
+      expect(first[1]?.fullyOnSince).toBeNull();
       expect(first[1]?.createdAt).toBeInstanceOf(Date);
 
       await sql`

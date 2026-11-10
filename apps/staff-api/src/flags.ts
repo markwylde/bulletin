@@ -3,6 +3,7 @@ import {
   type FlagDefinition,
   flagAgeDays,
   isStaleFlag,
+  nextFullyOnSince,
   parseFlagRules,
   parseFlagRulesInput,
 } from "@bulletin/flags";
@@ -18,7 +19,7 @@ export interface FlagAdminView extends FlagDefinition {
   readonly updatedAt: string;
   /** Whole days since the flag first appeared in the staff app. */
   readonly ageDays: number;
-  /** Fully on and untouched for 90 days, so ready for removal. */
+  /** Fully on since at least 90 days ago, so ready for removal. */
   readonly stale: boolean;
 }
 
@@ -32,6 +33,7 @@ interface FlagRow {
   rules: unknown;
   created_at: Date | string;
   updated_at: Date | string;
+  fully_on_since: Date | string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -42,8 +44,8 @@ function toDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
-function toAdminView(row: FlagRow, now: number): FlagAdminView {
-  const definition: FlagDefinition = {
+function toDefinition(row: FlagRow): FlagDefinition {
+  return {
     key: row.key,
     description: row.description,
     owner: row.owner,
@@ -52,22 +54,26 @@ function toAdminView(row: FlagRow, now: number): FlagAdminView {
     clientVisible: row.client_visible,
     rules: parseFlagRules(row.rules),
   };
+}
+
+function toAdminView(row: FlagRow, now: number): FlagAdminView {
+  const definition = toDefinition(row);
   const createdAt = toDate(row.created_at);
-  const updatedAt = toDate(row.updated_at);
+  const fullyOnSince = row.fully_on_since === null ? null : toDate(row.fully_on_since);
 
   return {
     ...definition,
     createdAt: createdAt.toISOString(),
-    updatedAt: updatedAt.toISOString(),
+    updatedAt: toDate(row.updated_at).toISOString(),
     ageDays: flagAgeDays(createdAt, now),
-    stale: isStaleFlag(definition, updatedAt, now),
+    stale: isStaleFlag(definition, fullyOnSince, now),
   };
 }
 
 export async function listFlags(sql: SQL, now: number = Date.now()): Promise<FlagAdminView[]> {
   const rows = (await sql`
     SELECT key, description, owner, default_value, affects_render, client_visible,
-           rules, created_at, updated_at
+           rules, created_at, updated_at, fully_on_since
     FROM core.feature_flags
     ORDER BY key
   `) as FlagRow[];
@@ -106,7 +112,7 @@ export async function saveFlagRules(
   return sql.begin(async (tx) => {
     const existing = (await tx`
       SELECT key, description, owner, default_value, affects_render, client_visible,
-             rules, created_at, updated_at
+             rules, created_at, updated_at, fully_on_since
       FROM core.feature_flags
       WHERE key = ${input.key}
       FOR UPDATE
@@ -118,13 +124,23 @@ export async function saveFlagRules(
       return { ok: false, code: "not_found" } as const;
     }
 
+    const beforeDefinition = toDefinition(before);
+    const afterDefinition: FlagDefinition = { ...beforeDefinition, rules: parsed.rules };
+    const fullyOnSince = nextFullyOnSince(
+      beforeDefinition,
+      afterDefinition,
+      before.fully_on_since === null ? null : toDate(before.fully_on_since),
+      new Date(now),
+    );
+
     const updated = (await tx`
       UPDATE core.feature_flags
       SET rules = ${parsed.rules}::jsonb,
+          fully_on_since = ${fullyOnSince},
           updated_at = now()
       WHERE key = ${input.key}
       RETURNING key, description, owner, default_value, affects_render, client_visible,
-                rules, created_at, updated_at
+                rules, created_at, updated_at, fully_on_since
     `) as FlagRow[];
     const after = updated[0];
 

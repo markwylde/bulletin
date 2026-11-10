@@ -137,6 +137,28 @@ integrationDescribe("staff feature flags", () => {
     });
   }, 180_000);
 
+  test("lists flags as cards and edits rules at 390 px", async () => {
+    await withPage({ url: `${STAFF_URL}/flags`, viewport: "mobile390" }, async (view) => {
+      await editFlag(view);
+
+      expect(
+        await view.evaluate<string>(
+          'getComputedStyle(document.querySelector("[data-card-view]")).display',
+        ),
+      ).toBe("flex");
+      expect(
+        await view.evaluate<string>(
+          'getComputedStyle(document.querySelector("[data-table-view]")).display',
+        ),
+      ).toBe("none");
+      expect(
+        await view.evaluate<boolean>(
+          "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
+        ),
+      ).toBe(true);
+    });
+  }, 180_000);
+
   test("removes the final rule, saves the empty list and keeps it after a reload", async () => {
     await withPage({ url: `${STAFF_URL}/flags`, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "admin");
