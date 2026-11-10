@@ -8,10 +8,14 @@ import {
 import {
   consumeRateBucket,
   PRESENCE_REFRESH_MS,
+  RATE_BUCKET_RETENTION_MS,
+  RATE_KEY_ROTATION_MS,
+  rateLimitKey,
   recordVisit,
   VIEW_DEDUPE_MS,
 } from "@bulletin/domain/visits";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { beaconResponse } from "../../apps/user-api/src/beacon.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -144,7 +148,14 @@ integrationDescribe("read-path visits", () => {
   test("rate buckets count per window and reject over the limit", async () => {
     await withDb(async (database) => {
       const now = new Date("2026-11-10T12:00:00Z");
-      const options = { key: "beacon:203.0.113.9", limit: 2, windowMs: 60_000, now };
+      const options = {
+        scope: "beacon",
+        identity: "203.0.113.9",
+        secret: "test-secret",
+        limit: 2,
+        windowMs: 60_000,
+        now,
+      };
 
       expect(await consumeRateBucket(database.sql, options)).toBe(true);
       expect(await consumeRateBucket(database.sql, options)).toBe(true);
@@ -156,6 +167,78 @@ integrationDescribe("read-path visits", () => {
           now: new Date(now.getTime() + 61_000),
         }),
       ).toBe(true);
+    });
+  });
+
+  test("the beacon stores a rotating digest of the IP, never the address", async () => {
+    await withDb(async (database) => {
+      const now = new Date("2026-11-10T12:00:00Z");
+      const ip = "203.0.113.9";
+      const response = await beaconResponse(
+        database.sql,
+        new Request("http://bulletin.localhost/api/beacon", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-forwarded-for": ip,
+            origin: "http://bulletin.localhost",
+          },
+          body: JSON.stringify({ ctx: "topic:201" }),
+        }),
+        {
+          session: null,
+          nodeEnv: "development",
+          rateLimitSecret: "test-secret",
+          now,
+        },
+      );
+
+      expect(response.status).toBe(204);
+
+      const rows = (await database.sql`
+        SELECT key FROM core.rate_buckets
+      `) as Array<{ key: string }>;
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.key).not.toContain(ip);
+      expect(rows[0]?.key).not.toContain("203.0.113");
+      expect(rows[0]?.key).toBe(
+        rateLimitKey({ secret: "test-secret", scope: "beacon", identity: ip, now }),
+      );
+      // The digest rotates, so yesterday's counter cannot be linked to today's address.
+      expect(
+        rateLimitKey({
+          secret: "test-secret",
+          scope: "beacon",
+          identity: ip,
+          now: new Date(now.getTime() + RATE_KEY_ROTATION_MS),
+        }),
+      ).not.toBe(rows[0]?.key);
+    });
+  });
+
+  test("counters outside the retention window are expired", async () => {
+    await withDb(async (database) => {
+      const first = new Date("2026-11-10T12:00:00Z");
+      const options = {
+        scope: "beacon",
+        identity: "203.0.113.9",
+        secret: "test-secret",
+        limit: 10,
+        windowMs: 60_000,
+      };
+
+      await consumeRateBucket(database.sql, { ...options, now: first });
+      await consumeRateBucket(database.sql, {
+        ...options,
+        now: new Date(first.getTime() + RATE_BUCKET_RETENTION_MS + 60_000),
+      });
+
+      const rows = (await database.sql`
+        SELECT key FROM core.rate_buckets
+      `) as Array<{ key: string }>;
+
+      expect(rows).toHaveLength(1);
     });
   });
 

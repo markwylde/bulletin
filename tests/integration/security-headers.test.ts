@@ -49,7 +49,15 @@ integrationDescribe("security headers", () => {
 
       const nonce = nonceFrom(response.headers.get("content-security-policy"));
       const body = await response.text();
-      expect(body).toContain(`nonce="${nonce}"`);
+      // Every inline executable script must carry this response's nonce. A page with none is
+      // fine; data blocks are not executable and are exempt.
+      for (const tag of body.match(/<script\b[^>]*>/g) ?? []) {
+        if (/\bsrc=/.test(tag) || /type="application\/json"/.test(tag)) {
+          continue;
+        }
+
+        expect(tag).toContain(`nonce="${nonce}"`);
+      }
     });
 
     test(`${app.name} API responses carry security headers`, async () => {

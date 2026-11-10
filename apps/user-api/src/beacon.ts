@@ -22,6 +22,8 @@ const NO_STORE = { "cache-control": "no-store" } as const;
 export interface BeaconOptions {
   readonly session: SessionRecord | null;
   readonly nodeEnv: "development" | "test" | "production";
+  /** HMAC key for the per-IP limit; only a rotating digest reaches `core` (ADR 0012). */
+  readonly rateLimitSecret: string;
   readonly now?: Date;
 }
 
@@ -61,7 +63,10 @@ export async function beaconResponse(
   }
 
   const allowed = await consumeRateBucket(sql, {
-    key: `beacon:${clientIp(request) ?? "unknown"}`,
+    scope: "beacon",
+    // Never the raw IP: `core.rate_buckets` is readable by the app roles (ADR 0012).
+    identity: clientIp(request) ?? "unknown",
+    secret: options.rateLimitSecret,
     limit: BEACON_RATE_LIMIT,
     windowMs: BEACON_RATE_WINDOW_MS,
     ...(options.now === undefined ? {} : { now: options.now }),

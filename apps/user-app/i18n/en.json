@@ -70,6 +70,7 @@
   "language.suggestion.message": "Your browser prefers this language:",
   "theme.account": "Account",
   "theme.breadcrumbs": "Breadcrumb",
+  "theme.conversations": "Conversations",
   "theme.empty.body": "This page has nothing to show.",
   "theme.empty.title": "Nothing here yet",
   "theme.error.forbidden": "You do not have access to this page.",
@@ -79,6 +80,7 @@
   "theme.footer": "Bulletin community",
   "theme.home": "Home",
   "theme.nav": "Main navigation",
+  "theme.notifications": "Notifications",
   "theme.skipToContent": "Skip to content",
   "user.placeholder.body": "The Bulletin community is being prepared.",
   "user.placeholder.title": "Bulletin"

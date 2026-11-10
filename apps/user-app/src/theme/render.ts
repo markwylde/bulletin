@@ -1,3 +1,4 @@
+import { writeSystemAudit } from "@bulletin/domain/audit";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { BP_COOKIE_NAME, type ColorScheme, parseBpCookie } from "@bulletin/i18n";
@@ -8,7 +9,9 @@ import {
   loadHookFragments,
   loadTheme,
   missingRenderedIslands,
+  type RenderedThemePage,
   renderThemePage,
+  TemplateRenderError,
   type TemplateRuntime,
   type TemplateViolation,
   type ThemeRegion,
@@ -148,6 +151,83 @@ export class ThemeNotInstalledError extends Error {
   }
 }
 
+/**
+ * A template failure can repeat on every cache miss, so one admin-log row per signature per
+ * window is enough; the goal is that staff see it, not a log of every request.
+ */
+const FAILURE_REPORT_INTERVAL_MS = 5 * 60 * 1_000;
+const MAX_REPORTED_SIGNATURES = 500;
+const reportedFailures = new Map<string, number>();
+
+/** Test and operations seam: forget throttled signatures so the next failure reports again. */
+export function resetTemplateFailureReports(): void {
+  reportedFailures.clear();
+}
+
+interface FailureReport {
+  readonly action: string;
+  readonly signature: string;
+  readonly summary: Readonly<Record<string, unknown>>;
+}
+
+function shouldReport(signature: string, now: number): boolean {
+  const last = reportedFailures.get(signature);
+
+  if (last !== undefined && now - last < FAILURE_REPORT_INTERVAL_MS) {
+    return false;
+  }
+
+  reportedFailures.set(signature, now);
+
+  if (reportedFailures.size > MAX_REPORTED_SIGNATURES) {
+    for (const key of [...reportedFailures.keys()].slice(
+      0,
+      reportedFailures.size - MAX_REPORTED_SIGNATURES,
+    )) {
+      reportedFailures.delete(key);
+    }
+  }
+
+  return true;
+}
+
+/** Reports failures to the staff app's admin log; a reporting error never breaks a page. */
+async function recordFailures(sql: SQL, failures: readonly FailureReport[]): Promise<void> {
+  const now = Date.now();
+  const seen = new Set<string>();
+
+  for (const failure of failures) {
+    if (seen.has(failure.signature) || !shouldReport(failure.signature, now)) {
+      continue;
+    }
+
+    seen.add(failure.signature);
+
+    try {
+      await writeSystemAudit(sql, {
+        action: failure.action,
+        targetType: "theme_template",
+        summary: failure.summary,
+      });
+    } catch (error) {
+      console.warn("[theme] could not record the template failure", error);
+    }
+  }
+}
+
+function violationReports(violations: readonly TemplateViolation[]): readonly FailureReport[] {
+  return violations.map((violation) => ({
+    action: `theme.${violation.kind}`,
+    signature: `${violation.kind}|${violation.theme}|${violation.template}|${violation.message}`,
+    summary: {
+      theme: violation.theme,
+      template: violation.template,
+      kind: violation.kind,
+      message: violation.message,
+    },
+  }));
+}
+
 function report(violations: readonly TemplateViolation[], errors: string[]): void {
   for (const violation of violations) {
     errors.push(
@@ -170,30 +250,62 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
 
   const generation = input.pluginsGeneration ?? PLUGIN_GENERATION;
   const errors: string[] = [];
+  const failures: FailureReport[] = [];
   const runtime: TemplateRuntime = {
     translate: input.translate,
     hooks: await loadHookFragments(input.sql, generation),
     report: (message) => {
       errors.push(message);
       console.warn(`[theme] ${message}`);
+      // Island failures (unknown, invalid props, render error) arrive here, not as violations.
+      failures.push({
+        action: "theme.island.error",
+        signature: `island|${input.template}|${message}`,
+        summary: { route: input.route.route, template: input.template, message },
+      });
     },
   };
   const compiled = compiledThemes.compile(theme, generation);
-  const page = await renderThemePage({
-    engine,
-    compiled,
-    name: input.template,
-    viewModel: input.viewModel,
-    runtime,
-    regions: pageRegions(input),
-  });
+  let page: RenderedThemePage;
+
+  try {
+    page = await renderThemePage({
+      engine,
+      compiled,
+      name: input.template,
+      viewModel: input.viewModel,
+      runtime,
+      regions: pageRegions(input),
+    });
+  } catch (error) {
+    // A template that failed to compile never reaches `page.violations`; report it before the
+    // page fails so staff still see why the theme is broken.
+    if (error instanceof TemplateRenderError) {
+      await recordFailures(input.sql, violationReports(error.violations));
+    }
+
+    throw error;
+  }
 
   report(page.violations, errors);
+  failures.push(...violationReports(page.violations));
 
   for (const island of missingRenderedIslands(page.html, input.route.requiredIslands)) {
-    errors.push(`required island "${island}" is missing from route "${input.route.route}"`);
-    console.warn(`[theme] required island "${island}" missing from ${input.route.route}`);
+    const message = `required island "${island}" is missing from route "${input.route.route}"`;
+    errors.push(message);
+    console.warn(`[theme] ${message}`);
+    failures.push({
+      action: "theme.island.missing",
+      signature: `missing|${input.route.route}|${island}`,
+      summary: { route: input.route.route, island },
+    });
   }
+
+  // Compile-time violations on this theme (e.g. an over-limit override) also count even when a
+  // parent template rendered the page.
+  failures.push(...violationReports(compiled.violations));
+
+  await recordFailures(input.sql, failures);
 
   return { html: page.html, errors };
 }

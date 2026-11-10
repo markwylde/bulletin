@@ -19,6 +19,11 @@ export interface RenderResult {
   readonly html: string;
   readonly status: RenderStatus;
   readonly tags: readonly string[];
+  /**
+   * The tag versions that describe this HTML (ADR 0006). Captured before a miss renders, so an
+   * invalidation during rendering cannot pair old HTML with a newer ETag.
+   */
+  readonly versions: ReadonlyMap<string, string>;
 }
 
 export interface RenderCacheOptions {
@@ -71,7 +76,9 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
     async getOrRender(request) {
       if (!(await trusted())) {
         bypasses += 1;
-        return { html: await request.render(), status: "bypass", tags: request.tags };
+        const html = await request.render();
+
+        return { html, status: "bypass", tags: request.tags, versions: snapshot(request.tags) };
       }
 
       const current = snapshot(request.tags);
@@ -83,13 +90,13 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
         [...current].every(([tag, version]) => cached.versions.get(tag) === version)
       ) {
         hits += 1;
-        return { html: cached.html, status: "hit", tags: request.tags };
+        return { html: cached.html, status: "hit", tags: request.tags, versions: cached.versions };
       }
 
       misses += 1;
       const html = await request.render();
       store.set(request.key, { html, versions: current }, Buffer.byteLength(html, "utf8"));
-      return { html, status: "miss", tags: request.tags };
+      return { html, status: "miss", tags: request.tags, versions: current };
     },
 
     get size() {

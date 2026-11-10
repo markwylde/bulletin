@@ -70,6 +70,7 @@
   "language.suggestion.message": "Votre navigateur préfère cette langue :",
   "theme.account": "Compte",
   "theme.breadcrumbs": "Fil d’Ariane",
+  "theme.conversations": "Conversations",
   "theme.empty.body": "Cette page n’a rien à afficher.",
   "theme.empty.title": "Rien pour le moment",
   "theme.error.forbidden": "Vous n’avez pas accès à cette page.",
@@ -79,6 +80,7 @@
   "theme.footer": "Communauté Bulletin",
   "theme.home": "Accueil",
   "theme.nav": "Navigation principale",
+  "theme.notifications": "Notifications",
   "theme.skipToContent": "Aller au contenu",
   "user.placeholder.body": "La communauté Bulletin est en préparation.",
   "user.placeholder.title": "Bulletin"

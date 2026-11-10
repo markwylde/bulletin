@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createRenderCache, createTagVersions } from "@bulletin/cache";
+import {
+  bumpCacheTags,
+  createRenderCache,
+  createTagVersions,
+  readTagVersions,
+} from "@bulletin/cache";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -18,6 +23,7 @@ import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { demoContract } from "../../apps/user-app/src/contracts.ts";
 import { type DemoRouteInput, renderDemoRoute } from "../../apps/user-app/src/demo/route.ts";
 import { loadViewerFlags } from "../../apps/user-app/src/flags.ts";
+import { etagFor } from "../../apps/user-app/src/http/cache.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
 import { loadActiveTheme } from "../../apps/user-app/src/theme/render.ts";
 
@@ -260,6 +266,75 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
         expect(edited.variant).not.toBe(first.variant);
         expect(edited.etag).not.toBe(first.etag);
         expect(edited.html).toContain("data-theme-live-edit");
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
+  test("an invalidation during a render cannot produce a newer ETag for older HTML", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const realCache = createRenderCache({ tags: versions });
+        // Simulate a mutation committing while the page is being rendered.
+        const racingCache = {
+          ...realCache,
+          getOrRender: (request: Parameters<typeof realCache.getOrRender>[0]) =>
+            realCache.getOrRender({
+              ...request,
+              render: async () => {
+                const html = await request.render();
+                await bumpCacheTags(database.sql, ["forum:2"]);
+                return html;
+              },
+            }),
+        };
+        const member = await memberSession(database, "member-1");
+        const theme = await loadActiveTheme(database.sql);
+        const flags = await loadViewerFlags(database.sql, member);
+        const input = {
+          sql: database.sql,
+          boardName: "Bulletin",
+          locale: "en" as const,
+          translate,
+          session: member,
+          forumId: "2",
+          showDeleted: false,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          theme,
+          flags,
+          tagVersions: versions,
+        };
+        const before = await readTagVersions(database.sql, ["forum:2"]);
+        const result = await renderDemoRoute({ ...input, cache: racingCache });
+        const after = await readTagVersions(database.sql, ["forum:2"]);
+
+        if (result.variant === null) {
+          throw new Error("expected a cacheable variant");
+        }
+
+        // A tag that was never bumped has no row; the cache reads it as version 0.
+        const captured = new Map([["forum:2", before.get("forum:2") ?? "0"]]);
+
+        expect(after.get("forum:2")).not.toBe(captured.get("forum:2"));
+        // The ETag describes the HTML that was rendered (the pre-mutation version), so a
+        // conditional request cannot be answered with a 304 for content it has not seen.
+        expect(result.etag).toBe(etagFor(result.variant, captured));
+        expect(result.etag).not.toBe(etagFor(result.variant, after));
+
+        // The cache stored the pre-mutation versions too, so the next request re-renders.
+        await versions.refresh();
+        const next = await renderDemoRoute({ ...input, cache: realCache });
+
+        expect(next.cache).toBe("miss");
+        expect(next.etag).not.toBe(result.etag);
       } finally {
         await versions.close();
       }

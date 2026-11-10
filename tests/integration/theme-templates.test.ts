@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import {
   baseSeedModule,
   groupsSeedModule,
@@ -23,6 +23,7 @@ import {
   loadTheme,
 } from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { listAdminLog } from "../../apps/staff-api/src/admin-log.ts";
 import { buildAccountPage } from "../../apps/user-app/src/account/page.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import {
@@ -35,7 +36,10 @@ import {
 } from "../../apps/user-app/src/contracts.ts";
 import { buildDemoPage, demoCapabilityDeps } from "../../apps/user-app/src/demo/page.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
-import { renderThemedPage } from "../../apps/user-app/src/theme/render.ts";
+import {
+  renderThemedPage,
+  resetTemplateFailureReports,
+} from "../../apps/user-app/src/theme/render.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -128,6 +132,11 @@ async function renderDemo(
 }
 
 integrationDescribe("default theme templates", () => {
+  beforeEach(() => {
+    // The reporter throttles repeats; each test needs its own first report.
+    resetTemplateFailureReports();
+  });
+
   test("the seed installs the repository theme files and the demo hook fragment", async () => {
     await withSeededDb(async (database) => {
       const theme = await loadTheme(database.sql, "default");
@@ -314,6 +323,138 @@ integrationDescribe("default theme templates", () => {
       expect(page.html).not.toContain("noscript");
       expect(page.html).not.toContain("onerror");
       expect(page.errors.some((error) => error.startsWith("sanitise:"))).toBe(true);
+    });
+  });
+
+  test("reports island props that fail the schema and still renders the page", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.theme_templates
+        SET body = replace(
+              body,
+              '{% island "SpikeCounter" counter %}',
+              '{% island "SpikeCounter" "not-props" %}'
+            ),
+            version = version + 1
+        WHERE name = 'demo'
+      `;
+
+      const page = await renderDemo(database, await memberSession(database, "member-1"), "2");
+
+      expect(page.html).toContain("data-demo-page");
+      expect(page.html).not.toContain('data-name="SpikeCounter"');
+
+      const log = await listAdminLog(database.sql, { action: "theme.island.error" });
+
+      expect(log.entries.length).toBeGreaterThan(0);
+      expect(JSON.stringify(log.entries[0]?.summary)).toContain("invalid props");
+    });
+  });
+
+  test("reports a required island the route's templates omit", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.theme_templates
+        SET body = replace(body, '{% island "SpikeCounter" counter %}', ''),
+            version = version + 1
+        WHERE name = 'demo'
+      `;
+
+      const page = await renderDemo(database, await memberSession(database, "member-1"), "2");
+
+      expect(page.html).toContain("data-demo-page");
+      expect(page.html).not.toContain('<bl-island data-name="SpikeCounter"');
+
+      const log = await listAdminLog(database.sql, { action: "theme.island.missing" });
+
+      expect(
+        log.entries.some((entry) => JSON.stringify(entry.summary).includes("SpikeCounter")),
+      ).toBe(true);
+    });
+  });
+
+  test("reports a compile fallback to the parent theme to the staff log", async () => {
+    await withSeededDb(async (database) => {
+      const [parent] = (await database.sql`
+        SELECT id::text AS id FROM core.themes WHERE name = 'default'
+      `) as Array<{ id: string }>;
+
+      if (parent === undefined) {
+        throw new Error("expected the default theme");
+      }
+
+      const [child] = (await database.sql`
+        INSERT INTO core.themes (name, parent_id)
+        VALUES ('broken-child', ${parent.id})
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (child === undefined) {
+        throw new Error("could not create the child theme");
+      }
+
+      await database.sql`
+        INSERT INTO core.theme_templates (theme_id, name, body)
+        VALUES (${child.id}, 'demo', '{% for %}')
+      `;
+
+      const theme = await loadTheme(database.sql, "broken-child");
+
+      if (theme === null) {
+        throw new Error("expected the child theme");
+      }
+
+      const session = await memberSession(database, "member-1");
+      const outcome = await buildDemoPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        session,
+        forumId: "2",
+        showDeleted: false,
+      });
+      const page = await renderThemedPage({
+        sql: database.sql,
+        boardName: "Bulletin",
+        locale: "en",
+        translate,
+        template: outcome.template,
+        viewModel: { ...outcome.viewModel, flags: { compactTopicList: false } },
+        breadcrumbs: outcome.breadcrumbs,
+        route: {
+          route: demoContract.route,
+          requiredIslands:
+            outcome.state === "content" ? demoContract.requiredIslands : DEMO_SHELL_ISLANDS,
+        },
+        theme,
+      });
+
+      // The parent's demo template rendered instead of the broken child override.
+      expect(page.html).toContain("data-demo-page");
+
+      const log = await listAdminLog(database.sql, { action: "theme.compile" });
+
+      expect(
+        log.entries.some((entry) => JSON.stringify(entry.summary).includes("broken-child")),
+      ).toBe(true);
+    });
+  });
+
+  test("reports a template that cannot compile before the page fails", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.theme_templates
+        SET body = '{% for %}', version = version + 1
+        WHERE name = 'demo'
+      `;
+
+      await expect(
+        renderDemo(database, await memberSession(database, "member-1"), "2"),
+      ).rejects.toThrow();
+
+      const log = await listAdminLog(database.sql, { action: "theme.compile" });
+
+      expect(log.entries.length).toBeGreaterThan(0);
     });
   });
 

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   auditHooks,
   declaredIslandsIn,
-  declaredIslandsInComposition,
   HOOK_NAMES,
   loadDefaultThemeTemplates,
   loadDemoHookFragments,

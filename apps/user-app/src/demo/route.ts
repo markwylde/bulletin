@@ -1,17 +1,11 @@
-import {
-  forumTag,
-  type RenderCache,
-  type RenderStatus,
-  type TagVersionSource,
-  variantKey,
-} from "@bulletin/cache";
+import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
-import { type LoadedTheme, themeContentKey } from "@bulletin/templates";
+import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { DEMO_SHELL_ISLANDS, demoContract } from "../contracts.ts";
 import type { ViewerFlags } from "../flags.ts";
-import { etagFor } from "../http/cache.ts";
 import type { UserAppSessionContext } from "../session.ts";
+import { renderCachedPage } from "../theme/cached-route.ts";
 import { renderThemedPage } from "../theme/render.ts";
 import { buildDemoPage } from "./page.ts";
 
@@ -96,7 +90,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
     };
   }
 
-  const variant = variantKey({
+  const rendered = await renderCachedPage({
     route: demoContract.route,
     params: {
       id: input.forumId,
@@ -104,42 +98,29 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
       ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
     },
     visibilityKey: outcome.visibilityKey,
-    themeId: input.theme?.theme.id ?? "0",
-    themeVersion: input.theme?.theme.version ?? 0,
-    // A template-row or parent-theme edit must invalidate cached HTML and the ETag.
-    ...(input.theme === null ? {} : { themeContentKey: themeContentKey(input.theme) }),
+    theme: input.theme,
     pluginsGeneration: input.pluginsGeneration,
     locale: input.locale,
     colourScheme: input.colourScheme,
     renderFlagsHash: input.flags.hash,
-  });
-  const tags = [forumTag(input.forumId)];
-  let errors: readonly string[] = [];
-  const rendered = await input.cache.getOrRender({
-    key: variant,
-    tags,
+    tags: contractTags(demoContract, { forumId: input.forumId }),
+    cache: input.cache,
+    tagVersions: input.tagVersions ?? null,
     render: async () => {
       const page = await render();
-      errors = page.errors;
-      return page.html;
+      return { html: page.html, errors: page.errors };
     },
   });
-
-  const source = input.tagVersions ?? null;
-  const etag =
-    source !== null && source.isTrusted()
-      ? etagFor(variant, new Map(tags.map((tag) => [tag, source.version(tag)])))
-      : null;
 
   return {
     status: outcome.template === "error" ? outcome.status : 200,
     html: rendered.html,
     title: outcome.title,
-    cache: rendered.status,
-    variant,
-    tags,
-    etag,
+    cache: rendered.cache,
+    variant: rendered.variant,
+    tags: rendered.tags,
+    etag: rendered.etag,
     hasUnlockGrant: outcome.hasUnlockGrant,
-    errors,
+    errors: rendered.errors,
   };
 }

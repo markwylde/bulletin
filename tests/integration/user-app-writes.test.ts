@@ -5,8 +5,11 @@ import { SQL } from "bun";
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
-/** The allowed write set for `user_app`: the UNLOGGED read-path buffers (ADR 0001). */
-const ALLOWED_WRITES = ["presence", "topic_view_buffer"];
+/**
+ * The allowed write set for `user_app`: the UNLOGGED read-path buffers (ADR 0001) plus the
+ * append-only template-failure report (ADR 0008, 0012).
+ */
+const ALLOWED_WRITES = ["admin_log", "presence", "topic_view_buffer"];
 
 function userAppUrl(adminUrl: string, databaseName: string): string {
   const url = new URL(adminUrl);

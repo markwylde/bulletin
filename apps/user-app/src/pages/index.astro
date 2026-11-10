@@ -1,33 +1,42 @@
 ---
 import { createServerT } from "@bulletin/i18n";
+import { cacheRuntime } from "../cache-runtime.ts";
 import { USER_CATALOGS } from "../catalogs.ts";
 import { homeContract } from "../contracts.ts";
 import { readSql } from "../db.ts";
-import { applyCacheHeaders, requestHasSession } from "../http/cache.ts";
+import { renderHomeRoute } from "../home/route.ts";
+import { applyCacheHeaders, isNotModified, requestHasSession } from "../http/cache.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
-import { boardNameFrom, renderThemedPage } from "../theme/render.ts";
+import {
+  boardNameFrom,
+  loadActiveTheme,
+  PLUGIN_GENERATION,
+  requestColourScheme,
+} from "../theme/render.ts";
 
 const messages = JSON.stringify(USER_CATALOGS);
+const sql = readSql();
 const locale = Astro.locals.locale ?? "en";
 const localeSource = Astro.locals.localeSource ?? "guest";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
-const nonce = Astro.locals.cspNonce;
+const dev = import.meta.env.DEV;
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
-const configuredBoardName = Astro.locals.board?.boardName.trim() ?? "";
-const boardName = boardNameFrom(configuredBoardName, translate);
-const pageTitle = configuredBoardName || translate("common.siteName");
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 const boardDescription =
   Astro.locals.board?.boardDescription.trim() || translate("user.placeholder.body");
 const session = Astro.locals.session ?? null;
-const rendered = await renderThemedPage({
-  sql: readSql(),
+const [theme, runtime] = await Promise.all([loadActiveTheme(sql), cacheRuntime(sql)]);
+const result = await renderHomeRoute({
+  sql,
   boardName,
+  boardDescription,
   locale,
   translate,
-  template: homeContract.templates.page,
-  viewModel: { boardName, boardDescription },
-  breadcrumbs: [],
-  route: homeContract,
+  pluginsGeneration: PLUGIN_GENERATION,
+  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  theme,
+  cache: runtime.cache,
+  tagVersions: runtime.tags,
 });
 const headers = new Headers();
 
@@ -35,55 +44,32 @@ applyCacheHeaders(headers, {
   cdnCacheable: homeContract.cdnCacheable,
   hasSession: requestHasSession(Astro.request.headers.get("cookie"), nodeEnv),
   hasUnlockGrant: false,
-  tags: ["board"],
-  etag: null,
-  dev: import.meta.env.DEV,
+  tags: result.tags,
+  etag: result.etag,
+  dev,
+  status: result.cache,
+  key: result.variant,
 });
 
 for (const [name, value] of headers) {
   Astro.response.headers.set(name, value);
 }
+
+if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
+  return new Response(null, { status: 304, headers });
+}
 ---
 
 <ThemeLayout
-  title={pageTitle}
+  title={result.title}
   locale={locale}
-  body={rendered.html}
+  body={result.html}
   visitor={session === null ? "guest" : "member"}
   serverLocale={locale}
   localeSource={localeSource}
 >
-  <script type="application/json" id="i18n-catalog" set:html={messages}></script>
-  <script is:inline nonce={nonce}>
-    (() => {
-      const data = JSON.parse(document.getElementById("i18n-catalog").textContent);
-      const params = new URLSearchParams(window.location.search);
-      const bp = /(?:^|;\s*)bp=([^;]+)/.exec(document.cookie)?.[1]?.split(".")[0];
-      const root = document.documentElement;
-      const applyLocale = (locale) => {
-        root.lang = locale;
-
-        for (const element of document.querySelectorAll("[data-i18n]")) {
-          if (element.hasAttribute("data-board-configured")) {
-            continue;
-          }
-
-          const key = element.getAttribute("data-i18n");
-          const value = data[locale]?.[key] ?? data.en[key];
-
-          if (value !== undefined) {
-            element.textContent = value;
-          }
-        }
-      };
-      const isMember = root.dataset.localeSource === "member";
-      const requested = isMember ? root.dataset.serverLocale : (params.get("lang") ?? bp);
-      const locale = ["en", "es", "fr"].includes(requested) ? requested : "en";
-
-      applyLocale(locale);
-      window.__bulletinApplyLocale = applyLocale;
-    })();
-  </script>
+  <div hidden data-i18n-catalog>{messages}</div>
+  <script>import "../locale-bootstrap.ts";</script>
   <script>
     import { applyBoardDefaultLocale, applyBoardState, fetchBoardState } from "../board-client.ts";
 

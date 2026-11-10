@@ -75,6 +75,44 @@ describe("render cache", () => {
     expect(await cache.getOrRender(request)).toMatchObject({ status: "miss", html: "render 2" });
   });
 
+  test("returns the versions captured before the render, not the ones after it", async () => {
+    const tags = tagSource({ "forum:2": "1" });
+    const cache = createRenderCache({ tags: tags.source });
+    const first = await cache.getOrRender({
+      key: "variant-a",
+      tags: ["forum:2"],
+      render: () => {
+        // A mutation commits while this render is in flight.
+        tags.bump("forum:2");
+        return "old html";
+      },
+    });
+
+    expect(first.status).toBe("miss");
+    expect(first.versions.get("forum:2")).toBe("1");
+
+    // The stored entry keeps the captured version, so the next request re-renders instead of
+    // serving the old HTML under the new version.
+    const second = await cache.getOrRender({
+      key: "variant-a",
+      tags: ["forum:2"],
+      render: () => "new html",
+    });
+
+    expect(second.status).toBe("miss");
+    expect(second.html).toBe("new html");
+    expect(second.versions.get("forum:2")).toBe("2");
+
+    const third = await cache.getOrRender({
+      key: "variant-a",
+      tags: ["forum:2"],
+      render: () => "unused",
+    });
+
+    expect(third.status).toBe("hit");
+    expect(third.versions.get("forum:2")).toBe("2");
+  });
+
   test("ignores tags the fragment did not declare", async () => {
     const tags = tagSource({ "forum:2": "1", "topic:9": "1" });
     const cache = createRenderCache({ tags: tags.source });

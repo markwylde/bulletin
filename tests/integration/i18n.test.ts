@@ -13,7 +13,7 @@ integrationDescribe("user app placeholder locale data", () => {
 
     const html = await response.text();
     expect(html).toContain(userEn["user.placeholder.body"]);
-    expect(html).toContain('id="i18n-catalog"');
+    expect(html).toContain("data-i18n-catalog");
     expect(html).toContain('"es"');
     expect(html).toContain('"fr"');
   });

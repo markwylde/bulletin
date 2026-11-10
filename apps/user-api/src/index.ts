@@ -67,7 +67,11 @@ await startService({
       }
 
       const response = await auth.handle(request, async ({ session }) =>
-        beaconResponse(sql, request, { session, nodeEnv: config.nodeEnv }),
+        beaconResponse(sql, request, {
+          session,
+          nodeEnv: config.nodeEnv,
+          rateLimitSecret: config.sessionSecret,
+        }),
       );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

@@ -15,6 +15,14 @@ export const PRESENCE_REFRESH_MS = 60 * 1_000;
 export const BEACON_RATE_LIMIT = 60;
 export const BEACON_RATE_WINDOW_MS = 60 * 1_000;
 
+/**
+ * Rate-limit identities are keyed digests that rotate daily (ADR 0012): `core.rate_buckets` is
+ * readable by the app roles, so a raw IP must never be its key.
+ */
+export const RATE_KEY_ROTATION_MS = 24 * 60 * 60 * 1_000;
+/** How long a counter's window is kept before the next call expires it (ADR 0012 retention). */
+export const RATE_BUCKET_RETENTION_MS = 24 * 60 * 60 * 1_000;
+
 /** The pseudonymous guest cookie used for presence and view dedupe (ADR 0012). */
 export const GUEST_COOKIE_NAME = "bl_guest";
 export const GUEST_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
@@ -165,24 +173,61 @@ export async function recordVisit(sql: SQL, input: VisitInput): Promise<VisitRes
   return { unread: candidates.filter((topicId) => !readIds.has(topicId)) };
 }
 
+export interface RateLimitKeyInput {
+  readonly secret: string;
+  /** The limit's purpose, e.g. `beacon`. */
+  readonly scope: string;
+  /** The raw identity (an IP, a member id); it is digested, never stored. */
+  readonly identity: string;
+  readonly now?: Date;
+  readonly rotationMs?: number;
+}
+
+/** A keyed digest that rotates daily, so stored counters cannot be reversed into an IP. */
+export function rateLimitKey(input: RateLimitKeyInput): string {
+  const rotation = Math.floor(
+    (input.now ?? new Date()).getTime() / (input.rotationMs ?? RATE_KEY_ROTATION_MS),
+  );
+  const digest = new Bun.CryptoHasher("sha256", input.secret)
+    .update(`${input.scope}|${rotation}|${input.identity}`)
+    .digest("hex");
+
+  return `${input.scope}:${rotation}:${digest}`;
+}
+
 export interface RateBucketOptions {
-  readonly key: string;
+  readonly scope: string;
+  /** The raw identity (an IP, a member id); only its rotating digest reaches `core`. */
+  readonly identity: string;
+  readonly secret: string;
   readonly limit: number;
   readonly windowMs: number;
   readonly now?: Date;
+  readonly retentionMs?: number;
 }
 
 /** Counts one hit in the UNLOGGED bucket; false when the key exceeded `limit` this window. */
 export async function consumeRateBucket(sql: SQL, options: RateBucketOptions): Promise<boolean> {
   const now = options.now ?? new Date();
+  const key = rateLimitKey({
+    secret: options.secret,
+    scope: options.scope,
+    identity: options.identity,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
   const rows = (await sql`
     INSERT INTO core.rate_buckets (key, window_start, count)
-    VALUES (${options.key}, ${bucketStart(now, options.windowMs)}, 1)
+    VALUES (${key}, ${bucketStart(now, options.windowMs)}, 1)
     ON CONFLICT (key, window_start) DO UPDATE
       SET count = core.rate_buckets.count + 1
     RETURNING count
   `) as Array<{ count: number }>;
   const count = rows[0]?.count ?? 1;
+
+  // Derived counters never outlive their retention window (ADR 0012), even though the table is
+  // UNLOGGED and the jobs' purge is not wired yet.
+  const cutoff = new Date(now.getTime() - (options.retentionMs ?? RATE_BUCKET_RETENTION_MS));
+  await sql`DELETE FROM core.rate_buckets WHERE window_start < ${cutoff}`;
 
   return count <= options.limit;
 }

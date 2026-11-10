@@ -4,9 +4,13 @@
  * contains either payload.
  */
 
-interface OverlayPayload {
-  readonly unread?: readonly string[];
-}
+import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
+import {
+  applyOverlay,
+  type OverlayCount,
+  type OverlayPayload,
+  type OverlayTarget,
+} from "./overlay/apply.ts";
 
 function overlayContext(): string | null {
   return document.querySelector("[data-overlay-ctx]")?.getAttribute("data-overlay-ctx") ?? null;
@@ -27,16 +31,45 @@ function pageTopicIds(): string[] {
   return [...ids];
 }
 
-function applyOverlay(payload: OverlayPayload): void {
-  for (const topicId of payload.unread ?? []) {
-    for (const slot of document.querySelectorAll(
-      `[data-overlay-unread][data-overlay-context="topic:${CSS.escape(topicId)}"]`,
-    )) {
-      slot.setAttribute("data-unread", "true");
-      slot.textContent = "";
+/** The DOM adapter for the pure overlay applier (unread markers, counts and the CSRF token). */
+const overlayTarget: OverlayTarget = {
+  unreadSlots(topicId) {
+    return [
+      ...document.querySelectorAll(
+        `[data-overlay-unread][data-overlay-context="topic:${CSS.escape(topicId)}"]`,
+      ),
+    ].map((slot) => ({
+      markUnread() {
+        slot.setAttribute("data-unread", "true");
+        slot.textContent = "";
+      },
+    }));
+  },
+
+  countSlots(name: OverlayCount) {
+    return [...document.querySelectorAll<HTMLElement>(`[data-overlay-count="${name}"]`)].map(
+      (slot) => ({
+        setCount(count) {
+          const label = slot.getAttribute("data-label");
+          slot.textContent = String(count);
+          slot.hidden = count <= 0;
+
+          if (label !== null) {
+            slot.setAttribute("aria-label", `${label}: ${count}`);
+          }
+        },
+      }),
+    );
+  },
+
+  storeCsrfToken(token) {
+    try {
+      sessionStorage.setItem(CSRF_STORAGE_KEY, token);
+    } catch {
+      // Storage can be unavailable (private mode); the overlay still applies.
     }
-  }
-}
+  },
+};
 
 async function loadOverlay(ctx: string): Promise<void> {
   try {
@@ -50,7 +83,7 @@ async function loadOverlay(ctx: string): Promise<void> {
       return;
     }
 
-    applyOverlay((await response.json()) as OverlayPayload);
+    applyOverlay(overlayTarget, (await response.json()) as OverlayPayload);
   } catch {
     // The overlay is an enhancement; the page works without it.
   }

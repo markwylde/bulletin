@@ -36,6 +36,35 @@ stackDescribe("HTTP cache contract", () => {
     expect(response.headers.get("x-cache-key")).toBeString();
   });
 
+  test("the home page is guest-cacheable on the board tag and answers 304", async () => {
+    const response = await fetch(`${ORIGIN}/`);
+    const etag = response.headers.get("etag");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "public, s-maxage=15, stale-while-revalidate=15",
+    );
+    expect(response.headers.get("surrogate-key")).toBe("board");
+    expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
+    expect(["HIT", "MISS", "BYPASS"]).toContain(response.headers.get("x-cache"));
+    expect(response.headers.get("x-cache-key")).toBeString();
+
+    const conditional = await fetch(`${ORIGIN}/`, {
+      headers: { "if-none-match": etag ?? "" },
+    });
+
+    expect(conditional.status).toBe(304);
+    expect(conditional.headers.get("etag")).toBe(etag);
+
+    // Any session cookie makes the response private, exactly like the demo route.
+    const privateHome = await fetch(`${ORIGIN}/`, {
+      headers: { cookie: "bl_session=not-a-valid-session" },
+    });
+
+    expect(privateHome.headers.get("cache-control")).toBe("private, no-store");
+    expect(privateHome.headers.get("surrogate-key")).toBeNull();
+  });
+
   test("a request with any session cookie stays private", async () => {
     const response = await fetch(`${ORIGIN}/_demo/2`, {
       headers: { cookie: "bl_session=not-a-valid-session" },

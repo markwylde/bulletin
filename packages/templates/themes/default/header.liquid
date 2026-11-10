@@ -5,6 +5,11 @@
     <nav class="bl-header__nav" aria-label="{% t "theme.nav" %}">
       {% comment %}Membership-dependent UI stays out of shared HTML: the per-request shell unhides it.{% endcomment %}
       <a class="bl-header__link" href="/account" data-account-link data-overlay-member-only hidden>{% t "theme.account" %}</a>
+      {% comment %}Counts come from the overlay, so the shared header stays identical.{% endcomment %}
+      <span class="bl-header__counts" data-overlay-counts data-overlay-member-only hidden>
+        <span class="bl-header__count" data-overlay-count="notifications" data-label="{% t "theme.notifications" %}" hidden></span>
+        <span class="bl-header__count" data-overlay-count="conversations" data-label="{% t "theme.conversations" %}" hidden></span>
+      </span>
       {% island "LanguageSwitcher" language %}
     </nav>
   </div>

@@ -51,9 +51,25 @@ integrationDescribe("personal overlay", () => {
       expect(html).not.toMatch(/data-overlay-context="topic:[^"]+" data-unread="true"/);
       expect(html).toContain('data-overlay-context="topic:201"');
 
+      // Overlay counts are applied by the shell: zero counts stay hidden.
+      expect(
+        await view.evaluate<boolean>(
+          "document.querySelector('[data-overlay-counts]')?.hidden === false",
+        ),
+      ).toBe(true);
+      expect(
+        await view.evaluate<boolean>(
+          "document.querySelector('[data-overlay-count=\"notifications\"]')?.hidden === true",
+        ),
+      ).toBe(true);
+
       const overlay = await view.evaluate<OverlayResult>(overlayRequest());
 
       expect(overlay.status).toBe(200);
+      // The applier stores the server-issued CSRF token for later member writes.
+      expect(await view.evaluate<string>('sessionStorage.getItem("bulletin_csrf_token")')).toBe(
+        overlay.body.csrfToken ?? "",
+      );
       expect(overlay.body.csrfToken).toBeString();
       expect(overlay.body.unread).toEqual(["201", "202", "203"]);
       expect(overlay.etag).toMatch(/^"[0-9a-f]{64}"$/);
