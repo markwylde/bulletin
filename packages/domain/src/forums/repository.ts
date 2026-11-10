@@ -347,7 +347,15 @@ export async function showVisibleForum(
  * Folds buffered redirect clicks into `core.forums.redirect_clicks` (ADR 0006 read-path
  * writes). The caller is the every-minute worker; nothing here bumps a cache tag.
  */
-export async function flushRedirectClicks(sql: SQL): Promise<number> {
+export interface FlushRedirectClicksOptions {
+  /** Test seam: runs after the cutoff is chosen but before the buffer is claimed. */
+  readonly beforeClaim?: () => Promise<void>;
+}
+
+export async function flushRedirectClicks(
+  sql: SQL,
+  options: FlushRedirectClicksOptions = {},
+): Promise<number> {
   return sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtext('bulletin.redirect_clicks'))`;
 
@@ -360,10 +368,21 @@ export async function flushRedirectClicks(sql: SQL): Promise<number> {
       return 0;
     }
 
+    if (options.beforeClaim !== undefined) {
+      await options.beforeClaim();
+    }
+
+    // Claim and aggregate in one statement. Counting first and deleting afterwards can drop
+    // lower-id rows that commit between the two statements: they would be deleted without ever
+    // being counted. `DELETE … RETURNING` only returns the rows it actually removed.
     const rows = (await tx`
+      WITH removed AS (
+        DELETE FROM core.forum_redirect_clicks
+        WHERE id <= ${cutoff}
+        RETURNING forum_id
+      )
       SELECT forum_id, count(*)::int AS count
-      FROM core.forum_redirect_clicks
-      WHERE id <= ${cutoff}
+      FROM removed
       GROUP BY forum_id
     `) as Array<{ forum_id: string; count: number }>;
 
@@ -377,8 +396,6 @@ export async function flushRedirectClicks(sql: SQL): Promise<number> {
       `;
       total += row.count;
     }
-
-    await tx`DELETE FROM core.forum_redirect_clicks WHERE id <= ${cutoff}`;
 
     return total;
   });

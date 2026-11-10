@@ -20,6 +20,7 @@ import {
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { saveForumSettings } from "../../apps/staff-api/src/forums.ts";
+import { deleteModerator, saveModerator } from "../../apps/staff-api/src/moderators.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderForumRoute } from "../../apps/user-app/src/forums/route.ts";
 import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
@@ -269,6 +270,100 @@ integrationDescribe("forum mutations invalidate the index and affected pages", (
         if (forum.kind === "page") {
           expect(forum.cache).toBe("miss");
           expect(forum.html).toContain("Board notice");
+        }
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("moderator assignment and removal invalidate warm forum pages and descendants", async () => {
+    await withSeededDb(async (database) => {
+      const [admin] = (await database.sql`
+        SELECT member_id::text AS id FROM pii.identities WHERE sub = 'admin'
+      `) as Array<{ id: string }>;
+
+      if (admin === undefined) {
+        throw new Error("Missing admin");
+      }
+
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const viewer = await memberSession(database, "member-1");
+        const moderator = await memberSession(database, "member-2");
+        const pages = harness(database, viewer, versions);
+        const forumRef = "/forum/8-help-questions";
+        const childRef = "/forum/9-resolved-topics";
+        const siblingRef = "/forum/10-bug-reports";
+
+        await pages.forum(forumRef);
+        await pages.forum(childRef);
+        await pages.forum(siblingRef);
+        expect(await forumCache(pages, forumRef)).toBe("hit");
+        expect(await forumCache(pages, childRef)).toBe("hit");
+        expect(await forumCache(pages, siblingRef)).toBe("hit");
+
+        const saved = await saveModerator(database.sql, admin.id, {
+          forumId: "8",
+          assigneeKind: "member",
+          assigneeId: moderator.memberId,
+          powers: ["see_unapproved"],
+          thisForumOnly: false,
+        });
+        expect(saved.ok).toBe(true);
+        await versions.refresh();
+
+        // The assignment is rendered on the forum and its inheriting child, not on a sibling.
+        const assignedForum = await pages.forum(forumRef);
+        const assignedChild = await pages.forum(childRef);
+
+        expect(assignedForum.kind).toBe("page");
+        expect(assignedChild.kind).toBe("page");
+        expect(await forumCache(pages, siblingRef)).toBe("hit");
+
+        if (assignedForum.kind === "page") {
+          expect(assignedForum.cache).toBe("miss");
+          expect(assignedForum.html).toContain("Regular Member Two");
+        }
+
+        if (assignedChild.kind === "page") {
+          expect(assignedChild.cache).toBe("miss");
+          expect(assignedChild.html).toContain("Regular Member Two");
+        }
+
+        const [assignment] = (await database.sql`
+          SELECT id::text AS id
+          FROM core.moderators
+          WHERE forum_id = 8 AND member_id = ${moderator.memberId}
+        `) as Array<{ id: string }>;
+
+        if (assignment === undefined) {
+          throw new Error("Moderator assignment was not stored");
+        }
+
+        const removed = await deleteModerator(database.sql, admin.id, { id: assignment.id });
+        expect(removed.ok).toBe(true);
+        await versions.refresh();
+
+        const removedForum = await pages.forum(forumRef);
+        const removedChild = await pages.forum(childRef);
+
+        expect(removedForum.kind).toBe("page");
+        expect(removedChild.kind).toBe("page");
+
+        if (removedForum.kind === "page") {
+          expect(removedForum.cache).toBe("miss");
+          expect(removedForum.html).not.toContain("Regular Member Two");
+        }
+
+        if (removedChild.kind === "page") {
+          expect(removedChild.cache).toBe("miss");
+          expect(removedChild.html).not.toContain("Regular Member Two");
         }
       } finally {
         await versions.close();

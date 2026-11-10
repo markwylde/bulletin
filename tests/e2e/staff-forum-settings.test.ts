@@ -13,10 +13,59 @@ const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
 const STAFF_URL = staffBaseUrl();
 
+/**
+ * A stack that was seeded before `announcements` joined the seed keeps the code default
+ * (off, ADR 0010) because a rerun of the seed modules is a no-op. Turn it on for every group
+ * so this test is not coupled to the age of the database volume; a freshly seeded stack
+ * already has it on and this is a no-op.
+ */
+async function ensureAnnouncementsFlag(view: Bun.WebView): Promise<void> {
+  const enabled = await view.evaluate<boolean>(
+    `fetch("/api/staff/features", { credentials: "include" })
+      .then((response) => response.json())
+      .then((body) => body?.flags?.announcements === true)`,
+  );
+
+  if (enabled) {
+    return;
+  }
+
+  const status = await view.evaluate<number>(`(async () => {
+    const token = sessionStorage.getItem("bulletin_csrf_token");
+    const response = await fetch("/api/staff/flags", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+        ...(token === null ? {} : { "x-bulletin-csrf": token }),
+      },
+      body: JSON.stringify({
+        key: "announcements",
+        rules: [{
+          type: "group",
+          groups: [
+            "guests", "members", "regulars", "vip", "moderators",
+            "super_moderators", "administrators", "banned",
+          ],
+          value: true,
+        }],
+      }),
+    });
+
+    return response.status;
+  })()`);
+
+  if (status !== 200) {
+    throw new Error(`Could not enable the announcements flag (status ${status})`);
+  }
+}
+
 integrationDescribe("staff forum settings, prefixes and announcements", () => {
   test("edits forum settings, creates a prefix and publishes an announcement", async () => {
     await withPage({ url: `${STAFF_URL}/forums`, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "admin");
+      await ensureAnnouncementsFlag(view);
       await waitForSelector(view, '[data-page="forums"]');
       await waitForSelector(view, "[data-forum-settings]", 20_000);
       await clickSelector(view, "[data-forum-settings]");

@@ -22,6 +22,30 @@ export const prefixMutation: Mutation<PrefixChange, { readonly ok: boolean }> = 
   tags: (input, result) => (result.ok ? uniqueTags(input.affectedForumIds.map(forumTag)) : []),
 };
 
+export interface ModeratorChange {
+  /**
+   * The assigned forum and its descendants: an assignment is listed on the forum itself and,
+   * unless it is this-forum-only, on every sub-forum page below it.
+   */
+  readonly affectedForumIds: readonly string[];
+}
+
+/**
+ * Moderator assignments appear in the forum page view model (and the member's own
+ * "is moderator" variant), but they are not part of the forum visibility key. Bump the affected
+ * forum tags (plus `perm` for the in-process snapshot) so warm pages cannot keep the old list.
+ */
+export const moderatorMutation: Mutation<ModeratorChange, { readonly ok: boolean }> = {
+  name: "moderator.update",
+  tags: (input, result) =>
+    result.ok
+      ? uniqueTags([
+          GLOBAL_CACHE_TAGS.perm,
+          ...input.affectedForumIds.map((forumId) => forumTag(forumId)),
+        ])
+      : [],
+};
+
 export interface AnnouncementChange {
   readonly announcementId: string;
   readonly scope: "global" | "forums";

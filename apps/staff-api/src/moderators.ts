@@ -1,6 +1,7 @@
+import { moderatorMutation, runMutation } from "@bulletin/domain/mutations";
 import {
-  bumpPermVersion,
   isModeratorPower,
+  loadForumTree,
   MODERATOR_POWERS,
   type ModeratorPower,
 } from "@bulletin/domain/permissions";
@@ -37,6 +38,20 @@ export type ModeratorMutation =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A moderator assignment is rendered on its forum and (unless this-forum-only) every
+ * descendant page, so all of them need their content tag bumped.
+ */
+async function affectedForumIds(sql: SQL, forumId: string): Promise<readonly string[] | null> {
+  const tree = await loadForumTree(sql);
+
+  if (tree.get(forumId) === undefined) {
+    return null;
+  }
+
+  return [forumId, ...tree.descendants(forumId).map((node) => node.id)];
 }
 
 interface AssignmentRow {
@@ -110,68 +125,77 @@ export async function saveModerator(
 
   const id = typeof input.id === "string" ? input.id : null;
   const thisForumOnly = input.thisForumOnly === true;
+  const forums = await affectedForumIds(sql, input.forumId);
 
-  return sql.begin(async (tx) => {
-    const [forum] = (await tx`
-      SELECT id FROM core.forums WHERE id = ${input.forumId}
-    `) as Array<{ id: string }>;
+  if (forums === null) {
+    return { ok: false, code: "invalid_forum" };
+  }
 
-    if (forum === undefined) {
-      return { ok: false, code: "invalid_forum" } as const;
-    }
+  return runMutation({
+    sql,
+    mutation: moderatorMutation,
+    input: { affectedForumIds: forums },
+    apply: async (tx) => {
+      const [forum] = (await tx`
+        SELECT id FROM core.forums WHERE id = ${input.forumId}
+      `) as Array<{ id: string }>;
 
-    const assignee =
-      input.assigneeKind === "member"
-        ? ((await tx`
+      if (forum === undefined) {
+        return { ok: false, code: "invalid_forum" } as const;
+      }
+
+      const assignee =
+        input.assigneeKind === "member"
+          ? ((await tx`
             SELECT id, display_name AS label FROM core.members WHERE id = ${input.assigneeId}
           `) as Array<{ id: string; label: string | null }>)
-        : ((await tx`
+          : ((await tx`
             SELECT id, key AS label FROM core.groups WHERE id = ${input.assigneeId}
           `) as Array<{ id: string; label: string }>);
 
-    if (assignee[0] === undefined) {
-      return { ok: false, code: "invalid_assignee" } as const;
-    }
+      if (assignee[0] === undefined) {
+        return { ok: false, code: "invalid_assignee" } as const;
+      }
 
-    const before =
-      id === null
-        ? []
-        : ((await tx`
+      const before =
+        id === null
+          ? []
+          : ((await tx`
           SELECT id, forum_id, member_id, group_id, powers, this_forum_only
           FROM core.moderators
           WHERE id = ${id}
           FOR UPDATE
         `) as Array<{
-            id: string;
-            forum_id: string;
-            member_id: string | null;
-            group_id: string | null;
-            powers: string[];
-            this_forum_only: boolean;
-          }>);
+              id: string;
+              forum_id: string;
+              member_id: string | null;
+              group_id: string | null;
+              powers: string[];
+              this_forum_only: boolean;
+            }>);
 
-    if (id !== null && before[0] === undefined) {
-      return { ok: false, code: "not_found" } as const;
-    }
+      if (id !== null && before[0] === undefined) {
+        return { ok: false, code: "not_found" } as const;
+      }
 
-    // One assignment per forum and assignee; replacing keeps the editor idempotent.
-    if (input.assigneeKind === "member") {
-      await tx`
+      // One assignment per forum and assignee; replacing keeps the editor idempotent.
+      if (input.assigneeKind === "member") {
+        await tx`
         DELETE FROM core.moderators
         WHERE forum_id = ${input.forumId} AND member_id = ${input.assigneeId}
       `;
-    } else {
-      await tx`
+      } else {
+        await tx`
         DELETE FROM core.moderators
         WHERE forum_id = ${input.forumId} AND group_id = ${input.assigneeId}
       `;
-    }
+      }
 
-    if (id !== null) {
-      await tx`DELETE FROM core.moderators WHERE id = ${id}`;
-    }
+      if (id !== null) {
+        await tx`DELETE FROM core.moderators WHERE id = ${id}`;
+      }
 
-    const [inserted] = (await tx`
+      const [inserted] = (await tx`
       INSERT INTO core.moderators (forum_id, member_id, group_id, powers, this_forum_only)
       VALUES (
         ${input.forumId},
@@ -183,27 +207,27 @@ export async function saveModerator(
       RETURNING id
     `) as Array<{ id: string }>;
 
-    if (inserted === undefined) {
-      throw new Error("Moderator insert returned no row");
-    }
+      if (inserted === undefined) {
+        throw new Error("Moderator insert returned no row");
+      }
 
-    await bumpPermVersion(tx);
-    await writeAdminLog(tx, {
-      actorMemberId,
-      action: "moderator.save",
-      targetType: "moderator",
-      targetId: inserted.id,
-      summary: {
-        forumId: input.forumId,
-        assigneeKind: input.assigneeKind,
-        assigneeId: input.assigneeId,
-        powers,
-        thisForumOnly,
-        before: before[0] ?? null,
-      },
-    });
+      await writeAdminLog(tx, {
+        actorMemberId,
+        action: "moderator.save",
+        targetType: "moderator",
+        targetId: inserted.id,
+        summary: {
+          forumId: input.forumId,
+          assigneeKind: input.assigneeKind,
+          assigneeId: input.assigneeId,
+          powers,
+          thisForumOnly,
+          before: before[0] ?? null,
+        },
+      });
 
-    return { ok: true } as const;
+      return { ok: true } as const;
+    },
   });
 }
 
@@ -217,37 +241,50 @@ export async function deleteModerator(
   }
 
   const id = input.id;
+  const [existing] = (await sql`
+    SELECT forum_id FROM core.moderators WHERE id = ${id}
+  `) as Array<{ forum_id: string }>;
 
-  return sql.begin(async (tx) => {
-    const [before] = (await tx`
-      SELECT id, forum_id, member_id, group_id, powers, this_forum_only
-      FROM core.moderators
-      WHERE id = ${id}
-      FOR UPDATE
-    `) as Array<{
-      id: string;
-      forum_id: string;
-      member_id: string | null;
-      group_id: string | null;
-      powers: string[];
-      this_forum_only: boolean;
-    }>;
+  if (existing === undefined) {
+    return { ok: false, code: "not_found" };
+  }
 
-    if (before === undefined) {
-      return { ok: false, code: "not_found" } as const;
-    }
+  const forums = (await affectedForumIds(sql, existing.forum_id)) ?? [existing.forum_id];
 
-    await tx`DELETE FROM core.moderators WHERE id = ${id}`;
-    await bumpPermVersion(tx);
-    await writeAdminLog(tx, {
-      actorMemberId,
-      action: "moderator.delete",
-      targetType: "moderator",
-      targetId: id,
-      summary: { before },
-    });
+  return runMutation({
+    sql,
+    mutation: moderatorMutation,
+    input: { affectedForumIds: forums },
+    apply: async (tx) => {
+      const [before] = (await tx`
+        SELECT id, forum_id, member_id, group_id, powers, this_forum_only
+        FROM core.moderators
+        WHERE id = ${id}
+        FOR UPDATE
+      `) as Array<{
+        id: string;
+        forum_id: string;
+        member_id: string | null;
+        group_id: string | null;
+        powers: string[];
+        this_forum_only: boolean;
+      }>;
 
-    return { ok: true } as const;
+      if (before === undefined) {
+        return { ok: false, code: "not_found" } as const;
+      }
+
+      await tx`DELETE FROM core.moderators WHERE id = ${id}`;
+      await writeAdminLog(tx, {
+        actorMemberId,
+        action: "moderator.delete",
+        targetType: "moderator",
+        targetId: id,
+        summary: { before },
+      });
+
+      return { ok: true } as const;
+    },
   });
 }
 

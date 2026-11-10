@@ -229,6 +229,68 @@ integrationDescribe("redirect forums and slug URLs", () => {
     });
   }, 30_000);
 
+  test("counts a click that commits after the cutoff but before the buffer is claimed", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await createForum(database, {
+        title: "Slow Commit",
+        slug: "slow-commit",
+        parentId: "1",
+        type: "redirect",
+        redirectUrl: "https://example.test/slow",
+      });
+      const inserted = Promise.withResolvers<string>();
+      const commitLate = Promise.withResolvers<void>();
+      const late = database.sql.begin(async (tx) => {
+        const [row] = (await tx`
+          INSERT INTO core.forum_redirect_clicks (forum_id)
+          VALUES (${forum})
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+
+        inserted.resolve(row?.id ?? "");
+        await commitLate.promise;
+      });
+
+      const lateId = await inserted.promise;
+      expect(lateId).not.toBe("");
+
+      // A later id commits first, so the flush chooses it as the cutoff while the lower id
+      // is still invisible.
+      await database.sql`
+        INSERT INTO core.forum_redirect_clicks (forum_id)
+        VALUES (${forum})
+      `;
+
+      // Pause after the cutoff and before the claim, then let the lower id commit. The claim
+      // must return both rows; counting before deleting would lose the late one.
+      const claiming = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const flushing = flushRedirectClicks(database.sql, {
+        beforeClaim: async () => {
+          claiming.resolve();
+          await resume.promise;
+        },
+      });
+
+      await claiming.promise;
+      commitLate.resolve();
+      await late;
+      resume.resolve();
+
+      expect(await flushing).toBe(2);
+
+      const [counter] = (await database.sql`
+        SELECT redirect_clicks::text AS clicks FROM core.forums WHERE id = ${forum}
+      `) as Array<{ clicks: string }>;
+      expect(counter?.clicks).toBe("2");
+
+      const remaining = (await database.sql`
+        SELECT count(*)::int AS count FROM core.forum_redirect_clicks
+      `) as Array<{ count: number }>;
+      expect(remaining[0]?.count).toBe(0);
+    });
+  }, 30_000);
+
   test("counts only redirect forums the viewer may show", async () => {
     await withSeededDb(async (database) => {
       const visible = await createForum(database, {

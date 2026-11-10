@@ -108,6 +108,8 @@ integrationDescribe("CDN purge on visibility change (ADR 0006)", () => {
         "forum:2",
         "forum:3",
         "forum:4",
+        "forum:5",
+        "forum:6",
       ]);
 
       const recorder = recordingPurger();
@@ -120,7 +122,9 @@ integrationDescribe("CDN purge on visibility change (ADR 0006)", () => {
 
       await handler(stored);
 
-      expect(recorder.calls).toEqual([["forum:1", "forum:2", "forum:3", "forum:4"]]);
+      expect(recorder.calls).toEqual([
+        ["forum:1", "forum:2", "forum:3", "forum:5", "forum:6", "forum:4"],
+      ]);
     });
   });
 

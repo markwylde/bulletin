@@ -101,8 +101,21 @@ integrationDescribe("flags seed", () => {
       const flags = await listFlags(sql, now);
       const byKey = new Map(flags.map((flag) => [flag.key, flag]));
 
-      expect([...byKey.keys()]).toEqual(["compactTopicList", "newEditor", "quickReply"]);
+      expect([...byKey.keys()]).toEqual([
+        "announcements",
+        "compactTopicList",
+        "newEditor",
+        "quickReply",
+      ]);
 
+      expect(byKey.get("announcements")).toMatchObject({
+        description: "Global and forum announcements.",
+        owner: "core",
+        defaultValue: true,
+        affectsRender: true,
+        clientVisible: true,
+        rules: [],
+      });
       expect(byKey.get("newEditor")).toMatchObject({
         description: "Markdown WYSIWYG editor for new posts.",
         owner: "content",

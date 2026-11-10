@@ -68,14 +68,41 @@ integrationDescribe("staff permission masks", () => {
         20_000,
       );
 
-      // Column bulk: the new mask grants read on every forum.
+      // The matrix is a real tree now: a column bulk applies to the selected category and
+      // every inheriting forum below it, not to unrelated categories (forum-permissions spec).
+      const subtree = await view.evaluate<string[]>(`(async () => {
+        const body = await fetch("/api/staff/masks", { credentials: "include" }).then(
+          (response) => response.json()
+        );
+        const ids = new Set([${JSON.stringify(forumId)}]);
+        let added = true;
+
+        while (added) {
+          added = false;
+
+          for (const forum of body.forums) {
+            if (forum.parentId !== null && ids.has(forum.parentId) && !ids.has(forum.id)) {
+              ids.add(forum.id);
+              added = true;
+            }
+          }
+        }
+
+        return [...ids];
+      })()`);
+
+      expect(subtree.length).toBeGreaterThan(1);
+
+      await waitForSelector(view, `[data-grid-column-bulk="${key}"]:not([disabled])`);
       await clickSelector(view, `[data-grid-column-bulk="${key}"]`);
       await waitForSelector(view, '[data-toast-tone="success"]');
       await waitForExpression(
         view,
-        `[...document.querySelectorAll('[data-grid-cell$=":${key}:read"]')].every(
-          (cell) => cell.getAttribute('data-grid-allowed') === 'true'
-        )`,
+        `[...document.querySelectorAll('[data-grid-cell$=":${key}:read"]')]
+          .filter((cell) => ${JSON.stringify(subtree)}.includes(
+            (cell.getAttribute('data-grid-cell') ?? '').split(':')[0]
+          ))
+          .every((cell) => cell.getAttribute('data-grid-allowed') === 'true')`,
         20_000,
       );
 
