@@ -6,12 +6,10 @@ import { demoContract } from "../contracts.ts";
 import { readSql } from "../db.ts";
 import { demoEnabled } from "../demo/enabled.ts";
 import { renderDemoRoute } from "../demo/route.ts";
-import { loadViewerFlags } from "../flags.ts";
 import { applyCacheHeaders, isNotModified, requestHasSession } from "../http/cache.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
 import {
   boardNameFrom,
-  loadActiveTheme,
   PLUGIN_GENERATION,
   renderThemedPage,
   requestColourScheme,
@@ -33,16 +31,12 @@ const headers = new Headers();
 let status = 404;
 let pageTitle = translate("theme.error.title");
 let body: string;
+let documentTitle = `${pageTitle} · ${boardName}`;
 
 if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
-  const [flags, theme, runtime] = await Promise.all([
-    loadViewerFlags(sql, session),
-    loadActiveTheme(sql),
-    cacheRuntime(sql),
-  ]);
+  const runtime = await cacheRuntime(sql);
   const result = await renderDemoRoute({
     sql,
-    boardName,
     locale,
     translate,
     session,
@@ -56,8 +50,6 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
     })(),
     pluginsGeneration: PLUGIN_GENERATION,
     colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
-    theme,
-    flags,
     cache: runtime.cache,
     tagVersions: runtime.tags,
   });
@@ -79,6 +71,7 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
 
   status = result.status;
   pageTitle = result.title;
+  documentTitle = `${pageTitle} · ${result.boardName}`;
   body = result.html;
 } else {
   applyCacheHeaders(headers, {
@@ -112,7 +105,7 @@ for (const [name, value] of headers) {
 ---
 
 <ThemeLayout
-  title={`${pageTitle} · ${boardName}`}
+  title={documentTitle}
   locale={locale}
   body={body}
   visitor={session === null ? "guest" : "member"}

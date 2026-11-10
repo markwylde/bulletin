@@ -66,6 +66,34 @@ stackDescribe("HTTP cache contract", () => {
     expect(privateHome.headers.get("surrogate-key")).toBeNull();
   });
 
+  test("a guest ETag never satisfies a member's revalidation", async () => {
+    const guest = await fetch(`${ORIGIN}/_demo/2`);
+    const guestEtag = guest.headers.get("etag");
+    const guestHtml = await guest.text();
+
+    expect(guestHtml).toContain('data-visitor="guest"');
+
+    const session = await fetch(`${ORIGIN}/api/test/session`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ sub: "member-1" }),
+    });
+    const cookie = (session.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+
+    expect(session.status).toBe(200);
+    expect(cookie).toMatch(/^(?:__Host-)?bl_session=/);
+
+    // Revalidating with the guest's ETag must return the member shell, not a 304 that keeps
+    // the guest's `data-visitor` and skips the overlay.
+    const revalidated = await fetch(`${ORIGIN}/_demo/2`, {
+      headers: { cookie, "if-none-match": guestEtag ?? "" },
+    });
+
+    expect(revalidated.status).toBe(200);
+    expect(await revalidated.text()).toContain('data-visitor="member"');
+    expect(revalidated.headers.get("etag")).not.toBe(guestEtag);
+  });
+
   test("a request with any session cookie stays private", async () => {
     const response = await fetch(`${ORIGIN}/_demo/2`, {
       headers: { cookie: "bl_session=not-a-valid-session" },

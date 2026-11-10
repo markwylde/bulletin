@@ -5,6 +5,8 @@ import {
   etagFor,
   isNotModified,
   requestHasSession,
+  type ShellVariant,
+  shellKey,
 } from "./cache.ts";
 
 const base = {
@@ -74,6 +76,29 @@ describe("ETag", () => {
     expect(etagFor("variant", versions)).not.toBe(
       etagFor("variant", new Map([...versions, ["forum:2", "2"]])),
     );
+  });
+
+  test("covers the per-response shell while the fragment key stays shared", () => {
+    const guest: ShellVariant = { visitor: "guest", localeSource: "guest" };
+    const member: ShellVariant = { visitor: "member", localeSource: "member" };
+
+    expect(etagFor("variant", versions, shellKey(guest))).not.toBe(
+      etagFor("variant", versions, shellKey(member)),
+    );
+    expect(etagFor("variant", versions, shellKey(member))).toBe(
+      etagFor("variant", versions, shellKey({ ...member })),
+    );
+    // The shared variant and versions are untouched; only the shell hash differs.
+    expect(shellKey(guest)).not.toBe(shellKey(member));
+    expect(shellKey(undefined)).toBe("");
+  });
+
+  test("a guest ETag never satisfies a member revalidation", () => {
+    const guest = etagFor("variant", versions, shellKey({ visitor: "guest" }));
+    const member = etagFor("variant", versions, shellKey({ visitor: "member" }));
+
+    expect(isNotModified(guest, member)).toBe(false);
+    expect(isNotModified(member, member)).toBe(true);
   });
 
   test("matches If-None-Match forms", () => {

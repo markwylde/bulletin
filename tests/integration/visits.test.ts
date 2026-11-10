@@ -327,7 +327,11 @@ integrationDescribe("read-path visits", () => {
       try {
         const cache = createRenderCache({ tags: versions });
         const render = () => "<article>topic 201</article>";
-        const request = { key: "topic-page", tags: [topicPagesTag("201")], render };
+        const request = {
+          tags: [topicPagesTag("201")],
+          prepare: async () => ({ key: "topic-page", data: undefined }),
+          render,
+        };
 
         await cache.getOrRender(request);
 

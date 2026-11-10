@@ -81,8 +81,8 @@ integrationDescribe("cache tag listener", () => {
         const cache = createRenderCache({ tags: versions });
         let renders = 0;
         const request = {
-          key: "variant-a",
           tags: [forumTag("2")],
+          prepare: async () => ({ key: "variant-a", data: undefined }),
           render: () => {
             renders += 1;
             return `render ${renders}`;

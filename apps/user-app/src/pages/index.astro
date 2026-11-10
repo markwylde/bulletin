@@ -7,12 +7,7 @@ import { readSql } from "../db.ts";
 import { renderHomeRoute } from "../home/route.ts";
 import { applyCacheHeaders, isNotModified, requestHasSession } from "../http/cache.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
-import {
-  boardNameFrom,
-  loadActiveTheme,
-  PLUGIN_GENERATION,
-  requestColourScheme,
-} from "../theme/render.ts";
+import { PLUGIN_GENERATION, requestColourScheme } from "../theme/render.ts";
 
 const messages = JSON.stringify(USER_CATALOGS);
 const sql = readSql();
@@ -21,22 +16,20 @@ const localeSource = Astro.locals.localeSource ?? "guest";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const dev = import.meta.env.DEV;
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
-const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
-const boardDescription =
-  Astro.locals.board?.boardDescription.trim() || translate("user.placeholder.body");
 const session = Astro.locals.session ?? null;
-const [theme, runtime] = await Promise.all([loadActiveTheme(sql), cacheRuntime(sql)]);
+const visitor = session === null ? "guest" : "member";
+const runtime = await cacheRuntime(sql);
+// Board data is loaded inside the route's prepare, after the cache captures tag versions.
 const result = await renderHomeRoute({
   sql,
-  boardName,
-  boardDescription,
   locale,
   translate,
   pluginsGeneration: PLUGIN_GENERATION,
   colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
-  theme,
   cache: runtime.cache,
   tagVersions: runtime.tags,
+  // The shell differs for members, so the response ETag must cover it.
+  shell: { visitor, localeSource: localeSource === "member" ? "member" : "guest" },
 });
 const headers = new Headers();
 
@@ -64,7 +57,7 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
   title={result.title}
   locale={locale}
   body={result.html}
-  visitor={session === null ? "guest" : "member"}
+  visitor={visitor}
   serverLocale={locale}
   localeSource={localeSource}
 >

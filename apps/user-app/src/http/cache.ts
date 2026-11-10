@@ -1,4 +1,4 @@
-import type { RenderStatus } from "@bulletin/cache";
+import { type RenderStatus, stableKey } from "@bulletin/cache";
 import { parseCookieHeader, sessionCookieName } from "@bulletin/domain/auth";
 
 /** CDN freshness windows (ADR 0006): 15 s fresh, 15 s stale-while-revalidate. */
@@ -53,17 +53,45 @@ export function applyCacheHeaders(headers: Headers, input: CacheHeaderInput): vo
   }
 }
 
+/** Per-response shell bytes that are not part of the shared fragment variant (ADR 0006). */
+export interface ShellVariant {
+  /** `data-visitor` and the overlay/beacon choice: member and guest shells differ. */
+  readonly visitor: "guest" | "member";
+  /** Pages that render `data-locale-source` from the viewer's locale origin. */
+  readonly localeSource?: "guest" | "member";
+  /** Pages that render `data-auth-state="authenticated"`. */
+  readonly authState?: "authenticated";
+}
+
+/** Canonical form of the shell dimensions, empty when the page has no varying shell. */
+export function shellKey(shell: ShellVariant | undefined): string {
+  if (shell === undefined) {
+    return "";
+  }
+
+  return stableKey({
+    visitor: shell.visitor,
+    ...(shell.localeSource === undefined ? {} : { localeSource: shell.localeSource }),
+    ...(shell.authState === undefined ? {} : { authState: shell.authState }),
+  });
+}
+
 /**
- * The ETag covers the variant and the durable versions of its tags, so a permission or content
- * change can never produce a 304 (ADR 0006).
+ * The ETag covers the shared variant, the durable versions of its tags *and* the per-response
+ * shell, so a permission or content change never produces a 304, and a guest's cached response
+ * cannot satisfy a member's revalidation (ADR 0006).
  */
-export function etagFor(variant: string, versions: ReadonlyMap<string, string>): string {
+export function etagFor(
+  variant: string,
+  versions: ReadonlyMap<string, string>,
+  shell = "",
+): string {
   const canonical = [...versions]
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([tag, version]) => `${tag}=${version}`)
     .join(";");
 
-  return `"${new Bun.CryptoHasher("sha256").update(`${variant}|${canonical}`).digest("hex")}"`;
+  return `"${new Bun.CryptoHasher("sha256").update(`${variant}|${canonical}|${shell}`).digest("hex")}"`;
 }
 
 /**

@@ -13,7 +13,11 @@ function routeWithCache(): {
   return {
     cache,
     async render(key, html) {
-      const result = await cache.getOrRender({ key, tags: [], render: () => html });
+      const result = await cache.getOrRender({
+        tags: [],
+        prepare: async () => ({ key, data: undefined }),
+        render: () => html,
+      });
       return { variant: key, html: result.html, cache: result.status };
     },
   };

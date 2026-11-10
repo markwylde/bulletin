@@ -6,7 +6,8 @@ import { displayNameContract } from "../contracts.ts";
 import { readSql } from "../db.ts";
 import { buildDisplayNamePage, displayNameLabels } from "../display-name/page.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
-import { boardNameFrom, renderThemedPage } from "../theme/render.ts";
+import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
+import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/display-name")}`;
 const session = Astro.locals.session ?? null;
@@ -26,15 +27,39 @@ const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 const page = buildDisplayNamePage({ returnTo, currentName: session.displayName, translate });
-const rendered = await renderThemedPage({
-  sql: readSql(),
-  boardName,
-  locale,
-  translate,
-  template: "display-name",
-  viewModel: page.viewModel,
-  breadcrumbs: page.breadcrumbs,
-  route: displayNameContract,
+const sql = readSql();
+// A personal, no-store page: the shared pipeline runs but retains nothing (ADR 0006).
+const rendered = await renderCachedPage({
+  tags: [],
+  cache: null,
+  tagVersions: null,
+  shell: { visitor: "member", authState: "authenticated" },
+  prepare: async () => ({
+    variant: pageVariant({
+      route: displayNameContract.route,
+      visibilityKey: "member",
+      theme: null,
+      pluginsGeneration: PLUGIN_GENERATION,
+      locale,
+      colourScheme: "system",
+      renderFlagsHash: "",
+    }),
+    data: undefined,
+  }),
+  render: async () => {
+    const renderedPage = await renderThemedPage({
+      sql,
+      boardName,
+      locale,
+      translate,
+      template: "display-name",
+      viewModel: page.viewModel,
+      breadcrumbs: page.breadcrumbs,
+      route: displayNameContract,
+    });
+
+    return { html: renderedPage.html, errors: renderedPage.errors };
+  },
 });
 
 // A personal, uncached page (ADR 0006).

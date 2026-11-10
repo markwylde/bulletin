@@ -1,17 +1,18 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
+import { readBoardSettings } from "@bulletin/domain/board";
+import { FIXTURE_FORUM_TREE } from "@bulletin/domain/permissions/fixtures";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { DEMO_SHELL_ISLANDS, demoContract } from "../contracts.ts";
-import type { ViewerFlags } from "../flags.ts";
+import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import type { UserAppSessionContext } from "../session.ts";
-import { renderCachedPage } from "../theme/cached-route.ts";
-import { renderThemedPage } from "../theme/render.ts";
-import { buildDemoPage } from "./page.ts";
+import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
+import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
+import { buildDemoPage, type DemoOutcome } from "./page.ts";
 
 export interface DemoRouteInput {
   readonly sql: SQL;
-  readonly boardName: string;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext | null;
@@ -21,8 +22,6 @@ export interface DemoRouteInput {
   readonly bench?: number;
   readonly pluginsGeneration: number;
   readonly colourScheme: ColorScheme;
-  readonly theme: LoadedTheme | null;
-  readonly flags: ViewerFlags;
   readonly cache: RenderCache;
   /** Needed for the ETag; while untrusted the response carries no ETag (ADR 0006). */
   readonly tagVersions?: TagVersionSource | null;
@@ -32,6 +31,8 @@ export interface DemoRouteResult {
   readonly status: number;
   readonly html: string;
   readonly title: string;
+  /** The board name the rendered HTML carries, for the document title. */
+  readonly boardName: string;
   /** Null when the page is not shared-cacheable (an unknown forum id). */
   readonly cache: RenderStatus | null;
   readonly variant: string | null;
@@ -41,86 +42,139 @@ export interface DemoRouteResult {
   readonly errors: readonly string[];
 }
 
+/** Everything the demo HTML and its variant key need, loaded after the cache's snapshot. */
+interface DemoData {
+  readonly theme: LoadedTheme | null;
+  readonly boardName: string;
+  readonly flags: ViewerFlags;
+  readonly outcome: DemoOutcome;
+}
+
 /**
  * Renders the demo route through the tagged fragment cache (ADR 0006, task 5.4). The variant
- * key carries every dimension that can change the HTML; only `forum:{id}` invalidates it.
+ * key carries every dimension that can change the HTML; `forum:{id}` and the board shell tags
+ * invalidate it.
  */
 export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteResult> {
-  const outcome = await buildDemoPage({
-    sql: input.sql,
-    locale: input.locale,
-    translate: input.translate,
-    session: input.session,
-    forumId: input.forumId,
-    showDeleted: input.showDeleted,
-  });
-  const flags = { compactTopicList: input.flags.values.compactTopicList === true };
-  const render = () =>
-    renderThemedPage({
+  const loadData = async (): Promise<DemoData> => {
+    const [theme, flags, settings, outcome] = await Promise.all([
+      loadActiveTheme(input.sql),
+      loadViewerFlags(input.sql, input.session),
+      readBoardSettings(input.sql),
+      buildDemoPage({
+        sql: input.sql,
+        locale: input.locale,
+        translate: input.translate,
+        session: input.session,
+        forumId: input.forumId,
+        showDeleted: input.showDeleted,
+      }),
+    ]);
+
+    return {
+      theme,
+      boardName: boardNameFrom(settings.boardName, input.translate),
+      flags,
+      outcome,
+    };
+  };
+
+  const variantFor = (data: DemoData): string => {
+    const visibilityKey = data.outcome.visibilityKey;
+
+    if (visibilityKey === null) {
+      throw new Error(`Forum "${input.forumId}" has no visibility key`);
+    }
+
+    return pageVariant({
+      route: demoContract.route,
+      params: {
+        id: input.forumId,
+        deleted: data.outcome.showDeleted ? "1" : "0",
+        ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
+      },
+      visibilityKey,
+      theme: data.theme,
+      pluginsGeneration: input.pluginsGeneration,
+      locale: input.locale,
+      colourScheme: input.colourScheme,
+      renderFlagsHash: data.flags.hash,
+    });
+  };
+
+  const renderOutcome = async (data: DemoData) => {
+    const flags = { compactTopicList: data.flags.values.compactTopicList === true };
+
+    return renderThemedPage({
       sql: input.sql,
-      boardName: input.boardName,
+      boardName: data.boardName,
       locale: input.locale,
       translate: input.translate,
-      template: outcome.template,
-      viewModel: { ...outcome.viewModel, flags },
-      breadcrumbs: outcome.breadcrumbs,
+      template: data.outcome.template,
+      viewModel: { ...data.outcome.viewModel, flags },
+      breadcrumbs: data.outcome.breadcrumbs,
       route: {
         route: demoContract.route,
         requiredIslands:
-          outcome.state === "content" ? demoContract.requiredIslands : DEMO_SHELL_ISLANDS,
+          data.outcome.state === "content" ? demoContract.requiredIslands : DEMO_SHELL_ISLANDS,
       },
       pluginsGeneration: input.pluginsGeneration,
-      theme: input.theme,
+      theme: data.theme,
     });
+  };
 
-  if (outcome.visibilityKey === null) {
+  if (FIXTURE_FORUM_TREE.get(input.forumId) === undefined) {
     // An unknown forum id is a 404 page; nothing is shared or cached for it.
-    const page = await render();
+    const data = await loadData();
+    const page = await renderOutcome(data);
 
     return {
       status: 404,
       html: page.html,
-      title: outcome.title,
+      title: data.outcome.title,
+      boardName: data.boardName,
       cache: null,
       variant: null,
       tags: [],
       etag: null,
-      hasUnlockGrant: outcome.hasUnlockGrant,
+      hasUnlockGrant: data.outcome.hasUnlockGrant,
       errors: page.errors,
     };
   }
 
-  const rendered = await renderCachedPage({
-    route: demoContract.route,
-    params: {
-      id: input.forumId,
-      deleted: outcome.showDeleted ? "1" : "0",
-      ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
-    },
-    visibilityKey: outcome.visibilityKey,
-    theme: input.theme,
-    pluginsGeneration: input.pluginsGeneration,
-    locale: input.locale,
-    colourScheme: input.colourScheme,
-    renderFlagsHash: input.flags.hash,
+  // `prepare` also runs on a hit, so this holds the data the final key was built from.
+  let latest: DemoData | undefined;
+  const rendered = await renderCachedPage<DemoData>({
     tags: contractTags(demoContract, { forumId: input.forumId }),
     cache: input.cache,
     tagVersions: input.tagVersions ?? null,
-    render: async () => {
-      const page = await render();
+    shell: { visitor: input.session === null ? "guest" : "member" },
+    prepare: async () => {
+      const data = await loadData();
+      latest = data;
+
+      return { variant: variantFor(data), data };
+    },
+    render: async (data) => {
+      const page = await renderOutcome(data);
       return { html: page.html, errors: page.errors };
     },
   });
 
+  if (latest === undefined) {
+    throw new Error("The demo route prepared no view model");
+  }
+
   return {
-    status: outcome.template === "error" ? outcome.status : 200,
+    status: latest.outcome.template === "error" ? latest.outcome.status : 200,
     html: rendered.html,
-    title: outcome.title,
+    title: latest.outcome.title,
+    boardName: latest.boardName,
     cache: rendered.cache,
     variant: rendered.variant,
     tags: rendered.tags,
     etag: rendered.etag,
-    hasUnlockGrant: outcome.hasUnlockGrant,
+    hasUnlockGrant: latest.outcome.hasUnlockGrant,
     errors: rendered.errors,
   };
 }

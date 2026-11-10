@@ -19,14 +19,12 @@ import {
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
-import { loadBoardSettings, saveBoardSettings } from "../../apps/staff-api/src/board-settings.ts";
+import { saveBoardSettings } from "../../apps/staff-api/src/board-settings.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { demoContract } from "../../apps/user-app/src/contracts.ts";
 import { type DemoRouteInput, renderDemoRoute } from "../../apps/user-app/src/demo/route.ts";
-import { loadViewerFlags } from "../../apps/user-app/src/flags.ts";
-import { etagFor } from "../../apps/user-app/src/http/cache.ts";
+import { etagFor, isNotModified, shellKey } from "../../apps/user-app/src/http/cache.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
-import { loadActiveTheme } from "../../apps/user-app/src/theme/render.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -102,13 +100,11 @@ async function renderVariant(
     readonly forumId: string;
     readonly pluginsGeneration?: number;
     readonly showDeleted?: boolean;
+    readonly tagVersions?: DemoRouteInput["tagVersions"];
   },
 ) {
-  const theme = await loadActiveTheme(database.sql);
-  const flags = await loadViewerFlags(database.sql, input.session);
   const request: DemoRouteInput = {
     sql: database.sql,
-    boardName: "Bulletin",
     locale: "en",
     translate,
     session: input.session,
@@ -116,9 +112,8 @@ async function renderVariant(
     showDeleted: input.showDeleted ?? false,
     pluginsGeneration: input.pluginsGeneration ?? 1,
     colourScheme: "system",
-    theme,
-    flags,
     cache,
+    tagVersions: input.tagVersions,
   };
 
   const result = await renderDemoRoute(request);
@@ -128,6 +123,20 @@ async function renderVariant(
     html: result.html,
     ...(result.cache === null ? {} : { cache: result.cache }),
   };
+}
+
+async function waitFor(check: () => boolean, timeoutMs = 3_000): Promise<void> {
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    if (check()) {
+      return;
+    }
+
+    await Bun.sleep(20);
+  }
+
+  throw new Error("Timed out waiting for the tag listener");
 }
 
 async function forumActions(database: TestDatabase, forumId: string): Promise<number> {
@@ -213,6 +222,48 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
     });
   });
 
+  test("member and guest share the demo fragment but never the ETag", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const base = {
+          sql: database.sql,
+          locale: "en" as const,
+          translate,
+          forumId: "2",
+          showDeleted: false,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          cache,
+          tagVersions: versions,
+        };
+        const guest = await renderDemoRoute({ ...base, session: null });
+        const member = await renderDemoRoute({
+          ...base,
+          session: await memberSession(database, "member-1"),
+        });
+
+        expect(guest.cache).toBe("miss");
+        // The fragment key and HTML stay shared (ADR 0006: cache by visibility, not viewer).
+        expect(member.variant).toBe(guest.variant);
+        expect(member.cache).toBe("hit");
+        expect(member.html).toBe(guest.html);
+        // The shell differs (data-visitor, overlay), so the response ETags must differ.
+        expect(member.etag).not.toBe(guest.etag);
+        expect(isNotModified(guest.etag, member.etag)).toBe(false);
+        expect(isNotModified(member.etag, member.etag)).toBe(true);
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
   test("a live template edit invalidates a warmed cache entry and its ETag", async () => {
     await withSeededDb(async (database) => {
       const versions = await createTagVersions({
@@ -224,11 +275,8 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
       try {
         const cache = createRenderCache({ tags: versions });
         const member = await memberSession(database, "member-1");
-        const theme = await loadActiveTheme(database.sql);
-        const flags = await loadViewerFlags(database.sql, member);
         const input = {
           sql: database.sql,
-          boardName: "Bulletin",
           locale: "en" as const,
           translate,
           session: member,
@@ -236,8 +284,6 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
           showDeleted: false,
           pluginsGeneration: 1,
           colourScheme: "system" as const,
-          theme,
-          flags,
           cache,
           tagVersions: versions,
         };
@@ -258,10 +304,7 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
 
         // The route reloads the theme per request, so a template edit changes the
         // fingerprint (and thus the variant and ETag) without restarting the process.
-        const edited = await renderDemoRoute({
-          ...input,
-          theme: await loadActiveTheme(database.sql),
-        });
+        const edited = await renderDemoRoute(input);
 
         expect(edited.cache).toBe("miss");
         expect(edited.variant).not.toBe(first.variant);
@@ -273,7 +316,7 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
     });
   });
 
-  test("an invalidation during a render cannot produce a newer ETag for older HTML", async () => {
+  test("an invalidation during preparation reloads instead of storing stale HTML", async () => {
     await withSeededDb(async (database) => {
       const versions = await createTagVersions({
         sql: database.sql,
@@ -283,25 +326,29 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
 
       try {
         const realCache = createRenderCache({ tags: versions });
-        // Simulate a mutation committing while the page is being rendered.
+        let invalidated = false;
+        // A mutation commits while the first attempt's view model is being prepared.
         const racingCache = {
           ...realCache,
           getOrRender: (request: Parameters<typeof realCache.getOrRender>[0]) =>
             realCache.getOrRender({
               ...request,
-              render: async () => {
-                const html = await request.render();
-                await bumpCacheTags(database.sql, ["forum:2"]);
-                return html;
+              prepare: async () => {
+                const prepared = await request.prepare();
+
+                if (!invalidated) {
+                  invalidated = true;
+                  await bumpCacheTags(database.sql, ["forum:2"]);
+                  await waitFor(() => versions.version("forum:2") === "1");
+                }
+
+                return prepared;
               },
             }),
         };
         const member = await memberSession(database, "member-1");
-        const theme = await loadActiveTheme(database.sql);
-        const flags = await loadViewerFlags(database.sql, member);
         const input = {
           sql: database.sql,
-          boardName: "Bulletin",
           locale: "en" as const,
           translate,
           session: member,
@@ -309,36 +356,38 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
           showDeleted: false,
           pluginsGeneration: 1,
           colourScheme: "system" as const,
-          theme,
-          flags,
           tagVersions: versions,
         };
         const before = await readTagVersions(database.sql, ["forum:2", "board"]);
-        const result = await renderDemoRoute({ ...input, cache: racingCache });
-        const after = await readTagVersions(database.sql, ["forum:2", "board"]);
+        const raced = await renderDemoRoute({ ...input, cache: racingCache });
 
-        if (result.variant === null) {
+        if (raced.variant === null) {
           throw new Error("expected a cacheable variant");
         }
 
-        // A tag that was never bumped has no row; the cache reads it as version 0.
+        // The racing render is retried after the invalidation and stored under the new
+        // version, so the ETag describes the content the next request will see.
+        expect(raced.cache).toBe("miss");
         const captured = new Map([
           ["forum:2", before.get("forum:2") ?? "0"],
           ["board", before.get("board") ?? "0"],
         ]);
+        const bumped = new Map([
+          ["forum:2", "1"],
+          ["board", captured.get("board") ?? "0"],
+        ]);
 
-        expect(after.get("forum:2")).not.toBe(captured.get("forum:2"));
-        // The ETag describes the HTML that was rendered (the pre-mutation version), so a
-        // conditional request cannot be answered with a 304 for content it has not seen.
-        expect(result.etag).toBe(etagFor(result.variant, captured));
-        expect(result.etag).not.toBe(etagFor(result.variant, after));
+        const shell = shellKey({ visitor: "member" });
 
-        // The cache stored the pre-mutation versions too, so the next request re-renders.
+        expect(raced.etag).toBe(etagFor(raced.variant, bumped, shell));
+        expect(raced.etag).not.toBe(etagFor(raced.variant, captured, shell));
+
+        // A later request on the same cache hits the retried content.
         await versions.refresh();
         const next = await renderDemoRoute({ ...input, cache: realCache });
 
-        expect(next.cache).toBe("miss");
-        expect(next.etag).not.toBe(result.etag);
+        expect(next.cache).toBe("hit");
+        expect(next.etag).toBe(raced.etag);
       } finally {
         await versions.close();
       }
@@ -356,12 +405,8 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
       try {
         const cache = createRenderCache({ tags: versions });
         const member = await memberSession(database, "member-1");
-        const theme = await loadActiveTheme(database.sql);
-        const flags = await loadViewerFlags(database.sql, member);
         const base = {
           sql: database.sql,
-          boardName: "Bulletin",
-          boardDescription: "A friendly place",
           locale: "en" as const,
           translate,
           session: member,
@@ -369,8 +414,6 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
           showDeleted: false,
           pluginsGeneration: 1,
           colourScheme: "system" as const,
-          theme,
-          flags,
           cache,
           tagVersions: versions,
         };
@@ -392,14 +435,9 @@ integrationDescribe("demo route cache variants (ADR 0006)", () => {
         expect(saved.ok).toBe(true);
 
         // The save bumps `board` in its transaction; the demo header/footer depend on it too.
-        const settings = await loadBoardSettings(database.sql);
         await versions.refresh();
 
-        const after = await renderDemoRoute({
-          ...base,
-          boardName: settings.boardName,
-          boardDescription: settings.boardDescription,
-        });
+        const after = await renderDemoRoute(base);
 
         expect(after.cache).toBe("miss");
         expect(after.html).toContain("data-board-name>Renamed board<");

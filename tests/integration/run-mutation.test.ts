@@ -67,18 +67,18 @@ integrationDescribe("runMutation", () => {
       try {
         const cache = createRenderCache({ tags: versions });
         const topicPage = {
-          key: "topic-page",
           tags: [topicTag("5"), topicPagesTag("5")],
+          prepare: async () => ({ key: "topic-page", data: undefined }),
           render: () => "<article>topic 5</article>",
         };
         const forumList = {
-          key: "forum-list",
           tags: [forumTag("1")],
+          prepare: async () => ({ key: "forum-list", data: undefined }),
           render: () => "<ol>forum 1</ol>",
         };
         const otherTopic = {
-          key: "other-topic",
           tags: [topicPagesTag("6")],
+          prepare: async () => ({ key: "other-topic", data: undefined }),
           render: () => "<article>topic 6</article>",
         };
 
@@ -145,8 +145,8 @@ integrationDescribe("runMutation", () => {
 
       try {
         const otherTopic = {
-          key: "other-topic",
           tags: [topicPagesTag("6")],
+          prepare: async () => ({ key: "other-topic", data: undefined }),
           render: () => "<article>topic 6</article>",
         };
 

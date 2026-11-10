@@ -51,7 +51,13 @@ describe("cache runtime", () => {
 
       expect(first.tags).toBeNull();
       expect(
-        (await first.cache.getOrRender({ key: "a", tags: [], render: () => "html" })).status,
+        (
+          await first.cache.getOrRender({
+            tags: [],
+            prepare: async () => ({ key: "a", data: undefined }),
+            render: () => "html",
+          })
+        ).status,
       ).toBe("bypass");
       // While the backoff runs, requests share the fallback and do not hammer the database.
       expect((await runtime.get()).tags).toBeNull();
@@ -64,10 +70,22 @@ describe("cache runtime", () => {
       expect(ready.tags).not.toBeNull();
       expect(attempts).toBe(3);
       expect(
-        (await ready.cache.getOrRender({ key: "a", tags: [], render: () => "html" })).status,
+        (
+          await ready.cache.getOrRender({
+            tags: [],
+            prepare: async () => ({ key: "a", data: undefined }),
+            render: () => "html",
+          })
+        ).status,
       ).toBe("miss");
       expect(
-        (await ready.cache.getOrRender({ key: "a", tags: [], render: () => "html" })).status,
+        (
+          await ready.cache.getOrRender({
+            tags: [],
+            prepare: async () => ({ key: "a", data: undefined }),
+            render: () => "html",
+          })
+        ).status,
       ).toBe("hit");
     } finally {
       await runtime.close();

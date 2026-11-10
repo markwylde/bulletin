@@ -3,10 +3,10 @@ import { bumpCacheTags, createRenderCache, createTagVersions } from "@bulletin/c
 import { baseSeedModule, runSeeds, SeedRegistry, themesSeedModule } from "@bulletin/db/seed";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
-import { loadBoardSettings, saveBoardSettings } from "../../apps/staff-api/src/board-settings.ts";
+import { saveBoardSettings } from "../../apps/staff-api/src/board-settings.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
-import { loadActiveTheme } from "../../apps/user-app/src/theme/render.ts";
+import { isNotModified } from "../../apps/user-app/src/http/cache.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -27,6 +27,34 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
   });
 }
 
+async function createAdmin(database: TestDatabase): Promise<string> {
+  const [admin] = (await database.sql`
+    INSERT INTO core.members (display_name, name_skeleton)
+    VALUES ('Board admin', 'board admin')
+    RETURNING id::text AS id
+  `) as Array<{ id: string }>;
+
+  if (admin === undefined) {
+    throw new Error("could not create the acting member");
+  }
+
+  return admin.id;
+}
+
+async function waitFor(check: () => boolean, timeoutMs = 3_000): Promise<void> {
+  const started = Date.now();
+
+  while (Date.now() - started < timeoutMs) {
+    if (check()) {
+      return;
+    }
+
+    await Bun.sleep(20);
+  }
+
+  throw new Error("Timed out waiting for the tag listener");
+}
+
 integrationDescribe("home route cache (ADR 0006)", () => {
   test("hits per variant and misses when the board tag is invalidated", async () => {
     await withSeededDb(async (database) => {
@@ -37,18 +65,13 @@ integrationDescribe("home route cache (ADR 0006)", () => {
       });
 
       try {
-        const cache = createRenderCache({ tags: versions });
-        const theme = await loadActiveTheme(database.sql);
         const input = {
           sql: database.sql,
-          boardName: "Bulletin",
-          boardDescription: "A friendly place",
           locale: "en" as const,
           translate: translateEn,
           pluginsGeneration: 1,
           colourScheme: "system" as const,
-          theme,
-          cache,
+          cache: createRenderCache({ tags: versions }),
           tagVersions: versions,
         };
 
@@ -99,37 +122,23 @@ integrationDescribe("home route cache (ADR 0006)", () => {
       });
 
       try {
-        const cache = createRenderCache({ tags: versions });
-        const theme = await loadActiveTheme(database.sql);
-        const base = {
+        const input = {
           sql: database.sql,
-          boardName: "Bulletin",
-          boardDescription: "A friendly place",
           locale: "en" as const,
           translate: translateEn,
           pluginsGeneration: 1,
           colourScheme: "system" as const,
-          theme,
-          cache,
+          cache: createRenderCache({ tags: versions }),
           tagVersions: versions,
         };
-        const first = await renderHomeRoute(base);
-        const warm = await renderHomeRoute(base);
+        const first = await renderHomeRoute(input);
+        const warm = await renderHomeRoute(input);
 
         expect(first.cache).toBe("miss");
         expect(warm.cache).toBe("hit");
+        expect(first.html).toContain("data-board-name>Bulletin<");
 
-        const [admin] = (await database.sql`
-          INSERT INTO core.members (display_name, name_skeleton)
-          VALUES ('Board admin', 'board admin')
-          RETURNING id::text AS id
-        `) as Array<{ id: string }>;
-
-        if (admin === undefined) {
-          throw new Error("could not create the acting member");
-        }
-
-        const saved = await saveBoardSettings(database.sql, admin.id, {
+        const saved = await saveBoardSettings(database.sql, await createAdmin(database), {
           boardName: "Renamed board",
           boardDescription: "A renamed place",
           defaultLocale: "en",
@@ -138,21 +147,128 @@ integrationDescribe("home route cache (ADR 0006)", () => {
         });
 
         expect(saved.ok).toBe(true);
-
-        // The save bumped `board` in its own transaction; reload the settings the page gets.
-        const settings = await loadBoardSettings(database.sql);
         await versions.refresh();
 
-        const after = await renderHomeRoute({
-          ...base,
-          boardName: settings.boardName,
-          boardDescription: settings.boardDescription,
-        });
+        const after = await renderHomeRoute(input);
 
         expect(after.cache).toBe("miss");
-        expect(after.html).toContain("Renamed board");
-        expect(after.html).not.toContain("A friendly place");
+        expect(after.html).toContain("data-board-name>Renamed board<");
+        expect(after.html).not.toContain("data-board-name>Bulletin<");
         expect(after.etag).not.toBe(first.etag);
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
+  test("a save racing the view-model load is retried, never stored stale", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const realCache = createRenderCache({ tags: versions });
+        const admin = await createAdmin(database);
+        let raced = false;
+
+        // The first prepare reads the old settings; a real save commits (and invalidates)
+        // before the cache can store that HTML under the new version.
+        const racingCache = {
+          ...realCache,
+          getOrRender: (request: Parameters<typeof realCache.getOrRender>[0]) =>
+            realCache.getOrRender({
+              ...request,
+              prepare: async () => {
+                const prepared = await request.prepare();
+
+                if (!raced) {
+                  raced = true;
+                  const saved = await saveBoardSettings(database.sql, admin, {
+                    boardName: "Raced board",
+                    boardDescription: "A raced place",
+                    defaultLocale: "en",
+                    offline: false,
+                    offlineMessage: "",
+                  });
+
+                  expect(saved.ok).toBe(true);
+                  await waitFor(() => versions.version("board") === "1");
+                }
+
+                return prepared;
+              },
+            }),
+        };
+        const input = {
+          sql: database.sql,
+          locale: "en" as const,
+          translate: translateEn,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          tagVersions: versions,
+        };
+
+        const racedRender = await renderHomeRoute({ ...input, cache: racingCache });
+
+        expect(racedRender.cache).toBe("miss");
+        expect(racedRender.html).toContain("data-board-name>Raced board<");
+        expect(racedRender.html).not.toContain("data-board-name>Bulletin<");
+
+        await versions.refresh();
+
+        // The retried render was stored under the post-save version: the next request hits the
+        // new content (and not the stale first attempt).
+        const stored = await renderHomeRoute({ ...input, cache: realCache });
+
+        expect(stored.cache).toBe("hit");
+        expect(stored.html).toContain("data-board-name>Raced board<");
+        expect(stored.etag).toBe(racedRender.etag);
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
+  test("member and guest share the fragment but never the ETag", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const input = {
+          sql: database.sql,
+          locale: "en" as const,
+          translate: translateEn,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          cache: createRenderCache({ tags: versions }),
+          tagVersions: versions,
+        };
+        const guest = await renderHomeRoute({
+          ...input,
+          shell: { visitor: "guest", localeSource: "guest" },
+        });
+        const member = await renderHomeRoute({
+          ...input,
+          shell: { visitor: "member", localeSource: "member" },
+        });
+
+        expect(guest.cache).toBe("miss");
+        // One shared fragment key and HTML for both shells.
+        expect(member.variant).toBe(guest.variant);
+        expect(member.cache).toBe("hit");
+        expect(member.html).toBe(guest.html);
+        // The per-response ETags differ, so a guest's cached response cannot satisfy the
+        // member's revalidation (the shells differ: data-visitor, overlay).
+        expect(member.etag).not.toBe(guest.etag);
+        expect(isNotModified(guest.etag, member.etag)).toBe(false);
+        expect(isNotModified(member.etag, member.etag)).toBe(true);
       } finally {
         await versions.close();
       }

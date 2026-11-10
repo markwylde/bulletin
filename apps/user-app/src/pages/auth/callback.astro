@@ -1,23 +1,33 @@
 ---
 import { createServerT } from "@bulletin/i18n";
+import { renderAuthRoute } from "../../auth/route.ts";
+import { cacheRuntime } from "../../cache-runtime.ts";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { callbackContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
-import { boardNameFrom, renderThemedPage } from "../../theme/render.ts";
+import {
+  boardNameFrom,
+  PLUGIN_GENERATION,
+  requestColourScheme,
+} from "../../theme/render.ts";
 
+const sql = readSql();
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const session = Astro.locals.session ?? null;
-const rendered = await renderThemedPage({
-  sql: readSql(),
+const runtime = await cacheRuntime(sql);
+const rendered = await renderAuthRoute({
+  sql,
   boardName: boardNameFrom(Astro.locals.board?.boardName, translate),
   locale,
   translate,
   template: callbackContract.templates.page,
-  viewModel: {},
-  breadcrumbs: [],
-  route: callbackContract,
+  contract: callbackContract,
+  pluginsGeneration: PLUGIN_GENERATION,
+  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  cache: runtime.cache,
+  shell: { visitor: session === null ? "guest" : "member" },
 });
 
 Astro.response.headers.set("cache-control", "private, no-store");

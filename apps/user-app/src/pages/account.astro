@@ -5,7 +5,8 @@ import { USER_CATALOGS } from "../catalogs.ts";
 import { accountContract } from "../contracts.ts";
 import { readSql } from "../db.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
-import { boardNameFrom, renderThemedPage } from "../theme/render.ts";
+import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
+import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account")}`;
 const session = Astro.locals.session ?? null;
@@ -29,15 +30,38 @@ if (account === null) {
 }
 
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
-const rendered = await renderThemedPage({
-  sql,
-  boardName,
-  locale,
-  translate,
-  template: "account",
-  viewModel: account.viewModel,
-  breadcrumbs: account.breadcrumbs,
-  route: accountContract,
+// A personal, no-store page: the shared pipeline runs but retains nothing (ADR 0006).
+const rendered = await renderCachedPage({
+  tags: [`member:${session.memberId}`],
+  cache: null,
+  tagVersions: null,
+  shell: { visitor: "member", authState: "authenticated" },
+  prepare: async () => ({
+    variant: pageVariant({
+      route: accountContract.route,
+      visibilityKey: "member",
+      theme: null,
+      pluginsGeneration: PLUGIN_GENERATION,
+      locale,
+      colourScheme: "system",
+      renderFlagsHash: "",
+    }),
+    data: undefined,
+  }),
+  render: async () => {
+    const page = await renderThemedPage({
+      sql,
+      boardName,
+      locale,
+      translate,
+      template: "account",
+      viewModel: account.viewModel,
+      breadcrumbs: account.breadcrumbs,
+      route: accountContract,
+    });
+
+    return { html: page.html, errors: page.errors };
+  },
 });
 
 // A personal, uncached page (ADR 0006).

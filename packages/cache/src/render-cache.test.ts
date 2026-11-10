@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createRenderCache } from "./render-cache.ts";
+import { createRenderCache, type RenderRequest } from "./render-cache.ts";
 import type { TagVersionSource } from "./tags.ts";
 
 function tagSource(initial: Record<string, string> = {}) {
@@ -38,16 +38,28 @@ function tagSource(initial: Record<string, string> = {}) {
   };
 }
 
+/** A request with a fixed key and no view-model data. */
+function fixed<T = undefined>(
+  key: string,
+  tags: readonly string[],
+  render: (data: T) => string | Promise<string>,
+): RenderRequest<T> {
+  return {
+    tags,
+    prepare: async () => ({ key, data: undefined as T }),
+    render,
+  };
+}
+
 describe("render cache", () => {
   test("renders once per variant and hits while its tags are unchanged", async () => {
     const tags = tagSource({ "forum:2": "1" });
     const cache = createRenderCache({ tags: tags.source });
     let renders = 0;
-    const render = () => {
+    const request = fixed("variant-a", ["forum:2"], () => {
       renders += 1;
       return "<p>page</p>";
-    };
-    const request = { key: "variant-a", tags: ["forum:2"], render };
+    });
 
     expect(await cache.getOrRender(request)).toMatchObject({ status: "miss", html: "<p>page</p>" });
     expect(await cache.getOrRender(request)).toMatchObject({ status: "hit", html: "<p>page</p>" });
@@ -61,62 +73,149 @@ describe("render cache", () => {
     const tags = tagSource({ "forum:2": "1" });
     const cache = createRenderCache({ tags: tags.source });
     let renders = 0;
-    const request = {
-      key: "variant-a",
-      tags: ["forum:2"],
-      render: () => {
-        renders += 1;
-        return `render ${renders}`;
-      },
-    };
+    const request = fixed("variant-a", ["forum:2"], () => {
+      renders += 1;
+      return `render ${renders}`;
+    });
 
     expect((await cache.getOrRender(request)).status).toBe("miss");
     tags.bump("forum:2");
     expect(await cache.getOrRender(request)).toMatchObject({ status: "miss", html: "render 2" });
   });
 
-  test("returns the versions captured before the render, not the ones after it", async () => {
-    const tags = tagSource({ "forum:2": "1" });
+  test("reloads the view model when a tag moves while it is prepared", async () => {
+    const tags = tagSource({ board: "1" });
     const cache = createRenderCache({ tags: tags.source });
-    const first = await cache.getOrRender({
-      key: "variant-a",
-      tags: ["forum:2"],
-      render: () => {
-        // A mutation commits while this render is in flight.
-        tags.bump("forum:2");
-        return "old html";
+    let prepares = 0;
+    let renders = 0;
+
+    const result = await cache.getOrRender<{ version: string }>({
+      tags: ["board"],
+      prepare: async () => {
+        prepares += 1;
+        const version = tags.versions.get("board") ?? "0";
+
+        // The first attempt reads the old value, then a settings save and its invalidation
+        // commit before the HTML is built.
+        if (prepares === 1) {
+          tags.bump("board");
+        }
+
+        return { key: "home", data: { version } };
+      },
+      render: (data) => {
+        renders += 1;
+        return `html at ${data.version}`;
       },
     });
 
-    expect(first.status).toBe("miss");
+    // The first render predates the invalidation, so it is discarded and prepared again.
+    expect(prepares).toBe(2);
+    expect(renders).toBe(2);
+    expect(result.status).toBe("miss");
+    expect(result.html).toBe("html at 2");
+    expect(result.versions.get("board")).toBe("2");
+
+    // The stored entry is the fresh one, never the stale first render.
+    const second = await cache.getOrRender<{ version: string }>({
+      tags: ["board"],
+      prepare: async () => ({
+        key: "home",
+        data: { version: tags.versions.get("board") ?? "0" },
+      }),
+      render: (data) => `html at ${data.version}`,
+    });
+
+    expect(second.status).toBe("hit");
+    expect(second.html).toBe("html at 2");
+  });
+
+  test("retries with the key the new data produces", async () => {
+    const tags = tagSource({ perm: "1" });
+    const cache = createRenderCache({ tags: tags.source });
+    let prepares = 0;
+
+    const result = await cache.getOrRender<{ key: string }>({
+      tags: ["perm"],
+      prepare: async () => {
+        prepares += 1;
+
+        if (prepares === 1) {
+          tags.bump("perm");
+          return { key: "key-old", data: { key: "key-old" } };
+        }
+
+        return { key: "key-new", data: { key: "key-new" } };
+      },
+      render: (data) => `html for ${data.key}`,
+    });
+
+    expect(result.key).toBe("key-new");
+    expect(result.html).toBe("html for key-new");
+
+    const stored = await cache.getOrRender<{ key: string }>({
+      tags: ["perm"],
+      prepare: async () => ({ key: "key-new", data: { key: "key-new" } }),
+      render: (data) => `html for ${data.key}`,
+    });
+
+    expect(stored.status).toBe("hit");
+    expect(stored.html).toBe("html for key-new");
+  });
+
+  test("serves the latest render without storing when the tags never settle", async () => {
+    const tags = tagSource({ board: "1" });
+    const cache = createRenderCache({ tags: tags.source });
+
+    const result = await cache.getOrRender({
+      tags: ["board"],
+      prepare: async () => {
+        tags.bump("board");
+        return { key: "home", data: undefined };
+      },
+      render: () => "html",
+    });
+
+    expect(result.status).toBe("miss");
+    expect(cache.size).toBe(0);
+  });
+
+  test("returns versions captured before the data is loaded", async () => {
+    const tags = tagSource({ "forum:2": "1" });
+    const cache = createRenderCache({ tags: tags.source });
+    const seen: string[] = [];
+
+    const first = await cache.getOrRender({
+      tags: ["forum:2"],
+      prepare: async () => {
+        seen.push(tags.versions.get("forum:2") ?? "0");
+        return { key: "variant-a", data: undefined };
+      },
+      render: () => "html",
+    });
+
     expect(first.versions.get("forum:2")).toBe("1");
+    expect(seen).toEqual(["1"]);
 
-    // The stored entry keeps the captured version, so the next request re-renders instead of
-    // serving the old HTML under the new version.
-    const second = await cache.getOrRender({
-      key: "variant-a",
+    tags.bump("forum:2");
+
+    // A later request prepares again and stores under the new version.
+    await cache.getOrRender({
       tags: ["forum:2"],
-      render: () => "new html",
+      prepare: async () => {
+        seen.push(tags.versions.get("forum:2") ?? "0");
+        return { key: "variant-a", data: undefined };
+      },
+      render: () => "html",
     });
 
-    expect(second.status).toBe("miss");
-    expect(second.html).toBe("new html");
-    expect(second.versions.get("forum:2")).toBe("2");
-
-    const third = await cache.getOrRender({
-      key: "variant-a",
-      tags: ["forum:2"],
-      render: () => "unused",
-    });
-
-    expect(third.status).toBe("hit");
-    expect(third.versions.get("forum:2")).toBe("2");
+    expect(seen).toEqual(["1", "2"]);
   });
 
   test("ignores tags the fragment did not declare", async () => {
     const tags = tagSource({ "forum:2": "1", "topic:9": "1" });
     const cache = createRenderCache({ tags: tags.source });
-    const request = { key: "variant-a", tags: ["forum:2"], render: () => "html" };
+    const request = fixed("variant-a", ["forum:2"], () => "html");
 
     await cache.getOrRender(request);
     tags.bump("topic:9");
@@ -128,13 +227,9 @@ describe("render cache", () => {
     const tags = tagSource();
     const cache = createRenderCache({ tags: tags.source });
 
-    expect((await cache.getOrRender({ key: "a", tags: [], render: () => "A" })).status).toBe(
-      "miss",
-    );
-    expect((await cache.getOrRender({ key: "b", tags: [], render: () => "B" })).status).toBe(
-      "miss",
-    );
-    expect(await cache.getOrRender({ key: "b", tags: [], render: () => "B" })).toMatchObject({
+    expect((await cache.getOrRender(fixed("a", [], () => "A"))).status).toBe("miss");
+    expect((await cache.getOrRender(fixed("b", [], () => "B"))).status).toBe("miss");
+    expect(await cache.getOrRender(fixed("b", [], () => "B"))).toMatchObject({
       status: "hit",
       html: "B",
     });
@@ -144,14 +239,10 @@ describe("render cache", () => {
     const tags = tagSource();
     const cache = createRenderCache({ tags: tags.source });
     let renders = 0;
-    const request = {
-      key: "variant-a",
-      tags: [],
-      render: () => {
-        renders += 1;
-        return `render ${renders}`;
-      },
-    };
+    const request = fixed("variant-a", [], () => {
+      renders += 1;
+      return `render ${renders}`;
+    });
 
     tags.setTrusted(false);
     expect(await cache.getOrRender(request)).toMatchObject({ status: "bypass", html: "render 1" });
@@ -168,7 +259,7 @@ describe("render cache", () => {
     const tags = tagSource();
     const cache = createRenderCache({ tags: tags.source });
 
-    await cache.getOrRender({ key: "a", tags: [], render: () => "A" });
+    await cache.getOrRender(fixed("a", [], () => "A"));
 
     expect(tags.permChecks).toBe(1);
   });
@@ -178,21 +269,19 @@ describe("render cache", () => {
     const cache = createRenderCache({ tags: tags.source });
     tags.failPermBackstop(true);
 
-    expect((await cache.getOrRender({ key: "a", tags: [], render: () => "A" })).status).toBe(
-      "bypass",
-    );
+    expect((await cache.getOrRender(fixed("a", [], () => "A"))).status).toBe("bypass");
   });
 
   test("evicts the least recently used fragment over the byte budget", async () => {
     const tags = tagSource();
     const cache = createRenderCache({ tags: tags.source, maxBytes: 6 });
 
-    await cache.getOrRender({ key: "a", tags: [], render: () => "aaa" });
-    await cache.getOrRender({ key: "b", tags: [], render: () => "bbb" });
-    await cache.getOrRender({ key: "a", tags: [], render: () => "unused" });
-    await cache.getOrRender({ key: "c", tags: [], render: () => "ccc" });
+    await cache.getOrRender(fixed("a", [], () => "aaa"));
+    await cache.getOrRender(fixed("b", [], () => "bbb"));
+    await cache.getOrRender(fixed("a", [], () => "unused"));
+    await cache.getOrRender(fixed("c", [], () => "ccc"));
 
-    expect(await cache.getOrRender({ key: "b", tags: [], render: () => "bbb" })).toMatchObject({
+    expect(await cache.getOrRender(fixed("b", [], () => "bbb"))).toMatchObject({
       status: "miss",
     });
     expect(cache.size).toBe(2);
