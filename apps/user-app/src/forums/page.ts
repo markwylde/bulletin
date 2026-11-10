@@ -147,7 +147,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     : [];
   const audience = announcementAudienceClass(announcements, groupIds, input.now);
   const allPrefixes =
-    locked || input.forum.type === "category"
+    locked || input.forum.type === "category" || input.forum.prefixMode === "none"
       ? []
       : await listForumPrefixes(input.sql, input.forum.id, input.locale);
   const prefixes: ForumPrefix[] = [];

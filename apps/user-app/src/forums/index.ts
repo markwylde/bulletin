@@ -58,6 +58,7 @@ export interface BoardIndexAnnouncement {
 
 export interface BoardIndexView {
   readonly categories: readonly BoardIndexCategory[];
+  readonly rootForums: readonly BoardIndexForum[];
   readonly announcements: readonly BoardIndexAnnouncement[];
   readonly flags: Readonly<Record<string, boolean>>;
 }
@@ -153,6 +154,9 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
     };
   };
 
+  const rootForums = rows
+    .filter((row) => row.parentId === null && row.type !== "category")
+    .map(forumView);
   const now = input.now ?? new Date();
   const announcementsEnabled = input.announcementsEnabled !== false;
   const allAnnouncements = announcementsEnabled ? await loadAnnouncements(input.sql, now) : [];
@@ -180,6 +184,7 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
   return {
     viewModel: {
       categories,
+      rootForums,
       announcements: notices.map((announcement) => ({
         id: announcement.id,
         title: announcement.title,

@@ -14,6 +14,7 @@ import { type ForumAction, forumActionMask } from "@bulletin/domain/permissions"
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { deleteForum } from "../../apps/staff-api/src/forums.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { buildBoardIndex } from "../../apps/user-app/src/forums/index.ts";
 import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
@@ -214,6 +215,82 @@ integrationDescribe("board index view model", () => {
       expect(generalAt).toBeGreaterThan(-1);
       expect(announcementsAt).toBeGreaterThan(-1);
       expect(generalAt).toBeLessThan(announcementsAt);
+    });
+  }, 30_000);
+
+  test("renders permitted root forums through creation, reparenting and category deletion", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const [admin] = (await database.sql`
+        SELECT member_id::text AS id FROM pii.identities WHERE sub = 'admin'
+      `) as Array<{ id: string }>;
+
+      if (admin === undefined) {
+        throw new Error("Missing admin");
+      }
+
+      const trusted = { version: () => "0", isTrusted: () => true };
+      const renderIndex = async (): Promise<string> => {
+        const result = await renderHomeRoute({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session: member,
+          pluginsGeneration: 1,
+          colourScheme: "system",
+          cache: createRenderCache({ tags: trusted }),
+          tagVersions: trusted,
+        });
+
+        return result.html;
+      };
+      const [root] = (await database.sql`
+        INSERT INTO core.forums (type, title, slug)
+        VALUES ('forum', 'Root Forum', 'root-forum')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (root === undefined) {
+        throw new Error("Could not create root forum");
+      }
+
+      await setStandardActions(database, root.id, ["show", "read"]);
+      expect(await renderIndex()).toContain(`data-forum-link="${root.id}"`);
+
+      await database.sql`UPDATE core.forums SET parent_id = 1 WHERE id = ${root.id}`;
+      expect(await renderIndex()).toContain(`data-forum-link="${root.id}"`);
+
+      const [category] = (await database.sql`
+        INSERT INTO core.forums (type, title, slug)
+        VALUES ('category', 'Temporary Category', 'temporary-category')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (category === undefined) {
+        throw new Error("Could not create category");
+      }
+
+      await setStandardActions(database, category.id, ["show", "read"]);
+      const [child] = (await database.sql`
+        INSERT INTO core.forums (parent_id, type, title, slug)
+        VALUES (${category.id}, 'forum', 'Promoted Forum', 'promoted-forum')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (child === undefined) {
+        throw new Error("Could not create child forum");
+      }
+
+      // Keep the promoted forum visible after it loses the category's inherited matrix.
+      await setStandardActions(database, child.id, ["show", "read"]);
+      expect(await renderIndex()).toContain(`data-forum-link="${child.id}"`);
+
+      const deleted = await deleteForum(database.sql, admin.id, { id: category.id });
+      expect(deleted.ok).toBe(true);
+
+      const promoted = await renderIndex();
+      expect(promoted).toContain(`data-forum-link="${child.id}"`);
+      expect(promoted).toContain("data-root-forums");
     });
   }, 30_000);
 

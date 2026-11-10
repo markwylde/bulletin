@@ -9,6 +9,7 @@ import { syncFlagDefinitions } from "@bulletin/db/flags";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
+import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { announceDismissResponse } from "./announcements.ts";
 import { beaconResponse } from "./beacon.ts";
@@ -50,7 +51,11 @@ await startService({
     const { pathname } = new URL(request.url);
 
     if (request.method === "GET" && pathname === "/api/forums/redirect-counts") {
-      return redirectCountsResponse(sql);
+      const response = await auth.handle(request, async ({ session }) =>
+        redirectCountsResponse(sql, session?.memberId ?? GUEST_PRINCIPAL, session?.id ?? null),
+      );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }
 
     const unlockMatch = /^\/api\/forums\/(\d+)\/unlock$/.exec(pathname);

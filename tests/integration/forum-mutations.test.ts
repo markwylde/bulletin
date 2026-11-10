@@ -19,6 +19,7 @@ import {
 } from "@bulletin/domain/mutations";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { saveForumSettings } from "../../apps/staff-api/src/forums.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderForumRoute } from "../../apps/user-app/src/forums/route.ts";
 import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
@@ -268,6 +269,80 @@ integrationDescribe("forum mutations invalidate the index and affected pages", (
         if (forum.kind === "page") {
           expect(forum.cache).toBe("miss");
           expect(forum.html).toContain("Board notice");
+        }
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("reloads forum settings after the cache captures tag versions", async () => {
+    await withSeededDb(async (database) => {
+      const [admin] = (await database.sql`
+        SELECT member_id::text AS id FROM pii.identities WHERE sub = 'admin'
+      `) as Array<{ id: string }>;
+
+      if (admin === undefined) {
+        throw new Error("Missing admin");
+      }
+
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const member = await memberSession(database, "member-1");
+        const realCache = createRenderCache({ tags: versions });
+        const racingCache = {
+          ...realCache,
+          async getOrRender(request: Parameters<typeof realCache.getOrRender>[0]) {
+            const saved = await saveForumSettings(database.sql, admin.id, {
+              id: "2",
+              description: "Raced settings",
+              rules: "Raced rules",
+              showModerators: true,
+              language: null,
+              defaultSort: "last_post",
+              prefixMode: "optional",
+              prefixIds: [],
+            });
+
+            expect(saved.ok).toBe(true);
+            await versions.refresh();
+
+            return realCache.getOrRender(request);
+          },
+        };
+        const input = {
+          sql: database.sql,
+          locale: "en" as const,
+          translate,
+          session: member,
+          ref: "/forum/2-announcements",
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          tagVersions: versions,
+        };
+        const raced = await renderForumRoute({ ...input, cache: racingCache });
+
+        expect(raced.kind).toBe("page");
+
+        if (raced.kind !== "page") {
+          return;
+        }
+
+        expect(raced.cache).toBe("miss");
+        expect(raced.html).toContain("Raced rules");
+
+        const stored = await renderForumRoute({ ...input, cache: realCache });
+
+        expect(stored.kind).toBe("page");
+
+        if (stored.kind === "page") {
+          expect(stored.cache).toBe("hit");
+          expect(stored.html).toContain("Raced rules");
         }
       } finally {
         await versions.close();

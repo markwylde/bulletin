@@ -327,6 +327,14 @@ integrationDescribe("forum page", () => {
         expect(adminPage.html).toContain('data-prefix-key="staff_only"');
         expect(adminPage.html).toContain("Staff only");
       }
+
+      await database.sql`UPDATE core.forums SET prefix_mode = 'none' WHERE id = 2`;
+      const disabled = await render(database, await forumHref(database, "2"), member);
+
+      if (disabled.kind === "page") {
+        expect(disabled.html).not.toContain("data-prefix-filter");
+        expect(disabled.html).not.toContain('data-prefix-key="question"');
+      }
     });
   }, 30_000);
 

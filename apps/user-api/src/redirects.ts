@@ -1,13 +1,39 @@
 import { listRedirectClickCounts } from "@bulletin/domain/forums";
+import {
+  can,
+  GUEST_PRINCIPAL,
+  loadForumTree,
+  loadPermissionSnapshot,
+  type ViewerPrincipal,
+} from "@bulletin/domain/permissions";
 import type { SQL } from "bun";
 
 /**
  * `GET /api/forums/redirect-counts`: a small public fragment the index refreshes after paint.
- * Counters are read-path data, so this response never participates in content cache tags.
+ * Only redirect forums the viewer may `show` are returned; ancestor visibility is part of the
+ * compiled snapshot. Counters are read-path data and never invalidate content pages.
  */
-export async function redirectCountsResponse(sql: SQL): Promise<Response> {
-  return Response.json(
-    { counts: await listRedirectClickCounts(sql) },
-    { headers: { "cache-control": "no-store" } },
-  );
+export async function redirectCountsResponse(
+  sql: SQL,
+  principal: ViewerPrincipal = GUEST_PRINCIPAL,
+  sessionId: string | null = null,
+): Promise<Response> {
+  const [tree, all] = await Promise.all([loadForumTree(sql), listRedirectClickCounts(sql)]);
+  const snapshot = await loadPermissionSnapshot(sql, principal, { tree, sessionId });
+  const counts: Record<string, number> = {};
+
+  for (const [forumId, count] of Object.entries(all)) {
+    if (
+      await can(sql, principal, "show", {
+        forumId,
+        tree,
+        sessionId,
+        snapshot,
+      })
+    ) {
+      counts[forumId] = count;
+    }
+  }
+
+  return Response.json({ counts }, { headers: { "cache-control": "no-store" } });
 }

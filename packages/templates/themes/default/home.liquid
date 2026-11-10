@@ -36,6 +36,47 @@
     </section>
   {% endif %}
 
+  {% if rootForums.size > 0 %}
+    <ul class="bl-forum-list" data-root-forums>
+      {% for forum in rootForums %}
+        <li class="bl-forum-list__item" data-forum-row="{{ forum.id }}">
+          <div class="bl-forum-row__main">
+            <a class="bl-forum-list__link" href="{{ forum.href }}" data-forum-link="{{ forum.id }}">{{ forum.title }}</a>
+            {% if forum.description.size > 0 %}
+              <p class="bl-muted" data-forum-description>{{ forum.description }}</p>
+            {% endif %}
+            {% if forum.redirect %}
+              <p class="bl-muted" data-redirect>
+                <a href="{{ forum.redirect.url }}" rel="nofollow noopener">{{ forum.redirect.url }}</a>
+                <span class="bl-badge" data-redirect-clicks="{{ forum.id }}" data-redirect-count="{{ forum.redirect.count }}" data-click-suffix-one="{% t "index.clickSuffix.one" %}" data-click-suffix-other="{% t "index.clickSuffix.other" %}">{{ forum.redirect.clicks }}</span>
+              </p>
+            {% endif %}
+            {% if forum.subforums.size > 0 %}
+              <ul class="bl-subforum-list" data-subforums="{{ forum.id }}" aria-label="{% t "index.subforums" %}">
+                {% for subforum in forum.subforums %}
+                  <li><a href="{{ subforum.href }}" data-subforum-link="{{ subforum.id }}">{{ subforum.title }}</a></li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </div>
+          <div class="bl-forum-row__stats">
+            <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
+            <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
+            {% if forum.lastPost %}
+              <span class="bl-muted" data-last-post="{{ forum.id }}">
+                {% if forum.lastPost.memberName %}
+                  {% t "index.lastPostBy" date: forum.lastPost.date, member: forum.lastPost.memberName %}
+                {% else %}
+                  {% t "index.lastPost" date: forum.lastPost.date %}
+                {% endif %}
+              </span>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
   {% if categories.size > 0 %}
     {% for category in categories %}
       <section class="bl-board-category" data-category="{{ category.id }}">
@@ -89,7 +130,7 @@
     {% endfor %}
   {% endif %}
 
-  {% if categories.size == 0 %}
+  {% if categories.size == 0 and rootForums.size == 0 %}
     {{ emptyState }}
   {% endif %}
 </main>

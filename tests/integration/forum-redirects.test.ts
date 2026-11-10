@@ -16,7 +16,7 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import { listRedirectClickCounts } from "@bulletin/domain/forums";
-import { type ForumAction, forumActionMask } from "@bulletin/domain/permissions";
+import { type ForumAction, forumActionMask, GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { redirectCountsResponse } from "../../apps/user-api/src/redirects.ts";
@@ -167,7 +167,7 @@ integrationDescribe("redirect forums and slug URLs", () => {
       const counts = await listRedirectClickCounts(database.sql);
       expect(counts[forum]).toBe(1);
 
-      const fragment = await redirectCountsResponse(database.sql);
+      const fragment = await redirectCountsResponse(database.sql, member.memberId);
       expect(((await fragment.json()) as { counts: Record<string, number> }).counts[forum]).toBe(1);
     });
   }, 30_000);
@@ -226,6 +226,63 @@ integrationDescribe("redirect forums and slug URLs", () => {
       );
 
       expect(view?.redirect?.clicks).toBe("1 click");
+    });
+  }, 30_000);
+
+  test("counts only redirect forums the viewer may show", async () => {
+    await withSeededDb(async (database) => {
+      const visible = await createForum(database, {
+        title: "Visible Count Forum",
+        slug: "visible-count-forum",
+        parentId: "1",
+        type: "redirect",
+        redirectUrl: "https://example.test/visible-count",
+      });
+      const hidden = await createForum(database, {
+        title: "Hidden Count Forum",
+        slug: "hidden-count-forum",
+        parentId: "1",
+        type: "redirect",
+        redirectUrl: "https://example.test/hidden-count",
+      });
+
+      await setStandardActions(database, hidden, []);
+      await database.sql`
+        INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+        VALUES (
+          ${hidden}, (SELECT id FROM core.masks WHERE key = 'guest'),
+          ${forumActionMask([])}, false
+        )
+        ON CONFLICT (forum_id, mask_id) DO UPDATE
+          SET actions = EXCLUDED.actions, inherits = false
+      `;
+      await database.sql`
+        UPDATE core.forums SET redirect_clicks = 4 WHERE id = ${hidden}
+      `;
+
+      const [admin] = (await database.sql`
+        SELECT member_id::text AS id FROM pii.identities WHERE sub = 'admin'
+      `) as Array<{ id: string }>;
+
+      if (admin === undefined) {
+        throw new Error("Missing admin");
+      }
+
+      const member = await memberSession(database, "member-1");
+      const guestCounts = (await (
+        await redirectCountsResponse(database.sql, GUEST_PRINCIPAL)
+      ).json()) as { counts: Record<string, number> };
+      const memberCounts = (await (
+        await redirectCountsResponse(database.sql, member.memberId)
+      ).json()) as { counts: Record<string, number> };
+      const adminCounts = (await (await redirectCountsResponse(database.sql, admin.id)).json()) as {
+        counts: Record<string, number>;
+      };
+
+      expect(guestCounts.counts[visible]).toBe(0);
+      expect(guestCounts.counts[hidden]).toBeUndefined();
+      expect(memberCounts.counts[hidden]).toBeUndefined();
+      expect(adminCounts.counts[hidden]).toBe(4);
     });
   }, 30_000);
 

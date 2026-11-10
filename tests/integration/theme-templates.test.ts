@@ -173,6 +173,7 @@ integrationDescribe("default theme templates", () => {
             boardName: "Bulletin",
             boardDescription: "A friendly place",
             categories: [],
+            rootForums: [],
             announcements: [],
             flags: { announcements: true },
           },

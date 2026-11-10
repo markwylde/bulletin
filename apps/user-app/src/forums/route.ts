@@ -66,7 +66,8 @@ interface ForumRenderData {
   readonly theme: LoadedTheme | null;
   readonly boardName: string;
   readonly title: string;
-  readonly page: Awaited<ReturnType<typeof buildForumPage>>;
+  readonly page: Awaited<ReturnType<typeof buildForumPage>> | null;
+  readonly error: { readonly status: 403 | 404; readonly code: "forbidden" | "not_found" } | null;
   readonly flags: ViewerFlags;
 }
 
@@ -188,29 +189,63 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     prepare: async () => {
-      const [theme, settings, flags] = await Promise.all([
+      const [theme, settings, flags, freshTree] = await Promise.all([
         loadActiveTheme(input.sql),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session),
+        loadForumTree(input.sql),
       ]);
-      const page = await buildForumPage({
-        sql: input.sql,
-        locale: input.locale,
-        translate: input.translate,
-        principal,
+      // The pre-cache load only routed the request. Forum settings and permissions must be
+      // reloaded here, after the cache captured tag versions, or a concurrent save can store
+      // old HTML under the new tag versions.
+      const freshSnapshot = await loadPermissionSnapshot(input.sql, principal, {
+        tree: freshTree,
         sessionId,
-        snapshot,
-        forum,
-        prefix,
-        now,
-        announcementsEnabled: flags.values.announcements === true,
       });
+      const freshView = new CapabilityView({
+        ...freshSnapshot,
+        deps: forumCapabilityDeps(freshTree),
+        view: "forum-route",
+      });
+      const freshForum = await showVisibleForum(input.sql, freshView, forum.id);
+      let page: Awaited<ReturnType<typeof buildForumPage>> | null = null;
+      let error: ForumRenderData["error"] = null;
+
+      if (freshForum === null) {
+        error = { status: 404, code: "not_found" };
+      } else {
+        const freshReadable = await can(input.sql, principal, "read", {
+          forumId: freshForum.id,
+          tree: freshTree,
+          sessionId,
+          snapshot: freshSnapshot,
+        });
+
+        if (!freshReadable && !freshForum.passwordProtected) {
+          error = { status: 403, code: "forbidden" };
+        } else {
+          page = await buildForumPage({
+            sql: input.sql,
+            locale: input.locale,
+            translate: input.translate,
+            principal,
+            sessionId,
+            snapshot: freshSnapshot,
+            forum: freshForum,
+            prefix,
+            now,
+            announcementsEnabled: flags.values.announcements === true,
+          });
+        }
+      }
+
       const boardName = boardNameFrom(settings.boardName, input.translate);
       const data: ForumRenderData = {
         theme,
         boardName,
-        title: page.viewModel.title,
+        title: page?.viewModel.title ?? input.translate("theme.error.title"),
         page,
+        error,
         flags,
       };
 
@@ -221,10 +256,10 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
           route: forumContract.route,
           params: {
             id: forum.id,
-            prefix: page.viewModel.activePrefix ?? "",
+            prefix: page?.viewModel.activePrefix ?? "",
             ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
           },
-          visibilityKey: page.visibilityKey,
+          visibilityKey: page?.visibilityKey ?? `error:${freshView.visibilityKey()}`,
           theme,
           pluginsGeneration: input.pluginsGeneration,
           locale: input.locale,
@@ -232,7 +267,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
           renderFlagsHash: flags.hash,
         }),
         data,
-        ...(page.ttlMs === null ? {} : { ttlMs: page.ttlMs }),
+        ...(page?.ttlMs === null || page?.ttlMs === undefined ? {} : { ttlMs: page.ttlMs }),
       };
     },
     render: async (data) => {
@@ -241,9 +276,17 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
         boardName: data.boardName,
         locale: input.locale,
         translate: input.translate,
-        template: forumContract.templates.page,
-        viewModel: data.page.viewModel,
-        breadcrumbs: data.page.breadcrumbs,
+        template: data.error === null ? forumContract.templates.page : "error",
+        viewModel:
+          data.error === null
+            ? (data.page?.viewModel ?? {})
+            : {
+                code: data.error.code,
+                message: input.translate(
+                  `theme.error.${data.error.code === "not_found" ? "notFound" : "forbidden"}`,
+                ),
+              },
+        breadcrumbs: data.error === null ? (data.page?.breadcrumbs ?? []) : [],
         route: forumContract,
         pluginsGeneration: input.pluginsGeneration,
         theme: data.theme,
@@ -259,7 +302,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
 
   return {
     kind: "page",
-    status: 200,
+    status: latest.error?.status ?? 200,
     html: rendered.html,
     title: latest.title,
     boardName: latest.boardName,
@@ -267,7 +310,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
     variant: rendered.variant,
     tags: rendered.tags,
     etag: rendered.etag,
-    hasUnlockGrant: latest.page.hasUnlockGrant,
+    hasUnlockGrant: latest.page?.hasUnlockGrant ?? false,
     errors: rendered.errors,
   };
 }
