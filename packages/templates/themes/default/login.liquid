@@ -1,0 +1,12 @@
+{{ header }}
+<main class="bl-main" data-login-page>
+  <section class="bl-card">
+    <h1 class="bl-page__title">{% t "auth.login" %}</h1>
+    <p class="bl-muted">{% t "auth.loginPage.body" %}</p>
+    <div class="bl-actions">
+      <button type="button" class="bl-button" data-login>{% t "auth.login" %}</button>
+    </div>
+    <p class="bl-error-text" data-auth-error hidden>{% t "auth.loginError" %}</p>
+  </section>
+</main>
+{{ footer }}

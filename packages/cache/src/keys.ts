@@ -30,6 +30,8 @@ export interface CacheVariantInput {
   readonly visibilityKey: string;
   readonly themeId: string | number;
   readonly themeVersion: number;
+  /** The resolved theme content (template-row and ancestor versions), when known. */
+  readonly themeContentKey?: string;
   /** ADR 0009 plugin generation. */
   readonly pluginsGeneration: number;
   readonly locale: string;
@@ -53,7 +55,9 @@ export function variantKey(input: CacheVariantInput): string {
     route: input.route,
     params: stableKey(input.params ?? {}),
     visibility: input.visibilityKey,
-    theme: `${input.themeId}@${input.themeVersion}`,
+    theme:
+      `${input.themeId}@${input.themeVersion}` +
+      (input.themeContentKey === undefined ? "" : `|${input.themeContentKey}`),
     plugins: input.pluginsGeneration,
     locale: input.locale,
     scheme: input.colourScheme,

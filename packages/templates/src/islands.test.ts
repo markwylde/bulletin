@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   declaredIslands,
   declaredIslandsIn,
-  missingDeclaredIslands,
+  declaredIslandsInComposition,
+  missingCompositionIslands,
   missingRenderedIslands,
   renderedIslands,
 } from "./islands.ts";
@@ -56,10 +57,27 @@ describe("declaredIslands", () => {
     expect([...declaredIslandsIn(templates)].sort()).toEqual(["Editor", "Search"]);
   });
 
-  test("missingDeclaredIslands reports the islands a theme omits", () => {
-    const templates = { page: '{% island "Editor" props %}' };
+  test("a route composition checks only its own page and regions", () => {
+    const templates = {
+      forum: '{% island "Editor" props %}',
+      header: "{% island 'Search' %}",
+      footer: "<p>none</p>",
+      account: "{% island 'Search' %}",
+    };
+    const composition = { page: "forum", regions: ["header", "footer"] };
 
-    expect(missingDeclaredIslands(templates, ["Editor"])).toEqual([]);
-    expect(missingDeclaredIslands(templates, ["Editor", "Counter"])).toEqual(["Counter"]);
+    expect(declaredIslandsInComposition(templates, composition)).toEqual(["Editor", "Search"]);
+    expect(missingCompositionIslands(templates, composition, ["Editor", "Search"])).toEqual([]);
+    expect(missingCompositionIslands(templates, composition, ["Editor", "Counter"])).toEqual([
+      "Counter",
+    ]);
+    // An island that only exists in an unrelated template does not satisfy the route.
+    expect(
+      missingCompositionIslands(
+        { ...templates, forum: "<p>no island</p>", header: "<p>no island</p>" },
+        composition,
+        ["Search"],
+      ),
+    ).toEqual(["Search"]);
   });
 });

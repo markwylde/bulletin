@@ -34,11 +34,6 @@ export interface BreadcrumbItem {
   readonly href: string | null;
 }
 
-export interface Viewer {
-  readonly isMember: boolean;
-  readonly displayName: string | null;
-}
-
 export interface LanguageSwitcherView {
   readonly current: Locale;
   readonly options: readonly { readonly value: Locale; readonly label: string }[];
@@ -88,7 +83,6 @@ export function localeSuggestionView(locale: Locale, translate: Translator): Loc
 
 export interface PageRegionsInput {
   readonly boardName: string;
-  readonly viewer: Viewer;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly breadcrumbs: readonly BreadcrumbItem[];
@@ -100,13 +94,11 @@ export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
   return [
     {
       name: "header",
+      // Never membership-dependent: a member and a guest with the same bits share this HTML.
       viewModel: {
         boardName: input.boardName,
-        isMember: input.viewer.isMember,
         language: languageSwitcherView(input.locale, input.translate),
-        localeSuggestion: input.viewer.isMember
-          ? null
-          : localeSuggestionView(input.locale, input.translate),
+        localeSuggestion: localeSuggestionView(input.locale, input.translate),
       },
     },
     {
@@ -132,7 +124,6 @@ export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
 export interface ThemedPageInput {
   readonly sql: SQL;
   readonly boardName: string;
-  readonly viewer: Viewer;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly template: string;

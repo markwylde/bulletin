@@ -2,6 +2,7 @@ import type { CompiledTheme, CompiledThemeTemplate, TemplateViolation } from "./
 import { describeError } from "./compile.ts";
 import type { TemplateEngine, TemplateLimits } from "./engine.ts";
 import type { TemplateRuntime } from "./runtime.ts";
+import { sanitiseRenderedMarkup } from "./sanitise.ts";
 
 export interface RenderTemplateInput {
   readonly engine: TemplateEngine;
@@ -110,13 +111,25 @@ export async function renderThemeTemplate(input: RenderTemplateInput): Promise<R
         renderLimit: limits.renderLimit,
         memoryLimit: limits.memoryLimit,
       });
-      const bytes = Buffer.byteLength(html, "utf8");
+      // ADR 0008: re-sanitise every rendered fragment before it is cached or served.
+      const sanitised = sanitiseRenderedMarkup(html);
+
+      if (sanitised.removed.length > 0) {
+        violations.push({
+          template: input.name,
+          theme: candidate.themeName,
+          kind: "sanitise",
+          message: `removed ${sanitised.removed.join(", ")}`,
+        });
+      }
+
+      const bytes = Buffer.byteLength(sanitised.html, "utf8");
 
       if (bytes > limits.outputLimit) {
         throw new OutputLimitExceededError(bytes, limits.outputLimit);
       }
 
-      return { html, template: candidate, violations };
+      return { html: sanitised.html, template: candidate, violations };
     } catch (error) {
       if (!(error instanceof OutputLimitExceededError) && !isLimitViolation(error)) {
         throw error;

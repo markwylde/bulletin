@@ -4,6 +4,7 @@ import {
   createTemplateEngine,
   type TemplateEngine,
   type TemplateViolation,
+  themeContentKey,
 } from "./index.ts";
 import { buildTheme } from "./theme-fixtures.ts";
 
@@ -27,6 +28,29 @@ function theme(overrides: { readonly leafVersion?: number; readonly parentVersio
     },
   ]);
 }
+
+describe("themeContentKey", () => {
+  test("changes with a template-row, leaf or parent version", () => {
+    const base = theme();
+    const bumpedTemplate = buildTheme([
+      {
+        name: "child",
+        templates: { page: "<p>child {{ title }}</p>", footer: "<footer>new</footer>" },
+      },
+      {
+        name: "parent",
+        templates: { page: "<p>parent</p>", footer: "<footer>parent footer</footer>" },
+      },
+    ]);
+    // Same bodies, different parent version: a parent edit must change the fingerprint.
+    const parentBumped = theme({ parentVersion: 2 });
+
+    expect(themeContentKey(base)).toBe(themeContentKey(base));
+    expect(themeContentKey(base)).not.toBe(themeContentKey(theme({ leafVersion: 2 })));
+    expect(themeContentKey(base)).not.toBe(themeContentKey(parentBumped));
+    expect(themeContentKey(base)).not.toBe(themeContentKey(bumpedTemplate));
+  });
+});
 
 describe("compile cache", () => {
   test("compiles every override and keeps the fallback order leaf first", () => {

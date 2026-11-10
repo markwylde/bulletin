@@ -93,10 +93,6 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
   const page = await renderThemedPage({
     sql,
     boardName,
-    viewer: {
-      isMember: session !== null,
-      displayName: session?.displayName ?? null,
-    },
     locale,
     translate,
     template: "error",

@@ -286,6 +286,18 @@ input:focus-visible {
   color: var(--bl-danger);
 }
 
+.bl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bl-space-small);
+  margin-top: var(--bl-space-small);
+}
+
+[hidden] {
+  display: none !important;
+}
+
 /* Lists ------------------------------------------------------------------- */
 
 .bl-forum-list,

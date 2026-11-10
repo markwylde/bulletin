@@ -1,6 +1,14 @@
 import { createServerT, type Translator } from "@bulletin/i18n";
 import { type DefaultTreeAdapterTypes, parse as parseHtml } from "parse5";
 import en from "../i18n/en.json";
+import {
+  BANNED_ELEMENTS,
+  hasForbiddenScheme,
+  isSameOriginTarget,
+  normaliseUrl,
+  srcsetUrls,
+  URL_ATTRIBUTES,
+} from "./markup-policy.ts";
 
 export type TemplateIssueCode =
   | "script"
@@ -36,87 +44,6 @@ export interface TemplateValidation {
 
 type Element = DefaultTreeAdapterTypes.Element;
 type ParentNode = DefaultTreeAdapterTypes.ParentNode | DefaultTreeAdapterTypes.Template;
-
-/** ADR 0008 theme profile: elements a theme may never emit. */
-const BANNED_ELEMENTS: Readonly<Record<string, TemplateIssueCode>> = {
-  script: "script",
-  iframe: "frame",
-  frame: "frame",
-  frameset: "frame",
-  object: "object",
-  embed: "embed",
-  applet: "object",
-  base: "base",
-};
-
-const URL_ATTRIBUTES = new Set([
-  "href",
-  "src",
-  "srcset",
-  "action",
-  "formaction",
-  "xlink:href",
-  "poster",
-  "background",
-  "data",
-  "cite",
-  "longdesc",
-  "manifest",
-  "ping",
-]);
-
-/** Strips the whitespace and control characters browsers ignore in a URL scheme, then lowercases. */
-export function normaliseUrl(value: string): string {
-  let normalised = "";
-
-  for (const character of value) {
-    const code = character.codePointAt(0) ?? 0;
-
-    if (code > 0x20 && code !== 0x7f) {
-      normalised += character;
-    }
-  }
-
-  return normalised.toLowerCase();
-}
-
-function hasForbiddenScheme(value: string): boolean {
-  const normalised = normaliseUrl(value);
-  return (
-    normalised.startsWith("javascript:") ||
-    normalised.startsWith("vbscript:") ||
-    normalised.startsWith("data:")
-  );
-}
-
-function srcsetUrls(value: string): readonly string[] {
-  return value
-    .split(",")
-    .map((candidate) => candidate.trim().split(/\s+/)[0] ?? "")
-    .filter((candidate) => candidate !== "");
-}
-
-/**
- * Form targets must stay on this origin (ADR 0008). Empty, fragment, query, root-relative and
- * plain relative targets are same-origin; absolute and protocol-relative targets are not.
- */
-function isSameOriginTarget(value: string): boolean {
-  const trimmed = value.trim();
-
-  if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith("?")) {
-    return true;
-  }
-
-  if (trimmed.startsWith("//") || trimmed.startsWith("\\")) {
-    return false;
-  }
-
-  if (trimmed.startsWith("/")) {
-    return true;
-  }
-
-  return !/^[a-z][a-z0-9+.-]*:/i.test(trimmed);
-}
 
 /**
  * Replaces Liquid tags and outputs with spaces (newlines preserved) so the HTML parser only
@@ -203,13 +130,38 @@ function childrenOf(node: ParentNode): readonly DefaultTreeAdapterTypes.ChildNod
   return node.childNodes;
 }
 
+/** The issue code for a banned element (ADR 0008 profile). */
+function bannedElementCode(tag: string): TemplateIssueCode | undefined {
+  if (BANNED_ELEMENTS[tag] !== true) {
+    return undefined;
+  }
+
+  if (tag === "script") {
+    return "script";
+  }
+
+  if (tag === "iframe" || tag === "frame" || tag === "frameset") {
+    return "frame";
+  }
+
+  if (tag === "base") {
+    return "base";
+  }
+
+  if (tag === "embed") {
+    return "embed";
+  }
+
+  return "object";
+}
+
 function inspectElement(element: Element, issues: TemplateIssue[]): void {
   const tag = element.tagName.toLowerCase();
-  const banned = BANNED_ELEMENTS[tag];
   const { line, column } = locationOf(element);
+  const bannedCode = bannedElementCode(tag);
 
-  if (banned !== undefined) {
-    issues.push({ code: banned, line, column, element: tag });
+  if (bannedCode !== undefined) {
+    issues.push({ code: bannedCode, line, column, element: tag });
     return;
   }
 

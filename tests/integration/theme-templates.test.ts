@@ -21,8 +21,11 @@ import { buildAccountPage } from "../../apps/user-app/src/account/page.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import {
   accountContract,
+  callbackContract,
   DEMO_SHELL_ISLANDS,
   demoContract,
+  homeContract,
+  loginContract,
 } from "../../apps/user-app/src/contracts.ts";
 import { buildDemoPage } from "../../apps/user-app/src/demo/page.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
@@ -147,6 +150,38 @@ integrationDescribe("default theme templates", () => {
     });
   });
 
+  test("renders the home, login and callback pages through the theme pipeline", async () => {
+    await withSeededDb(async (database) => {
+      const boards = ["home", "login", "callback"] as const;
+      const cases = [
+        { contract: homeContract, marker: "data-online" },
+        { contract: loginContract, marker: "data-login-page" },
+        { contract: callbackContract, marker: "data-signing-in" },
+      ];
+
+      for (const routeCase of cases) {
+        const page = await renderThemedPage({
+          sql: database.sql,
+          boardName: "Bulletin",
+          locale: "en",
+          translate,
+          template: routeCase.contract.templates.page,
+          viewModel: { boardName: "Bulletin", boardDescription: "A friendly place" },
+          breadcrumbs: [],
+          route: routeCase.contract,
+        });
+
+        expect(page.errors).toEqual([]);
+        expect(page.html).toContain(routeCase.marker);
+        expect(page.html).toContain('data-name="LanguageSwitcher"');
+        expect(page.html).toContain("data-theme-header");
+        expect(page.html).toContain("data-theme-footer");
+      }
+
+      expect(boards).toHaveLength(cases.length);
+    });
+  });
+
   test("renders the demo page with header, breadcrumbs, island, hook and overlay slot", async () => {
     await withSeededDb(async (database) => {
       const session = await memberSession(database, "member-1");
@@ -241,6 +276,23 @@ integrationDescribe("default theme templates", () => {
       expect(page.status).toBe(403);
       expect(page.html).toContain("data-theme-error");
       expect(page.html).toContain('data-error-code="forbidden"');
+    });
+  });
+
+  test("shows the moderator tools only with the moderator power on that forum", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const memberMod = await memberSession(database, "member-mod");
+      const superMod = await memberSession(database, "super-mod");
+
+      // `member-mod` moderates forum 1 only; forum 2 has no power there.
+      const notAModerator = await renderDemo(database, member, "2");
+      const otherForum = await renderDemo(database, memberMod, "2");
+      const globallyPowered = await renderDemo(database, superMod, "2");
+
+      expect(notAModerator.html).not.toContain("data-demo-mod-tools");
+      expect(otherForum.html).not.toContain("data-demo-mod-tools");
+      expect(globallyPowered.html).toContain("data-demo-mod-tools");
     });
   });
 

@@ -53,15 +53,37 @@ export function declaredIslandsIn(templates: Readonly<Record<string, string>>): 
   return [...names];
 }
 
-/**
- * Required islands a theme does not declare anywhere. The `themes` change refuses activation
- * with this list; CI asserts the default theme passes it for every route contract.
- */
-export function missingDeclaredIslands(
+/** The island names present in one route's page and region templates. */
+export function declaredIslandsInComposition(
   templates: Readonly<Record<string, string>>,
+  composition: { readonly page: string; readonly regions: readonly string[] },
+): readonly string[] {
+  const names = new Set<string>();
+  const sources = [
+    templates[composition.page] ?? "",
+    ...composition.regions.map((region) => templates[region] ?? ""),
+  ];
+
+  for (const source of sources) {
+    for (const island of declaredIslands(source)) {
+      names.add(island);
+    }
+  }
+
+  return [...names];
+}
+
+/**
+ * Required islands a route's own composition does not declare. Checking the whole theme would
+ * hide a missing island behind an unrelated template, so every route checks its page and
+ * regions only (ADR 0008). The `themes` change refuses activation with this list.
+ */
+export function missingCompositionIslands(
+  templates: Readonly<Record<string, string>>,
+  composition: { readonly page: string; readonly regions: readonly string[] },
   required: readonly string[],
 ): readonly string[] {
-  const declared = new Set(declaredIslandsIn(templates));
+  const declared = new Set(declaredIslandsInComposition(templates, composition));
 
   return required.filter((island) => !declared.has(island));
 }

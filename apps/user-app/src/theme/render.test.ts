@@ -14,7 +14,6 @@ describe("theme regions", () => {
   test("builds header, breadcrumbs, empty and footer regions", () => {
     const regions = pageRegions({
       boardName: "Bulletin",
-      viewer: { isMember: false, displayName: null },
       locale: "en",
       translate: t,
       breadcrumbs: [{ label: "Home", href: null }],
@@ -30,23 +29,33 @@ describe("theme regions", () => {
     expect(regions[2]?.key).toBe("emptyState");
     expect(regions[0]?.viewModel).toMatchObject({
       boardName: "Bulletin",
-      isMember: false,
       localeSuggestion: expect.objectContaining({ current: "en" }),
     });
+    expect(regions[0]?.viewModel).not.toHaveProperty("isMember");
     expect(regions[1]?.viewModel).toEqual({ items: [{ label: "Home", href: null }] });
     expect(regions[3]?.viewModel).toEqual({ boardName: "Bulletin", year: 2026 });
   });
 
-  test("never offers the suggestion banner to members", () => {
-    const regions = pageRegions({
+  test("never varies the shared header by membership", () => {
+    const guest = pageRegions({
       boardName: "Bulletin",
-      viewer: { isMember: true, displayName: "Member" },
+      locale: "fr",
+      translate: t,
+      breadcrumbs: [],
+    });
+    const member = pageRegions({
+      boardName: "Bulletin",
       locale: "fr",
       translate: t,
       breadcrumbs: [],
     });
 
-    expect(regions[0]?.viewModel).toMatchObject({ isMember: true, localeSuggestion: null });
+    // The same fragment serves both; the per-request shell reveals member-only UI.
+    expect(guest).toEqual(member);
+    expect(guest[0]?.viewModel).not.toHaveProperty("isMember");
+    expect(guest[0]?.viewModel).toMatchObject({
+      localeSuggestion: expect.objectContaining({ current: "fr" }),
+    });
   });
 });
 

@@ -68,6 +68,14 @@ function sendBeacon(ctx: string): void {
   );
 }
 
+// Member-only controls are absent from the shared fragment; the per-request shell reveals
+// them, so cached HTML is identical for a member and a guest with the same capabilities.
+const visitor = document.documentElement.dataset.visitor;
+
+for (const element of document.querySelectorAll<HTMLElement>("[data-overlay-member-only]")) {
+  element.hidden = visitor !== "member";
+}
+
 const ctx = overlayContext();
 
 if (ctx !== null) {

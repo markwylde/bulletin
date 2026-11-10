@@ -32,7 +32,6 @@ const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 const rendered = await renderThemedPage({
   sql,
   boardName,
-  viewer: { isMember: true, displayName: session.displayName },
   locale,
   translate,
   template: "account",

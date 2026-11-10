@@ -45,8 +45,8 @@ describe("route contracts", () => {
     expect(ISLAND_NAMES).toContain("LanguageSwitcher");
   });
 
-  test("every themed page requires the language switcher (task 4.4)", () => {
-    for (const contract of [demoContract, displayNameContract, accountContract]) {
+  test("every page requires the language switcher (tasks 4.4, 6.1)", () => {
+    for (const contract of Object.values(ROUTE_CONTRACTS)) {
       expect(contract.requiredIslands).toContain("LanguageSwitcher");
     }
 

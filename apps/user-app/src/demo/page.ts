@@ -1,6 +1,7 @@
 import {
   type CapabilityDep,
   CapabilityView,
+  can,
   GUEST_PRINCIPAL,
   loadPermissionSnapshot,
   type ViewerPrincipal,
@@ -100,9 +101,9 @@ function errorPage(
 }
 
 /**
- * Builds the demo route's view model over the fixture forum tree (ADR 0008, task 4.2). The
- * capability answers come from the ADR 0005 view, so the variant key hashes exactly the bits
- * the page depends on.
+ * Builds the demo route's view model over the fixture forum tree (ADR 0008, task 4.2). Every
+ * decision goes through `can()` (ADR 0005); the capability view exists only to hash exactly the
+ * declared deps into the variant key.
  */
 export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> {
   const node = FIXTURE_FORUM_TREE.get(input.forumId);
@@ -139,8 +140,16 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
     view: "demo",
   });
   const visibilityKey = view.visibilityKey();
+  const allowed = (bit: "show" | "read" | "see_deleted", forumId: string): Promise<boolean> =>
+    can(input.sql, principal, bit, {
+      forumId,
+      tree: FIXTURE_FORUM_TREE,
+      sessionId,
+      snapshot,
+    });
+  const readable = await allowed("read", node.id);
 
-  if (!view.has(node.id, "show")) {
+  if (!(await allowed("show", node.id))) {
     return errorPage(
       "forbidden",
       input.translate("theme.error.forbidden"),
@@ -152,10 +161,10 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
 
   const forumTitle = demoTitle(input.translate, node.id);
   const isCategory = node.parentId === null;
-  const locked = node.passwordProtected && !view.read(node.id);
+  const locked = node.passwordProtected && !readable;
 
   // A forum with `show` but no `read` is a denial; a password forum offers the unlock form.
-  if (!isCategory && !locked && !view.read(node.id)) {
+  if (!isCategory && !locked && !readable) {
     return errorPage(
       "forbidden",
       input.translate("theme.error.forbidden"),
@@ -189,19 +198,19 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
 
   if (isCategory) {
     for (const child of childNodes) {
-      if (!view.has(child.id, "show")) {
+      if (!(await allowed("show", child.id))) {
         continue;
       }
 
       children.push({
         id: child.id,
         label: demoTitle(input.translate, child.id),
-        locked: child.passwordProtected && !view.read(child.id),
+        locked: child.passwordProtected && !(await allowed("read", child.id)),
       });
     }
   }
 
-  const canSeeDeleted = view.has(node.id, "see_deleted");
+  const canSeeDeleted = await allowed("see_deleted", node.id);
   const showDeleted = input.showDeleted && canSeeDeleted;
   const topicCount = DEMO_TOPIC_COUNTS[node.id] ?? 0;
   const topics = isCategory

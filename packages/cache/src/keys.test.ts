@@ -42,6 +42,12 @@ describe("variantKey", () => {
     expect(keys.size).toBe(10);
   });
 
+  test("changes with the resolved theme content fingerprint", () => {
+    expect(variantKey({ ...base, themeContentKey: "1@1+1/page@1" })).not.toBe(
+      variantKey({ ...base, themeContentKey: "1@1+1/page@2" }),
+    );
+  });
+
   test("never includes a member or session id", () => {
     const key = variantKey(base);
 

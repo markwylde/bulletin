@@ -1,0 +1,34 @@
+{{ header }}
+<main class="bl-main" data-online hidden>
+  <section class="bl-card">
+    <h1 class="bl-page__title" data-i18n="user.placeholder.title" data-board-name>{{ boardName }}</h1>
+    <p class="bl-muted" data-i18n="user.placeholder.body" data-board-description>{{ boardDescription }}</p>
+    <div class="bl-actions" data-auth data-auth-state="loading">
+      <button type="button" class="bl-button" data-login data-i18n="auth.login" hidden>{% t "auth.login" %}</button>
+      <p data-signed-in hidden>
+        <span data-i18n="auth.signedIn">{% t "auth.signedIn" %}</span>
+        <span data-display-name></span>
+      </p>
+      <button type="button" class="bl-button" data-logout data-i18n="auth.logout" hidden>{% t "auth.logout" %}</button>
+      <p class="bl-error-text" data-auth-error data-i18n="auth.loginError" hidden>{% t "auth.loginError" %}</p>
+      <p class="bl-error-text" data-logout-error data-i18n="auth.logoutError" hidden>{% t "auth.logoutError" %}</p>
+    </div>
+    <div class="bl-card" data-reauth hidden>
+      <p data-i18n="auth.reauthPrompt">{% t "auth.reauthPrompt" %}</p>
+      <div class="bl-actions">
+        <button type="button" class="bl-button" data-reauth-continue data-i18n="auth.continue">{% t "auth.continue" %}</button>
+        <button type="button" class="bl-button bl-button--quiet" data-resume data-i18n="auth.resume" hidden>{% t "auth.resume" %}</button>
+      </div>
+    </div>
+  </section>
+</main>
+<main class="bl-main" data-offline hidden>
+  <section class="bl-card">
+    <h1 class="bl-page__title" data-i18n="board.offline.title">{% t "board.offline.title" %}</h1>
+    <p class="bl-muted" data-offline-message>{% t "board.offline.defaultMessage" %}</p>
+    <div class="bl-actions">
+      <a class="bl-button" data-offline-login data-i18n="board.offline.signIn" href="/auth/login">{% t "board.offline.signIn" %}</a>
+    </div>
+  </section>
+</main>
+{{ footer }}

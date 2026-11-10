@@ -35,6 +35,12 @@ integrationDescribe("personal overlay", () => {
       await view.navigate(DEMO_URL);
       await waitForSelector(view, '[data-overlay-unread][data-unread="true"]', 20_000);
 
+      // Member-only header UI is revealed by the per-request shell, not the shared fragment.
+      await waitForSelector(view, "[data-account-link]:not([hidden])", 20_000);
+      expect(
+        await view.evaluate<boolean>("document.querySelector('[data-locale-suggestion]') === null"),
+      ).toBe(true);
+
       const html = await view.evaluate<string>(
         'fetch("/_demo/2", { credentials: "include" }).then((response) => response.text())',
       );

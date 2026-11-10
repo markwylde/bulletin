@@ -13,9 +13,17 @@ export type ContractTags<TModel> = readonly string[] | ((model: TModel) => reado
  * which capability bits the view model reads, which cache tags the page depends on, whether
  * guests may receive it from the CDN, and which islands the theme may not omit.
  */
+/** The theme templates one route actually composes (page plus regions). */
+export interface TemplateComposition {
+  readonly page: string;
+  readonly regions: readonly string[];
+}
+
 export interface ViewModelContract<TModel = Readonly<Record<string, unknown>>> {
   /** Canonical route pattern, e.g. `/` or `/_demo/[id]`. */
   readonly route: string;
+  /** The templates this route renders, so island checks look only at its composition. */
+  readonly templates: TemplateComposition;
   /** Capability bits the view model reads (ADR 0005). */
   readonly deps: readonly CapabilityDep[];
   /** Cache tags the rendered page depends on (ADR 0006). */
@@ -103,6 +111,16 @@ export function validateContract(
       if (!TAG_PATTERN.test(tag)) {
         fail(`cache tag "${tag}" is not a valid tag name`);
       }
+    }
+  }
+
+  if (contract.templates.page.trim() === "") {
+    fail("declares no page template");
+  }
+
+  for (const region of contract.templates.regions) {
+    if (region.trim() === "") {
+      fail("declares an empty region template");
     }
   }
 

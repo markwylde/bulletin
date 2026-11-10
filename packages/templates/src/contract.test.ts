@@ -14,6 +14,7 @@ const ISLANDS = ["SpikeCounter", "Editor"];
 function contract(overrides: Partial<ViewModelContract> = {}): ViewModelContract {
   return defineContract({
     route: "/forum/12",
+    templates: { page: "forum", regions: ["header", "footer"] },
     deps: [{ forumId: "12", bit: "read" }],
     tags: ["forum:12", "topic:345:pages"],
     cdnCacheable: true,
@@ -69,6 +70,16 @@ describe("validateContract", () => {
     expect(validateContract(contract({ tags: [] }), ISLANDS)).toEqual([]);
   });
 
+  test("requires a page template", () => {
+    expect(
+      validateContract(contract({ templates: { page: "", regions: [] } }), ISLANDS)[0]?.message,
+    ).toContain("declares no page template");
+    expect(
+      validateContract(contract({ templates: { page: "forum", regions: [""] } }), ISLANDS)[0]
+        ?.message,
+    ).toContain("declares an empty region template");
+  });
+
   test("rejects a required island that is not in the registry", () => {
     expect(
       validateContract(contract({ requiredIslands: ["Missing"] }), ISLANDS)[0]?.message,
@@ -95,6 +106,7 @@ describe("contractTags", () => {
   test("calls a function with the view model", () => {
     const themed = defineContract<{ readonly theme: string; readonly plugins: number }>({
       route: "/spike/rendering",
+      templates: { page: "demo", regions: ["header"] },
       deps: [],
       tags: (model) => [`theme:${model.theme}`, `plugins:${model.plugins}`],
       cdnCacheable: false,

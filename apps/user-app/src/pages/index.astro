@@ -1,418 +1,271 @@
 ---
 import { createServerT } from "@bulletin/i18n";
 import { USER_CATALOGS } from "../catalogs.ts";
+import { homeContract } from "../contracts.ts";
+import { readSql } from "../db.ts";
+import { applyCacheHeaders, requestHasSession } from "../http/cache.ts";
+import ThemeLayout from "../layouts/ThemeLayout.astro";
+import { boardNameFrom, renderThemedPage } from "../theme/render.ts";
 
 const messages = JSON.stringify(USER_CATALOGS);
 const locale = Astro.locals.locale ?? "en";
 const localeSource = Astro.locals.localeSource ?? "guest";
-const t = createServerT(locale, { shipped: USER_CATALOGS });
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const nonce = Astro.locals.cspNonce;
-const configuredBoardName = Astro.locals.board?.boardName.trim();
-const boardName = configuredBoardName || t("user.placeholder.title");
-const pageTitle = configuredBoardName || t("common.siteName");
+const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
+const configuredBoardName = Astro.locals.board?.boardName.trim() ?? "";
+const boardName = boardNameFrom(configuredBoardName, translate);
+const pageTitle = configuredBoardName || translate("common.siteName");
 const boardDescription =
-  Astro.locals.board?.boardDescription.trim() || t("user.placeholder.body");
+  Astro.locals.board?.boardDescription.trim() || translate("user.placeholder.body");
+const session = Astro.locals.session ?? null;
+const rendered = await renderThemedPage({
+  sql: readSql(),
+  boardName,
+  locale,
+  translate,
+  template: homeContract.templates.page,
+  viewModel: { boardName, boardDescription },
+  breadcrumbs: [],
+  route: homeContract,
+});
+const headers = new Headers();
+
+applyCacheHeaders(headers, {
+  cdnCacheable: homeContract.cdnCacheable,
+  hasSession: requestHasSession(Astro.request.headers.get("cookie"), nodeEnv),
+  hasUnlockGrant: false,
+  tags: ["board"],
+  etag: null,
+  dev: import.meta.env.DEV,
+});
+
+for (const [name, value] of headers) {
+  Astro.response.headers.set(name, value);
+}
 ---
 
-<!doctype html>
-<html lang={locale} data-server-locale={locale} data-locale-source={localeSource}>
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="data:," />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{pageTitle}</title>
-    <style nonce={nonce}>
-      :root {
-        color-scheme: light dark;
-        font-family: system-ui, sans-serif;
-      }
+<ThemeLayout
+  title={pageTitle}
+  locale={locale}
+  body={rendered.html}
+  visitor={session === null ? "guest" : "member"}
+  serverLocale={locale}
+  localeSource={localeSource}
+>
+  <script type="application/json" id="i18n-catalog" set:html={messages}></script>
+  <script is:inline nonce={nonce}>
+    (() => {
+      const data = JSON.parse(document.getElementById("i18n-catalog").textContent);
+      const params = new URLSearchParams(window.location.search);
+      const bp = /(?:^|;\s*)bp=([^;]+)/.exec(document.cookie)?.[1]?.split(".")[0];
+      const root = document.documentElement;
+      const applyLocale = (locale) => {
+        root.lang = locale;
 
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: #f4f6f9;
-        color: #1c2430;
-      }
-
-      main {
-        width: min(100% - 2rem, 40rem);
-        padding: 1.5rem;
-        border: 1px solid #dce1e8;
-        border-radius: 0.75rem;
-        background: #ffffff;
-      }
-
-      h1 {
-        margin: 0 0 0.5rem;
-        font-size: 1.5rem;
-      }
-
-      p {
-        margin: 0;
-        color: #5c6878;
-      }
-
-      .auth {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.75rem;
-        margin-top: 1.25rem;
-        min-height: 2.75rem;
-      }
-
-      .auth button,
-      .reauth button {
-        min-height: 2.75rem;
-        padding: 0.6rem 1.1rem;
-        border: 0;
-        border-radius: 0.5rem;
-        background: #3157c7;
-        color: #ffffff;
-        font: inherit;
-        font-weight: 600;
-        cursor: pointer;
-      }
-
-      .auth button:disabled,
-      .reauth button:disabled {
-        opacity: 0.6;
-        cursor: progress;
-      }
-
-      .auth button:focus-visible,
-      .reauth button:focus-visible {
-        outline: 3px solid #93a7ea;
-        outline-offset: 2px;
-      }
-
-      .reauth {
-        margin-top: 1rem;
-        padding: 0.9rem;
-        border: 1px solid #dce1e8;
-        border-radius: 0.5rem;
-      }
-
-      .reauth-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-top: 0.75rem;
-      }
-
-      .auth [data-auth-error],
-      .auth [data-logout-error] {
-        color: #a02a2a;
-      }
-
-      .offline-actions {
-        margin-top: 1.25rem;
-      }
-
-      .offline-sign-in {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 2.75rem;
-        padding: 0.55rem 1rem;
-        border-radius: 0.5rem;
-        background: #3157c7;
-        color: #ffffff;
-        font-weight: 600;
-        text-decoration: none;
-      }
-
-      [hidden] {
-        display: none !important;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        body {
-          background: #141a22;
-          color: #e7ecf3;
-        }
-
-        main {
-          background: #1d2530;
-          border-color: #303b49;
-        }
-
-        p {
-          color: #93a0b1;
-        }
-
-        .auth [data-auth-error],
-        .auth [data-logout-error] {
-          color: #ff9d9d;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <main data-online hidden>
-      <h1 data-i18n="user.placeholder.title" data-board-name>{boardName}</h1>
-      <p data-i18n="user.placeholder.body" data-board-description>{boardDescription}</p>
-      <div class="auth" data-auth data-auth-state="loading">
-        <button
-          type="button"
-          data-login
-          data-i18n="auth.login"
-          hidden>{t("auth.login")}</button
-        >
-        <p data-signed-in hidden>
-          <span data-i18n="auth.signedIn">{t("auth.signedIn")}</span>
-          <span data-display-name></span>
-        </p>
-        <button type="button" data-logout data-i18n="auth.logout" hidden
-          >{t("auth.logout")}</button
-        >
-        <p data-auth-error data-i18n="auth.loginError" hidden>{t("auth.loginError")}</p>
-        <p data-logout-error data-i18n="auth.logoutError" hidden>{t("auth.logoutError")}</p>
-      </div>
-      <div class="reauth" data-reauth hidden>
-        <p data-i18n="auth.reauthPrompt">{t("auth.reauthPrompt")}</p>
-        <div class="reauth-actions">
-          <button type="button" data-reauth-continue data-i18n="auth.continue"
-            >{t("auth.continue")}</button
-          >
-          <button type="button" data-resume data-i18n="auth.resume" hidden
-            >{t("auth.resume")}</button
-          >
-        </div>
-      </div>
-    </main>
-    <main data-offline hidden>
-      <h1 data-i18n="board.offline.title">{t("board.offline.title")}</h1>
-      <p data-offline-message>{t("board.offline.defaultMessage")}</p>
-      <div class="offline-actions">
-        <a
-          class="offline-sign-in"
-          data-offline-login
-          data-i18n="board.offline.signIn"
-          href="/auth/login">{t("board.offline.signIn")}</a
-        >
-      </div>
-    </main>
-    <script type="application/json" id="i18n-catalog" set:html={messages}></script>
-    <script is:inline nonce={nonce}>
-      (() => {
-        const data = JSON.parse(document.getElementById("i18n-catalog").textContent);
-        const params = new URLSearchParams(window.location.search);
-        const bp = /(?:^|;\s*)bp=([^;]+)/.exec(document.cookie)?.[1]?.split(".")[0];
-        const root = document.documentElement;
-        const applyLocale = (locale) => {
-          root.lang = locale;
-
-          for (const element of document.querySelectorAll("[data-i18n]")) {
-            if (element.hasAttribute("data-board-configured")) {
-              continue;
-            }
-
-            const key = element.getAttribute("data-i18n");
-            const value = data[locale]?.[key] ?? data.en[key];
-
-            if (value !== undefined) {
-              element.textContent = value;
-            }
+        for (const element of document.querySelectorAll("[data-i18n]")) {
+          if (element.hasAttribute("data-board-configured")) {
+            continue;
           }
-        };
-        const isMember = root.dataset.localeSource === "member";
-        const requested = isMember ? root.dataset.serverLocale : (params.get("lang") ?? bp);
-        const locale = ["en", "es", "fr"].includes(requested) ? requested : "en";
 
-        applyLocale(locale);
-        window.__bulletinApplyLocale = applyLocale;
-      })();
-    </script>
-    <script>
-      import { applyBoardDefaultLocale, applyBoardState, fetchBoardState } from "../board-client.ts";
+          const key = element.getAttribute("data-i18n");
+          const value = data[locale]?.[key] ?? data.en[key];
 
-      void fetchBoardState().then((state) => {
-        if (state !== null) {
-          applyBoardDefaultLocale(document, state);
-        }
-
-        applyBoardState(document, state);
-      });
-    </script>
-    <script>
-      import {
-        beginLogin,
-        clearStashedRequest,
-        createAuthFetch,
-        loadSession,
-        logout,
-        reauthUrl,
-        ReauthRequiredError,
-        takeStashedRequest,
-      } from "@bulletin/domain/auth/browser";
-      import { resumeStashedRequest } from "../resume.ts";
-
-      const root = document.querySelector<HTMLElement>("[data-auth]");
-      const loginButton = document.querySelector<HTMLButtonElement>("[data-login]");
-      const logoutButton = document.querySelector<HTMLButtonElement>("[data-logout]");
-      const signedIn = document.querySelector<HTMLElement>("[data-signed-in]");
-      const displayName = document.querySelector<HTMLElement>("[data-display-name]");
-      const error = document.querySelector<HTMLElement>("[data-auth-error]");
-      const logoutError = document.querySelector<HTMLElement>("[data-logout-error]");
-      const reauthBox = document.querySelector<HTMLElement>("[data-reauth]");
-      const continueButton = document.querySelector<HTMLButtonElement>("[data-reauth-continue]");
-      const resumeButton = document.querySelector<HTMLButtonElement>("[data-resume]");
-
-      let currentMemberId: string | null = null;
-      const applyLocale = (window as unknown as { __bulletinApplyLocale?: (locale: string) => void })
-        .__bulletinApplyLocale;
-
-      const showError = (): void => {
-        if (error !== null) {
-          error.hidden = false;
+          if (value !== undefined) {
+            element.textContent = value;
+          }
         }
       };
+      const isMember = root.dataset.localeSource === "member";
+      const requested = isMember ? root.dataset.serverLocale : (params.get("lang") ?? bp);
+      const locale = ["en", "es", "fr"].includes(requested) ? requested : "en";
 
-      const updateReauthPrompt = (authenticated: boolean): void => {
-        const stashed = takeStashedRequest(currentMemberId);
+      applyLocale(locale);
+      window.__bulletinApplyLocale = applyLocale;
+    })();
+  </script>
+  <script>
+    import { applyBoardDefaultLocale, applyBoardState, fetchBoardState } from "../board-client.ts";
 
-        if (reauthBox !== null) {
-          reauthBox.hidden = stashed === null;
-        }
-
-        if (resumeButton !== null) {
-          resumeButton.hidden = !(authenticated && stashed !== null);
-        }
-      };
-
-      const authFetch = createAuthFetch({
-        ownerId: () => currentMemberId,
-        onReauthRequired: () => {
-          updateReauthPrompt(false);
-        },
-      });
-
-      async function refresh(): Promise<void> {
-        try {
-          const session = await loadSession();
-          currentMemberId = session.authenticated ? (session.memberId ?? null) : null;
-
-          if (session.authenticated) {
-            document.documentElement.dataset.localeSource = "member";
-
-            if (session.locale !== null) {
-              document.documentElement.dataset.serverLocale = session.locale;
-              applyLocale?.(session.locale);
-            }
-
-            root?.setAttribute("data-auth-state", "authenticated");
-
-            if (loginButton !== null) {
-              loginButton.hidden = true;
-            }
-
-            if (logoutButton !== null) {
-              logoutButton.hidden = false;
-            }
-
-            if (signedIn !== null) {
-              signedIn.hidden = false;
-            }
-
-            if (displayName !== null) {
-              displayName.textContent = session.displayName ?? "";
-            }
-
-            updateReauthPrompt(true);
-            return;
-          }
-
-          root?.setAttribute("data-auth-state", "guest");
-
-          if (loginButton !== null) {
-            loginButton.hidden = false;
-          }
-
-          if (logoutButton !== null) {
-            logoutButton.hidden = true;
-          }
-
-          updateReauthPrompt(false);
-        } catch (error) {
-          if (error instanceof ReauthRequiredError) {
-            window.location.assign(
-              reauthUrl(`${window.location.pathname}${window.location.search}`),
-            );
-            return;
-          }
-
-          root?.setAttribute("data-auth-state", "error");
-          showError();
-
-          if (loginButton !== null) {
-            loginButton.hidden = false;
-          }
-        }
+    void fetchBoardState().then((state) => {
+      if (state !== null) {
+        applyBoardDefaultLocale(document, state);
       }
 
-      if (loginButton !== null) {
-        loginButton.addEventListener("click", () => {
-          loginButton.disabled = true;
-          void beginLogin().catch(() => {
-            showError();
-            loginButton.disabled = false;
-          });
-        });
+      applyBoardState(document, state);
+    });
+  </script>
+  <script>
+    import {
+      beginLogin,
+      clearStashedRequest,
+      createAuthFetch,
+      loadSession,
+      logout,
+      reauthUrl,
+      ReauthRequiredError,
+      takeStashedRequest,
+    } from "@bulletin/domain/auth/browser";
+    import { resumeStashedRequest } from "../resume.ts";
+
+    const root = document.querySelector<HTMLElement>("[data-auth]");
+    const loginButton = document.querySelector<HTMLButtonElement>("[data-login]");
+    const logoutButton = document.querySelector<HTMLButtonElement>("[data-logout]");
+    const signedIn = document.querySelector<HTMLElement>("[data-signed-in]");
+    const displayName = document.querySelector<HTMLElement>("[data-display-name]");
+    const error = document.querySelector<HTMLElement>("[data-auth-error]");
+    const logoutError = document.querySelector<HTMLElement>("[data-logout-error]");
+    const reauthBox = document.querySelector<HTMLElement>("[data-reauth]");
+    const continueButton = document.querySelector<HTMLButtonElement>("[data-reauth-continue]");
+    const resumeButton = document.querySelector<HTMLButtonElement>("[data-resume]");
+
+    let currentMemberId: string | null = null;
+    const applyLocale = (window as unknown as { __bulletinApplyLocale?: (locale: string) => void })
+      .__bulletinApplyLocale;
+
+    const showError = (): void => {
+      if (error !== null) {
+        error.hidden = false;
       }
+    };
 
-      if (logoutButton !== null) {
-        logoutButton.addEventListener("click", () => {
-          logoutButton.disabled = true;
-          void logout().then((ok) => {
-            if (!ok) {
-              if (logoutError !== null) {
-                logoutError.hidden = false;
-              }
+    const updateReauthPrompt = (authenticated: boolean): void => {
+      const stashed = takeStashedRequest(currentMemberId);
 
-              logoutButton.disabled = false;
-            }
-          });
-        });
-      }
-
-      if (continueButton !== null) {
-        continueButton.addEventListener("click", () => {
-          window.location.assign(reauthUrl(`${window.location.pathname}${window.location.search}`));
-        });
+      if (reauthBox !== null) {
+        reauthBox.hidden = stashed === null;
       }
 
       if (resumeButton !== null) {
-        resumeButton.addEventListener("click", () => {
-          resumeButton.disabled = true;
-          void resumeStashedRequest({
-            take: () => takeStashedRequest(currentMemberId),
-            clear: () => clearStashedRequest(),
-            fetch: authFetch,
-          })
-            .then((result) => {
-              if (result === "success") {
-                window.location.reload();
-              }
-            })
-            .finally(() => {
-              resumeButton.disabled = false;
-              updateReauthPrompt(true);
-            });
-        });
+        resumeButton.hidden = !(authenticated && stashed !== null);
       }
+    };
 
-      if (new URLSearchParams(window.location.search).has("auth_error")) {
+    const authFetch = createAuthFetch({
+      ownerId: () => currentMemberId,
+      onReauthRequired: () => {
+        updateReauthPrompt(false);
+      },
+    });
+
+    async function refresh(): Promise<void> {
+      try {
+        const session = await loadSession();
+        currentMemberId = session.authenticated ? (session.memberId ?? null) : null;
+
+        if (session.authenticated) {
+          document.documentElement.dataset.localeSource = "member";
+
+          if (session.locale !== null) {
+            document.documentElement.dataset.serverLocale = session.locale;
+            applyLocale?.(session.locale);
+          }
+
+          root?.setAttribute("data-auth-state", "authenticated");
+
+          if (loginButton !== null) {
+            loginButton.hidden = true;
+          }
+
+          if (logoutButton !== null) {
+            logoutButton.hidden = false;
+          }
+
+          if (signedIn !== null) {
+            signedIn.hidden = false;
+          }
+
+          if (displayName !== null) {
+            displayName.textContent = session.displayName ?? "";
+          }
+
+          updateReauthPrompt(true);
+          return;
+        }
+
+        root?.setAttribute("data-auth-state", "guest");
+
+        if (loginButton !== null) {
+          loginButton.hidden = false;
+        }
+
+        if (logoutButton !== null) {
+          logoutButton.hidden = true;
+        }
+
+        updateReauthPrompt(false);
+      } catch (error) {
+        if (error instanceof ReauthRequiredError) {
+          window.location.assign(
+            reauthUrl(`${window.location.pathname}${window.location.search}`),
+          );
+          return;
+        }
+
+        root?.setAttribute("data-auth-state", "error");
         showError();
-      }
 
-      void refresh();
-    </script>
-  </body>
-</html>
+        if (loginButton !== null) {
+          loginButton.hidden = false;
+        }
+      }
+    }
+
+    if (loginButton !== null) {
+      loginButton.addEventListener("click", () => {
+        loginButton.disabled = true;
+        void beginLogin().catch(() => {
+          showError();
+          loginButton.disabled = false;
+        });
+      });
+    }
+
+    if (logoutButton !== null) {
+      logoutButton.addEventListener("click", () => {
+        logoutButton.disabled = true;
+        void logout().then((ok) => {
+          if (!ok) {
+            if (logoutError !== null) {
+              logoutError.hidden = false;
+            }
+
+            logoutButton.disabled = false;
+          }
+        });
+      });
+    }
+
+    if (continueButton !== null) {
+      continueButton.addEventListener("click", () => {
+        window.location.assign(reauthUrl(`${window.location.pathname}${window.location.search}`));
+      });
+    }
+
+    if (resumeButton !== null) {
+      resumeButton.addEventListener("click", () => {
+        resumeButton.disabled = true;
+        void resumeStashedRequest({
+          take: () => takeStashedRequest(currentMemberId),
+          clear: () => clearStashedRequest(),
+          fetch: authFetch,
+        })
+          .then((result) => {
+            if (result === "success") {
+              window.location.reload();
+            }
+          })
+          .finally(() => {
+            resumeButton.disabled = false;
+            updateReauthPrompt(true);
+          });
+      });
+    }
+
+    if (new URLSearchParams(window.location.search).has("auth_error")) {
+      showError();
+    }
+
+    void refresh();
+  </script>
+</ThemeLayout>

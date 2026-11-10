@@ -39,6 +39,12 @@ integrationDescribe("language switching", () => {
   for (const viewportName of viewportNames) {
     test(`a guest sets the bp cookie from the switcher at ${viewportName}`, async () => {
       await withPage({ url: DEMO_URL, viewport: viewportName }, async (view) => {
+        // A guest never sees the member-only account link.
+        expect(
+          await view.evaluate<boolean>(
+            "document.querySelector('[data-account-link]')?.hidden === true",
+          ),
+        ).toBe(true);
         await selectLanguage(view, "es");
         await waitForSelector(view, 'html[lang="es"]', 20_000);
 

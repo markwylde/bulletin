@@ -44,6 +44,12 @@ export function LocaleSuggestion({
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
+    // Members choose their language in the account settings (ADR 0013).
+    if (document.documentElement.dataset.visitor === "member") {
+      setCandidate(null);
+      return;
+    }
+
     setCandidate(preferredLocale(options, current));
   }, [current, options]);
 

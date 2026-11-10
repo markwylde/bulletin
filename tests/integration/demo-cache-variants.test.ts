@@ -154,6 +154,118 @@ async function setCompactFlag(database: TestDatabase, value: boolean): Promise<v
 }
 
 integrationDescribe("demo route cache variants (ADR 0006)", () => {
+  test("a guest and a member with the same bits share one variant in either order", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const member = await memberSession(database, "member-1");
+
+        // Guest first, then the member, on one warmed cache.
+        const guestFirstCache = createRenderCache({ tags: versions });
+        const guestFirst = await renderVariant(database, guestFirstCache, {
+          session: null,
+          forumId: "2",
+        });
+        const memberSecond = await renderVariant(database, guestFirstCache, {
+          session: member,
+          forumId: "2",
+        });
+
+        expect(guestFirst.cache).toBe("miss");
+        expect(memberSecond.variant).toBe(guestFirst.variant);
+        expect(memberSecond.cache).toBe("hit");
+        expect(memberSecond.html).toBe(guestFirst.html);
+        // The shared fragment never carries visible member-only markup.
+        expect(guestFirst.html).toContain("data-overlay-member-only");
+        expect(guestFirst.html).toMatch(/data-account-link[^>]*\bhidden\b/);
+        expect(guestFirst.html).not.toContain("isMember");
+
+        // Member first, then the guest, on a fresh cache.
+        const memberFirstCache = createRenderCache({ tags: versions });
+        const memberFirst = await renderVariant(database, memberFirstCache, {
+          session: member,
+          forumId: "2",
+        });
+        const guestSecond = await renderVariant(database, memberFirstCache, {
+          session: null,
+          forumId: "2",
+        });
+
+        expect(memberFirst.cache).toBe("miss");
+        expect(guestSecond.variant).toBe(memberFirst.variant);
+        expect(guestSecond.cache).toBe("hit");
+        expect(guestSecond.html).toBe(memberFirst.html);
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
+  test("a live template edit invalidates a warmed cache entry and its ETag", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const member = await memberSession(database, "member-1");
+        const theme = await loadActiveTheme(database.sql);
+        const flags = await loadViewerFlags(database.sql, member);
+        const input = {
+          sql: database.sql,
+          boardName: "Bulletin",
+          locale: "en" as const,
+          translate,
+          session: member,
+          forumId: "2",
+          showDeleted: false,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          theme,
+          flags,
+          cache,
+          tagVersions: versions,
+        };
+
+        const first = await renderDemoRoute(input);
+        const warm = await renderDemoRoute(input);
+
+        expect(first.cache).toBe("miss");
+        expect(warm.cache).toBe("hit");
+        expect(warm.variant).toBe(first.variant);
+
+        await database.sql`
+          UPDATE core.theme_templates
+          SET body = replace(body, '<main id="main"', '<main data-theme-live-edit id="main"'),
+              version = version + 1
+          WHERE name = 'demo'
+        `;
+
+        // The route reloads the theme per request, so a template edit changes the
+        // fingerprint (and thus the variant and ETag) without restarting the process.
+        const edited = await renderDemoRoute({
+          ...input,
+          theme: await loadActiveTheme(database.sql),
+        });
+
+        expect(edited.cache).toBe("miss");
+        expect(edited.variant).not.toBe(first.variant);
+        expect(edited.etag).not.toBe(first.etag);
+        expect(edited.html).toContain("data-theme-live-edit");
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
   test("every variant dimension produces a distinct entry with no leaked content", async () => {
     await withSeededDb(async (database) => {
       const versions = await createTagVersions({

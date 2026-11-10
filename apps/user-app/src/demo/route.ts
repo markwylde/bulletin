@@ -6,7 +6,7 @@ import {
   variantKey,
 } from "@bulletin/cache";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
-import type { LoadedTheme } from "@bulletin/templates";
+import { type LoadedTheme, themeContentKey } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { DEMO_SHELL_ISLANDS, demoContract } from "../contracts.ts";
 import type { ViewerFlags } from "../flags.ts";
@@ -60,16 +60,11 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
     forumId: input.forumId,
     showDeleted: input.showDeleted,
   });
-  const viewer = {
-    isMember: input.session !== null,
-    displayName: input.session?.displayName ?? null,
-  };
   const flags = { compactTopicList: input.flags.values.compactTopicList === true };
   const render = () =>
     renderThemedPage({
       sql: input.sql,
       boardName: input.boardName,
-      viewer,
       locale: input.locale,
       translate: input.translate,
       template: outcome.template,
@@ -111,6 +106,8 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
     visibilityKey: outcome.visibilityKey,
     themeId: input.theme?.theme.id ?? "0",
     themeVersion: input.theme?.theme.version ?? 0,
+    // A template-row or parent-theme edit must invalidate cached HTML and the ETag.
+    ...(input.theme === null ? {} : { themeContentKey: themeContentKey(input.theme) }),
     pluginsGeneration: input.pluginsGeneration,
     locale: input.locale,
     colourScheme: input.colourScheme,

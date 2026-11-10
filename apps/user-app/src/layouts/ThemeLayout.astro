@@ -9,17 +9,28 @@ interface Props {
   readonly authState?: "authenticated";
   /** Chooses the overlay (members) or the beacon (guests) for visit recording. */
   readonly visitor: "member" | "guest";
+  /** The member's locale source, for the client locale/board bootstrap. */
+  readonly serverLocale?: string;
+  readonly localeSource?: "member" | "guest";
+  readonly robots?: "noindex";
 }
 
-const { title, locale, body, authState, visitor } = Astro.props;
+const { title, locale, body, authState, visitor, serverLocale, localeSource, robots } = Astro.props;
 ---
 
 <!doctype html>
-<html lang={locale} data-auth-state={authState} data-visitor={visitor}>
+<html
+  lang={locale}
+  data-auth-state={authState}
+  data-visitor={visitor}
+  data-server-locale={serverLocale}
+  data-locale-source={localeSource}
+>
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {robots === "noindex" ? <meta name="robots" content="noindex" /> : null}
     <title>{title}</title>
   </head>
   <body>

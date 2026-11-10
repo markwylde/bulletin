@@ -13,7 +13,7 @@ export interface TemplateViolation {
   readonly template: string;
   /** The theme whose override caused the violation. */
   readonly theme: string;
-  readonly kind: "compile" | "render" | "output";
+  readonly kind: "compile" | "render" | "output" | "sanitise";
   readonly message: string;
 }
 
@@ -40,11 +40,11 @@ export interface CompileCache {
 }
 
 /**
- * The compile-cache key (ADR 0008): a theme's own version, every ancestor's version (a parent
- * edit changes the child's output), each template row's version (a live edit), and the plugin
- * generation. Locale is deliberately absent: translators reach templates through the runtime.
+ * A fingerprint of the theme's resolved content: its own and every ancestor's version plus
+ * each template row's version. A template edit or a parent-theme edit changes it, so cached
+ * pages and ETags cannot survive a live edit (ADR 0006, 0008).
  */
-export function themeCacheKey(theme: LoadedTheme, pluginsGeneration: number): string {
+export function themeContentKey(theme: LoadedTheme): string {
   const chain = theme.chain.map((entry) => `${entry.id}@${entry.version}`).join("|");
   const templates = [...theme.templates.values()]
     .flat()
@@ -52,7 +52,15 @@ export function themeCacheKey(theme: LoadedTheme, pluginsGeneration: number): st
     .sort()
     .join(",");
 
-  return `${chain}+${templates}+plugins:${pluginsGeneration}`;
+  return `${chain}+${templates}`;
+}
+
+/**
+ * The compile-cache key (ADR 0008): the resolved theme content plus the plugin generation.
+ * Locale is deliberately absent: translators reach templates through the runtime.
+ */
+export function themeCacheKey(theme: LoadedTheme, pluginsGeneration: number): string {
+  return `${themeContentKey(theme)}+plugins:${pluginsGeneration}`;
 }
 
 /**

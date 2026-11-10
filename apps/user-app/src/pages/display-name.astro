@@ -29,7 +29,6 @@ const page = buildDisplayNamePage({ returnTo, currentName: session.displayName, 
 const rendered = await renderThemedPage({
   sql: readSql(),
   boardName,
-  viewer: { isMember: true, displayName: session.displayName },
   locale,
   translate,
   template: "display-name",
