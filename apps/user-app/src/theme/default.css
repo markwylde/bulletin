@@ -344,6 +344,127 @@ input:focus-visible {
   text-decoration: none;
 }
 
+.bl-board-category {
+  display: grid;
+  gap: var(--bl-space-small);
+}
+
+.bl-board-category__header {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.bl-board-category__title {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.bl-board-category__title a {
+  text-decoration: none;
+}
+
+.bl-forum-row__main {
+  display: grid;
+  gap: 0.125rem;
+  flex: 1 1 14rem;
+}
+
+.bl-forum-row__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bl-space-small);
+  color: var(--bl-muted);
+  font-size: 0.8125rem;
+}
+
+.bl-subforum-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bl-space-small);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+}
+
+.bl-rules__summary {
+  min-height: var(--bl-touch);
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bl-rules__body,
+.bl-announcement__body {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.bl-announcements {
+  display: grid;
+  gap: var(--bl-space-small);
+}
+
+.bl-announcement__title {
+  margin: 0;
+  font-size: 1.0625rem;
+}
+
+.bl-announcement {
+  border-inline-start: 4px solid var(--bl-accent);
+}
+
+.bl-note {
+  margin: 0;
+  padding: var(--bl-space-small) var(--bl-space);
+  border-radius: var(--bl-radius-small);
+  background: var(--bl-accent-soft);
+  font-size: 0.9375rem;
+}
+
+.bl-prefix-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bl-space-small);
+}
+
+.bl-prefix {
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--bl-space-small);
+  border: 1px solid var(--bl-border);
+  border-radius: 999px;
+  background: var(--bl-surface);
+  color: var(--bl-text);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.bl-prefix::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-inline-end: 0.375rem;
+  border-radius: 999px;
+  background: var(--bl-prefix, var(--bl-muted));
+}
+
+.bl-prefix.is-active {
+  border-color: var(--bl-accent);
+  background: var(--bl-accent-soft);
+}
+
+.bl-moderator-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bl-space-small);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .bl-topic-list__item,
 .bl-history__item {
   display: flex;

@@ -345,6 +345,25 @@ describe("render cache", () => {
     expect((await cache.getOrRender(fixed("a", [], () => "A"))).status).toBe("bypass");
   });
 
+  test("expires a fragment at its declared TTL even when its tags are unchanged", async () => {
+    const tags = tagSource();
+    let now = 1_000;
+    const cache = createRenderCache({ tags: tags.source, now: () => now });
+    const request: RenderRequest = {
+      tags: [],
+      prepare: async () => ({ key: "timed", data: undefined, ttlMs: 500 }),
+      render: () => "timed fragment",
+    };
+
+    expect((await cache.getOrRender(request)).status).toBe("miss");
+    expect((await cache.getOrRender(request)).status).toBe("hit");
+
+    now += 501;
+
+    expect((await cache.getOrRender(request)).status).toBe("miss");
+    expect((await cache.getOrRender(request)).status).toBe("hit");
+  });
+
   test("evicts the least recently used fragment over the byte budget", async () => {
     const tags = tagSource();
     const cache = createRenderCache({ tags: tags.source, maxBytes: 6 });

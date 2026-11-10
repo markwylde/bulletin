@@ -16,6 +16,8 @@ export interface PreparedRender<T = undefined> {
   readonly key: string;
   /** Everything the HTML render needs, loaded after the tag snapshot. */
   readonly data: T;
+  /** Optional fragment TTL in milliseconds (ADR 0006 time-based transitions). */
+  readonly ttlMs?: number;
 }
 
 export interface RenderRequest<T = undefined> {
@@ -46,6 +48,8 @@ export interface RenderResult {
 export interface RenderCacheOptions {
   readonly tags: TagVersionSource;
   readonly maxBytes?: number;
+  /** Test seam for fragment expiry. */
+  readonly now?: () => number;
 }
 
 export interface RenderCache {
@@ -64,6 +68,8 @@ export interface RenderCache {
 interface Entry {
   readonly html: string;
   readonly versions: ReadonlyMap<string, string>;
+  /** Wall-clock expiry for time-based transitions; null means no TTL. */
+  readonly expiresAt: number | null;
 }
 
 function sameVersions(
@@ -82,6 +88,7 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
   let hits = 0;
   let misses = 0;
   let bypasses = 0;
+  const now = options.now ?? Date.now;
 
   function snapshot(tags: readonly string[]): Map<string, string> {
     return new Map(tags.map((tag) => [tag, options.tags.version(tag)]));
@@ -129,8 +136,10 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
 
         const preparedVersions = snapshot(request.tags);
         const cached = store.get(key);
+        const live =
+          cached !== undefined && (cached.expiresAt === null || cached.expiresAt > now());
 
-        if (cached !== undefined && sameVersions(cached.versions, preparedVersions)) {
+        if (cached !== undefined && live && sameVersions(cached.versions, preparedVersions)) {
           hits += 1;
           return {
             key,
@@ -153,7 +162,15 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
 
         if (sameVersions(next, current) && sameVersions(preparedVersions, current)) {
           misses += 1;
-          store.set(key, { html, versions: current }, Buffer.byteLength(html, "utf8"));
+          store.set(
+            key,
+            {
+              html,
+              versions: current,
+              expiresAt: prepared.ttlMs === undefined ? null : now() + Math.max(0, prepared.ttlMs),
+            },
+            Buffer.byteLength(html, "utf8"),
+          );
 
           return { key, html, status: "miss", tags: request.tags, versions: current };
         }

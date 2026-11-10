@@ -48,6 +48,8 @@ export function pageVariant(input: PageVariantInput): string {
 export interface PreparedPage<T> {
   readonly variant: string;
   readonly data: T;
+  /** Optional fragment TTL, capped at the next announcement transition (ADR 0006). */
+  readonly ttlMs?: number;
 }
 
 export interface CachedPageInput<T> {
@@ -101,7 +103,11 @@ export async function renderCachedPage<T>(input: CachedPageInput<T>): Promise<Ca
     tags: input.tags,
     prepare: async () => {
       const prepared = await input.prepare();
-      return { key: prepared.variant, data: prepared.data };
+      return {
+        key: prepared.variant,
+        data: prepared.data,
+        ...(prepared.ttlMs === undefined ? {} : { ttlMs: prepared.ttlMs }),
+      };
     },
     render: async (data) => {
       const page = await input.render(data);

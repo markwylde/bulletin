@@ -1,0 +1,87 @@
+{{ header }}
+<main id="main" class="bl-main" data-forum-page data-forum-id="{{ forumId }}" data-overlay-ctx="forum:{{ forumId }}">
+  {{ breadcrumbs }}
+  <header class="bl-page__header">
+    <h1 class="bl-page__title" data-forum-title>{{ title }}</h1>
+    {% if description.size > 0 %}
+      <p class="bl-muted" data-forum-description>{{ description }}</p>
+    {% endif %}
+    <p class="bl-muted">
+      <span data-topic-count="{{ forumId }}">{{ topicCount }}</span>
+      <span data-post-count="{{ forumId }}">{{ postCount }}</span>
+    </p>
+  </header>
+
+  {% if isModerator %}
+    <p class="bl-note" data-forum-mod-note>{% t "forum.modNote" %}</p>
+  {% endif %}
+
+  {% if locked %}
+    <section class="bl-card bl-lock" data-forum-locked>
+      <h2 class="bl-card__title">{% t "forum.locked.title" %}</h2>
+      <p class="bl-muted">{% t "forum.locked.body" %}</p>
+      <form class="bl-form" data-forum-unlock data-forum-id="{{ forumId }}">
+        <label class="bl-label" for="forum-password">{% t "forum.locked.password" %}</label>
+        <input class="bl-input" id="forum-password" name="password" type="password" autocomplete="current-password" required />
+        <button class="bl-button" type="submit" data-forum-unlock-submit>{% t "forum.locked.submit" %}</button>
+        <p class="bl-error-text" data-forum-unlock-error hidden>{% t "forum.locked.wrong" %}</p>
+      </form>
+    </section>
+  {% else %}
+    <div data-forum-content>
+      {% if rules %}
+        <details class="bl-card bl-rules" data-rules data-forum-id="{{ forumId }}" open>
+          <summary class="bl-rules__summary">{% t "forum.rules.title" %}</summary>
+          <p class="bl-rules__body">{{ rules }}</p>
+        </details>
+      {% endif %}
+
+      {% if announcements.size > 0 %}
+        <section class="bl-announcements" data-announcements aria-label="{% t "forum.announcements" %}">
+          {% for announcement in announcements %}
+            <article class="bl-card bl-announcement" data-announcement="{{ announcement.id }}">
+              <h2 class="bl-announcement__title">{{ announcement.title }}</h2>
+              <p class="bl-announcement__body">{{ announcement.body }}</p>
+            </article>
+          {% endfor %}
+        </section>
+      {% endif %}
+
+      {% if isCategory %}
+        {% if children.size > 0 %}
+          <ul class="bl-forum-list" data-forum-children>
+            {% for child in children %}
+              <li class="bl-forum-list__item">
+                <a class="bl-forum-list__link" href="{{ child.href }}" data-forum-child="{{ child.id }}">{{ child.title }}</a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          {{ emptyState }}
+        {% endif %}
+      {% else %}
+        {% if prefixes.size > 0 %}
+          <nav class="bl-prefix-filter" data-prefix-filter aria-label="{% t "forum.prefixFilter" %}">
+            <a class="bl-prefix{% if activePrefix == null %} is-active{% endif %}" href="{{ href }}" data-prefix-all>{% t "forum.prefixAll" %}</a>
+            {% for prefix in prefixes %}
+              <a class="bl-prefix{% if activePrefix == prefix.key %} is-active{% endif %}" style="--bl-prefix: {{ prefix.colour }}" href="{{ href }}?prefix={{ prefix.key }}" data-prefix-key="{{ prefix.key }}">{{ prefix.label }}</a>
+            {% endfor %}
+          </nav>
+        {% endif %}
+        <div data-topic-list-empty>{{ emptyState }}</div>
+      {% endif %}
+
+      {% if moderators.size > 0 %}
+        <section class="bl-card" data-moderators aria-label="{% t "forum.moderators" %}">
+          <h2 class="bl-card__title">{% t "forum.moderators" %}</h2>
+          <ul class="bl-moderator-list">
+            {% for moderator in moderators %}
+              <li data-moderator-kind="{{ moderator.kind }}" data-moderator="{{ moderator.id }}">{{ moderator.name }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+    </div>
+  {% endif %}
+</main>
+{{ footer }}

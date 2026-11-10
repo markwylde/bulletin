@@ -28,8 +28,11 @@ export const permissionFixtureSeedModule: SeedModule = {
     }
 
     await sql`
-      INSERT INTO core.forums (parent_id, title, slug)
-      VALUES (${category.id}, 'Announcements', 'announcements')
+      INSERT INTO core.forums (parent_id, title, slug, rules)
+      VALUES (
+        ${category.id}, 'Announcements', 'announcements',
+        'Be kind. No spam, and keep support topics on topic.'
+      )
     `;
 
     const [general] = (await sql`

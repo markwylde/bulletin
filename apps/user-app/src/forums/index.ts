@@ -1,0 +1,184 @@
+import { type ForumRecord, listVisibleForums } from "@bulletin/domain/forums";
+import {
+  announcementAudienceClass,
+  CapabilityView,
+  can,
+  GUEST_PRINCIPAL,
+  globalAnnouncements,
+  loadAnnouncements,
+  loadForumTree,
+  loadPermissionSnapshot,
+  nextAnnouncementTransitionMs,
+} from "@bulletin/domain/permissions";
+import { canonicalUrl } from "@bulletin/domain/urls";
+import type { Locale, Translator } from "@bulletin/i18n";
+import type { SQL } from "bun";
+import type { UserAppSessionContext } from "../session.ts";
+import { forumCapabilityDeps } from "./capability.ts";
+
+export interface BoardIndexLink {
+  readonly id: string;
+  readonly title: string;
+  readonly href: string;
+}
+
+export interface BoardIndexLastPost {
+  readonly date: string;
+  readonly memberName: string | null;
+}
+
+export interface BoardIndexRedirect {
+  readonly url: string;
+  readonly clicks: string;
+}
+
+export interface BoardIndexForum extends BoardIndexLink {
+  readonly description: string;
+  readonly topicCount: string;
+  readonly postCount: string;
+  readonly subforums: readonly BoardIndexLink[];
+  readonly lastPost: BoardIndexLastPost | null;
+  readonly redirect: BoardIndexRedirect | null;
+}
+
+export interface BoardIndexCategory extends BoardIndexLink {
+  readonly description: string;
+  readonly forums: readonly BoardIndexForum[];
+}
+
+export interface BoardIndexAnnouncement {
+  readonly id: string;
+  readonly title: string;
+  readonly body: string;
+  readonly dismissible: boolean;
+  readonly version: number;
+}
+
+export interface BoardIndexView {
+  readonly categories: readonly BoardIndexCategory[];
+  readonly announcements: readonly BoardIndexAnnouncement[];
+}
+
+export interface BoardIndexInput {
+  readonly sql: SQL;
+  readonly locale: Locale;
+  readonly translate: Translator;
+  readonly session: UserAppSessionContext | null;
+  /** Test seam for announcement transitions. */
+  readonly now?: Date;
+}
+
+export interface BoardIndexData {
+  readonly viewModel: BoardIndexView;
+  readonly visibilityKey: string;
+  readonly hasUnlockGrant: boolean;
+  readonly ttlMs: number | null;
+}
+
+function forumHref(forum: ForumRecord): string {
+  return canonicalUrl("forum", forum.id, forum.slug);
+}
+
+function formatDate(locale: Locale, value: Date): string {
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value);
+}
+
+/**
+ * Builds the board index view model. Every decision goes through `can()` and the shared
+ * capability view, so a hidden forum and its sub-forums never reach the HTML (ADR 0005).
+ */
+export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardIndexData> {
+  const tree = await loadForumTree(input.sql);
+  const principal = input.session?.memberId ?? GUEST_PRINCIPAL;
+  const sessionId = input.session?.sessionId ?? null;
+  const snapshot = await loadPermissionSnapshot(input.sql, principal, { tree, sessionId });
+  const view = new CapabilityView({
+    ...snapshot,
+    deps: forumCapabilityDeps(tree),
+    view: "board-index",
+  });
+  const rows = await listVisibleForums(input.sql, view);
+  const readable = new Map<string, boolean>();
+
+  for (const row of rows) {
+    const answer = await can(input.sql, principal, "read", {
+      forumId: row.id,
+      tree,
+      sessionId,
+      snapshot,
+    });
+    view.track(row.id, "read", answer);
+    readable.set(row.id, answer);
+  }
+
+  const link = (forum: ForumRecord): BoardIndexLink => ({
+    id: forum.id,
+    title: forum.title,
+    href: forumHref(forum),
+  });
+
+  const forumView = (forum: ForumRecord): BoardIndexForum => {
+    const canRead = readable.get(forum.id) === true;
+    const lastPost =
+      canRead && forum.lastPostAt !== null
+        ? {
+            date: formatDate(input.locale, forum.lastPostAt),
+            memberName: forum.lastPostMemberName,
+          }
+        : null;
+    const redirect =
+      forum.type === "redirect" && forum.redirectUrl !== null
+        ? {
+            url: forum.redirectUrl,
+            clicks: input.translate("index.redirectClicks", { count: forum.redirectClicks }),
+          }
+        : null;
+
+    return {
+      ...link(forum),
+      description: forum.description,
+      topicCount: input.translate("index.topicCount", { count: forum.topicCount }),
+      postCount: input.translate("index.postCount", { count: forum.postCount }),
+      subforums: rows
+        .filter((candidate) => candidate.parentId === forum.id && candidate.type !== "category")
+        .map(link),
+      lastPost,
+      redirect,
+    };
+  };
+
+  const now = input.now ?? new Date();
+  const announcements = await loadAnnouncements(input.sql, now);
+  const notices = globalAnnouncements(announcements, snapshot.groupIds, now);
+  const audience = announcementAudienceClass(announcements, snapshot.groupIds, now);
+  const categories = rows
+    .filter((row) => row.type === "category")
+    .map((category) => {
+      const forums = rows
+        .filter((row) => row.parentId === category.id && row.type !== "category")
+        .map(forumView);
+
+      return {
+        ...link(category),
+        description: category.description,
+        forums,
+      };
+    })
+    .filter((category) => category.forums.length > 0);
+
+  return {
+    viewModel: {
+      categories,
+      announcements: notices.map((announcement) => ({
+        id: announcement.id,
+        title: announcement.title,
+        body: announcement.body,
+        dismissible: announcement.dismissible,
+        version: announcement.version,
+      })),
+    },
+    visibilityKey: `${view.visibilityKey()}|audience:${audience}`,
+    hasUnlockGrant: view.hasUnlockGrant,
+    ttlMs: nextAnnouncementTransitionMs(announcements, now),
+  };
+}

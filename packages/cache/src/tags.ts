@@ -31,6 +31,11 @@ export function forumTag(forumId: string): string {
   return resourceTag("forum", forumId);
 }
 
+/** One forum's announcement block; global notices use `GLOBAL_CACHE_TAGS.announcements`. */
+export function forumAnnouncementsTag(forumId: string): string {
+  return `${forumTag(forumId)}:announcements`;
+}
+
 export function topicTag(topicId: string): string {
   return resourceTag("topic", topicId);
 }

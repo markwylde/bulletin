@@ -24,6 +24,13 @@ const result = await renderHomeRoute({
   sql,
   locale,
   translate,
+  session,
+  // The dev-only benchmark turns this into a fresh variant (task 7.1).
+  ...(() => {
+    const bench = Astro.url.searchParams.get("bench");
+
+    return bench !== null && /^\d{1,10}$/.test(bench) ? { bench: Number(bench) } : {};
+  })(),
   pluginsGeneration: PLUGIN_GENERATION,
   colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,

@@ -6,6 +6,7 @@ import {
   callbackContract,
   demoContract,
   displayNameContract,
+  forumContract,
   homeContract,
   loginContract,
   ROUTE_CONTRACTS,
@@ -27,10 +28,24 @@ describe("route contracts", () => {
         loginContract.route,
         callbackContract.route,
         demoContract.route,
+        forumContract.route,
         displayNameContract.route,
         accountContract.route,
       ].sort(),
     );
+  });
+
+  test("the forum route declares its own, ancestor and announcement tags", () => {
+    expect(forumContract.cdnCacheable).toBe(true);
+    expect(forumContract.templates.page).toBe("forum");
+    expect(contractTags(forumContract, { forumId: "5", ancestorIds: ["1", "3"] })).toEqual([
+      "board",
+      "announcements",
+      "forum:5:announcements",
+      "forum:1",
+      "forum:3",
+      "forum:5",
+    ]);
   });
 
   test("the demo route declares deps, tags, CDN eligibility and required islands", () => {
@@ -56,6 +71,7 @@ describe("route contracts", () => {
 
   test("only the public board shell is CDN cacheable", () => {
     expect(homeContract.cdnCacheable).toBe(true);
+    expect(forumContract.cdnCacheable).toBe(true);
     expect(loginContract.cdnCacheable).toBe(false);
     expect(callbackContract.cdnCacheable).toBe(false);
     expect(accountContract.cdnCacheable).toBe(false);

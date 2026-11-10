@@ -166,9 +166,26 @@ integrationDescribe("default theme templates", () => {
     await withSeededDb(async (database) => {
       const boards = ["home", "login", "callback"] as const;
       const cases = [
-        { contract: homeContract, marker: "data-online" },
-        { contract: loginContract, marker: "data-login-page" },
-        { contract: callbackContract, marker: "data-signing-in" },
+        {
+          contract: homeContract,
+          marker: "data-online",
+          viewModel: {
+            boardName: "Bulletin",
+            boardDescription: "A friendly place",
+            categories: [],
+            announcements: [],
+          },
+        },
+        {
+          contract: loginContract,
+          marker: "data-login-page",
+          viewModel: { boardName: "Bulletin", boardDescription: "A friendly place" },
+        },
+        {
+          contract: callbackContract,
+          marker: "data-signing-in",
+          viewModel: { boardName: "Bulletin", boardDescription: "A friendly place" },
+        },
       ];
 
       for (const routeCase of cases) {
@@ -178,7 +195,7 @@ integrationDescribe("default theme templates", () => {
           locale: "en",
           translate,
           template: routeCase.contract.templates.page,
-          viewModel: { boardName: "Bulletin", boardDescription: "A friendly place" },
+          viewModel: routeCase.viewModel,
           breadcrumbs: [],
           route: routeCase.contract,
         });

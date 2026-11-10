@@ -7,6 +7,13 @@ import type { RouteBenchmark } from "./benchmark.ts";
  */
 export const BENCHMARK_ROUTES: readonly RouteBenchmark[] = [
   {
+    name: "index",
+    guestUrl: "/",
+    memberUrl: "/",
+    // `bench` is a cache-key-only input: every nonce is a fresh, cold render.
+    coldUrl: (nonce) => `/?bench=${nonce}`,
+  },
+  {
     name: "demo",
     guestUrl: "/_demo/2",
     memberUrl: "/_demo/2",

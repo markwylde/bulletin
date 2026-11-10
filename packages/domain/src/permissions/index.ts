@@ -1,5 +1,6 @@
 export * from "./acp.ts";
 export * from "./actions.ts";
+export * from "./announcements.ts";
 export * from "./can.ts";
 export * from "./capability.ts";
 export * from "./forum-tags.ts";
