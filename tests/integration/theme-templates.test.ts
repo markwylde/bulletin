@@ -9,6 +9,12 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
+import {
+  CapabilityView,
+  loadPermissionSnapshot,
+  UndeclaredCapabilityError,
+} from "@bulletin/domain/permissions";
+import { FIXTURE_FORUM_TREE } from "@bulletin/domain/permissions/fixtures";
 import { createServerT } from "@bulletin/i18n";
 import {
   loadDefaultThemeTemplates,
@@ -27,7 +33,7 @@ import {
   homeContract,
   loginContract,
 } from "../../apps/user-app/src/contracts.ts";
-import { buildDemoPage } from "../../apps/user-app/src/demo/page.ts";
+import { buildDemoPage, demoCapabilityDeps } from "../../apps/user-app/src/demo/page.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
 import { renderThemedPage } from "../../apps/user-app/src/theme/render.ts";
 
@@ -101,10 +107,6 @@ async function renderDemo(
   const page = await renderThemedPage({
     sql: database.sql,
     boardName: "Bulletin",
-    viewer: {
-      isMember: session !== null,
-      displayName: session?.displayName ?? null,
-    },
     locale: "en",
     translate,
     template: outcome.template,
@@ -293,6 +295,56 @@ integrationDescribe("default theme templates", () => {
       expect(notAModerator.html).not.toContain("data-demo-mod-tools");
       expect(otherForum.html).not.toContain("data-demo-mod-tools");
       expect(globallyPowered.html).toContain("data-demo-mod-tools");
+    });
+  });
+
+  test("a parser-dependent noscript payload never reaches the served HTML", async () => {
+    await withSeededDb(async (database) => {
+      const payload =
+        '<noscript><p title="</noscript><img src=x onerror=alert(1)>"></p></noscript>';
+
+      await database.sql`
+        UPDATE core.theme_templates
+        SET body = body || ${payload}, version = version + 1
+        WHERE name = 'demo'
+      `;
+
+      const page = await renderDemo(database, await memberSession(database, "member-1"), "2");
+
+      expect(page.html).not.toContain("noscript");
+      expect(page.html).not.toContain("onerror");
+      expect(page.errors.some((error) => error.startsWith("sanitise:"))).toBe(true);
+    });
+  });
+
+  test("the demo builder fails when a view omits a bit it reads", async () => {
+    await withSeededDb(async (database) => {
+      const session = await memberSession(database, "super-mod");
+      const snapshot = await loadPermissionSnapshot(database.sql, session.memberId, {
+        tree: FIXTURE_FORUM_TREE,
+        sessionId: session.sessionId,
+      });
+      const narrowed = new CapabilityView({
+        tree: FIXTURE_FORUM_TREE,
+        bits: snapshot.bits,
+        unlocked: snapshot.unlocked,
+        view: "demo",
+        // The builder reads see_deleted for the moderator controls; omitting it must throw
+        // rather than quietly escaping the variant key (ADR 0005).
+        deps: demoCapabilityDeps("2").filter((dep) => dep.bit !== "see_deleted"),
+      });
+
+      await expect(
+        buildDemoPage({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session,
+          forumId: "2",
+          showDeleted: false,
+          capabilityView: narrowed,
+        }),
+      ).rejects.toThrow(UndeclaredCapabilityError);
     });
   });
 

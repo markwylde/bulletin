@@ -53,6 +53,12 @@ const REJECTED: readonly CorpusCase[] = [
     element: "script",
   },
   {
+    name: "noscript with a payload a scripting browser would parse as an image",
+    template: '<noscript><p title="</noscript><img src=x onerror=alert(1)>"></p></noscript>',
+    code: "noscript",
+    element: "noscript",
+  },
+  {
     name: "iframe",
     template: '<iframe src="https://evil.test"></iframe>',
     code: "frame",
@@ -176,6 +182,20 @@ const REJECTED: readonly CorpusCase[] = [
   {
     name: "backslash-relative form action",
     template: '<form action="\\\\evil.test/steal"></form>',
+    code: "off_origin_form",
+    element: "form",
+    attribute: "action",
+  },
+  {
+    name: "single-slash form action with a backslash",
+    template: '<form action="/\\evil.test/steal"></form>',
+    code: "off_origin_form",
+    element: "form",
+    attribute: "action",
+  },
+  {
+    name: "form action with an embedded tab before a protocol-relative path",
+    template: '<form action="/&#x09;/evil.test/steal"></form>',
     code: "off_origin_form",
     element: "form",
     attribute: "action",

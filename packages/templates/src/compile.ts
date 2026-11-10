@@ -27,9 +27,15 @@ export interface CompiledTheme {
   templates(name: string): readonly CompiledThemeTemplate[];
 }
 
+/** Default byte budget for compiled themes (ADR 0006: in-process caches are byte-bounded). */
+export const DEFAULT_COMPILE_CACHE_BYTES = 64 * 1024 * 1024;
+
+/** Per-entry bookkeeping so many tiny themes still count as retained memory. */
+const CHAIN_ENTRY_OVERHEAD_BYTES = 96;
+
 export interface CompileCacheOptions {
-  /** How many compiled themes to keep; the default covers every theme a board needs. */
-  readonly maxThemes?: number;
+  /** Total retained bytes (source plus compiled AST); the default covers a board's themes. */
+  readonly maxBytes?: number;
   readonly onViolation?: (violation: TemplateViolation) => void;
 }
 
@@ -37,6 +43,40 @@ export interface CompileCache {
   /** Compiles a theme for a plugin generation, reusing the result until a version changes. */
   compile(theme: LoadedTheme, pluginsGeneration: number): CompiledTheme;
   readonly size: number;
+  /** Retained bytes of every compiled theme, source and AST estimate included. */
+  readonly bytes: number;
+}
+
+/** An estimate of the compiled AST's retained size; the source is charged separately. */
+function astBytes(parsed: readonly Template[]): number {
+  try {
+    const json = JSON.stringify(parsed.map((template) => template.token));
+    return json === undefined ? 0 : Buffer.byteLength(json, "utf8");
+  } catch {
+    // A token that cannot be serialised still retains at least its source below.
+    return 0;
+  }
+}
+
+/** Retained bytes of one compiled theme: its key, chain records, source bodies and ASTs. */
+function compiledThemeBytes(
+  key: string,
+  theme: LoadedTheme,
+  templates: ReadonlyMap<string, readonly CompiledThemeTemplate[]>,
+): number {
+  let bytes = Buffer.byteLength(key, "utf8");
+
+  for (const entry of theme.chain) {
+    bytes += Buffer.byteLength(entry.name, "utf8") + CHAIN_ENTRY_OVERHEAD_BYTES;
+  }
+
+  for (const candidates of templates.values()) {
+    for (const candidate of candidates) {
+      bytes += Buffer.byteLength(candidate.body, "utf8") + astBytes(candidate.parsed);
+    }
+  }
+
+  return bytes;
 }
 
 /**
@@ -71,7 +111,9 @@ export function createCompileCache(
   engine: TemplateEngine,
   options: CompileCacheOptions = {},
 ): CompileCache {
-  const store = createBoundedCache<string, CompiledTheme>({ maxBytes: options.maxThemes ?? 32 });
+  const store = createBoundedCache<string, CompiledTheme>({
+    maxBytes: options.maxBytes ?? DEFAULT_COMPILE_CACHE_BYTES,
+  });
 
   return {
     compile(theme, pluginsGeneration) {
@@ -116,12 +158,16 @@ export function createCompileCache(
           return templates.get(name) ?? [];
         },
       };
-      store.set(key, themeCache, 1);
+      store.set(key, themeCache, compiledThemeBytes(key, theme, templates));
       return themeCache;
     },
 
     get size() {
       return store.size;
+    },
+
+    get bytes() {
+      return store.bytes;
     },
   };
 }

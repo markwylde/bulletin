@@ -9,5 +9,6 @@
   "template.validation.offOriginForm": "El atributo {attribute} debe apuntar a este origen.",
   "template.validation.script": "No se permite el elemento script.",
   "template.validation.unsafeUrl": "El atributo {attribute} usa una URL {scheme}: prohibida.",
-  "template.validation.unsupportedTag": "La etiqueta {tag} no está disponible para los temas."
+  "template.validation.unsupportedTag": "La etiqueta {tag} no está disponible para los temas.",
+  "template.validation.noscript": "No se permite el elemento noscript."
 }

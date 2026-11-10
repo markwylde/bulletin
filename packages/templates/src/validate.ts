@@ -16,6 +16,7 @@ export type TemplateIssueCode =
   | "object"
   | "embed"
   | "base"
+  | "noscript"
   | "meta_refresh"
   | "event_handler"
   | "unsafe_url"
@@ -152,6 +153,10 @@ function bannedElementCode(tag: string): TemplateIssueCode | undefined {
     return "embed";
   }
 
+  if (tag === "noscript") {
+    return "noscript";
+  }
+
   return "object";
 }
 
@@ -257,7 +262,8 @@ function findUnsupportedTags(source: string): readonly TemplateIssue[] {
 export function validateTemplateMarkup(source: string): TemplateValidation {
   const document = parseHtml(maskLiquid(source), {
     sourceCodeLocationInfo: true,
-    // Parse `<noscript>` content as markup so a script hidden in it is rejected too.
+    // The noscript element is banned outright (its content parses differently in a browser),
+    // so the parser mode cannot change the verdict.
     scriptingEnabled: false,
   });
   const issues: TemplateIssue[] = [];
@@ -284,6 +290,8 @@ export function templateIssueMessage(issue: TemplateIssue, translate: Translator
       return translate("template.validation.embed", { element: issue.element });
     case "base":
       return translate("template.validation.base");
+    case "noscript":
+      return translate("template.validation.noscript");
     case "meta_refresh":
       return translate("template.validation.metaRefresh");
     case "event_handler":

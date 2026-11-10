@@ -27,6 +27,10 @@ export interface TagVersionsOptions {
   readonly healthChannel?: string;
   readonly tagChannel?: string;
   readonly permTag?: string;
+  /** Test seam for the durable version read; defaults to `readTagVersions`. */
+  readonly readVersions?: () => Promise<ReadonlyMap<string, string>>;
+  /** Test seam: observes each requested reload (a NOTIFY, a connect or an explicit refresh). */
+  readonly onReloadRequested?: () => void;
 }
 
 export interface TagVersions extends TagVersionSource {
@@ -63,10 +67,13 @@ export async function createTagVersions(options: TagVersionsOptions): Promise<Ta
   let closed = false;
   let lastSignalAt = Number.NEGATIVE_INFINITY;
   let lastPermCheckAt = Number.NEGATIVE_INFINITY;
-  let inflight: Promise<void> | null = null;
+  let requestedReloads = 0;
+  let appliedReloads = 0;
+  let running: Promise<void> | null = null;
+  const readVersions = options.readVersions ?? (() => readTagVersions(options.sql));
 
   async function readAll(): Promise<void> {
-    const next = await readTagVersions(options.sql);
+    const next = await readVersions();
     versions.clear();
 
     for (const [tag, version] of next) {
@@ -76,13 +83,38 @@ export async function createTagVersions(options: TagVersionsOptions): Promise<Ta
     lastPermCheckAt = now();
   }
 
-  /** Coalesces concurrent reloads; a rejected load clears the slot for the next attempt. */
+  /**
+   * The reload loop (ADR 0006). A read that started when a NOTIFY arrived can still be looking
+   * at a snapshot older than the mutation that NOTIFY announced, so a read in flight is never
+   * allowed to answer a later notification: every request received while it runs triggers one
+   * more read. `running` is cleared in the loop's final synchronous step, and a request that
+   * arrives after the clear starts a fresh run rather than being coalesced away. A failed read
+   * ends the loop and leaves the listener untrusted (fail closed); the next successful connect
+   * reloads everything.
+   */
   function reload(): Promise<void> {
-    inflight ??= readAll().finally(() => {
-      inflight = null;
-    });
+    requestedReloads += 1;
+    options.onReloadRequested?.();
 
-    return inflight;
+    if (running === null) {
+      running = (async () => {
+        try {
+          for (;;) {
+            const target = requestedReloads;
+            await readAll();
+            appliedReloads = target;
+
+            if (appliedReloads >= requestedReloads) {
+              return;
+            }
+          }
+        } finally {
+          running = null;
+        }
+      })();
+    }
+
+    return running;
   }
 
   function markDown(): void {

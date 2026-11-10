@@ -34,6 +34,8 @@ export interface DemoPageInput {
   readonly forumId: string;
   /** The moderator tools control toggles the hidden (deleted) fixture topic. */
   readonly showDeleted: boolean;
+  /** The view that records capability reads; tests pass a narrowed one to prove enforcement. */
+  readonly capabilityView?: CapabilityView;
 }
 
 interface DemoBase {
@@ -64,6 +66,27 @@ export interface DemoErrorPage extends DemoBase {
 }
 
 export type DemoOutcome = DemoForumPage | DemoErrorPage;
+
+/** The capability bits the demo view reads for a forum; the variant key hashes exactly these. */
+export function demoCapabilityDeps(forumId: string): readonly CapabilityDep[] {
+  const node = FIXTURE_FORUM_TREE.get(forumId);
+
+  if (node === undefined) {
+    return [];
+  }
+
+  const childNodes = FIXTURE_FORUM_NODES.filter((candidate) => candidate.parentId === node.id);
+
+  return [
+    { forumId: node.id, bit: "show" },
+    { forumId: node.id, bit: "read" },
+    { forumId: node.id, bit: "see_deleted" },
+    ...childNodes.flatMap((child) => [
+      { forumId: child.id, bit: "show" as const },
+      { forumId: child.id, bit: "read" as const },
+    ]),
+  ];
+}
 
 function demoTitle(translate: Translator, id: string): string {
   return translate("demo.forum.title", { id });
@@ -123,30 +146,32 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
   });
   const childNodes = FIXTURE_FORUM_NODES.filter((candidate) => candidate.parentId === node.id);
   // Every branch below reads one of these bits, and the variant key hashes exactly them.
-  const deps: readonly CapabilityDep[] = [
-    { forumId: node.id, bit: "show" },
-    { forumId: node.id, bit: "read" },
-    { forumId: node.id, bit: "see_deleted" },
-    ...childNodes.flatMap((child) => [
-      { forumId: child.id, bit: "show" as const },
-      { forumId: child.id, bit: "read" as const },
-    ]),
-  ];
-  const view = new CapabilityView({
-    tree: FIXTURE_FORUM_TREE,
-    bits: snapshot.bits,
-    unlocked: snapshot.unlocked,
-    deps,
-    view: "demo",
-  });
+  const deps = demoCapabilityDeps(node.id);
+  const view =
+    input.capabilityView ??
+    new CapabilityView({
+      tree: FIXTURE_FORUM_TREE,
+      bits: snapshot.bits,
+      unlocked: snapshot.unlocked,
+      deps,
+      view: "demo",
+    });
   const visibilityKey = view.visibilityKey();
-  const allowed = (bit: "show" | "read" | "see_deleted", forumId: string): Promise<boolean> =>
-    can(input.sql, principal, bit, {
+  // `can()` alone answers (ADR 0005); recording the answer on the view makes an undeclared
+  // dependency throw instead of silently escaping the variant key.
+  const allowed = async (
+    bit: "show" | "read" | "see_deleted",
+    forumId: string,
+  ): Promise<boolean> => {
+    const answer = await can(input.sql, principal, bit, {
       forumId,
       tree: FIXTURE_FORUM_TREE,
       sessionId,
       snapshot,
     });
+    view.track(forumId, bit, answer);
+    return answer;
+  };
   const readable = await allowed("read", node.id);
 
   if (!(await allowed("show", node.id))) {

@@ -86,6 +86,37 @@ describe("compile cache", () => {
     );
   });
 
+  test("charges retained source and AST bytes against a byte budget", () => {
+    const body = "x".repeat(4_000);
+    const themeA = buildTheme([{ name: "a", templates: { page: `<p>${body}</p>` } }]);
+    const themeB = buildTheme([{ name: "b", version: 2, templates: { page: `<p>${body}</p>` } }]);
+    const probe = createCompileCache(engine());
+
+    probe.compile(themeA, 1);
+
+    // One theme retains far more than the token-sized charge a count-based cache used.
+    expect(probe.bytes).toBeGreaterThan(Buffer.byteLength(body));
+
+    const cache = createCompileCache(engine(), { maxBytes: probe.bytes });
+    const first = cache.compile(themeA, 1);
+
+    cache.compile(themeB, 1);
+
+    expect(cache.size).toBe(1);
+    expect(cache.bytes).toBeLessThanOrEqual(probe.bytes);
+    // The evicted theme is compiled again instead of being served from the cache.
+    expect(cache.compile(themeA, 1)).not.toBe(first);
+  });
+
+  test("does not retain a theme larger than the whole byte budget", () => {
+    const cache = createCompileCache(engine(), { maxBytes: 64 });
+
+    cache.compile(buildTheme([{ name: "large", templates: { page: "<p>a long body</p>" } }]), 1);
+
+    expect(cache.size).toBe(0);
+    expect(cache.bytes).toBe(0);
+  });
+
   test("drops an override that exceeds the parse limit and reports it", () => {
     const violations: TemplateViolation[] = [];
     const cache = createCompileCache(engine({ parseLimit: 40 }), {

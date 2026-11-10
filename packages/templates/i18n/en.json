@@ -9,5 +9,6 @@
   "template.validation.offOriginForm": "The {attribute} attribute must target this origin.",
   "template.validation.script": "The script element is not allowed.",
   "template.validation.unsafeUrl": "The {attribute} attribute uses a forbidden {scheme}: URL.",
-  "template.validation.unsupportedTag": "The {tag} tag is not available to themes."
+  "template.validation.unsupportedTag": "The {tag} tag is not available to themes.",
+  "template.validation.noscript": "The noscript element is not allowed."
 }

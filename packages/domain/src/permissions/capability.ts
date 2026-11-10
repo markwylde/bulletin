@@ -119,9 +119,7 @@ export class CapabilityView {
   }
 
   has(forumId: string, bit: CapabilityBit): boolean {
-    if (this.depKeys !== null && this.enforceDeps && !this.depKeys.has(depKey(forumId, bit))) {
-      throw new UndeclaredCapabilityError(this.viewName, forumId, bit);
-    }
+    this.assertDeclared(forumId, bit);
 
     if (isModeratorPower(bit)) {
       const read = this.resolve(forumId, "read");
@@ -140,6 +138,32 @@ export class CapabilityView {
     const resolution = this.resolve(forumId, bit);
     this.record(forumId, bit, resolution);
     return resolution.allowed;
+  }
+
+  /**
+   * Records an answer that `can()` returned for this render (ADR 0005). The view never answers
+   * authorisation questions itself; it only enforces that every bit a page reads was declared
+   * and keeps the recorded reads the fallback variant key uses.
+   */
+  track(forumId: string, bit: CapabilityBit, allowed: boolean): void {
+    this.assertDeclared(forumId, bit);
+
+    if (isModeratorPower(bit)) {
+      const read = this.resolve(forumId, "read");
+      this.assertDeclared(forumId, "read");
+      this.record(forumId, "read", read);
+
+      if (!read.allowed) {
+        this.record(forumId, bit, {
+          allowed: false,
+          unlockDependent: read.unlockDependent,
+          unlocked: read.unlocked,
+        });
+        return;
+      }
+    }
+
+    this.record(forumId, bit, { ...this.resolve(forumId, bit), allowed });
   }
 
   /** Every bit read during this render, in a stable order. */
@@ -190,6 +214,12 @@ export class CapabilityView {
     }
 
     return digest(`capabilities|${parts.join(";")}`);
+  }
+
+  private assertDeclared(forumId: string, bit: CapabilityBit): void {
+    if (this.depKeys !== null && this.enforceDeps && !this.depKeys.has(depKey(forumId, bit))) {
+      throw new UndeclaredCapabilityError(this.viewName, forumId, bit);
+    }
   }
 
   private resolve(forumId: string, bit: CapabilityBit): Resolution {

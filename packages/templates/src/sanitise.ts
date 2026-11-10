@@ -101,7 +101,8 @@ function walk(parent: ParentNode, removed: string[]): void {
 export function sanitiseRenderedMarkup(html: string): SanitisedMarkup {
   const fragment = parseFragment(html, {
     sourceCodeLocationInfo: false,
-    // Parse `<noscript>` content as markup so a hidden element is inspected as well.
+    // `noscript` is removed as an element, so a browser parsing its content as raw text and
+    // this parser reading it as markup reach the same safe output.
     scriptingEnabled: false,
   });
   const removed: string[] = [];

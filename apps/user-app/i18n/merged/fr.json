@@ -75,6 +75,7 @@
   "template.validation.frame": "L’élément {element} n’est pas autorisé.",
   "template.validation.line": "Ligne {line} : {message}",
   "template.validation.metaRefresh": "La balise meta d’actualisation http-equiv n’est pas autorisée.",
+  "template.validation.noscript": "L’élément noscript n’est pas autorisé.",
   "template.validation.object": "L’élément {element} n’est pas autorisé.",
   "template.validation.offOriginForm": "L’attribut {attribute} doit cibler cette origine.",
   "template.validation.script": "L’élément script n’est pas autorisé.",

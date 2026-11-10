@@ -75,6 +75,7 @@
   "template.validation.frame": "The {element} element is not allowed.",
   "template.validation.line": "Line {line}: {message}",
   "template.validation.metaRefresh": "The http-equiv refresh meta tag is not allowed.",
+  "template.validation.noscript": "The noscript element is not allowed.",
   "template.validation.object": "The {element} element is not allowed.",
   "template.validation.offOriginForm": "The {attribute} attribute must target this origin.",
   "template.validation.script": "The script element is not allowed.",

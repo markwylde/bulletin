@@ -167,6 +167,22 @@ describe("declared capability dependencies", () => {
     expect(() => capability.has("1", "reply")).toThrow(/reply/);
   });
 
+  test("track records a can() answer and rejects an undeclared one", () => {
+    const capability = declared({ "1": READ_AND_SHOW });
+
+    capability.track("1", "read", true);
+    expect(capability.recordedReads()).toEqual([
+      {
+        forumId: "1",
+        bit: "read",
+        allowed: true,
+        unlockDependent: false,
+        unlocked: false,
+      },
+    ]);
+    expect(() => capability.track("1", "see_deleted", true)).toThrow(UndeclaredCapabilityError);
+  });
+
   test("visibilityKey hashes only the declared bits", () => {
     const withExtraBit = declared({ "1": forumActionMask(["show", "read", "reply"]) });
     const withoutExtraBit = declared({ "1": READ_AND_SHOW });

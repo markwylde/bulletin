@@ -5,6 +5,7 @@ import {
   createTagVersions,
   forumTag,
   GLOBAL_CACHE_TAGS,
+  readTagVersions,
 } from "@bulletin/cache";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 
@@ -143,6 +144,81 @@ integrationDescribe("cache tag listener", () => {
         `;
 
         await waitFor(() => versions.isTrusted() && versions.version("topic:1") === "2", 15_000);
+      } finally {
+        await versions.close();
+      }
+    });
+  });
+
+  test("a notification during an in-flight reload triggers another read", async () => {
+    await withDb(async (database) => {
+      let reads = 0;
+      let requests = 0;
+      let blockNextRead = false;
+      let releaseBlockedRead: (() => void) | null = null;
+      let markBlockedStarted: (() => void) | null = null;
+      let markRequested: (() => void) | null = null;
+
+      const readVersions = async (): Promise<ReadonlyMap<string, string>> => {
+        reads += 1;
+        // Take the snapshot before blocking: exactly a SELECT that started before the mutation
+        // and returns after it.
+        const snapshot = await readTagVersions(database.sql);
+
+        if (blockNextRead) {
+          blockNextRead = false;
+          markBlockedStarted?.();
+          await new Promise<void>((resolve) => {
+            releaseBlockedRead = resolve;
+          });
+        }
+
+        return snapshot;
+      };
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 2_000,
+        readVersions,
+        onReloadRequested: () => {
+          requests += 1;
+          markRequested?.();
+        },
+      });
+
+      try {
+        await bumpCacheTags(database.sql, ["topic:1"]);
+        await waitFor(() => versions.version("topic:1") === "1");
+        // Let the listener settle so the read we block is the next one.
+        await Bun.sleep(200);
+        requests = 0;
+
+        const blockedStarted = new Promise<void>((resolve) => {
+          markBlockedStarted = resolve;
+        });
+        blockNextRead = true;
+
+        // Captures version 2, then blocks.
+        await bumpCacheTags(database.sql, ["topic:1"]);
+        await blockedStarted;
+
+        // The NOTIFY for version 3 is processed while that read is still in flight, so the
+        // snapshot it is holding predates the mutation. Wait for the listener to request a
+        // reload before releasing, making the overlap deterministic.
+        const secondRequest = new Promise<void>((resolve) => {
+          markRequested = () => {
+            if (requests >= 2) {
+              resolve();
+            }
+          };
+        });
+        await bumpCacheTags(database.sql, ["topic:1"]);
+        await secondRequest;
+        releaseBlockedRead?.();
+
+        // The stale read must not be the last word: a third read applies version 3.
+        await waitFor(() => versions.version("topic:1") === "3", 5_000);
+        expect(reads).toBeGreaterThanOrEqual(3);
       } finally {
         await versions.close();
       }

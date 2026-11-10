@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createServerT } from "@bulletin/i18n";
+import { parseFragment } from "parse5";
 import {
   createCompileCache,
   createTemplateEngine,
@@ -50,6 +51,36 @@ describe("sanitiseRenderedMarkup", () => {
       "the poster attribute on video",
       "the src attribute on img",
     ]);
+  });
+
+  test("strips form targets a browser resolves off origin", () => {
+    const payloads = [
+      '<form action="/\\evil.example/collect"></form>',
+      '<form action="//evil.example/collect"></form>',
+      '<form action="/&#x09;/evil.example/collect"></form>',
+    ];
+
+    for (const payload of payloads) {
+      const result = sanitiseRenderedMarkup(payload);
+
+      expect(result.html).not.toContain("evil.example");
+      expect(result.removed).toContain("the action attribute on form");
+    }
+  });
+
+  test("removes a noscript element whichever way a browser parses it", () => {
+    const payload = '<noscript><p title="</noscript><img src=x onerror=alert(1)>"></p></noscript>';
+    const result = sanitiseRenderedMarkup(payload);
+
+    expect(result.html).toBe("");
+    expect(result.removed).toEqual(["the noscript element"]);
+
+    // A scripting-enabled parser reads the same bytes as raw text; with the element gone it
+    // must not find an image or an event handler either way.
+    const browser = JSON.stringify(parseFragment(result.html, { scriptingEnabled: true }));
+
+    expect(browser).not.toContain("onerror");
+    expect(browser).not.toContain('"img"');
   });
 
   test("strips off-origin form targets and keeps same-origin ones", () => {
