@@ -3,8 +3,11 @@ import type { SeedModule } from "./framework.ts";
 
 export interface SeededProfile {
   readonly sub: string;
-  readonly name: string;
-  readonly skeleton: string;
+  /** The forum display name; null is a member who has not chosen one yet. */
+  readonly name: string | null;
+  readonly skeleton: string | null;
+  /** The identity provider's display name; stored only in the restricted identity record. */
+  readonly identityName: string;
   readonly email: string;
   readonly locale: "en" | "es" | "fr";
   /** Primary group key; Members is added as a secondary group when this is not Members. */
@@ -15,7 +18,7 @@ export interface SeededProfile {
  * Every local identity profile. The subjects and emails must match the identity provider's
  * local configuration; skeletons are computed from the UTS #39 dataset.
  */
-const PROFILE_INPUTS: readonly Omit<SeededProfile, "skeleton">[] = [
+const PROFILE_INPUTS: readonly Omit<SeededProfile, "skeleton" | "identityName">[] = [
   {
     sub: "admin",
     name: "Admin",
@@ -93,11 +96,28 @@ const PROFILE_INPUTS: readonly Omit<SeededProfile, "skeleton">[] = [
     locale: "fr",
     group: "members",
   },
+  {
+    // A member who has never chosen a forum display name: the step page E2E uses this profile.
+    sub: "step-member",
+    name: null,
+    email: "step-member@bulletin.test",
+    locale: "en",
+    group: "members",
+  },
+  {
+    // A member with a name to change on the account page; the name history starts empty.
+    sub: "account-member",
+    name: "Account Member",
+    email: "account-member@bulletin.test",
+    locale: "en",
+    group: "members",
+  },
 ];
 
 export const SEEDED_PROFILES: readonly SeededProfile[] = PROFILE_INPUTS.map((profile) => ({
   ...profile,
-  skeleton: displayNameSkeleton(profile.name),
+  skeleton: profile.name === null ? null : displayNameSkeleton(profile.name),
+  identityName: profile.name ?? profile.sub,
 }));
 
 const AUTH_ISSUER = (
@@ -149,7 +169,7 @@ export const membersSeedModule: SeedModule = {
 
       await sql`
         INSERT INTO pii.identities (member_id, issuer, sub, email, idp_name)
-        VALUES (${memberId}, ${AUTH_ISSUER}, ${profile.sub}, ${profile.email}, ${profile.name})
+        VALUES (${memberId}, ${AUTH_ISSUER}, ${profile.sub}, ${profile.email}, ${profile.identityName})
         ON CONFLICT (issuer, sub) DO NOTHING
       `;
     }

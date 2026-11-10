@@ -1,9 +1,13 @@
 import { defineContract, type ViewModelContractRegistry } from "@bulletin/templates";
 
 /** The view-model fields the demo route's cache tags depend on. */
-export interface SpikeViewModel {
-  readonly theme: string;
-  readonly plugins: number;
+export interface DemoViewModel {
+  readonly forumId: string;
+}
+
+/** The view-model fields the account route's cache tags depend on. */
+export interface AccountViewModel {
+  readonly memberId: string;
 }
 
 /**
@@ -36,17 +40,38 @@ export const callbackContract = defineContract({
   requiredIslands: [],
 });
 
-export const spikeRenderingContract = defineContract<SpikeViewModel>({
-  route: "/spike/rendering",
+/** Islands every demo state renders (the header); the content state adds the counter. */
+export const DEMO_SHELL_ISLANDS = ["LanguageSwitcher"] as const;
+
+export const demoContract = defineContract<DemoViewModel>({
+  route: "/_demo/[id]",
   deps: [],
-  tags: (model) => [`theme:${model.theme}`, "plugins"],
+  tags: (model) => [`forum:${model.forumId}`],
   cdnCacheable: false,
-  requiredIslands: ["SpikeCounter"],
+  requiredIslands: [...DEMO_SHELL_ISLANDS, "SpikeCounter"],
+});
+
+export const displayNameContract = defineContract({
+  route: "/display-name",
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+export const accountContract = defineContract<AccountViewModel>({
+  route: "/account",
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
 });
 
 export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [homeContract.route]: homeContract,
   [loginContract.route]: loginContract,
   [callbackContract.route]: callbackContract,
-  [spikeRenderingContract.route]: spikeRenderingContract,
+  [demoContract.route]: demoContract,
+  [displayNameContract.route]: displayNameContract,
+  [accountContract.route]: accountContract,
 };

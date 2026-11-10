@@ -76,3 +76,9 @@ users:
   - sub: member-fr
     email: member-fr@bulletin.test
     name: Membre Français
+  - sub: step-member
+    email: step-member@bulletin.test
+    name: Step Member
+  - sub: account-member
+    email: account-member@bulletin.test
+    name: Account Member

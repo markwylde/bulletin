@@ -1,0 +1,185 @@
+import {
+  can,
+  GUEST_PRINCIPAL,
+  loadPermissionSnapshot,
+  type ViewerPrincipal,
+} from "@bulletin/domain/permissions";
+import {
+  FIXTURE_DEMO_PASSWORD,
+  FIXTURE_FORUM_NODES,
+  FIXTURE_FORUM_TREE,
+} from "@bulletin/domain/permissions/fixtures";
+import type { Locale, Translator } from "@bulletin/i18n";
+import type { SQL } from "bun";
+import type { UserAppSessionContext } from "../session.ts";
+import type { BreadcrumbItem } from "../theme/render.ts";
+
+/** Fixture topic counts per forum; a zero renders the theme's empty state. */
+const DEMO_TOPIC_COUNTS: Readonly<Record<string, number>> = {
+  "2": 3,
+  "3": 3,
+  "5": 2,
+  "7": 3,
+  "8": 3,
+};
+const DELETED_TOPIC_INDEX = 2;
+
+export interface DemoPageInput {
+  readonly sql: SQL;
+  readonly locale: Locale;
+  readonly translate: Translator;
+  readonly session: UserAppSessionContext | null;
+  readonly forumId: string;
+  /** The moderator tools control toggles the hidden (deleted) fixture topic. */
+  readonly showDeleted: boolean;
+}
+
+interface DemoBase {
+  readonly breadcrumbs: readonly BreadcrumbItem[];
+  readonly title: string;
+}
+
+/** The states the demo route can render; only `content` contains the required counter. */
+export type DemoState = "content" | "locked" | "error";
+
+export interface DemoForumPage extends DemoBase {
+  readonly template: "demo";
+  readonly state: "content" | "locked";
+  readonly viewModel: object;
+}
+
+export interface DemoErrorPage extends DemoBase {
+  readonly template: "error";
+  readonly state: "error";
+  readonly status: number;
+  readonly viewModel: { readonly code: string; readonly message: string };
+}
+
+export type DemoOutcome = DemoForumPage | DemoErrorPage;
+
+function demoTitle(translate: Translator, id: string): string {
+  return translate("demo.forum.title", { id });
+}
+
+/** Breadcrumbs for a fixture forum: its ancestors, then the forum itself. */
+function demoBreadcrumbs(translate: Translator, forumId: string): readonly BreadcrumbItem[] {
+  return [
+    ...FIXTURE_FORUM_TREE.ancestors(forumId).map((node) => ({
+      label: demoTitle(translate, node.id),
+      href: `/_demo/${node.id}`,
+    })),
+    { label: demoTitle(translate, forumId), href: null },
+  ];
+}
+
+function errorPage(
+  code: string,
+  message: string,
+  breadcrumbs: readonly BreadcrumbItem[],
+  title: string,
+): DemoErrorPage {
+  return {
+    template: "error",
+    state: "error",
+    status: code === "not_found" ? 404 : 403,
+    title,
+    breadcrumbs,
+    viewModel: { code, message },
+  };
+}
+
+/**
+ * Builds the demo route's view model over the fixture forum tree (ADR 0008, task 4.2). All
+ * authorisation goes through `can()` (ADR 0005) with one compiled snapshot for the request.
+ */
+export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> {
+  const node = FIXTURE_FORUM_TREE.get(input.forumId);
+  const title = input.translate("theme.error.title");
+  const notFound = errorPage("not_found", input.translate("theme.error.notFound"), [], title);
+
+  if (node === undefined) {
+    return notFound;
+  }
+
+  const breadcrumbs = demoBreadcrumbs(input.translate, node.id);
+  const principal: ViewerPrincipal = input.session?.memberId ?? GUEST_PRINCIPAL;
+  const sessionId = input.session?.sessionId ?? null;
+  const snapshot = await loadPermissionSnapshot(input.sql, principal, {
+    tree: FIXTURE_FORUM_TREE,
+    sessionId,
+  });
+  const allowed = (bit: "show" | "read" | "pin" | "see_deleted", forumId: string) =>
+    can(input.sql, principal, bit, {
+      forumId,
+      tree: FIXTURE_FORUM_TREE,
+      sessionId,
+      snapshot,
+    });
+
+  if (!(await allowed("show", node.id))) {
+    return errorPage("forbidden", input.translate("theme.error.forbidden"), breadcrumbs, title);
+  }
+
+  const forumTitle = demoTitle(input.translate, node.id);
+  const isCategory = node.parentId === null;
+  const locked = node.passwordProtected && !(await allowed("read", node.id));
+  const base = {
+    forumId: node.id,
+    forumTitle,
+    isCategory,
+    locked,
+    passwordHint: FIXTURE_DEMO_PASSWORD,
+  };
+
+  if (locked) {
+    return {
+      template: "demo",
+      state: "locked",
+      title: forumTitle,
+      breadcrumbs,
+      viewModel: base,
+    };
+  }
+
+  const children: Array<{ id: string; label: string; locked: boolean }> = [];
+
+  if (isCategory) {
+    for (const child of FIXTURE_FORUM_NODES.filter((candidate) => candidate.parentId === node.id)) {
+      if (!(await allowed("show", child.id))) {
+        continue;
+      }
+
+      children.push({
+        id: child.id,
+        label: demoTitle(input.translate, child.id),
+        locked: child.passwordProtected && !(await allowed("read", child.id)),
+      });
+    }
+  }
+
+  const canSeeDeleted = await allowed("see_deleted", node.id);
+  const showDeleted = input.showDeleted && canSeeDeleted;
+  const topicCount = DEMO_TOPIC_COUNTS[node.id] ?? 0;
+  const topics = isCategory
+    ? []
+    : Array.from({ length: topicCount }, (_, index) => ({
+        id: `${node.id}-${index + 1}`,
+        title: input.translate("demo.topic.title", { id: index + 1 }),
+        deleted: index === DELETED_TOPIC_INDEX,
+      })).filter((topic) => !topic.deleted || showDeleted);
+
+  return {
+    template: "demo",
+    state: "content",
+    title: forumTitle,
+    breadcrumbs,
+    viewModel: {
+      ...base,
+      children,
+      topics,
+      counter: { label: input.translate("demo.counter.label"), start: 0 },
+      showModTools: canSeeDeleted,
+      showDeleted,
+    },
+  };
+}

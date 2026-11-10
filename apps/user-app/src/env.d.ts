@@ -1,6 +1,7 @@
 /// <reference types="astro/client" />
 
 import type { BoardSettings } from "@bulletin/domain/board";
+import type { UserAppSessionContext } from "./session.ts";
 
 declare global {
   namespace App {
@@ -9,6 +10,7 @@ declare global {
       locale?: "en" | "es" | "fr";
       localeSource?: "member" | "guest";
       board?: BoardSettings;
+      session?: UserAppSessionContext | null;
     }
   }
 }

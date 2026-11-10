@@ -1,0 +1,15 @@
+{{ header }}
+<main id="main" class="bl-main" data-display-name-step data-auth-state="authenticated">
+  {{ breadcrumbs }}
+  <section class="bl-card">
+    <h1 class="bl-page__title">{% t "displayName.title" %}</h1>
+    <p class="bl-muted">{% t "displayName.help" %}</p>
+    <form class="bl-form" data-display-name-form data-return-to="{{ returnTo }}">
+      <label class="bl-label" for="display-name">{% t "displayName.label" %}</label>
+      <input class="bl-input" id="display-name" name="displayName" data-display-name-input autocomplete="nickname" minlength="3" maxlength="32" required />
+      <button class="bl-button" type="submit" data-display-name-submit>{% t "displayName.save" %}</button>
+      <p class="bl-error-text" data-display-name-error hidden></p>
+    </form>
+  </section>
+  {{ footer }}
+</main>

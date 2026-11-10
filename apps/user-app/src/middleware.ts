@@ -16,7 +16,19 @@ const authIssuer =
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const drain = import.meta.env.DEV ? createDrainController() : null;
 
-const NON_PAGE_PREFIXES = ["/api/", "/health/", "/auth/", "/_", "/@", "/src/", "/favicon.ico"];
+// Astro's own asset endpoints are not pages. `/_demo/*` is a page and must go through the
+// session, locale and board logic below, so the bare "/_" prefix is deliberately absent.
+const NON_PAGE_PREFIXES = [
+  "/api/",
+  "/health/",
+  "/auth/",
+  "/_astro/",
+  "/_image",
+  "/@",
+  "/src/",
+  "/favicon.ico",
+];
+const DISPLAY_NAME_PATH = "/display-name";
 
 if (import.meta.env.DEV) {
   process.once("SIGTERM", () => {
@@ -112,6 +124,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
         context.locals.board = board;
       }
 
+      context.locals.session = sessionContext;
+
       if (
         isNavigation &&
         shouldRedirectToReauth({
@@ -123,6 +137,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
       ) {
         return secure(
           context.redirect(reauthRedirectUrl(`${context.url.pathname}${context.url.search}`), 303),
+        );
+      }
+
+      // ADR 0005: a member without a display name must choose one before browsing.
+      if (
+        isNavigation &&
+        sessionContext !== null &&
+        sessionContext.displayName === null &&
+        context.url.pathname !== DISPLAY_NAME_PATH
+      ) {
+        const returnTo = `${context.url.pathname}${context.url.search}`;
+        return secure(
+          context.redirect(`${DISPLAY_NAME_PATH}?return_to=${encodeURIComponent(returnTo)}`, 303),
         );
       }
 

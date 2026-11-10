@@ -1,7 +1,12 @@
 import { type ComponentType, createElement } from "react";
 import { hydrateRoot } from "react-dom/client";
 import * as v from "valibot";
-import { type IslandPropsSchema, spikeCounterSchema } from "./schemas.ts";
+import {
+  type IslandPropsSchema,
+  languageSwitcherSchema,
+  localeSuggestionSchema,
+  spikeCounterSchema,
+} from "./schemas.ts";
 
 /** The result of validating an island's props in the browser. */
 export type IslandPreparation =
@@ -44,5 +49,13 @@ export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
   SpikeCounter: defineClientIsland(spikeCounterSchema, async () => {
     const module = await import("./SpikeCounter.tsx");
     return module.SpikeCounter;
+  }),
+  LanguageSwitcher: defineClientIsland(languageSwitcherSchema, async () => {
+    const module = await import("./LanguageSwitcher.tsx");
+    return module.LanguageSwitcher;
+  }),
+  LocaleSuggestion: defineClientIsland(localeSuggestionSchema, async () => {
+    const module = await import("./LocaleSuggestion.tsx");
+    return module.LocaleSuggestion;
   }),
 };

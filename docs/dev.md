@@ -12,30 +12,28 @@ Podman ≥ 5 with the Docker Compose v2 provider (`podman compose`). Infrastruct
 intentionally not watched; application source is synced or restarted by Compose watch.
 
 The root [README](../README.md) covers origins, mocks, the seed and the general test commands.
-This guide covers the rendering spike route and the plugin sandbox in day-to-day development.
+This guide covers the themed routes and the plugin sandbox in day-to-day development.
 
-## The rendering spike route
+## Themed routes
 
-Spike S1 (ADR [0008](adr/0008-themes-and-templates.md)) runs as a dev-only route, so you can
-watch a database-stored Liquid template place a React island, hydrate it, render a plugin-style
-hook fragment and switch cache variants:
+Every user-app page renders through the default theme (ADR [0008](adr/0008-themes-and-templates.md)):
+Astro supplies the shell, the DB-stored Liquid templates supply the body, and React islands
+hydrate in the browser.
 
-- `http://bulletin.localhost:8080/spike/rendering` — the default theme, plugin generation 1.
-- `?theme=alt` — the second seeded theme (`alt`), which must render its own cache entry.
-- `?plugins=2` — the installed-plugin generation with its own hook fragment.
+- `http://bulletin.localhost:8080/_demo/1` — the demo route over the fixture forum tree. `1` is
+  a category, `2` a forum with topics, `3` the password-protected forum (development password
+  `demo-password`, also shown on the locked page), `4` an empty forum and `6` onwards forums the
+  visitor may not see. Log in as `forum-mod` or `super-mod` to see the moderator tools, or use
+  `?deleted=1` as a moderator to reveal the deleted fixture topic.
+- `http://bulletin.localhost:8080/display-name` — the step page for a member without a name; the
+  `step-member` profile starts without one.
+- `http://bulletin.localhost:8080/account` — display name and history, active sessions and the
+  language setting.
 
-The response headers `X-Spike-Cache` (`HIT`/`MISS`), `X-Spike-Variant` and `X-Spike-Errors`
-show which entry answered. The route returns 404 when `NODE_ENV=production`.
-
-```bash
-# Render cost in-process, then cold/warm HTTP against the running stack:
-bun scripts/spike-rendering.ts
-```
-
-The templates live in [`packages/templates/spike-templates`](../packages/templates/spike-templates)
-and the seed copies them into `core.themes`/`core.theme_templates`, with `alt` a child of
-`default` that overrides only the page template. Task 8.2 replaces this scaffolding with the
-default theme in the repo.
+The demo route returns the themed 404 outside development and for unknown ids. Theme sources
+live in [`packages/templates/themes/default`](../packages/templates/themes/default); the seed
+installs them into `core.themes`/`core.theme_templates` (task 8.2 verifies the repo-to-DB sync).
+Pull a new seed change with `docker compose down -v` before starting again.
 
 ## The plugin sandbox
 

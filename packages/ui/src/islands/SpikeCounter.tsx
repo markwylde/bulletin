@@ -14,7 +14,7 @@ export function SpikeCounter({ label, start }: SpikeCounterProps) {
   const [count, setCount] = useState(start);
 
   return (
-    <div className="spike-counter" data-spike-counter>
+    <div className="bl-counter" data-spike-counter>
       <button type="button" data-spike-increment onClick={() => setCount((value) => value + 1)}>
         {label} <span data-spike-count={count}>{count}</span>
       </button>

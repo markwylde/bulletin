@@ -299,6 +299,8 @@ describe("darkauth-mock config", () => {
       "warned-member",
       "member-es",
       "member-fr",
+      "step-member",
+      "account-member",
     ]);
   });
 });

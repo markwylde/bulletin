@@ -1,0 +1,49 @@
+{{ header }}
+<main id="main" class="bl-main" data-account-page>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{% t "account.title" %}</h1>
+
+  <section class="bl-card" data-account-profile>
+    <h2 class="bl-card__title">{% t "account.displayName.title" %}</h2>
+    <form class="bl-form" data-account-name-form>
+      <label class="bl-label" for="account-display-name">{% t "displayName.label" %}</label>
+      <input class="bl-input" id="account-display-name" data-account-name-input value="{{ displayName }}" autocomplete="nickname" minlength="3" maxlength="32" required />
+      <button class="bl-button" type="submit" data-account-name-submit>{% t "displayName.save" %}</button>
+      <p class="bl-error-text" data-account-name-error hidden></p>
+      <p class="bl-muted" data-account-name-saved hidden>{% t "account.displayName.saved" %}</p>
+    </form>
+  </section>
+
+  <section class="bl-card" data-account-history>
+    <h2 class="bl-card__title">{% t "account.history.title" %}</h2>
+    {% if history.size > 0 %}
+      <ol class="bl-history">
+        {% for entry in history %}
+          <li class="bl-history__item" data-account-history-entry>
+            <span class="bl-history__names">{{ entry.oldName }} → {{ entry.newName }}</span>
+            <time class="bl-muted" datetime="{{ entry.iso }}">{{ entry.label }}</time>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      {{ emptyState }}
+    {% endif %}
+  </section>
+
+  <section class="bl-card" data-account-sessions>
+    <h2 class="bl-card__title">{% t "account.sessions.title" %}</h2>
+    <p class="bl-muted">{% t "account.sessions.body" %}</p>
+    <ul class="bl-session-list" data-account-session-list>
+      <li class="bl-muted" data-account-sessions-loading>{% t "account.sessions.loading" %}</li>
+    </ul>
+    <p class="bl-error-text" data-account-sessions-error hidden>{% t "account.sessions.error" %}</p>
+  </section>
+
+  <section class="bl-card" data-account-language>
+    <h2 class="bl-card__title">{% t "account.language.title" %}</h2>
+    <p class="bl-muted">{% t "account.language.body" %}</p>
+    {% island "LanguageSwitcher" language %}
+  </section>
+
+  {{ footer }}
+</main>

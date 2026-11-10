@@ -19,10 +19,10 @@
 
 ## 4. Default theme skeleton
 
-- [ ] 4.1 Build the default theme skeleton (layout, header, breadcrumbs, empty and error states, mobile-first light/dark tokens) with E2E at 360/390/1440
-- [ ] 4.2 Build the dev-only `/_demo/<id>` route over the fixture `ForumTree` provider (island, hook point, unlock, mod-only control, overlay field), and a test that it returns 404 in production mode
-- [ ] 4.3 Build the first personal routes on the template stack: the display-name step (with the redirect guard for members without a name) and the account page (display name change with history, active sessions list, language), all `private, no-store`; E2E for a new member at 360 px
-- [ ] 4.4 Language switcher island (member saves preference, guest sets `bp`) and the `Accept-Language` suggestion banner in the default theme; E2E at all viewports for switching as guest and as member
+- [x] 4.1 Build the default theme skeleton (layout, header, breadcrumbs, empty and error states, mobile-first light/dark tokens) with E2E at 360/390/1440
+- [x] 4.2 Build the dev-only `/_demo/<id>` route over the fixture `ForumTree` provider (island, hook point, unlock, mod-only control, overlay field), and a test that it returns 404 in production mode
+- [x] 4.3 Build the first personal routes on the template stack: the display-name step (with the redirect guard for members without a name) and the account page (display name change with history, active sessions list, language), all `private, no-store`; E2E for a new member at 360 px
+- [x] 4.4 Language switcher island (member saves preference, guest sets `bp`) and the `Accept-Language` suggestion banner in the default theme; E2E at all viewports for switching as guest and as member
 
 ## 5. Cache stack
 

@@ -1,0 +1,64 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { USER_CATALOGS } from "../catalogs.ts";
+import { DEMO_SHELL_ISLANDS, demoContract } from "../contracts.ts";
+import { readSql } from "../db.ts";
+import { demoEnabled } from "../demo/enabled.ts";
+import { buildDemoPage } from "../demo/page.ts";
+import ThemeLayout from "../layouts/ThemeLayout.astro";
+import { type BreadcrumbItem, boardNameFrom, renderThemedPage } from "../theme/render.ts";
+
+// The rest route serves the dev-only demo (`/_demo/<id>`, which Astro cannot route directly
+// because of the underscore) and the themed 404 for every other unknown path.
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+const session = Astro.locals.session ?? null;
+const viewer = { isMember: session !== null, displayName: session?.displayName ?? null };
+const demoMatch = /^_demo\/([^/]+)\/?$/.exec(Astro.params.path ?? "");
+
+let status = 404;
+let template = "error";
+let requiredIslands: readonly string[] = DEMO_SHELL_ISLANDS;
+let pageTitle = translate("theme.error.title");
+let breadcrumbs: readonly BreadcrumbItem[] = [];
+let viewModel: object = { code: "not_found", message: translate("theme.error.notFound") };
+
+if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
+  const outcome = await buildDemoPage({
+    sql: readSql(),
+    locale,
+    translate,
+    session,
+    forumId: demoMatch[1] ?? "",
+    showDeleted: Astro.url.searchParams.get("deleted") === "1",
+  });
+
+  status = outcome.template === "error" ? outcome.status : 200;
+  template = outcome.template;
+  requiredIslands =
+    outcome.state === "content" ? demoContract.requiredIslands : DEMO_SHELL_ISLANDS;
+  pageTitle = outcome.title;
+  breadcrumbs = outcome.breadcrumbs;
+  viewModel = outcome.viewModel;
+}
+
+Astro.response.status = status;
+Astro.response.headers.set("cache-control", "private, no-store");
+
+const page = await renderThemedPage({
+  sql: readSql(),
+  boardName,
+  viewer,
+  locale,
+  translate,
+  template,
+  viewModel,
+  breadcrumbs,
+  route: { route: demoContract.route, requiredIslands },
+});
+---
+
+<ThemeLayout title={`${pageTitle} · ${boardName}`} locale={locale} body={page.html}>
+  <script>import "../demo/client.ts";</script>
+</ThemeLayout>

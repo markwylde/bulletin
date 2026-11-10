@@ -43,6 +43,11 @@ for (const app of APPS) {
             throw new Error(`No seeded member for profile ${profile.sub}`);
           }
 
+          // A member without a display name lands on the step page; its own E2E covers it.
+          if (seeded.name === null) {
+            return;
+          }
+
           const refused =
             app.name === "staff-app" &&
             seeded.group !== "administrators" &&

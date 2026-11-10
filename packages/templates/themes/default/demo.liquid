@@ -1,0 +1,58 @@
+{{ header }}
+<main id="main" class="bl-main" data-demo-page data-demo-id="{{ forumId }}">
+  {{ breadcrumbs }}
+  <header class="bl-page__header">
+    <h1 class="bl-page__title" data-demo-title>{{ forumTitle }}</h1>
+    <p class="bl-muted" data-demo-kind>{% if isCategory %}{% t "demo.categoryIntro" %}{% else %}{% t "demo.forumIntro" %}{% endif %}</p>
+  </header>
+
+  {% if locked %}
+    <section class="bl-card bl-lock" data-demo-locked>
+      <h2 class="bl-card__title">{% t "demo.locked.title" %}</h2>
+      <p class="bl-muted">{% t "demo.locked.body" %}</p>
+      <p class="bl-muted" data-demo-password-hint>{% t "demo.locked.hint" password: passwordHint %}</p>
+      <form class="bl-form" data-demo-unlock data-forum-id="{{ forumId }}">
+        <label class="bl-label" for="demo-password">{% t "demo.locked.password" %}</label>
+        <input class="bl-input" id="demo-password" name="password" type="password" autocomplete="current-password" required />
+        <button class="bl-button" type="submit" data-demo-unlock-submit>{% t "demo.locked.submit" %}</button>
+        <p class="bl-error-text" data-demo-unlock-error hidden>{% t "demo.locked.wrong" %}</p>
+      </form>
+    </section>
+  {% elsif isCategory %}
+    {% if children.size > 0 %}
+      <ul class="bl-forum-list" data-demo-children>
+        {% for child in children %}
+          <li class="bl-forum-list__item">
+            <a class="bl-forum-list__link" href="/_demo/{{ child.id }}" data-demo-child="{{ child.id }}">{{ child.label }}</a>
+            {% if child.locked %}<span class="bl-badge">{% t "demo.locked.badge" %}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ emptyState }}
+    {% endif %}
+  {% else %}
+    {% if topics.size > 0 %}
+      <ol class="bl-topic-list" data-demo-topics>
+        {% for topic in topics %}
+          <li class="bl-topic-list__item" data-demo-topic>
+            <span class="bl-topic-list__title">{{ topic.title }}</span>
+            {% if topic.deleted %}<span class="bl-badge bl-badge--danger" data-demo-deleted>{% t "demo.mod.deleted" %}</span>{% endif %}
+            <span class="bl-overlay-slot" data-overlay-unread data-overlay-context="topic:{{ topic.id }}">—</span>
+          </li>
+        {% endfor %}
+      </ol>
+      {% island "SpikeCounter" counter %}
+      {% hook "demo.after.topics" %}
+      {% if showModTools %}
+        <a class="bl-button bl-button--quiet" href="/_demo/{{ forumId }}{% if showDeleted %}?deleted=0{% else %}?deleted=1{% endif %}" data-demo-mod-tools>
+          {% if showDeleted %}{% t "demo.mod.close" %}{% else %}{% t "demo.mod.open" %}{% endif %}
+        </a>
+      {% endif %}
+    {% else %}
+      {{ emptyState }}
+    {% endif %}
+  {% endif %}
+
+  {{ footer }}
+</main>

@@ -10,8 +10,8 @@ export interface HookPoint {
 
 export const HOOK_POINTS: readonly HookPoint[] = [
   {
-    name: "spike.after.counter",
-    description: "After the spike island on the development rendering route.",
+    name: "demo.after.topics",
+    description: "After the topic list on the development demo route.",
   },
 ];
 

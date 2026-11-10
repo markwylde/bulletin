@@ -38,8 +38,11 @@ export async function readSessionReauthAt(
 
 export interface UserAppSessionContext {
   readonly memberId: string;
+  readonly sessionId: string;
   readonly reauthAt: string;
   readonly locale: Locale;
+  /** Null until the member chooses one; middleware redirects them to the step page. */
+  readonly displayName: string | null;
 }
 
 /** The session's re-auth point and its DB-backed request locale, resolved read-only. */
@@ -56,8 +59,10 @@ export async function readSessionContext(
 
   return {
     memberId: session.memberId,
+    sessionId: session.id,
     reauthAt: session.reauthAt.toISOString(),
     locale: await resolveMemberLocale(sql, session.memberId),
+    displayName: session.displayName,
   };
 }
 

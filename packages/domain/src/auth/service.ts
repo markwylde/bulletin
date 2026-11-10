@@ -305,6 +305,53 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
     });
   }
 
+  async function ownSessions(request: Request): Promise<Response> {
+    return withSession(request, async ({ session }) => {
+      if (session === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      const token = parseCookieHeader(request.headers.get("cookie"))[cookieName];
+
+      if (token === undefined) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      // ADR 0012: the member's own sessions are only readable through this audited
+      // definer function, which derives the actor from the session token.
+      const rows = (await options.sql`
+        SELECT session_id::text AS session_id,
+               kind,
+               is_current,
+               created_at,
+               last_seen_at,
+               ip,
+               browser_family
+        FROM pii.list_own_sessions(${token})
+      `) as Array<{
+        session_id: string;
+        kind: string;
+        is_current: boolean;
+        created_at: Date | string;
+        last_seen_at: Date | string;
+        ip: string | null;
+        browser_family: string;
+      }>;
+
+      return json({
+        sessions: rows.map((row) => ({
+          id: row.session_id,
+          kind: row.kind,
+          current: row.is_current,
+          createdAt: new Date(row.created_at).toISOString(),
+          lastSeenAt: new Date(row.last_seen_at).toISOString(),
+          ip: row.ip,
+          browser: row.browser_family,
+        })),
+      });
+    });
+  }
+
   async function nameHistory(request: Request, memberId: string): Promise<Response> {
     return withSession(request, async ({ session }) => {
       if (session === null) {
@@ -389,6 +436,28 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         `;
         sessions.invalidate();
         await options.sql`SELECT pg_notify('session_revoked', ${session.id})`;
+
+        return json({ ok: true });
+      });
+    }
+
+    if (options.kind === "user" && pathname === "/api/test/reset-display-name") {
+      if (request.method !== "POST") {
+        return Promise.resolve(json({ code: "method_not_allowed" }, 405));
+      }
+
+      return withSession(request, async ({ session }) => {
+        if (session === null) {
+          return json({ code: "unauthenticated" }, 401);
+        }
+
+        // Test-only (development) support for the display-name step E2E to start clean.
+        await options.sql`
+          UPDATE core.members
+          SET display_name = NULL, name_skeleton = NULL
+          WHERE id = ${session.memberId}
+        `;
+        sessions.invalidate();
 
         return json({ ok: true });
       });
@@ -521,6 +590,14 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         }
 
         return saveLocale(request);
+      }
+
+      if (pathname === "/api/me/sessions") {
+        if (request.method !== "GET") {
+          return json({ code: "method_not_allowed" }, 405);
+        }
+
+        return ownSessions(request);
       }
 
       if (options.kind === "staff") {

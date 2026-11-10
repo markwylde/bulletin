@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { contractTags, findContract, validateContracts } from "@bulletin/templates";
 import { ISLAND_NAMES } from "@bulletin/ui/islands";
 import {
+  accountContract,
   callbackContract,
+  demoContract,
+  displayNameContract,
   homeContract,
   loginContract,
   ROUTE_CONTRACTS,
-  spikeRenderingContract,
 } from "./contracts.ts";
 
 describe("route contracts", () => {
@@ -24,28 +26,37 @@ describe("route contracts", () => {
         homeContract.route,
         loginContract.route,
         callbackContract.route,
-        spikeRenderingContract.route,
+        demoContract.route,
+        displayNameContract.route,
+        accountContract.route,
       ].sort(),
     );
   });
 
   test("the demo route declares deps, tags, CDN eligibility and required islands", () => {
-    const contract = findContract(ROUTE_CONTRACTS, "/spike/rendering");
+    const contract = findContract(ROUTE_CONTRACTS, "/_demo/2");
 
-    expect(contract).toBe(spikeRenderingContract);
+    expect(contract).toBe(demoContract);
     expect(contract?.deps).toEqual([]);
     expect(contract?.cdnCacheable).toBe(false);
-    expect(contract?.requiredIslands).toEqual(["SpikeCounter"]);
-    expect(contractTags(spikeRenderingContract, { theme: "alt", plugins: 2 })).toEqual([
-      "theme:alt",
-      "plugins",
-    ]);
+    expect(contract?.requiredIslands).toEqual(["LanguageSwitcher", "SpikeCounter"]);
+    expect(contractTags(demoContract, { forumId: "2" })).toEqual(["forum:2"]);
     expect(ISLAND_NAMES).toContain("SpikeCounter");
+    expect(ISLAND_NAMES).toContain("LanguageSwitcher");
+  });
+
+  test("every themed page requires the language switcher (task 4.4)", () => {
+    for (const contract of [demoContract, displayNameContract, accountContract]) {
+      expect(contract.requiredIslands).toContain("LanguageSwitcher");
+    }
+
+    expect(contractTags(accountContract, { memberId: "7" })).toEqual(["member:7"]);
   });
 
   test("only the public board shell is CDN cacheable", () => {
     expect(homeContract.cdnCacheable).toBe(true);
     expect(loginContract.cdnCacheable).toBe(false);
     expect(callbackContract.cdnCacheable).toBe(false);
+    expect(accountContract.cdnCacheable).toBe(false);
   });
 });

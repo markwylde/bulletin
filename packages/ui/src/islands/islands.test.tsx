@@ -5,7 +5,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as v from "valibot";
 import { CLIENT_ISLANDS } from "./client.ts";
 import { SpikeCounter, type SpikeCounterProps } from "./SpikeCounter.tsx";
-import { ISLAND_NAMES, spikeCounterSchema } from "./schemas.ts";
+import {
+  ISLAND_NAMES,
+  languageSwitcherSchema,
+  localeSuggestionSchema,
+  spikeCounterSchema,
+} from "./schemas.ts";
 import { SERVER_ISLANDS } from "./server.tsx";
 
 const runtime = (report?: (message: string) => void): TemplateRuntime => ({
@@ -82,6 +87,56 @@ describe("{% island %} emission", () => {
 
     expect(html).toBe("");
     expect(reports[0]).toContain("invalid props");
+  });
+});
+
+describe("language island schemas", () => {
+  const options = [
+    { value: "en", label: "English" },
+    { value: "es", label: "Español" },
+    { value: "fr", label: "Français" },
+  ];
+
+  test("accepts a switcher and a suggestion banner", () => {
+    expect(
+      v.safeParse(languageSwitcherSchema, {
+        current: "en",
+        options,
+        label: "Language",
+        nameRequired: "Pick a name first.",
+        saveFailed: "Try again.",
+      }).success,
+    ).toBe(true);
+    expect(
+      v.safeParse(localeSuggestionSchema, {
+        current: "en",
+        options,
+        message: "Your browser prefers this language:",
+        accept: "Switch",
+        dismiss: "Dismiss",
+      }).success,
+    ).toBe(true);
+  });
+
+  test("rejects an unknown locale and a missing option", () => {
+    expect(
+      v.safeParse(languageSwitcherSchema, {
+        current: "de",
+        options,
+        label: "Language",
+        nameRequired: "Pick a name first.",
+        saveFailed: "Try again.",
+      }).success,
+    ).toBe(false);
+    expect(
+      v.safeParse(localeSuggestionSchema, {
+        current: "en",
+        options: [],
+        message: "Your browser prefers this language:",
+        accept: "Switch",
+        dismiss: "Dismiss",
+      }).success,
+    ).toBe(false);
   });
 });
 

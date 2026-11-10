@@ -1,0 +1,57 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { accountLabels, buildAccountPage } from "../account/page.ts";
+import { USER_CATALOGS } from "../catalogs.ts";
+import { accountContract } from "../contracts.ts";
+import { readSql } from "../db.ts";
+import ThemeLayout from "../layouts/ThemeLayout.astro";
+import { boardNameFrom, renderThemedPage } from "../theme/render.ts";
+
+const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account")}`;
+const session = Astro.locals.session ?? null;
+
+if (session === null) {
+  return Astro.redirect(loginUrl, 303);
+}
+
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const sql = readSql();
+const account = await buildAccountPage({
+  sql,
+  memberId: session.memberId,
+  locale,
+  translate,
+});
+
+if (account === null) {
+  return Astro.redirect(loginUrl, 303);
+}
+
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+const rendered = await renderThemedPage({
+  sql,
+  boardName,
+  viewer: { isMember: true, displayName: session.displayName },
+  locale,
+  translate,
+  template: "account",
+  viewModel: account.viewModel,
+  breadcrumbs: account.breadcrumbs,
+  route: accountContract,
+});
+
+// A personal, uncached page (ADR 0006).
+Astro.response.headers.set("cache-control", "private, no-store");
+const labels = accountLabels(translate);
+---
+
+<ThemeLayout
+  title={`${account.title} · ${boardName}`}
+  locale={locale}
+  body={rendered.html}
+  authState="authenticated"
+>
+  <script type="application/json" id="account-labels" set:html={JSON.stringify(labels)}></script>
+  <script>import "../account/client.ts";</script>
+</ThemeLayout>

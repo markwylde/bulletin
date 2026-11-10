@@ -1,244 +1,314 @@
 import { describe, expect, test } from "bun:test";
-import { createFragmentCache } from "@bulletin/cache";
-import { createServerT } from "@bulletin/i18n";
 import {
-  loadSpikeFixtures,
-  loadTheme,
-  SPIKE_FOOTER_TEMPLATE,
-  SPIKE_PAGE_TEMPLATE,
-  type SpikeHookFixture,
-} from "@bulletin/templates";
+  baseSeedModule,
+  groupsSeedModule,
+  membersSeedModule,
+  permissionFixtureSeedModule,
+  runSeeds,
+  SEEDED_PLUGIN_GENERATION,
+  SeedRegistry,
+  themesSeedModule,
+} from "@bulletin/db/seed";
+import { createServerT } from "@bulletin/i18n";
+import { loadDefaultThemeTemplates, loadHookFragments, loadTheme } from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
-import { spikeRenderingContract } from "../../apps/user-app/src/contracts.ts";
-import { renderSpikePage } from "../../apps/user-app/src/spike/page.ts";
+import { buildAccountPage } from "../../apps/user-app/src/account/page.ts";
+import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import {
+  accountContract,
+  DEMO_SHELL_ISLANDS,
+  demoContract,
+} from "../../apps/user-app/src/contracts.ts";
+import { buildDemoPage } from "../../apps/user-app/src/demo/page.ts";
+import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
+import { renderThemedPage } from "../../apps/user-app/src/theme/render.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
+const translate = createServerT("en", { shipped: USER_CATALOGS });
 
-const SHIPPED = {
-  en: {
-    "spike.rendering.title": "Rendering spike",
-    "spike.rendering.altTitle": "Alternate theme",
-    "spike.rendering.body": "Body",
-    "spike.rendering.theme": "Theme",
-    "spike.rendering.plugins": "Plugin generation",
-    "spike.rendering.hook": "Plugin fragment",
-    "spike.rendering.counter": "Clicks",
-    "spike.rendering.footer": "Footer",
-    "spike.rendering.trusted": "Trusted",
-  },
-} as const;
+/** Fresh databases restart at theme version 1; the process-wide compile cache needs a miss. */
+let themeVersionOffset = 0;
 
-/** Writes the spike fixtures the same way the base seed does. */
-async function seedFixtures(database: TestDatabase): Promise<void> {
-  const fixtures = await loadSpikeFixtures();
-
-  for (const theme of fixtures.themes) {
-    await database.sql`
-      INSERT INTO core.themes (name, version)
-      VALUES (${theme.name}, ${theme.version})
-    `;
-  }
-
-  for (const theme of fixtures.themes) {
-    if (theme.parent === null) {
-      continue;
-    }
-
-    await database.sql`
-      UPDATE core.themes
-      SET parent_id = (SELECT parent.id FROM core.themes AS parent WHERE parent.name = ${theme.parent})
-      WHERE name = ${theme.name}
-    `;
-  }
-
-  for (const theme of fixtures.themes) {
-    for (const [name, body] of Object.entries(theme.templates)) {
-      await database.sql`
-        INSERT INTO core.theme_templates (theme_id, name, body)
-        SELECT id, ${name}, ${body} FROM core.themes WHERE name = ${theme.name}
-      `;
-    }
-  }
-
-  for (const hook of fixtures.hooks as readonly SpikeHookFixture[]) {
-    await database.sql`
-      INSERT INTO core.render_spike_hooks (generation, name, body)
-      VALUES (${hook.generation}, ${hook.hook}, ${hook.body})
-    `;
-  }
-}
-
-async function withDb(run: (database: TestDatabase) => Promise<void>): Promise<void> {
+async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Promise<void> {
   if (adminUrl === undefined) {
     throw new Error("TEST_DATABASE_URL is required");
   }
 
-  await withTestDatabase({ adminUrl, prefix: "render_spike" }, async (database) => {
-    await seedFixtures(database);
+  await withTestDatabase({ adminUrl, prefix: "theme_templates" }, async (database) => {
+    await runSeeds({
+      sql: database.sql,
+      registry: new SeedRegistry([
+        baseSeedModule,
+        permissionFixtureSeedModule,
+        groupsSeedModule,
+        membersSeedModule,
+        themesSeedModule,
+      ]),
+    });
+    themeVersionOffset += 1;
+    await database.sql`
+      UPDATE core.themes SET version = version + ${themeVersionOffset} WHERE name = 'default'
+    `;
     await run(database);
   });
 }
 
-function input(
-  database: TestDatabase,
-  overrides: Partial<Parameters<typeof renderSpikePage>[0]> = {},
-): Parameters<typeof renderSpikePage>[0] {
+async function memberSession(database: TestDatabase, sub: string): Promise<UserAppSessionContext> {
+  const [row] = (await database.sql`
+    SELECT i.member_id::text AS member_id, m.display_name
+    FROM pii.identities i
+    JOIN core.members m ON m.id = i.member_id
+    WHERE i.sub = ${sub}
+  `) as Array<{ member_id: string; display_name: string | null }>;
+
+  if (row === undefined) {
+    throw new Error(`No seeded member ${sub}`);
+  }
+
   return {
-    sql: database.sql,
-    theme: "default",
-    plugins: 1,
-    bust: 0,
+    memberId: row.member_id,
+    sessionId: "0",
+    reauthAt: new Date().toISOString(),
     locale: "en",
-    translate: createServerT("en", { shipped: SHIPPED }),
-    contract: spikeRenderingContract,
-    ...overrides,
+    displayName: row.display_name,
   };
 }
 
-integrationDescribe("theme templates", () => {
-  test("loads the ancestor chain with leaf-first overrides", async () => {
-    await withDb(async (database) => {
-      const alt = await loadTheme(database.sql, "alt");
+async function renderDemo(
+  database: TestDatabase,
+  session: UserAppSessionContext | null,
+  forumId: string,
+  options: { readonly showDeleted?: boolean } = {},
+): Promise<{ html: string; errors: readonly string[]; status: number }> {
+  const outcome = await buildDemoPage({
+    sql: database.sql,
+    locale: "en",
+    translate,
+    session,
+    forumId,
+    showDeleted: options.showDeleted ?? false,
+  });
 
-      if (alt === null) {
-        throw new Error("expected the alt theme");
+  const page = await renderThemedPage({
+    sql: database.sql,
+    boardName: "Bulletin",
+    viewer: {
+      isMember: session !== null,
+      displayName: session?.displayName ?? null,
+    },
+    locale: "en",
+    translate,
+    template: outcome.template,
+    viewModel: outcome.viewModel,
+    breadcrumbs: outcome.breadcrumbs,
+    route: {
+      route: demoContract.route,
+      requiredIslands:
+        outcome.state === "content" ? demoContract.requiredIslands : DEMO_SHELL_ISLANDS,
+    },
+  });
+
+  return {
+    html: page.html,
+    errors: page.errors,
+    status: outcome.template === "error" ? outcome.status : 200,
+  };
+}
+
+integrationDescribe("default theme templates", () => {
+  test("the seed installs the repository theme files and the demo hook fragment", async () => {
+    await withSeededDb(async (database) => {
+      const theme = await loadTheme(database.sql, "default");
+      const files = await loadDefaultThemeTemplates();
+
+      if (theme === null) {
+        throw new Error("expected the default theme");
       }
 
-      expect(alt.theme.name).toBe("alt");
-      expect(alt.chain.map((entry) => entry.name)).toEqual(["alt", "default"]);
-      expect(alt.templates.get(SPIKE_PAGE_TEMPLATE)?.map((template) => template.themeName)).toEqual(
-        ["alt", "default"],
-      );
-      expect(
-        alt.templates.get(SPIKE_FOOTER_TEMPLATE)?.map((template) => template.themeName),
-      ).toEqual(["default"]);
+      expect(theme.theme.name).toBe("default");
+      expect([...theme.templates.keys()].sort()).toEqual(Object.keys(files).sort());
 
-      const byId = await loadTheme(database.sql, alt.theme.id);
-      expect(byId?.theme.name).toBe("alt");
+      for (const [name, body] of Object.entries(files)) {
+        expect(theme.templates.get(name)?.[0]?.body).toBe(body);
+      }
 
-      expect(await loadTheme(database.sql, "missing")).toBeNull();
+      const hooks = await loadHookFragments(database.sql, SEEDED_PLUGIN_GENERATION);
+
+      expect(hooks["demo.after.topics"]).toContain("data-demo-hook");
     });
   });
 
-  test("renders the child page with the parent's footer and escaping", async () => {
-    await withDb(async (database) => {
-      const outcome = await renderSpikePage(input(database, { theme: "alt", plugins: 2 }));
+  test("renders the demo page with header, breadcrumbs, island, hook and overlay slot", async () => {
+    await withSeededDb(async (database) => {
+      const session = await memberSession(database, "member-1");
+      const page = await renderDemo(database, session, "2");
 
-      if (outcome.status !== "ok") {
-        throw new Error("expected the spike page to render");
-      }
-
-      expect(outcome.html).toContain('data-spike-layout="alt"');
-      expect(outcome.html).not.toContain('data-spike-layout="default"');
-      // `alt` overrides only `page`, so the footer comes from `default`.
-      expect(outcome.html).toContain('data-spike-footer-template="default"');
-      expect(outcome.html).toContain('data-spike-hook="2"');
-      expect(outcome.html).toContain('<bl-island data-name="SpikeCounter"');
-      expect(outcome.html).toContain("<button");
-      // SafeHtml renders as markup.
-      expect(outcome.html).toContain("<strong data-spike-safe>Trusted</strong>");
-      expect(outcome.errors).toEqual([]);
-
-      // Plain view-model text stays escaped (the default theme prints the hostile sample).
-      const themed = await renderSpikePage(input(database, { bust: 9 }));
-
-      if (themed.status !== "ok") {
-        throw new Error("expected the default theme to render");
-      }
-
-      expect(themed.html).toContain("&lt;script&gt;alert(&quot;spike&quot;)&lt;/script&gt;");
-      expect(themed.html).not.toContain('<script>alert("spike")</script>');
+      expect(page.status).toBe(200);
+      expect(page.errors).toEqual([]);
+      expect(page.html).toContain("data-theme-header");
+      expect(page.html).toContain("data-theme-footer");
+      expect(page.html).toContain("data-breadcrumbs");
+      expect(page.html).toContain('href="/_demo/1"');
+      expect(page.html).toContain('<bl-island data-name="LanguageSwitcher"');
+      expect(page.html).toContain('<bl-island data-name="SpikeCounter"');
+      expect(page.html).toContain("data-demo-hook");
+      expect(page.html).toContain("data-overlay-unread");
+      expect(page.html).toContain('data-demo-id="2"');
     });
   });
 
-  test("takes effect on the next request when a template is edited", async () => {
-    await withDb(async (database) => {
-      const first = await renderSpikePage(input(database, { bust: 1 }), createFragmentCache());
+  test("shows the empty state for a forum with no topics", async () => {
+    await withSeededDb(async (database) => {
+      const session = await memberSession(database, "member-1");
+      const page = await renderDemo(database, session, "4");
 
-      if (first.status !== "ok") {
-        throw new Error("expected the first render");
+      expect(page.status).toBe(200);
+      expect(page.html).toContain("data-theme-empty");
+    });
+  });
+
+  test("locks a password forum until the session has an unlock grant", async () => {
+    await withSeededDb(async (database) => {
+      const session = await memberSession(database, "member-1");
+      const locked = await renderDemo(database, session, "3");
+
+      expect(locked.status).toBe(200);
+      expect(locked.html).toContain("data-demo-locked");
+      expect(locked.html).toContain("demo-password");
+      expect(locked.errors).toEqual([]);
+
+      const [row] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (
+          ${session.memberId},
+          'user',
+          decode(md5(random()::text), 'hex'),
+          now() + interval '1 day'
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (row === undefined) {
+        throw new Error("could not create a session");
       }
-
-      expect(first.html).not.toContain("data-spike-footer-edit");
 
       await database.sql`
-        UPDATE core.theme_templates
-        SET body = '<footer data-spike-footer-edit>Edited footer</footer>', version = version + 1
-        WHERE name = ${SPIKE_FOOTER_TEMPLATE}
-          AND theme_id = (SELECT id FROM core.themes WHERE name = 'default')
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${row.id}, 'forum_password', 3)
       `;
 
-      const second = await renderSpikePage(input(database, { bust: 2 }), createFragmentCache());
+      const unlocked = await renderDemo(database, { ...session, sessionId: row.id }, "3");
 
-      if (second.status !== "ok") {
-        throw new Error("expected the second render");
-      }
-
-      expect(second.html).toContain("data-spike-footer-edit");
+      expect(unlocked.status).toBe(200);
+      expect(unlocked.html).not.toContain("data-demo-locked");
+      expect(unlocked.html).toContain("data-demo-topics");
     });
   });
 
-  test("reports a required island the theme omits, and still renders the page", async () => {
-    await withDb(async (database) => {
+  test("denies a forum the viewer cannot see", async () => {
+    await withSeededDb(async (database) => {
+      // Fixture forum 6 has no matrix row for Guests, so it is invisible to them.
+      const page = await renderDemo(database, null, "6");
+
+      expect(page.status).toBe(403);
+      expect(page.html).toContain("data-theme-error");
+      expect(page.html).toContain('data-error-code="forbidden"');
+    });
+  });
+
+  test("hides the moderator tools from members and shows them to moderators", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const moderator = await memberSession(database, "super-mod");
+
+      const memberPage = await renderDemo(database, member, "2");
+      const moderatorPage = await renderDemo(database, moderator, "2");
+
+      expect(memberPage.html).not.toContain("data-demo-mod-tools");
+      expect(memberPage.html).not.toContain("data-demo-deleted");
+
+      expect(moderatorPage.html).toContain("data-demo-mod-tools");
+      expect(moderatorPage.html).not.toContain("data-demo-deleted");
+
+      const deletedPage = await renderDemo(database, moderator, "2", { showDeleted: true });
+
+      expect(deletedPage.html).toContain("data-demo-deleted");
+    });
+  });
+
+  test("renders the account page with display name, history and language", async () => {
+    await withSeededDb(async (database) => {
+      const session = await memberSession(database, "member-1");
+      const account = await buildAccountPage({
+        sql: database.sql,
+        memberId: session.memberId,
+        locale: "en",
+        translate,
+      });
+
+      if (account === null) {
+        throw new Error("expected the account page");
+      }
+
+      const page = await renderThemedPage({
+        sql: database.sql,
+        boardName: "Bulletin",
+        viewer: { isMember: true, displayName: session.displayName },
+        locale: "en",
+        translate,
+        template: "account",
+        viewModel: account.viewModel,
+        breadcrumbs: account.breadcrumbs,
+        route: accountContract,
+      });
+
+      expect(page.errors).toEqual([]);
+      expect(page.html).toContain("data-account-page");
+      expect(page.html).toContain('value="Regular Member One"');
+      expect(page.html).toContain("data-account-history-entry");
+      expect(page.html).toContain("Regular Member → Regular Member One");
+      expect(page.html).toContain("data-account-session-list");
+      expect(page.html).toContain('<bl-island data-name="LanguageSwitcher"');
+    });
+  });
+
+  test("takes a template edit into account on the next render", async () => {
+    await withSeededDb(async (database) => {
+      const session = await memberSession(database, "member-1");
+      const before = await renderDemo(database, session, "2");
+
+      expect(before.html).not.toContain("data-theme-edit");
+
       await database.sql`
         UPDATE core.theme_templates
-        SET body = replace(body, '{% island "SpikeCounter" island %}', ''),
+        SET body = body || '<p data-theme-edit>edited</p>', version = version + 1
+        WHERE name = 'demo'
+      `;
+
+      const after = await renderDemo(database, session, "2");
+
+      expect(after.html).toContain("data-theme-edit");
+    });
+  });
+
+  test("reports a required island the theme omits", async () => {
+    await withSeededDb(async (database) => {
+      const session = await memberSession(database, "member-1");
+
+      await database.sql`
+        UPDATE core.theme_templates
+        SET body = replace(body, '{% island "SpikeCounter" counter %}', ''),
             version = version + 1
-        WHERE name = ${SPIKE_PAGE_TEMPLATE}
-          AND theme_id = (SELECT id FROM core.themes WHERE name = 'default')
+        WHERE name = 'demo'
       `;
 
-      const outcome = await renderSpikePage(input(database), createFragmentCache());
+      const page = await renderDemo(database, session, "2");
 
-      if (outcome.status !== "ok") {
-        throw new Error("expected the page to render without its island");
-      }
-
-      expect(outcome.html).not.toContain("<bl-island");
-      expect(outcome.errors).toContain(
-        'required island "SpikeCounter" is missing from route "/spike/rendering"',
+      expect(page.html).not.toContain('data-name="SpikeCounter"');
+      expect(page.errors).toContain(
+        'required island "SpikeCounter" is missing from route "/_demo/[id]"',
       );
-      expect(outcome.html).toContain('data-spike-layout="default"');
-    });
-  });
-
-  test("caches per theme and plugin generation with no content leaking across variants", async () => {
-    await withDb(async (database) => {
-      const cache = createFragmentCache();
-      const base = await renderSpikePage(input(database), cache);
-      const warm = await renderSpikePage(input(database), cache);
-      const alt = await renderSpikePage(input(database, { theme: "alt" }), cache);
-      const plugin = await renderSpikePage(input(database, { plugins: 2 }), cache);
-      const baseAgain = await renderSpikePage(input(database), cache);
-
-      if (
-        base.status !== "ok" ||
-        warm.status !== "ok" ||
-        alt.status !== "ok" ||
-        plugin.status !== "ok" ||
-        baseAgain.status !== "ok"
-      ) {
-        throw new Error("expected every spike variant to render");
-      }
-
-      expect(base.cache).toBe("MISS");
-      expect(warm.cache).toBe("HIT");
-      expect(warm.html).toBe(base.html);
-
-      expect(alt.cache).toBe("MISS");
-      expect(alt.variant).not.toBe(base.variant);
-      expect(alt.html).toContain('data-spike-layout="alt"');
-      expect(alt.html).not.toContain('data-spike-layout="default"');
-
-      expect(plugin.cache).toBe("MISS");
-      expect(plugin.variant).not.toBe(base.variant);
-      expect(plugin.html).toContain('data-spike-hook="2"');
-      expect(plugin.html).not.toContain('data-spike-hook="1"');
-      expect(base.html).toContain('data-spike-hook="1"');
-
-      expect(baseAgain.cache).toBe("HIT");
-      expect(baseAgain.variant).toBe(base.variant);
     });
   });
 });

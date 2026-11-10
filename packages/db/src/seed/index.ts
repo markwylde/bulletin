@@ -6,5 +6,5 @@ export * from "./groups.ts";
 export * from "./members.ts";
 export * from "./moderator-assignments.ts";
 export * from "./permission-fixtures.ts";
-export * from "./render-spike.ts";
 export * from "./rng.ts";
+export * from "./themes.ts";

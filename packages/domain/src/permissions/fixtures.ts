@@ -20,3 +20,6 @@ export const FIXTURE_FORUM_NODES: readonly ForumNode[] = [
 export const FIXTURE_FORUM_TREE: ForumTree = createForumTree(FIXTURE_FORUM_NODES);
 
 export const FIXTURE_PASSWORD_FORUM_ID = "3";
+
+/** Dev-only password for the demo route's password forum; the seed installs its hash. */
+export const FIXTURE_DEMO_PASSWORD = "demo-password";

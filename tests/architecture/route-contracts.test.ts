@@ -9,6 +9,14 @@ import { ROUTE_CONTRACTS } from "../../apps/user-app/src/contracts.ts";
 
 const PAGES_DIR = fileURLToPath(new URL("../../apps/user-app/src/pages/", import.meta.url));
 
+/**
+ * Astro cannot route a file or directory whose name starts with an underscore, so the rest
+ * route serves the public `/_demo/<id>` route (task 4.2) and the themed 404.
+ */
+const PAGE_ROUTE_ALIASES: Readonly<Record<string, string>> = {
+  "/[...path]": "/_demo/[id]",
+};
+
 /** Maps an Astro page file to the route it serves. */
 function routeOfPageFile(relativePath: string): string | null {
   const normalised = relativePath.replaceAll("\\", "/").replace(/\.astro$/, "");
@@ -23,7 +31,9 @@ function routeOfPageFile(relativePath: string): string | null {
     segments.pop();
   }
 
-  return `/${segments.join("/")}`;
+  const route = `/${segments.join("/")}`;
+
+  return PAGE_ROUTE_ALIASES[route] ?? route;
 }
 
 async function pageRoutes(): Promise<readonly string[]> {
@@ -60,6 +70,12 @@ describe("route contract coverage", () => {
     expect(routes).toEqual(
       Object.keys(ROUTE_CONTRACTS)
         .filter((route) => !route.includes("["))
+        .sort()
+        .concat(
+          Object.keys(ROUTE_CONTRACTS)
+            .filter((route) => route.includes("["))
+            .sort(),
+        )
         .sort(),
     );
   });
@@ -68,11 +84,12 @@ describe("route contract coverage", () => {
     expect(validateContracts(ROUTE_CONTRACTS, ISLAND_NAMES)).toEqual([]);
   });
 
-  test("maps page files to routes", () => {
+  test("maps page files to routes, including the demo alias", () => {
     expect(routeOfPageFile("index.astro")).toBe("/");
     expect(routeOfPageFile("auth/login.astro")).toBe("/auth/login");
     expect(routeOfPageFile("forum/index.astro")).toBe("/forum");
     expect(routeOfPageFile("topic/[id]-[slug].astro")).toBe("/topic/[id]-[slug]");
+    expect(routeOfPageFile("[...path].astro")).toBe("/_demo/[id]");
     expect(routeOfPageFile("_demo/rendering.astro")).toBeNull();
     expect(routeOfPageFile("auth/[step].astro")).toBe("/auth/[step]");
   });

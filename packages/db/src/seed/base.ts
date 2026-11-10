@@ -7,7 +7,7 @@ import { groupsSeedModule } from "./groups.ts";
 import { membersSeedModule } from "./members.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
 import { permissionFixtureSeedModule } from "./permission-fixtures.ts";
-import { renderSpikeSeedModule } from "./render-spike.ts";
+import { themesSeedModule } from "./themes.ts";
 
 export const baseSeedModule: SeedModule = {
   name: "base",
@@ -51,7 +51,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         moderatorAssignmentsSeedModule,
         adminLogSeedModule,
         flagsSeedModule,
-        renderSpikeSeedModule,
+        themesSeedModule,
       ]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",

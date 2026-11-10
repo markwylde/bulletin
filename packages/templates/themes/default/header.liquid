@@ -1,0 +1,15 @@
+<a class="bl-skip-link" href="#main">{% t "theme.skipToContent" %}</a>
+<header class="bl-header" data-theme-header>
+  <div class="bl-header__inner">
+    <a class="bl-header__brand" href="/" data-board-name>{{ boardName }}</a>
+    <nav class="bl-header__nav" aria-label="{% t "theme.nav" %}">
+      {% if isMember %}
+        <a class="bl-header__link" href="/account" data-account-link>{% t "theme.account" %}</a>
+      {% endif %}
+      {% island "LanguageSwitcher" language %}
+    </nav>
+  </div>
+  {% if localeSuggestion %}
+    {% island "LocaleSuggestion" localeSuggestion %}
+  {% endif %}
+</header>

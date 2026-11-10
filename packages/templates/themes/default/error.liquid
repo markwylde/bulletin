@@ -1,0 +1,10 @@
+{{ header }}
+<main id="main" class="bl-main" data-theme-error data-error-code="{{ code }}">
+  {{ breadcrumbs }}
+  <section class="bl-error">
+    <h1 class="bl-error__title">{% t "theme.error.title" %}</h1>
+    <p class="bl-error__body">{{ message }}</p>
+    <a class="bl-button" href="/">{% t "theme.error.home" %}</a>
+  </section>
+  {{ footer }}
+</main>

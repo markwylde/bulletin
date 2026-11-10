@@ -2,8 +2,15 @@ import type { ServerIslandDefinition, ServerIslandRegistry } from "@bulletin/tem
 import { type ComponentType, createElement } from "react";
 import { renderToString } from "react-dom/server";
 import * as v from "valibot";
+import { LanguageSwitcher } from "./LanguageSwitcher.tsx";
+import { LocaleSuggestion } from "./LocaleSuggestion.tsx";
 import { SpikeCounter } from "./SpikeCounter.tsx";
-import { type IslandPropsSchema, spikeCounterSchema } from "./schemas.ts";
+import {
+  type IslandPropsSchema,
+  languageSwitcherSchema,
+  localeSuggestionSchema,
+  spikeCounterSchema,
+} from "./schemas.ts";
 
 function defineServerIsland<TProps extends object>(
   name: string,
@@ -28,4 +35,14 @@ function defineServerIsland<TProps extends object>(
 /** The server half of the fixed island registry (ADR 0008). */
 export const SERVER_ISLANDS: ServerIslandRegistry = {
   SpikeCounter: defineServerIsland("SpikeCounter", spikeCounterSchema, SpikeCounter),
+  LanguageSwitcher: defineServerIsland(
+    "LanguageSwitcher",
+    languageSwitcherSchema,
+    LanguageSwitcher,
+  ),
+  LocaleSuggestion: defineServerIsland(
+    "LocaleSuggestion",
+    localeSuggestionSchema,
+    LocaleSuggestion,
+  ),
 };

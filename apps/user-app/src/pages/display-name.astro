@@ -1,0 +1,54 @@
+---
+import { safeReturnTo } from "@bulletin/domain/auth";
+import { createServerT } from "@bulletin/i18n";
+import { USER_CATALOGS } from "../catalogs.ts";
+import { displayNameContract } from "../contracts.ts";
+import { readSql } from "../db.ts";
+import { buildDisplayNamePage, displayNameLabels } from "../display-name/page.ts";
+import ThemeLayout from "../layouts/ThemeLayout.astro";
+import { boardNameFrom, renderThemedPage } from "../theme/render.ts";
+
+const loginUrl = `/auth/login?return_to=${encodeURIComponent("/display-name")}`;
+const session = Astro.locals.session ?? null;
+
+if (session === null) {
+  return Astro.redirect(loginUrl, 303);
+}
+
+const returnTo = safeReturnTo(Astro.url.searchParams.get("return_to")) ?? "/";
+
+// A member who already has a name never sees the step page.
+if (session.displayName !== null) {
+  return Astro.redirect(returnTo, 303);
+}
+
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+const page = buildDisplayNamePage({ returnTo, currentName: session.displayName, translate });
+const rendered = await renderThemedPage({
+  sql: readSql(),
+  boardName,
+  viewer: { isMember: true, displayName: session.displayName },
+  locale,
+  translate,
+  template: "display-name",
+  viewModel: page.viewModel,
+  breadcrumbs: page.breadcrumbs,
+  route: displayNameContract,
+});
+
+// A personal, uncached page (ADR 0006).
+Astro.response.headers.set("cache-control", "private, no-store");
+const labels = displayNameLabels(translate);
+---
+
+<ThemeLayout
+  title={`${page.title} · ${boardName}`}
+  locale={locale}
+  body={rendered.html}
+  authState="authenticated"
+>
+  <script type="application/json" id="display-name-labels" set:html={JSON.stringify(labels)}></script>
+  <script>import "../display-name/client.ts";</script>
+</ThemeLayout>

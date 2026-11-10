@@ -6,8 +6,8 @@ interface HookRow {
 }
 
 /**
- * Plugin-style hook fragments for a plugin generation (ADR 0008, 0009). Spike S1 scaffolding:
- * the `plugin-platform` change serves these from the sandbox's registered fragments.
+ * Plugin-style hook fragments for a plugin generation (ADR 0008, 0009). Until
+ * `plugin-platform` serves real ones from the sandbox, the seed installs the demo fragment.
  */
 export async function loadHookFragments(
   sql: SQL,
@@ -15,7 +15,7 @@ export async function loadHookFragments(
 ): Promise<Readonly<Record<string, string>>> {
   const rows = (await sql`
     SELECT name, body
-    FROM core.render_spike_hooks
+    FROM core.hook_fragments
     WHERE generation = ${generation}
     ORDER BY name
   `) as HookRow[];

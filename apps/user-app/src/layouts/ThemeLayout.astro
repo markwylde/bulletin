@@ -1,0 +1,28 @@
+---
+import "../theme/default.css";
+
+interface Props {
+  readonly title: string;
+  readonly locale: string;
+  readonly body: string;
+  /** Set on pages that require a member, so the auth helpers can detect the state. */
+  readonly authState?: "authenticated";
+}
+
+const { title, locale, body, authState } = Astro.props;
+---
+
+<!doctype html>
+<html lang={locale} data-auth-state={authState}>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <div set:html={body} />
+    <slot />
+    <script>import "../islands.ts";</script>
+  </body>
+</html>

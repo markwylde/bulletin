@@ -1,3 +1,5 @@
+import { hashForumPassword } from "@bulletin/domain/permissions";
+import { FIXTURE_DEMO_PASSWORD } from "@bulletin/domain/permissions/fixtures";
 import type { SeedModule } from "./framework.ts";
 
 /**
@@ -30,6 +32,12 @@ export const permissionFixtureSeedModule: SeedModule = {
     `) as Array<{ id: string }>;
 
     if (general !== undefined) {
+      // The demo route renders a password-style unlock over this forum (task 4.2).
+      await sql`
+        UPDATE core.forums
+        SET password_hash = ${await hashForumPassword(FIXTURE_DEMO_PASSWORD)}
+        WHERE id = ${general.id}
+      `;
       await sql`INSERT INTO core.forums (parent_id) VALUES (${general.id})`;
     }
   },

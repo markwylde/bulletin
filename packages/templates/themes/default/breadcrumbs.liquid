@@ -1,0 +1,16 @@
+{% if items.size > 0 %}
+  <nav class="bl-breadcrumbs" aria-label="{% t "theme.breadcrumbs" %}" data-breadcrumbs>
+    <ol class="bl-breadcrumbs__list">
+      <li class="bl-breadcrumbs__item"><a href="/">{% t "theme.home" %}</a></li>
+      {% for item in items %}
+        <li class="bl-breadcrumbs__item">
+          {% if item.href %}
+            <a href="{{ item.href }}">{{ item.label }}</a>
+          {% else %}
+            <span aria-current="page">{{ item.label }}</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </nav>
+{% endif %}

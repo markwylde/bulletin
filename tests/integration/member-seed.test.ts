@@ -58,7 +58,7 @@ integrationDescribe("member seed", () => {
           issuer: authIssuer(),
           sub: profile.sub,
           email: profile.email,
-          idp_name: profile.name,
+          idp_name: profile.identityName,
         });
       }
 
