@@ -24,16 +24,20 @@
     "test:watch": "bun test --watch",
     "test:integration": "BULLETIN_INTEGRATION=1 bun test tests/integration",
     "test:e2e": "bun scripts/run-e2e.ts",
-    "test:db": "bun test tests/harness"
+    "test:db": "bun test tests/harness",
+    "spike:render": "bun scripts/spike-rendering.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
+    "@bulletin/cache": "workspace:*",
     "@bulletin/config": "workspace:*",
     "@bulletin/db": "workspace:*",
     "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
+    "@bulletin/templates": "workspace:*",
     "@bulletin/test-utils": "workspace:*",
+    "@bulletin/ui": "workspace:*",
     "@types/bun": "1.4.4",
     "jose": "6.2.16",
     "typescript": "5.9.3"

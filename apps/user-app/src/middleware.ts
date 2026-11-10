@@ -72,9 +72,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
       context.url.pathname.startsWith(prefix),
     );
 
-    // Prerendered pages cannot read request cookies in Astro's static output. Their shell
-    // fetches `/api/board`, which checks `board.view_offline` server-side. Once spike S1
-    // switches the user app to SSR, every page request takes the enforcing path below.
+    // Prerendered pages cannot read request cookies. Spike S1 moved the user app to SSR
+    // output (ADR 0008), so every page request takes the enforcing path below.
     if (isPageRequest && context.isPrerendered !== true) {
       let sessionContext: Awaited<ReturnType<typeof currentSessionContext>> = null;
       const cookieHeader = context.request.headers.get("cookie");

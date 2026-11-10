@@ -1,0 +1,7 @@
+<section class="spike-page spike-page--alt" data-spike-layout="alt" data-spike-theme="{{ theme }}">
+  {% hook "spike.after.counter" %}
+  <h1 data-spike-title>{% t "spike.rendering.altTitle" %}</h1>
+  <p data-spike-body>{% t "spike.rendering.body" %}</p>
+  <p class="spike-meta" data-spike-meta>{{ theme }}@{{ version }} · {{ generation }}</p>
+  {% island "SpikeCounter" island %}
+</section>

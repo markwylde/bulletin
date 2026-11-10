@@ -7,6 +7,9 @@
     ".": "./src/index.ts",
     "./feedback": "./src/feedback/index.ts",
     "./forms": "./src/forms/index.ts",
+    "./islands": "./src/islands/index.ts",
+    "./islands/client": "./src/islands/client.ts",
+    "./islands/server": "./src/islands/server.tsx",
     "./table": "./src/table/index.ts"
   },
   "scripts": {
@@ -14,6 +17,7 @@
   },
   "dependencies": {
     "@bulletin/i18n": "workspace:*",
+    "@bulletin/templates": "workspace:*",
     "react": "19.3.1"
   },
   "devDependencies": {

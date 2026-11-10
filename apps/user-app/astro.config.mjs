@@ -1,7 +1,11 @@
+import node from "@astrojs/node";
 import { assertConnectionBudget, parseReplicas } from "@bulletin/config/connections";
 import { defineConfig } from "astro/config";
 
-// The SSR adapter is chosen by spike S1 (ADR 0008); the shell builds statically for now.
+// Spike S1 pinned Astro's official Node adapter in standalone mode, run by Bun (ADR 0008);
+// the community Bun adapters are either incompatible with Astro 7 or need Bun 1.4.4+.
+const adapter = node({ mode: "standalone" });
+
 const budgetGuard = {
   name: "bulletin-budget-guard",
   hooks: {
@@ -28,7 +32,8 @@ const budgetGuard = {
 };
 
 export default defineConfig({
-  output: "static",
+  output: "server",
+  adapter,
   // Bun's SQL client is a runtime global in the SSR build; never bundle it.
   vite: { ssr: { external: ["bun"] } },
   // The dev toolbar injects a nonce-less inline script, which the strict CSP blocks.

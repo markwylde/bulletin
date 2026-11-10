@@ -12,7 +12,29 @@ Podman ≥ 5 with the Docker Compose v2 provider (`podman compose`). Infrastruct
 intentionally not watched; application source is synced or restarted by Compose watch.
 
 The root [README](../README.md) covers origins, mocks, the seed and the general test commands.
-This guide covers the plugin sandbox in day-to-day development.
+This guide covers the rendering spike route and the plugin sandbox in day-to-day development.
+
+## The rendering spike route
+
+Spike S1 (ADR [0008](adr/0008-themes-and-templates.md)) runs as a dev-only route, so you can
+watch a database-stored Liquid template place a React island, hydrate it, render a plugin-style
+hook fragment and switch cache variants:
+
+- `http://bulletin.localhost:8080/spike/rendering` — the default theme, plugin generation 1.
+- `?theme=alt` — the second seeded theme (`alt`), which must render its own cache entry.
+- `?plugins=2` — the installed-plugin generation with its own hook fragment.
+
+The response headers `X-Spike-Cache` (`HIT`/`MISS`), `X-Spike-Variant` and `X-Spike-Errors`
+show which entry answered. The route returns 404 when `NODE_ENV=production`.
+
+```bash
+# Render cost in-process, then cold/warm HTTP against the running stack:
+bun scripts/spike-rendering.ts
+```
+
+The templates live in [`packages/templates/spike-templates`](../packages/templates/spike-templates)
+and the seed copies them into `core.render_spike_*`. Tasks 2.1-2.3 replace this scaffolding with
+the real engine and default theme.
 
 ## The plugin sandbox
 

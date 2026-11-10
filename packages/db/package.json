@@ -21,6 +21,7 @@
     "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
+    "@bulletin/templates": "workspace:*",
     "pg-boss": "12.38.1"
   }
 }

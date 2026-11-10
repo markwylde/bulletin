@@ -10,18 +10,7 @@ import {
   type TopLevelToken,
   Value,
 } from "liquidjs";
-
-const ESCAPES: Readonly<Record<string, string>> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ESCAPES[character] ?? character);
-}
+import { escapeHtml } from "./html.ts";
 
 class TranslationTag extends Tag {
   private readonly translate: Translator;

@@ -2,8 +2,8 @@
 
 ## 1. Spike S1 (time-boxed)
 
-- [ ] 1.1 Prototype: a DB-stored Liquid template places an island, which SSRs and hydrates in Astro under both adapter candidates; record the findings and the adapter choice in ADR 0008 and set its status to Accepted
-- [ ] 1.2 Prototype: a plugin-style hook fragment and a theme switch produce distinct cache entries and correct hydration; measure render cost and record it in ADR 0008
+- [x] 1.1 Prototype: a DB-stored Liquid template places an island, which SSRs and hydrates in Astro under both adapter candidates; record the findings and the adapter choice in ADR 0008 and set its status to Accepted
+- [x] 1.2 Prototype: a plugin-style hook fragment and a theme switch produce distinct cache entries and correct hydration; measure render cost and record it in ADR 0008
 
 ## 2. Template engine
 

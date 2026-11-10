@@ -31,6 +31,7 @@ export function offlinePage(options: OfflinePageOptions): Response {
 <html lang="${options.locale}">
   <head>
     <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)}</title>
     <style nonce="${options.nonce}">

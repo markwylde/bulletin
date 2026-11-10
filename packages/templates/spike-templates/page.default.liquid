@@ -1,0 +1,11 @@
+<article class="spike-page" data-spike-layout="default" data-spike-theme="{{ theme }}">
+  <h1 data-spike-title>{% t "spike.rendering.title" %}</h1>
+  <p data-spike-body>{% t "spike.rendering.body" %}</p>
+  <p class="spike-meta" data-spike-meta>
+    {% t "spike.rendering.theme" %} <strong>{{ theme }}@{{ version }}</strong>
+    {% t "spike.rendering.plugins" %} <strong>{{ generation }}</strong>
+  </p>
+  <p class="spike-escaped" data-spike-escaped>{{ escapedSample }}</p>
+  {% island "SpikeCounter" island %}
+  {% hook "spike.after.counter" %}
+</article>

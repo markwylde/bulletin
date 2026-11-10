@@ -20,6 +20,13 @@
   "displayName.save": "Enregistrer le nom",
   "displayName.taken": "Ce nom est déjà pris.",
   "displayName.title": "Choisissez un nom d'affichage",
+  "spike.rendering.altTitle": "Thème alternatif",
+  "spike.rendering.body": "Ce corps provient d'un modèle Liquid stocké dans Postgres. L'îlot ci-dessous est rendu sur le serveur, puis hydraté dans le navigateur.",
+  "spike.rendering.counter": "Clics",
+  "spike.rendering.hook": "Rendu par un fragment de plugin",
+  "spike.rendering.plugins": "Génération de plugins",
+  "spike.rendering.theme": "Thème",
+  "spike.rendering.title": "Test de rendu",
   "user.placeholder.body": "La communauté Bulletin est en préparation.",
   "user.placeholder.title": "Bulletin"
 }

@@ -5,16 +5,25 @@
   "scripts": {
     "dev": "bun ../../scripts/dev-i18n.ts -- bun --bun astro dev",
     "build": "bun --cwd ../.. run i18n:build && astro build",
+    "start": "bun ./dist/server/entry.mjs",
     "preview": "astro preview",
     "typecheck": "astro check"
   },
   "dependencies": {
-    "astro": "7.4.7",
-    "@bulletin/i18n": "workspace:*",
+    "@astrojs/node": "11.1.11",
+    "@bulletin/cache": "workspace:*",
     "@bulletin/config": "workspace:*",
-    "@bulletin/domain": "workspace:*"
+    "@bulletin/domain": "workspace:*",
+    "@bulletin/i18n": "workspace:*",
+    "@bulletin/templates": "workspace:*",
+    "@bulletin/ui": "workspace:*",
+    "astro": "7.4.7",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@astrojs/check": "0.9.12"
+    "@astrojs/check": "0.9.12",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0"
   }
 }
