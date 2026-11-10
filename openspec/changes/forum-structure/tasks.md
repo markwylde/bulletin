@@ -2,7 +2,7 @@
 
 ## 1. Model
 
-- [ ] 1.1 Migrations for forums (ltree path, type, settings, slug, counters), prefixes, forum_prefixes, slug_history, announcements, announcement_targets and dismissals; integration tests for moves and cycle rejection
+- [x] 1.1 Migrations for forums (ltree path, type, settings, slug, counters), prefixes, forum_prefixes, slug_history, announcements, announcement_targets and dismissals; integration tests for moves and cycle rejection
 - [ ] 1.2 Implement the `ForumTree` provider for the permission compiler, and enable the matrix editor from change `groups-permissions`; integration test that the ancestor rule applies to real forums
 
 ## 2. User app

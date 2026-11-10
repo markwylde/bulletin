@@ -18,17 +18,24 @@ export const permissionFixtureSeedModule: SeedModule = {
     }
 
     const [category] = (await sql`
-      INSERT INTO core.forums DEFAULT VALUES RETURNING id
+      INSERT INTO core.forums (type, title, slug)
+      VALUES ('category', 'Permission Fixtures', 'permission-fixtures')
+      RETURNING id
     `) as Array<{ id: string }>;
 
     if (category === undefined) {
       throw new Error("Could not seed the permission fixture category");
     }
 
-    await sql`INSERT INTO core.forums (parent_id) VALUES (${category.id})`;
+    await sql`
+      INSERT INTO core.forums (parent_id, title, slug)
+      VALUES (${category.id}, 'Announcements', 'announcements')
+    `;
 
     const [general] = (await sql`
-      INSERT INTO core.forums (parent_id) VALUES (${category.id}) RETURNING id
+      INSERT INTO core.forums (parent_id, title, slug)
+      VALUES (${category.id}, 'General Discussion', 'general-discussion')
+      RETURNING id
     `) as Array<{ id: string }>;
 
     if (general !== undefined) {
@@ -38,7 +45,10 @@ export const permissionFixtureSeedModule: SeedModule = {
         SET password_hash = ${await hashForumPassword(FIXTURE_DEMO_PASSWORD)}
         WHERE id = ${general.id}
       `;
-      await sql`INSERT INTO core.forums (parent_id) VALUES (${general.id})`;
+      await sql`
+        INSERT INTO core.forums (parent_id, title, slug)
+        VALUES (${general.id}, 'Nested Forum', 'nested-forum')
+      `;
     }
   },
 };
