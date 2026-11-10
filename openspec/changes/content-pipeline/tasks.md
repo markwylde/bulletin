@@ -28,8 +28,8 @@
 
 ## 5. Staff screens and adoption
 
-- [ ] 5.1 Emoticon set manager (upload via the basic `packages/storage` client from the foundation, codes, alt text, order, editor visibility), with tests for duplicate codes and permission denial
-- [ ] 5.2 Switch forum rules and announcements to the pipeline (rules profile), with integration tests
+- [x] 5.1 Emoticon set manager (upload via the basic `packages/storage` client from the foundation, codes, alt text, order, editor visibility), with tests for duplicate codes and permission denial
+- [x] 5.2 Switch forum rules and announcements to the pipeline (rules profile), with integration tests
 
 ## 6. Strings and seed
 

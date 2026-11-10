@@ -1,5 +1,5 @@
 import { createCdnPurger } from "@bulletin/cache";
-import { createLogger, loadConfig, parseReplicas } from "@bulletin/config";
+import { createLogger, loadConfig, loadStorageEnvironment, parseReplicas } from "@bulletin/config";
 import {
   createDatabaseCheck,
   createListenerCheck,
@@ -11,6 +11,7 @@ import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
+import { createStorage } from "@bulletin/storage";
 import { auditStaffLocaleChange } from "./admin-log.ts";
 import { createStaffApi } from "./api.ts";
 
@@ -48,7 +49,15 @@ const checks = [
 ];
 const purgeUrl = Bun.env.BULLETIN_CDN_PURGE_URL;
 const purge = purgeUrl === undefined ? undefined : createCdnPurger({ url: purgeUrl });
-const api = createStaffApi({ auth, sql, checks, ...(purge === undefined ? {} : { purge }) });
+const storage = createStorage(loadStorageEnvironment(Bun.env, config.nodeEnv));
+const api = createStaffApi({
+  auth,
+  sql,
+  checks,
+  storage,
+  userOrigin: config.userOrigin,
+  ...(purge === undefined ? {} : { purge }),
+});
 
 await startService({
   service: "staff-api",

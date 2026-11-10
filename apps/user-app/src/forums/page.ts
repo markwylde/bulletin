@@ -18,13 +18,14 @@ import {
 } from "@bulletin/domain/permissions";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
+import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { forumCapabilityDeps } from "./capability.ts";
 
 export interface ForumPageAnnouncement {
   readonly id: string;
   readonly title: string;
-  readonly body: string;
+  readonly body: SafeHtml;
   readonly dismissible: boolean;
   readonly version: number;
 }
@@ -49,7 +50,7 @@ export interface ForumPageView {
   readonly description: string;
   readonly topicCount: string;
   readonly postCount: string;
-  readonly rules: string | null;
+  readonly rules: SafeHtml | null;
   readonly prefixes: readonly ForumPagePrefix[];
   readonly activePrefix: string | null;
   readonly announcements: readonly ForumPageAnnouncement[];
@@ -225,13 +226,17 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
       description: input.forum.description,
       topicCount: input.translate("index.topicCount", { count: input.forum.topicCount }),
       postCount: input.translate("index.postCount", { count: input.forum.postCount }),
-      rules: input.forum.rules.trim() === "" ? null : input.forum.rules,
+      rules: input.forum.rules.trim() === "" ? null : safeHtml(input.forum.rulesHtml),
       prefixes,
       activePrefix,
       announcements: blocks.map((announcement) => ({
         id: announcement.id,
         title: announcement.title,
-        body: announcement.body,
+        body: safeHtml(
+          announcement.bodyHtml.trim() === ""
+            ? `<p>${escapeHtml(announcement.body)}</p>`
+            : announcement.bodyHtml,
+        ),
         dismissible: announcement.dismissible,
         version: announcement.version,
       })),

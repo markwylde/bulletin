@@ -19,7 +19,12 @@ export interface AnnouncementTarget {
 export interface Announcement {
   readonly id: string;
   readonly title: string;
+  /** Markdown source, shown in the staff editor. */
   readonly body: string;
+  readonly bodyHtml: string;
+  readonly bodyText: string;
+  readonly renderVersion: number;
+  readonly sanitiserVersion: number;
   readonly scope: AnnouncementScope;
   readonly startsAt: Date;
   readonly endsAt: Date | null;
@@ -33,6 +38,10 @@ interface AnnouncementRow {
   readonly id: string;
   readonly title: string;
   readonly body: string;
+  readonly body_html: string;
+  readonly body_text: string;
+  readonly render_version: number;
+  readonly sanitiser_version: number;
   readonly scope: AnnouncementScope;
   readonly starts_at: Date;
   readonly ends_at: Date | null;
@@ -62,7 +71,8 @@ export async function loadAnnouncements(
   now: Date = new Date(),
 ): Promise<readonly Announcement[]> {
   const rows = (await sql`
-    SELECT id, title, body, scope, starts_at, ends_at, dismissible, version
+    SELECT id, title, body, body_html, body_text, render_version, sanitiser_version,
+      scope, starts_at, ends_at, dismissible, version
     FROM core.announcements
     WHERE ends_at IS NULL OR ends_at > ${now}
     ORDER BY starts_at DESC, id DESC
@@ -107,6 +117,10 @@ export async function loadAnnouncements(
     id: row.id,
     title: row.title,
     body: row.body,
+    bodyHtml: row.body_html,
+    bodyText: row.body_text,
+    renderVersion: row.render_version,
+    sanitiserVersion: row.sanitiser_version,
     scope: row.scope,
     startsAt: new Date(row.starts_at),
     endsAt: row.ends_at === null ? null : new Date(row.ends_at),

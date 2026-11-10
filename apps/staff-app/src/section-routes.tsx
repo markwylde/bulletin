@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { AnnouncementsPage } from "./announcements/AnnouncementsPage.tsx";
 import { DashboardPage } from "./dashboard/DashboardPage.tsx";
+import { EmoticonsPage } from "./emoticons/EmoticonsPage.tsx";
 import { FlagsPage } from "./flags/FlagsPage.tsx";
 import { ForumsPage } from "./forums/ForumsPage.tsx";
 import { PrefixesPage } from "./forums/PrefixesPage.tsx";
@@ -20,6 +21,7 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   dashboard: DashboardPage,
   adminLog: AdminLogPage,
   boardSettings: BoardSettingsPage,
+  emoticons: EmoticonsPage,
   stringOverrides: StringOverridesPage,
   flags: FlagsPage,
   groups: GroupsPage,

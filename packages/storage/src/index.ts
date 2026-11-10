@@ -1,4 +1,4 @@
-export const KEY_PREFIXES = ["att", "av", "theme", "plugin", "export"] as const;
+export const KEY_PREFIXES = ["att", "av", "theme", "plugin", "export", "emoticon"] as const;
 export type KeyPrefix = (typeof KEY_PREFIXES)[number];
 
 export interface StorageConfig {

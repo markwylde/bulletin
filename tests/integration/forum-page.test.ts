@@ -15,6 +15,7 @@ import { type ForumAction, forumActionMask } from "@bulletin/domain/permissions"
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { saveForumSettings } from "../../apps/staff-api/src/forums.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderForumRoute } from "../../apps/user-app/src/forums/route.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
@@ -264,10 +265,15 @@ integrationDescribe("forum page", () => {
 
   test("shows the rules box as escaped plain text and enumerates available prefixes", async () => {
     await withSeededDb(async (database) => {
-      const rules = "<script>alert(1)</script>\nBe kind.";
-      await database.sql`
-        UPDATE core.forums SET rules = ${rules} WHERE id = 2
-      `;
+      const rules = "**Be kind.** <script>alert(1)</script>";
+      const adminSession = await memberSession(database, "admin");
+      expect(
+        await saveForumSettings(database.sql, adminSession.memberId, {
+          id: "2",
+          rules,
+          prefixIds: [],
+        }),
+      ).toEqual({ ok: true });
       const [publicPrefix] = (await database.sql`
         INSERT INTO core.prefixes (key, colour) VALUES ('question', '#3157c7') RETURNING id
       `) as Array<{ id: string }>;
@@ -302,9 +308,8 @@ integrationDescribe("forum page", () => {
       }
 
       expect(memberPage.html).toContain("data-rules");
-      expect(memberPage.html).toContain("Be kind.");
+      expect(memberPage.html).toContain("<strong>Be kind.</strong>");
       expect(memberPage.html).not.toContain("<script>alert(1)</script>");
-      expect(memberPage.html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
       expect(memberPage.html).toContain('data-prefix-key="question"');
       expect(memberPage.html).not.toContain('data-prefix-key="staff_only"');
 

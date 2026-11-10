@@ -11,6 +11,8 @@
     "@bulletin/config": "workspace:*",
     "@bulletin/db": "workspace:*",
     "@bulletin/domain": "workspace:*",
-    "@bulletin/flags": "workspace:*"
+    "@bulletin/flags": "workspace:*",
+    "@bulletin/content": "workspace:*",
+    "@bulletin/storage": "workspace:*"
   }
 }

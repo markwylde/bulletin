@@ -1,0 +1,102 @@
+import { describe, expect, test } from "bun:test";
+import { loadAnnouncements } from "@bulletin/domain/permissions";
+import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { saveAnnouncement } from "../../apps/staff-api/src/announcements.ts";
+import { saveForumSettings } from "../../apps/staff-api/src/forums.ts";
+
+const adminUrl = Bun.env.TEST_DATABASE_URL;
+const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
+
+async function withDb(run: (database: TestDatabase) => Promise<void>): Promise<void> {
+  if (adminUrl === undefined) {
+    throw new Error("TEST_DATABASE_URL is required");
+  }
+
+  await withTestDatabase({ adminUrl, prefix: "content_rules" }, run);
+}
+
+async function createMember(database: TestDatabase, name: string): Promise<string> {
+  const [member] = (await database.sql`
+    INSERT INTO core.members (display_name, name_skeleton)
+    VALUES (${name}, ${name.toLowerCase().replace(/\s+/g, "")})
+    RETURNING id::text AS id
+  `) as Array<{ id: string }>;
+
+  if (member === undefined) {
+    throw new Error("Could not create member");
+  }
+
+  return member.id;
+}
+
+integrationDescribe("rules and announcements through the pipeline", () => {
+  test("saves forum rules as sanitised HTML and plain text", async () => {
+    await withDb(async (database) => {
+      const actor = await createMember(database, "Rules Admin");
+      const [forum] = (await database.sql`
+        INSERT INTO core.forums (title, slug, description)
+        VALUES ('Rules forum', 'rules-forum', '')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (forum === undefined) {
+        throw new Error("Could not create forum");
+      }
+
+      expect(
+        await saveForumSettings(database.sql, actor, {
+          id: forum.id,
+          prefixIds: [],
+          rules: "**Be kind.** [help](/help)\n\n<script>alert(1)</script>",
+        }),
+      ).toEqual({ ok: true });
+
+      const [row] = (await database.sql`
+        SELECT rules, rules_html, rules_text, rules_render_version, rules_sanitiser_version
+        FROM core.forums WHERE id = ${forum.id}
+      `) as Array<{
+        rules: string;
+        rules_html: string;
+        rules_text: string;
+        rules_render_version: number;
+        rules_sanitiser_version: number;
+      }>;
+
+      expect(row?.rules).toContain("**Be kind.**");
+      expect(row?.rules_html).toContain("<strong>Be kind.</strong>");
+      expect(row?.rules_html).toContain('rel="nofollow ugc noopener"');
+      expect(row?.rules_html).not.toContain("<script");
+      expect(row?.rules_text).toContain("Be kind.");
+      expect(row?.rules_render_version).toBeGreaterThan(0);
+      expect(row?.rules_sanitiser_version).toBeGreaterThan(0);
+    });
+  });
+
+  test("saves announcements with rendered HTML and quote-free text", async () => {
+    await withDb(async (database) => {
+      const actor = await createMember(database, "Announcement Admin");
+
+      expect(
+        await saveAnnouncement(database.sql, actor, {
+          title: "Maintenance",
+          body: "**Tonight** we upgrade.\n\n<script>alert(1)</script>",
+          scope: "global",
+          startsAt: new Date(Date.now() - 60_000).toISOString(),
+          endsAt: null,
+          dismissible: true,
+          targets: [],
+          groupIds: [],
+        }),
+      ).toEqual({ ok: true });
+
+      const [announcement] = await loadAnnouncements(database.sql);
+
+      expect(announcement?.body).toContain("**Tonight**");
+      expect(announcement?.bodyHtml).toContain("<strong>Tonight</strong>");
+      expect(announcement?.bodyHtml).not.toContain("<script");
+      expect(announcement?.bodyText).toContain("Tonight");
+      expect(announcement?.renderVersion).toBeGreaterThan(0);
+      expect(announcement?.sanitiserVersion).toBeGreaterThan(0);
+    });
+  });
+});

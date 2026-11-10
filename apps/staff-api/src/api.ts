@@ -9,6 +9,7 @@ import {
   isAcpPermission,
   isStaffScheme,
 } from "@bulletin/domain/permissions";
+import type { StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { listAdminLog, writeAdminLog } from "./admin-log.ts";
 import {
@@ -19,6 +20,7 @@ import {
 } from "./announcements.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import { listEmbedProvidersForStaff, mutateEmbedProvider } from "./embeds.ts";
+import { listEmoticonsForStaff, mutateEmoticon } from "./emoticons.ts";
 import { staffFeatureFlags, staffFlagEnabled } from "./features.ts";
 import { listFlagLog, listFlags, saveFlagRules } from "./flags.ts";
 import {
@@ -79,6 +81,8 @@ export interface StaffRouteContext {
   readonly checks: readonly HealthCheck[];
   /** Best-effort CDN purge for visibility changes (ADR 0006). */
   readonly purge?: CdnPurger;
+  readonly storage?: StorageClient;
+  readonly userOrigin?: string;
 }
 
 export interface StaffRoute {
@@ -98,6 +102,8 @@ export interface StaffApiOptions {
   readonly sql: SQL;
   readonly checks?: readonly HealthCheck[];
   readonly purge?: CdnPurger;
+  readonly storage?: StorageClient;
+  readonly userOrigin?: string;
 }
 
 export interface StaffApi {
@@ -322,6 +328,38 @@ async function embedsMutate(context: StaffRouteContext): Promise<Response> {
       ...(result.fields === undefined ? {} : { fields: result.fields }),
     },
     result.code === "not_found" ? 404 : 400,
+  );
+}
+
+async function emoticonsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listEmoticonsForStaff(context.sql, context.userOrigin ?? ""));
+}
+
+async function emoticonsMutate(context: StaffRouteContext): Promise<Response> {
+  if (context.storage === undefined) {
+    return json({ code: "storage_unavailable" }, 503);
+  }
+
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await mutateEmoticon(context.sql, context.storage, context.session.memberId, body);
+
+  if (result.ok) {
+    return json({ ok: true, ...(result.id === undefined ? {} : { id: result.id }) });
+  }
+
+  const status =
+    result.code === "not_found"
+      ? 404
+      : result.code === "duplicate_code" || result.code === "duplicate_key"
+        ? 409
+        : 400;
+
+  return json(
+    {
+      code: result.code,
+      ...(result.fields === undefined ? {} : { fields: result.fields }),
+    },
+    status,
   );
 }
 
@@ -694,6 +732,20 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     handler: embedsMutate,
   },
   {
+    id: "emoticons.list",
+    method: "GET",
+    path: "/api/staff/emoticons",
+    permission: "acp.emoticons",
+    handler: emoticonsList,
+  },
+  {
+    id: "emoticons.mutate",
+    method: "POST",
+    path: "/api/staff/emoticons",
+    permission: "acp.emoticons",
+    handler: emoticonsMutate,
+  },
+  {
     id: "i18n.keys",
     method: "GET",
     path: "/api/staff/i18n/keys",
@@ -957,6 +1009,8 @@ export function createStaffApi(options: StaffApiOptions): StaffApi {
           sql: options.sql,
           checks,
           ...(options.purge === undefined ? {} : { purge: options.purge }),
+          ...(options.storage === undefined ? {} : { storage: options.storage }),
+          ...(options.userOrigin === undefined ? {} : { userOrigin: options.userOrigin }),
         });
       });
 

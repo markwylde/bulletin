@@ -1,3 +1,4 @@
+import { renderContent } from "@bulletin/content";
 import type { SQL } from "bun";
 import type { SeedModule } from "./framework.ts";
 
@@ -150,12 +151,20 @@ async function seedAnnouncements(sql: SQL): Promise<void> {
     const startsAt = new Date(now - input.startsHoursAgo * 60 * 60 * 1_000);
     const endsAt =
       input.endsInHours === undefined ? null : new Date(now + input.endsInHours * 60 * 60 * 1_000);
+    const renderedBody = await renderContent(input.body, {
+      profile: "rules",
+      context: { kind: "forum_post", forumId: "1" },
+      authorId: "0",
+    });
     const [row] = (await sql`
       INSERT INTO core.announcements (
-        title, body, scope, starts_at, ends_at, dismissible
+        title, body, body_html, body_text, render_version, sanitiser_version,
+        scope, starts_at, ends_at, dismissible
       )
       VALUES (
-        ${input.title}, ${input.body}, ${input.scope},
+        ${input.title}, ${renderedBody.bodyMd}, ${renderedBody.bodyHtml},
+        ${renderedBody.bodyText}, ${renderedBody.renderVersion},
+        ${renderedBody.sanitiserVersion}, ${input.scope},
         ${startsAt}, ${endsAt}, ${input.dismissible ?? true}
       )
       RETURNING id

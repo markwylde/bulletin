@@ -25,6 +25,10 @@ export interface ForumRecord {
   readonly position: number;
   readonly description: string;
   readonly rules: string;
+  readonly rulesHtml: string;
+  readonly rulesText: string;
+  readonly rulesRenderVersion: number;
+  readonly rulesSanitiserVersion: number;
   readonly passwordProtected: boolean;
   readonly redirectUrl: string | null;
   readonly redirectClicks: number;
@@ -54,6 +58,10 @@ interface ForumRow {
   readonly position: number;
   readonly description: string;
   readonly rules: string;
+  readonly rules_html: string;
+  readonly rules_text: string;
+  readonly rules_render_version: number;
+  readonly rules_sanitiser_version: number;
   readonly password_protected: boolean;
   readonly redirect_url: string | null;
   readonly redirect_clicks: string;
@@ -81,6 +89,10 @@ function toForum(row: ForumRow): ForumRecord {
     position: row.position,
     description: row.description,
     rules: row.rules,
+    rulesHtml: row.rules_html,
+    rulesText: row.rules_text,
+    rulesRenderVersion: row.rules_render_version,
+    rulesSanitiserVersion: row.rules_sanitiser_version,
     passwordProtected: row.password_protected,
     redirectUrl: row.redirect_url,
     redirectClicks: Number(row.redirect_clicks),
@@ -275,7 +287,7 @@ export async function listVisibleForums(
   const rows = (await sql`
     SELECT
       f.id, f.parent_id, f.path::text AS path, f.type, f.title, f.slug, f.position,
-      f.description, f.rules, (f.password_hash IS NOT NULL) AS password_protected,
+      f.description, f.rules, f.rules_html, f.rules_text, f.rules_render_version, f.rules_sanitiser_version, (f.password_hash IS NOT NULL) AS password_protected,
       f.redirect_url, f.redirect_clicks::text AS redirect_clicks, f.show_moderators,
       f.default_sort, f.language, f.prefix_mode, f.topic_count, f.post_count,
       f.last_topic_id, f.last_post_id, f.last_post_member_id,
@@ -296,7 +308,7 @@ export async function readVisibleForum(
   const rows = (await sql`
     SELECT
       f.id, f.parent_id, f.path::text AS path, f.type, f.title, f.slug, f.position,
-      f.description, f.rules, (f.password_hash IS NOT NULL) AS password_protected,
+      f.description, f.rules, f.rules_html, f.rules_text, f.rules_render_version, f.rules_sanitiser_version, (f.password_hash IS NOT NULL) AS password_protected,
       f.redirect_url, f.redirect_clicks::text AS redirect_clicks, f.show_moderators,
       f.default_sort, f.language, f.prefix_mode, f.topic_count, f.post_count,
       f.last_topic_id, f.last_post_id, f.last_post_member_id,
@@ -324,7 +336,7 @@ export async function showVisibleForum(
   const rows = (await sql`
     SELECT
       f.id, f.parent_id, f.path::text AS path, f.type, f.title, f.slug, f.position,
-      f.description, f.rules, (f.password_hash IS NOT NULL) AS password_protected,
+      f.description, f.rules, f.rules_html, f.rules_text, f.rules_render_version, f.rules_sanitiser_version, (f.password_hash IS NOT NULL) AS password_protected,
       f.redirect_url, f.redirect_clicks::text AS redirect_clicks, f.show_moderators,
       f.default_sort, f.language, f.prefix_mode, f.topic_count, f.post_count,
       f.last_topic_id, f.last_post_id, f.last_post_member_id,

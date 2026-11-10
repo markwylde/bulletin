@@ -1,3 +1,4 @@
+import { saveContent } from "@bulletin/content";
 import { forumSettingsMutation, forumTreeMutation, runMutation } from "@bulletin/domain/mutations";
 import { bumpPermVersion, hashForumPassword, loadForumTree } from "@bulletin/domain/permissions";
 import { slugify } from "@bulletin/domain/urls";
@@ -604,6 +605,11 @@ export async function saveForumSettings(
         ? await hashForumPassword(input.password)
         : undefined;
 
+  const renderedRules = await saveContent(rules, {
+    profile: "rules",
+    context: { kind: "forum_post", forumId },
+    authorId: actorMemberId,
+  });
   const affected = affectedIds(tree, forumId, forum.parentId);
 
   await runMutation({
@@ -616,7 +622,11 @@ export async function saveForumSettings(
         SET title = ${title},
             slug = ${slugify(title)},
             description = ${description},
-            rules = ${rules},
+            rules = ${renderedRules.bodyMd},
+            rules_html = ${renderedRules.bodyHtml},
+            rules_text = ${renderedRules.bodyText},
+            rules_render_version = ${renderedRules.renderVersion},
+            rules_sanitiser_version = ${renderedRules.sanitiserVersion},
             show_moderators = ${showModerators},
             language = ${language},
             default_sort = ${defaultSort},

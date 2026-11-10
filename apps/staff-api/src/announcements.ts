@@ -1,3 +1,4 @@
+import { saveContent } from "@bulletin/content";
 import { announcementMutation, runMutation } from "@bulletin/domain/mutations";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
@@ -263,6 +264,12 @@ export async function saveAnnouncement(
     }
   }
 
+  const renderedBody = await saveContent(body, {
+    profile: "rules",
+    context: { kind: "forum_post", forumId: targets[0]?.forumId ?? "1" },
+    authorId: actorMemberId,
+  });
+
   if (groupIds.length > 0) {
     const found = (await sql`
       SELECT id FROM core.groups WHERE id = ANY(${`{${groupIds.join(",")}}`}::bigint[])
@@ -312,10 +319,13 @@ export async function saveAnnouncement(
       if (announcementId === null) {
         const [row] = (await tx`
           INSERT INTO core.announcements (
-            title, body, scope, starts_at, ends_at, dismissible, created_by
+            title, body, body_html, body_text, render_version, sanitiser_version,
+            scope, starts_at, ends_at, dismissible, created_by
           )
           VALUES (
-            ${title}, ${body}, ${scope}, ${startsAt}, ${endsAt},
+            ${title}, ${renderedBody.bodyMd}, ${renderedBody.bodyHtml},
+            ${renderedBody.bodyText}, ${renderedBody.renderVersion},
+            ${renderedBody.sanitiserVersion}, ${scope}, ${startsAt}, ${endsAt},
             ${input.dismissible !== false}, ${actorMemberId}
           )
           RETURNING id
@@ -329,8 +339,11 @@ export async function saveAnnouncement(
       } else {
         await tx`
           UPDATE core.announcements
-          SET title = ${title}, body = ${body}, scope = ${scope},
-              starts_at = ${startsAt}, ends_at = ${endsAt},
+          SET title = ${title}, body = ${renderedBody.bodyMd},
+              body_html = ${renderedBody.bodyHtml}, body_text = ${renderedBody.bodyText},
+              render_version = ${renderedBody.renderVersion},
+              sanitiser_version = ${renderedBody.sanitiserVersion},
+              scope = ${scope}, starts_at = ${startsAt}, ends_at = ${endsAt},
               dismissible = ${input.dismissible !== false}
           WHERE id = ${announcementId}
         `;

@@ -13,6 +13,7 @@ import {
 } from "@bulletin/domain/permissions";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
+import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
 import type { UserAppSessionContext } from "../session.ts";
 import { forumCapabilityDeps } from "./capability.ts";
@@ -51,7 +52,7 @@ export interface BoardIndexCategory extends BoardIndexLink {
 export interface BoardIndexAnnouncement {
   readonly id: string;
   readonly title: string;
-  readonly body: string;
+  readonly body: SafeHtml;
   readonly dismissible: boolean;
   readonly version: number;
 }
@@ -188,7 +189,11 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
       announcements: notices.map((announcement) => ({
         id: announcement.id,
         title: announcement.title,
-        body: announcement.body,
+        body: safeHtml(
+          announcement.bodyHtml.trim() === ""
+            ? `<p>${escapeHtml(announcement.body)}</p>`
+            : announcement.bodyHtml,
+        ),
         dismissible: announcement.dismissible,
         version: announcement.version,
       })),

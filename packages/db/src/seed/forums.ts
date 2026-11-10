@@ -1,3 +1,4 @@
+import { renderContent } from "@bulletin/content";
 import { hashForumPassword } from "@bulletin/domain/permissions";
 import { FIXTURE_DEMO_PASSWORD } from "@bulletin/domain/permissions/fixtures";
 import type { SQL } from "bun";
@@ -189,14 +190,24 @@ async function insertForum(
   passwordHash: string | null,
   position: number,
 ): Promise<string> {
+  const renderedRules = await renderContent(seed.rules ?? "", {
+    profile: "rules",
+    context: { kind: "forum_post", forumId: "1" },
+    authorId: "0",
+  });
   const [row] = (await sql`
     INSERT INTO core.forums (
-      parent_id, type, title, slug, description, rules, redirect_url, password_hash,
+      parent_id, type, title, slug, description, rules,
+      rules_html, rules_text, rules_render_version, rules_sanitiser_version,
+      redirect_url, password_hash,
       position, topic_count, post_count, last_post_at, language
     )
     VALUES (
       ${parentId}, ${seed.type ?? "forum"}, ${seed.title}, ${seed.slug},
-      ${seed.description ?? ""}, ${seed.rules ?? ""}, ${seed.redirectUrl ?? null},
+      ${seed.description ?? ""}, ${renderedRules.bodyMd},
+      ${renderedRules.bodyHtml}, ${renderedRules.bodyText},
+      ${renderedRules.renderVersion}, ${renderedRules.sanitiserVersion},
+      ${seed.redirectUrl ?? null},
       ${passwordHash}, ${position}, ${seed.topicCount ?? 0}, ${seed.postCount ?? 0},
       ${
         seed.lastPostHoursAgo === undefined

@@ -1,4 +1,4 @@
-import { createLogger, loadConfig, parseReplicas } from "@bulletin/config";
+import { createLogger, loadConfig, loadStorageEnvironment, parseReplicas } from "@bulletin/config";
 import {
   createDatabaseCheck,
   createListenerCheck,
@@ -11,10 +11,12 @@ import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
 import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
+import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { draftDeleteResponse, draftGetResponse, draftSaveResponse } from "./drafts.ts";
+import { emoticonImageResponse, listEmoticonsResponse } from "./emoticons.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 import { memberSuggestResponse } from "./members.ts";
 import { redirectCountsResponse } from "./redirects.ts";
@@ -29,6 +31,7 @@ await runMigrations({ databaseUrl: migrationUrl });
 await runBaseSeed({ databaseUrl: migrationUrl, seed: config.seed, size: config.seedSize });
 
 const sql = createServiceSql("user-api", databaseUrl);
+const storage = createStorage(loadStorageEnvironment(Bun.env, config.nodeEnv));
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
 const listener = await createListenerCheck(sql);
 const auth = await createAuthService({
@@ -58,6 +61,16 @@ await startService({
       );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/emoticons") {
+      return listEmoticonsResponse(sql);
+    }
+
+    const emoticonImageMatch = /^\/api\/emoticons\/(\d+)\/image$/.exec(pathname);
+
+    if (request.method === "GET" && emoticonImageMatch !== null) {
+      return emoticonImageResponse(sql, storage, emoticonImageMatch[1] ?? "");
     }
 
     const unlockMatch = /^\/api\/forums\/(\d+)\/unlock$/.exec(pathname);

@@ -149,6 +149,15 @@ const PERMISSION_DEFINITIONS = [
     labelKey: "staff.groups.permission.acpSettings",
   },
   {
+    key: "acp.emoticons",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "acp",
+    labelKey: "staff.groups.permission.acpEmoticons",
+  },
+  {
     key: "acp.strings",
     kind: "permission",
     type: "bool",

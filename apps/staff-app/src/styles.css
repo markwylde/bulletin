@@ -1495,3 +1495,34 @@ textarea.form-input {
   border: 1px dashed var(--danger);
   border-radius: 0.5rem;
 }
+
+.emoticon-set-list,
+.emoticon-list {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.emoticon-set {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.emoticon-set__header,
+.emoticon-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.emoticon-row img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
