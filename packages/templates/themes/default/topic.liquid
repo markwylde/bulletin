@@ -23,7 +23,7 @@
     {% endif %}
   </header>
 
-  {% if pollSlot %}{{ pollSlot }}{% endif %}
+  {% if flags.polls and pollSlot %}{{ pollSlot }}{% endif %}
 
   {% if posts.size > 0 %}
     <ol class="bl-post-list" data-post-list>

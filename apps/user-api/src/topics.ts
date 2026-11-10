@@ -120,6 +120,7 @@ export async function createTopicResponse(
   session: Session,
   forumId: string,
   request: Request,
+  options: { readonly pollsEnabled?: boolean } = {},
 ): Promise<Response> {
   const body = await bodyRecord(request);
 
@@ -131,6 +132,10 @@ export async function createTopicResponse(
 
   if (wait > 0) {
     return json({ code: "flood_control", retryAfterSeconds: wait }, 429);
+  }
+
+  if (body.poll !== undefined && body.poll !== null && options.pollsEnabled === false) {
+    return json({ code: "not_found" }, 404);
   }
 
   const poll =

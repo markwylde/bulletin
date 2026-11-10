@@ -83,6 +83,18 @@ const FLAGS: readonly SeededFlag[] = [
     fullyOnDaysAgo: 1,
   },
   {
+    key: "polls",
+    description: "Topic polls, voting and poll results.",
+    owner: "topics",
+    defaultValue: true,
+    affectsRender: true,
+    clientVisible: false,
+    rules: [],
+    createdDaysAgo: 15,
+    updatedDaysAgo: 1,
+    fullyOnDaysAgo: 1,
+  },
+  {
     key: "compactTopicList",
     description: "Compact topic rows with a smaller author column.",
     owner: "core",

@@ -13,5 +13,9 @@ export function createUserApiFlags(sql: SQL) {
         viewer: () => loadFlagViewer(sql, memberId),
       });
     },
+    async enabled(key: string, memberId: string | null): Promise<boolean> {
+      const [viewer] = await Promise.all([loadFlagViewer(sql, memberId), runtime.ensureFresh()]);
+      return runtime.isOn(viewer, key);
+    },
   };
 }

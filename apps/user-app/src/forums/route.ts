@@ -240,6 +240,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
             now,
             announcementsEnabled: flags.values.announcements === true,
             mentionsEnabled: flags.values.mentions === true,
+            pollsEnabled: flags.values.polls === true,
           });
         }
       }

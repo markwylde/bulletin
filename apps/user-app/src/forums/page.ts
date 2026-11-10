@@ -112,6 +112,8 @@ export interface ForumPageInput {
   readonly announcementsEnabled?: boolean;
   /** The viewer's evaluated `mentions` flag; off unwraps stored mention links (ADR 0010). */
   readonly mentionsEnabled?: boolean;
+  /** The viewer's evaluated `polls` flag; off hides the poll builder (ADR 0010). */
+  readonly pollsEnabled?: boolean;
 }
 
 export interface ForumPageBreadcrumb {
@@ -165,6 +167,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
 
   const announcementsEnabled = input.announcementsEnabled !== false;
   const mentionsEnabled = input.mentionsEnabled !== false;
+  const pollsEnabled = input.pollsEnabled !== false;
   const allAnnouncements = announcementsEnabled
     ? await loadAnnouncements(input.sql, input.now)
     : [];
@@ -232,7 +235,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         canStart: false,
         prefixRequired: false,
         editor: null,
-        flags: { announcements: announcementsEnabled },
+        flags: { announcements: announcementsEnabled, polls: pollsEnabled },
       },
       visibilityKey,
       hasUnlockGrant: view.hasUnlockGrant,
@@ -431,7 +434,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
       canStart: canStart && !locked,
       prefixRequired: input.forum.prefixMode === "required",
       editor,
-      flags: { announcements: announcementsEnabled },
+      flags: { announcements: announcementsEnabled, polls: pollsEnabled },
     },
     visibilityKey,
     hasUnlockGrant: view.hasUnlockGrant,

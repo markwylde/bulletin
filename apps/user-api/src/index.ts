@@ -163,13 +163,15 @@ await startService({
     const pollVoteMatch = /^\/api\/polls\/(\d+)\/vote$/.exec(pathname);
 
     if (request.method === "POST" && pollVoteMatch !== null) {
-      const response = await auth.handle(request, async ({ session }) => {
-        if (session === null) {
-          return Response.json({ code: "unauthenticated" }, { status: 401 });
-        }
+      const response = await auth.handle(request, async ({ session }) =>
+        flags.guard("polls", session?.memberId ?? null)(request, async () => {
+          if (session === null) {
+            return Response.json({ code: "unauthenticated" }, { status: 401 });
+          }
 
-        return pollVoteResponse(sql, session, pollVoteMatch[1] ?? "", request);
-      });
+          return pollVoteResponse(sql, session, pollVoteMatch[1] ?? "", request);
+        }),
+      );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }
@@ -178,7 +180,9 @@ await startService({
 
     if (request.method === "GET" && pollResultsMatch !== null) {
       const response = await auth.handle(request, async ({ session }) =>
-        pollResultsResponse(sql, session, pollResultsMatch[1] ?? ""),
+        flags.guard("polls", session?.memberId ?? null)(request, () =>
+          pollResultsResponse(sql, session, pollResultsMatch[1] ?? ""),
+        ),
       );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -187,13 +191,15 @@ await startService({
     const pollEditMatch = /^\/api\/polls\/(\d+)\/edit$/.exec(pathname);
 
     if (request.method === "POST" && pollEditMatch !== null) {
-      const response = await auth.handle(request, async ({ session }) => {
-        if (session === null) {
-          return Response.json({ code: "unauthenticated" }, { status: 401 });
-        }
+      const response = await auth.handle(request, async ({ session }) =>
+        flags.guard("polls", session?.memberId ?? null)(request, async () => {
+          if (session === null) {
+            return Response.json({ code: "unauthenticated" }, { status: 401 });
+          }
 
-        return pollEditResponse(sql, session, pollEditMatch[1] ?? "", request);
-      });
+          return pollEditResponse(sql, session, pollEditMatch[1] ?? "", request);
+        }),
+      );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }
@@ -206,7 +212,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return createTopicResponse(sql, session, createTopicMatch[1] ?? "", request);
+        return createTopicResponse(sql, session, createTopicMatch[1] ?? "", request, {
+          pollsEnabled: await flags.enabled("polls", session.memberId),
+        });
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

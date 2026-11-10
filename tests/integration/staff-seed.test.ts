@@ -106,6 +106,7 @@ integrationDescribe("flags seed", () => {
         "compactTopicList",
         "mentions",
         "newEditor",
+        "polls",
         "quickReply",
         "unfurls",
       ]);

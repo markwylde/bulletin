@@ -82,9 +82,20 @@ export const mentionsFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Topic polls and the poll editor (change `topics-posts`). */
+export const pollsFlag = defineFlag({
+  key: "polls",
+  description: "Topic polls, voting and poll results.",
+  owner: "topics",
+  default: false,
+  affectsRender: true,
+  clientVisible: false,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
   unfurlsFlag,
   mentionsFlag,
+  pollsFlag,
 ]);

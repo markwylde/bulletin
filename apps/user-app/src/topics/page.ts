@@ -83,6 +83,7 @@ export interface TopicPageInput {
   readonly perPage: number;
   readonly quotedForumIds: readonly string[];
   readonly mentionsEnabled?: boolean;
+  readonly pollsEnabled?: boolean;
   readonly publicEditHistory?: boolean;
 }
 
@@ -227,6 +228,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
   });
   const embedProviders = await listEmbedProviders(input.sql);
   const mentionsEnabled = input.mentionsEnabled !== false;
+  const pollsEnabled = input.pollsEnabled !== false;
   const rendered = await Promise.all(
     posts.rows.map(async (post) => {
       const current = await ensureCurrentRendering(
@@ -312,7 +314,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
   const quoteTopicIds = [...new Set([...sources.values()].map((source) => source.topicId))];
   const quotePostIds = [...new Set(sourceIds)];
   const memberIds = posts.rows.flatMap((post) => (post.authorId === null ? [] : [post.authorId]));
-  const poll = await readPollForTopic(input.sql, input.topic.id);
+  const poll = pollsEnabled ? await readPollForTopic(input.sql, input.topic.id) : null;
 
   return {
     breadcrumbs,
@@ -391,7 +393,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
               name: "bodyMd",
             })
           : null,
-      flags: { mentions: mentionsEnabled },
+      flags: { mentions: mentionsEnabled, polls: pollsEnabled },
     },
   };
 }
