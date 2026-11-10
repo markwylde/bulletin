@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFlagVersion } from "@bulletin/db/flags";
 import { createAuthService, createCsrfToken, hashToken } from "@bulletin/domain/auth";
 import { displayNameSkeleton } from "@bulletin/domain/member";
 import { ACP_PERMISSIONS, can } from "@bulletin/domain/permissions";
@@ -849,6 +850,232 @@ integrationDescribe("staff API permission guard", () => {
           SELECT value FROM core.string_overrides WHERE locale = 'en' AND key = ${key}
         `) as Array<{ value: string }>;
         expect(override?.value).toBe(entries[1]?.after_en);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+});
+
+integrationDescribe("staff flags", () => {
+  async function seedFlags(database: TestDatabase): Promise<void> {
+    await database.sql`
+      INSERT INTO core.feature_flags (
+        key, description, owner, default_value, affects_render, client_visible, rules,
+        created_at, updated_at
+      )
+      VALUES
+        (
+          'freshFlag', 'Changed this week.', 'core', false, false, true, '[]'::jsonb,
+          now() - interval '3 days', now() - interval '3 days'
+        ),
+        (
+          'staleFlag', 'Fully on for over ninety days.', 'core', true, false, false,
+          '[]'::jsonb, now() - interval '130 days', now() - interval '120 days'
+        )
+    `;
+  }
+
+  test("denies the flags routes to staff without acp.flags", async () => {
+    await withDb("staff_flags_denied", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        await seedFlags(database);
+        const moderatorId = await createMember(database, "Flags Moderator", [
+          "members",
+          "super_moderators",
+        ]);
+        const moderator = await createSession(database, moderatorId);
+
+        for (const id of ["flags.list", "flags.log"]) {
+          const response = await callRoute(api, route(id), moderator);
+          expect(response.status).toBe(403);
+          expect(await response.json()).toEqual({ code: "forbidden" });
+        }
+
+        const deniedSave = await callRoute(api, route("flags.rules.update"), moderator, {
+          key: "freshFlag",
+          rules: [{ type: "group", groups: ["members"], value: true }],
+        });
+        expect(deniedSave.status).toBe(403);
+        expect(await deniedSave.json()).toEqual({ code: "forbidden" });
+
+        const [stored] = (await database.sql`
+          SELECT rules FROM core.feature_flags WHERE key = 'freshFlag'
+        `) as Array<{ rules: unknown }>;
+        expect(stored?.rules).toEqual([]);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("lists flags with their age and highlights a fully on flag for removal", async () => {
+    await withDb("staff_flags_list", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        await seedFlags(database);
+        const adminId = await createMember(database, "Flags Administrator", ["administrators"]);
+        const admin = await createSession(database, adminId);
+
+        const response = await callRoute(api, route("flags.list"), admin);
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          flags: Array<{
+            key: string;
+            description: string;
+            owner: string;
+            defaultValue: boolean;
+            rules: unknown[];
+            ageDays: number;
+            stale: boolean;
+          }>;
+        };
+
+        expect(body.flags.map((flag) => flag.key)).toEqual(["freshFlag", "staleFlag"]);
+
+        const stale = body.flags.find((flag) => flag.key === "staleFlag");
+        expect(stale).toMatchObject({
+          description: "Fully on for over ninety days.",
+          owner: "core",
+          defaultValue: true,
+          rules: [],
+          stale: true,
+        });
+        expect(stale?.ageDays).toBeGreaterThanOrEqual(129);
+
+        const fresh = body.flags.find((flag) => flag.key === "freshFlag");
+        expect(fresh).toMatchObject({ stale: false, ageDays: 3 });
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("saves ordered rules, bumps the cache tag and records before and after", async () => {
+    await withDb("staff_flags_update", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        await seedFlags(database);
+        const adminId = await createMember(database, "Flags Editor", ["administrators"]);
+        const admin = await createSession(database, adminId);
+        const rules = [
+          { type: "group", groups: ["super_moderators"], value: true },
+          { type: "percentage", percent: 50, value: true },
+        ];
+
+        expect(await readFlagVersion(database.sql)).toBe("0");
+
+        const saved = await callRoute(api, route("flags.rules.update"), admin, {
+          key: "staleFlag",
+          rules,
+        });
+        expect(saved.status).toBe(200);
+        const savedFlag = (await saved.json()) as {
+          key: string;
+          rules: unknown[];
+          stale: boolean;
+        };
+        expect(savedFlag).toMatchObject({ key: "staleFlag", rules, stale: false });
+
+        expect(await readFlagVersion(database.sql)).toBe("1");
+
+        const [stored] = (await database.sql`
+          SELECT rules FROM core.feature_flags WHERE key = 'staleFlag'
+        `) as Array<{ rules: unknown }>;
+        expect(stored?.rules).toEqual(rules);
+
+        const [entry] = (await database.sql`
+          SELECT actor_member_id, action, target_type, target_id, summary
+          FROM core.admin_log
+          WHERE action = 'flags.update'
+          ORDER BY id DESC
+          LIMIT 1
+        `) as Array<{
+          actor_member_id: string;
+          action: string;
+          target_type: string | null;
+          target_id: string | null;
+          summary: unknown;
+        }>;
+        expect(entry).toMatchObject({
+          actor_member_id: adminId,
+          action: "flags.update",
+          target_type: "flag",
+          target_id: null,
+        });
+        expect(entry?.summary).toEqual({
+          key: "staleFlag",
+          before: { rules: [] },
+          after: { rules },
+        });
+
+        const log = await callRoute(api, route("flags.log"), admin);
+        expect(log.status).toBe(200);
+        const logBody = (await log.json()) as {
+          entries: Array<{ actor: string | null; action: string; summary: unknown }>;
+        };
+        expect(logBody.entries[0]).toMatchObject({
+          actor: "Flags Editor",
+          action: "flags.update",
+        });
+        expect(logBody.entries[0]?.summary).toMatchObject({ key: "staleFlag" });
+
+        const refreshed = await callRoute(api, route("flags.list"), admin);
+        const list = (await refreshed.json()) as {
+          flags: Array<{ key: string; rules: unknown[]; stale: boolean }>;
+        };
+        expect(list.flags.find((flag) => flag.key === "staleFlag")).toMatchObject({
+          rules,
+          stale: false,
+        });
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("rejects invalid rules and unknown flags without changing anything", async () => {
+    await withDb("staff_flags_invalid", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        await seedFlags(database);
+        const adminId = await createMember(database, "Flags Validator", ["administrators"]);
+        const admin = await createSession(database, adminId);
+
+        const invalid = await callRoute(api, route("flags.rules.update"), admin, {
+          key: "freshFlag",
+          rules: [{ type: "percentage", percent: 150, value: true }],
+        });
+        expect(invalid.status).toBe(400);
+        expect(await invalid.json()).toEqual({ code: "invalid_rules", fields: ["rule-0"] });
+
+        const missingKey = await callRoute(api, route("flags.rules.update"), admin, {
+          rules: [],
+        });
+        expect(missingKey.status).toBe(400);
+        expect(await missingKey.json()).toEqual({ code: "invalid_request" });
+
+        const unknown = await callRoute(api, route("flags.rules.update"), admin, {
+          key: "noSuchFlag",
+          rules: [],
+        });
+        expect(unknown.status).toBe(404);
+        expect(await unknown.json()).toEqual({ code: "not_found" });
+
+        const [stored] = (await database.sql`
+          SELECT rules FROM core.feature_flags WHERE key = 'freshFlag'
+        `) as Array<{ rules: unknown }>;
+        expect(stored?.rules).toEqual([]);
+        expect(await readFlagVersion(database.sql)).toBe("0");
       } finally {
         await auth.close();
         await sql.close();

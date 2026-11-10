@@ -9,6 +9,7 @@ import {
 import type { SQL } from "bun";
 import { listAdminLog, writeAdminLog } from "./admin-log.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
+import { listFlagLog, listFlags, saveFlagRules } from "./flags.ts";
 import {
   listActiveOverrides,
   revertOverride,
@@ -244,6 +245,31 @@ async function overrideRevert(context: StaffRouteContext): Promise<Response> {
   return json({ ok: true });
 }
 
+async function flagList(context: StaffRouteContext): Promise<Response> {
+  return json({ flags: await listFlags(context.sql) });
+}
+
+async function flagLog(context: StaffRouteContext): Promise<Response> {
+  return json({ entries: await listFlagLog(context.sql) });
+}
+
+async function flagSaveRules(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await saveFlagRules(context.sql, context.session.memberId, body);
+
+  if (!result.ok) {
+    return json(
+      {
+        code: result.code,
+        ...(result.fields === undefined ? {} : { fields: result.fields }),
+      },
+      result.code === "not_found" ? 404 : 400,
+    );
+  }
+
+  return json(result.flag);
+}
+
 export const STAFF_ROUTES: readonly StaffRoute[] = [
   {
     id: "dashboard.members",
@@ -321,6 +347,27 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/preferences/scheme",
     permission: "acp.access",
     handler: saveScheme,
+  },
+  {
+    id: "flags.list",
+    method: "GET",
+    path: "/api/staff/flags",
+    permission: "acp.flags",
+    handler: flagList,
+  },
+  {
+    id: "flags.log",
+    method: "GET",
+    path: "/api/staff/flags/log",
+    permission: "acp.flags",
+    handler: flagLog,
+  },
+  {
+    id: "flags.rules.update",
+    method: "POST",
+    path: "/api/staff/flags",
+    permission: "acp.flags",
+    handler: flagSaveRules,
   },
 ];
 

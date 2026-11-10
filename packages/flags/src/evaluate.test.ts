@@ -4,10 +4,10 @@ import {
   clientFlagValues,
   evaluateFlag,
   flagBucket,
-  parseFlagRules,
   renderFlagsHash,
   renderFlagValues,
 } from "./evaluate.ts";
+import { parseFlagRules } from "./rules.ts";
 import { type FlagDefinition, type FlagViewer, GUEST_VIEWER } from "./types.ts";
 
 const MEMBER: FlagViewer = { memberId: "7", groups: ["members"] };

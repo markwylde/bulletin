@@ -2,7 +2,7 @@ import type { AcpPermission } from "@bulletin/domain/permissions";
 
 export type StaffNavGroup = "overview" | "configuration";
 
-export type StaffIcon = "dashboard" | "settings" | "strings" | "log";
+export type StaffIcon = "dashboard" | "flags" | "settings" | "strings" | "log";
 
 /** Section metadata only; route components are attached in `section-routes.tsx`. */
 export interface StaffSection {
@@ -39,6 +39,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     permission: "acp.settings",
     icon: "settings",
     labelKey: "staff.nav.boardSettings",
+  },
+  {
+    id: "flags",
+    path: "/flags",
+    navGroup: "configuration",
+    permission: "acp.flags",
+    icon: "flags",
+    labelKey: "staff.nav.flags",
   },
   {
     id: "stringOverrides",

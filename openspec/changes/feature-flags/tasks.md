@@ -8,7 +8,7 @@
 
 ## 2. Staff UI
 
-- [ ] 2.1 Add the flags section (list, staleness highlight, rule editor using the form renderer, admin log entries) gated by `acp.flags`; integration test with permission denial; E2E at 360 and 1440
+- [x] 2.1 Add the flags section (list, staleness highlight, rule editor using the form renderer, admin log entries) gated by `acp.flags`; integration test with permission denial; E2E at 360 and 1440
 
 ## 3. Strings and seed
 

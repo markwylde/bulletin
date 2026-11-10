@@ -1,0 +1,80 @@
+import type { FlagRule } from "@bulletin/flags";
+import { bumpFlagTag } from "../flags/index.ts";
+import type { SeedModule } from "./framework.ts";
+
+interface SeededFlag {
+  readonly key: string;
+  readonly description: string;
+  readonly owner: string;
+  readonly defaultValue: boolean;
+  readonly affectsRender: boolean;
+  readonly clientVisible: boolean;
+  readonly rules: readonly FlagRule[];
+  readonly createdDaysAgo: number;
+  readonly updatedDaysAgo: number;
+}
+
+/**
+ * One example of each rule shape, so a fresh `docker compose up --watch` shows a populated
+ * staff section. `compactTopicList` is fully on and untouched for 120 days, which is exactly
+ * the "ready for removal" highlight (spec `feature-flags`, stale flag visible).
+ */
+const FLAGS: readonly SeededFlag[] = [
+  {
+    key: "newEditor",
+    description: "Markdown WYSIWYG editor for new posts.",
+    owner: "content",
+    defaultValue: false,
+    affectsRender: false,
+    clientVisible: true,
+    rules: [{ type: "group", groups: ["super_moderators"], value: true }],
+    createdDaysAgo: 24,
+    updatedDaysAgo: 6,
+  },
+  {
+    key: "quickReply",
+    description: "Inline reply box at the end of a topic.",
+    owner: "content",
+    defaultValue: false,
+    affectsRender: false,
+    clientVisible: true,
+    rules: [{ type: "percentage", percent: 50, value: true }],
+    createdDaysAgo: 40,
+    updatedDaysAgo: 12,
+  },
+  {
+    key: "compactTopicList",
+    description: "Compact topic rows with a smaller author column.",
+    owner: "core",
+    defaultValue: true,
+    affectsRender: true,
+    clientVisible: false,
+    rules: [],
+    createdDaysAgo: 140,
+    updatedDaysAgo: 120,
+  },
+];
+
+export const flagsSeedModule: SeedModule = {
+  name: "flags",
+  dependsOn: ["base"],
+  async run({ sql }) {
+    for (const flag of FLAGS) {
+      await sql`
+        INSERT INTO core.feature_flags (
+          key, description, owner, default_value, affects_render, client_visible, rules,
+          created_at, updated_at
+        )
+        VALUES (
+          ${flag.key}, ${flag.description}, ${flag.owner}, ${flag.defaultValue},
+          ${flag.affectsRender}, ${flag.clientVisible}, ${flag.rules}::jsonb,
+          now() - make_interval(days => ${flag.createdDaysAgo}::int),
+          now() - make_interval(days => ${flag.updatedDaysAgo}::int)
+        )
+        ON CONFLICT (key) DO NOTHING
+      `;
+    }
+
+    await bumpFlagTag(sql);
+  },
+};

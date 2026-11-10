@@ -6,6 +6,7 @@ import type { SQL } from "bun";
  */
 export const ACP_PERMISSIONS = [
   "acp.access",
+  "acp.flags",
   "acp.log",
   "acp.members",
   "acp.settings",

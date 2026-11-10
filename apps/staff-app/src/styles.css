@@ -1093,3 +1093,106 @@ textarea.form-input {
   padding-top: 1rem;
   border-top: 1px dashed var(--border);
 }
+
+.flags-list,
+.flag-editor,
+.flags-log {
+  margin-top: 1.5rem;
+  min-width: 0;
+}
+
+.flags-list h2,
+.flag-editor h2,
+.flags-log h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+}
+
+.flag-editor p {
+  margin: 0 0 0.75rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.flag-rules {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.flag-status {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flag-status-stale {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.data-row-stale {
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+}
+
+.flag-meta {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 1rem;
+}
+
+.flag-meta div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.flag-meta dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.flag-meta dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.flag-rule-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.flag-rule-order {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.flag-rule-order li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.flag-rule-order span {
+  font-weight: 600;
+}
+
+@media (min-width: 900px) {
+  .flag-meta {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
+}

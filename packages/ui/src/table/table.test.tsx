@@ -126,4 +126,19 @@ describe("data table component", () => {
 
     expect(markup).toContain("No rows to show.");
   });
+
+  test("marks highlighted rows in both the table and the card list", () => {
+    const markup = render(
+      <DataTable
+        rows={rows}
+        columns={columns}
+        getRowId={(row) => row.id}
+        rowClassName={(row) => (row.id === "a" ? "row-stale" : undefined)}
+      />,
+    );
+
+    expect(markup).toContain('class="row-stale"');
+    expect(markup).toContain('class="data-card row-stale"');
+    expect(markup).toContain("data-table-view");
+  });
 });

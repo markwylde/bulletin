@@ -1,4 +1,4 @@
-import { isValidFlagDefinition } from "./evaluate.ts";
+import { isValidFlagDefinition } from "./rules.ts";
 import type { FlagDefinition } from "./types.ts";
 
 export interface FlagDeclaration {

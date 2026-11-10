@@ -1,6 +1,7 @@
 import type { SeedSize } from "@bulletin/config";
 import { SQL } from "bun";
 import { adminLogSeedModule } from "./admin-log.ts";
+import { flagsSeedModule } from "./flags.ts";
 import { runSeeds, type SeedModule, SeedRegistry, type SeedResult } from "./framework.ts";
 import { membersSeedModule } from "./members.ts";
 
@@ -38,7 +39,12 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
   try {
     return await runSeeds({
       sql,
-      registry: new SeedRegistry([baseSeedModule, membersSeedModule, adminLogSeedModule]),
+      registry: new SeedRegistry([
+        baseSeedModule,
+        membersSeedModule,
+        adminLogSeedModule,
+        flagsSeedModule,
+      ]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",
     });

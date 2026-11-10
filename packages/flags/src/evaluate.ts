@@ -1,10 +1,4 @@
-import {
-  type FlagDefinition,
-  type FlagRule,
-  type FlagViewer,
-  GUEST_GROUP,
-  isFlagKey,
-} from "./types.ts";
+import { type FlagDefinition, type FlagViewer, GUEST_GROUP } from "./types.ts";
 
 /** 100% is 10,000 buckets, so whole percents map exactly onto bucket ranges. */
 export const BUCKET_COUNT = 10_000;
@@ -15,52 +9,6 @@ export const BUCKET_COUNT = 10_000;
  */
 export function flagBucket(key: string, memberId: string): number {
   return (Bun.hash.xxHash32(`${key}:${memberId}`) >>> 0) % BUCKET_COUNT;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * Validates the `rules` jsonb column. Malformed entries are dropped rather than guessed at:
- * the remaining rules still evaluate, and a flag with no valid rule keeps its default.
- */
-export function parseFlagRules(value: unknown): FlagRule[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const rules: FlagRule[] = [];
-
-  for (const entry of value) {
-    if (!isRecord(entry) || typeof entry.value !== "boolean") {
-      continue;
-    }
-
-    if (entry.type === "group" && Array.isArray(entry.groups)) {
-      const groups = entry.groups.filter(
-        (group): group is string => typeof group === "string" && group !== "",
-      );
-
-      if (groups.length > 0) {
-        rules.push({ type: "group", groups, value: entry.value });
-      }
-
-      continue;
-    }
-
-    if (
-      entry.type === "percentage" &&
-      typeof entry.percent === "number" &&
-      Number.isInteger(entry.percent) &&
-      entry.percent >= 0 &&
-      entry.percent <= 100
-    ) {
-      rules.push({ type: "percentage", percent: entry.percent, value: entry.value });
-    }
-  }
-
-  return rules;
 }
 
 /** Rules run in order and the first match wins; no match falls through to the default. */
@@ -145,12 +93,4 @@ export function renderFlagsHash(values: Readonly<Record<string, boolean>>): stri
     .join("\u0000");
 
   return Bun.hash.xxHash64(canonical).toString(16);
-}
-
-export function isValidFlagDefinition(definition: FlagDefinition): boolean {
-  return (
-    isFlagKey(definition.key) &&
-    definition.description.trim() !== "" &&
-    definition.owner.trim() !== ""
-  );
 }

@@ -31,6 +31,8 @@ export interface DataTableProps<Row> {
   readonly onSelectionChange?: (ids: string[]) => void;
   readonly bulkActions?: readonly DataTableBulkAction[];
   readonly rowActions?: (row: Row) => ReactNode;
+  /** Adds a class to both the table row and its card, for per-row highlights. */
+  readonly rowClassName?: (row: Row) => string | undefined;
   readonly emptyKey?: string;
   readonly captionKey?: string;
 }
@@ -114,6 +116,7 @@ export function DataTable<Row>({
   onSelectionChange,
   bulkActions = [],
   rowActions,
+  rowClassName,
   emptyKey,
   captionKey,
 }: DataTableProps<Row>) {
@@ -260,7 +263,7 @@ export function DataTable<Row>({
         </section>
       ) : null}
 
-      <div className="data-table-wrap">
+      <div className="data-table-wrap" data-table-view>
         <table>
           {captionKey === undefined ? null : <caption className="sr-only">{t(captionKey)}</caption>}
           <thead>
@@ -330,7 +333,7 @@ export function DataTable<Row>({
                 const id = getRowId(row);
 
                 return (
-                  <tr key={id} data-table-row={id}>
+                  <tr key={id} className={rowClassName?.(row)} data-table-row={id}>
                     {selectable ? (
                       <td className="data-select-cell">
                         <input
@@ -373,7 +376,13 @@ export function DataTable<Row>({
             const id = getRowId(row);
 
             return (
-              <li key={id} className="data-card" data-card-row={id}>
+              <li
+                key={id}
+                className={
+                  rowClassName?.(row) === undefined ? "data-card" : `data-card ${rowClassName(row)}`
+                }
+                data-card-row={id}
+              >
                 <div className="data-card-head">
                   {selectable ? (
                     <input

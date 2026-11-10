@@ -36,4 +36,13 @@ describe("staff section registry", () => {
     expect(visibleSections(["acp.access"]).map((section) => section.id)).toEqual(["dashboard"]);
     expect(visibleSections([]).map((section) => section.id)).toEqual([]);
   });
+
+  test("shows the flags section only with acp.flags", () => {
+    expect(
+      visibleSections(["acp.access", "acp.settings"]).map((section) => section.id),
+    ).not.toContain("flags");
+    expect(visibleSections(["acp.access", "acp.flags"]).map((section) => section.id)).toContain(
+      "flags",
+    );
+  });
 });
