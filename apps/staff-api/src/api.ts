@@ -11,6 +11,39 @@ import { listAdminLog, writeAdminLog } from "./admin-log.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import { listFlagLog, listFlags, saveFlagRules } from "./flags.ts";
 import {
+  createGroup,
+  deleteGroup,
+  type GroupMutation,
+  listGroupSettings,
+  listGroups,
+  loadMemberGroupsForStaff,
+  reorderGroups,
+  saveGroupSetting,
+  setMemberGroups,
+  updateGroup,
+} from "./groups.ts";
+import {
+  bulkToggleMatrix,
+  deleteMask,
+  linkGroupMask,
+  listPermissionMatrix,
+  type MaskMutation,
+  saveMask,
+  saveMatrixCell,
+} from "./masks.ts";
+import {
+  deleteModerator,
+  listModerators,
+  type ModeratorMutation,
+  saveModerator,
+} from "./moderators.ts";
+import {
+  deletePromotionRule,
+  listPromotions,
+  type PromotionMutation,
+  savePromotionRule,
+} from "./promotions.ts";
+import {
   listActiveOverrides,
   revertOverride,
   saveOverrideSet,
@@ -270,6 +303,136 @@ async function flagSaveRules(context: StaffRouteContext): Promise<Response> {
   return json(result.flag);
 }
 
+function mutationResponse(
+  result: GroupMutation | MaskMutation | ModeratorMutation | PromotionMutation,
+): Response {
+  if (result.ok) {
+    return json({ ok: true });
+  }
+
+  const status =
+    result.code === "not_found"
+      ? 404
+      : result.code === "duplicate_key" ||
+          result.code === "system_group" ||
+          result.code === "system_mask" ||
+          result.code === "replacement_required"
+        ? 409
+        : 400;
+
+  return json({ code: result.code }, status);
+}
+
+function actionOf(body: unknown): string | null {
+  return isRecord(body) && typeof body.action === "string" ? body.action : null;
+}
+
+async function groupsList(context: StaffRouteContext): Promise<Response> {
+  return json({ groups: await listGroups(context.sql) });
+}
+
+async function groupsMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const action = actionOf(body);
+
+  switch (action) {
+    case "create":
+      return mutationResponse(await createGroup(context.sql, context.session.memberId, body));
+    case "update":
+      return mutationResponse(await updateGroup(context.sql, context.session.memberId, body));
+    case "reorder":
+      return mutationResponse(await reorderGroups(context.sql, context.session.memberId, body));
+    case "delete":
+      return mutationResponse(await deleteGroup(context.sql, context.session.memberId, body));
+    case "setting":
+      return mutationResponse(await saveGroupSetting(context.sql, context.session.memberId, body));
+    default:
+      return json({ code: "invalid_request" }, 400);
+  }
+}
+
+async function groupSettingsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listGroupSettings(context.sql));
+}
+
+async function memberGroupsGet(context: StaffRouteContext): Promise<Response> {
+  const memberId = context.url.searchParams.get("memberId");
+
+  if (memberId === null || !/^\d+$/.test(memberId)) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const view = await loadMemberGroupsForStaff(context.sql, memberId);
+  return view === null ? json({ code: "not_found" }, 404) : json(view);
+}
+
+async function memberGroupsSave(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  return mutationResponse(await setMemberGroups(context.sql, context.session.memberId, body));
+}
+
+async function masksList(context: StaffRouteContext): Promise<Response> {
+  return json(await listPermissionMatrix(context.sql));
+}
+
+async function masksMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const action = actionOf(body);
+
+  switch (action) {
+    case "save":
+      return mutationResponse(await saveMask(context.sql, context.session.memberId, body));
+    case "delete":
+      return mutationResponse(await deleteMask(context.sql, context.session.memberId, body));
+    case "link":
+      return mutationResponse(await linkGroupMask(context.sql, context.session.memberId, body));
+    case "cell":
+      return mutationResponse(await saveMatrixCell(context.sql, context.session.memberId, body));
+    case "bulk":
+      return mutationResponse(await bulkToggleMatrix(context.sql, context.session.memberId, body));
+    default:
+      return json({ code: "invalid_request" }, 400);
+  }
+}
+
+async function moderatorsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listModerators(context.sql));
+}
+
+async function moderatorsMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const action = actionOf(body);
+
+  switch (action) {
+    case "save":
+      return mutationResponse(await saveModerator(context.sql, context.session.memberId, body));
+    case "delete":
+      return mutationResponse(await deleteModerator(context.sql, context.session.memberId, body));
+    default:
+      return json({ code: "invalid_request" }, 400);
+  }
+}
+
+async function promotionsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listPromotions(context.sql));
+}
+
+async function promotionsMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const action = actionOf(body);
+
+  switch (action) {
+    case "save":
+      return mutationResponse(await savePromotionRule(context.sql, context.session.memberId, body));
+    case "delete":
+      return mutationResponse(
+        await deletePromotionRule(context.sql, context.session.memberId, body),
+      );
+    default:
+      return json({ code: "invalid_request" }, 400);
+  }
+}
+
 export const STAFF_ROUTES: readonly StaffRoute[] = [
   {
     id: "dashboard.members",
@@ -368,6 +531,83 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/flags",
     permission: "acp.flags",
     handler: flagSaveRules,
+  },
+  {
+    id: "groups.list",
+    method: "GET",
+    path: "/api/staff/groups",
+    permission: "acp.groups",
+    handler: groupsList,
+  },
+  {
+    id: "groups.update",
+    method: "POST",
+    path: "/api/staff/groups",
+    permission: "acp.groups",
+    handler: groupsMutate,
+  },
+  {
+    id: "groups.settings.list",
+    method: "GET",
+    path: "/api/staff/groups/settings",
+    permission: "acp.groups",
+    handler: groupSettingsList,
+  },
+  {
+    id: "groups.member.get",
+    method: "GET",
+    path: "/api/staff/groups/member",
+    permission: "acp.members.groups",
+    handler: memberGroupsGet,
+  },
+  {
+    id: "groups.member.update",
+    method: "POST",
+    path: "/api/staff/groups/member",
+    permission: "acp.members.groups",
+    handler: memberGroupsSave,
+  },
+  {
+    id: "masks.list",
+    method: "GET",
+    path: "/api/staff/masks",
+    permission: "acp.permissions",
+    handler: masksList,
+  },
+  {
+    id: "masks.update",
+    method: "POST",
+    path: "/api/staff/masks",
+    permission: "acp.permissions",
+    handler: masksMutate,
+  },
+  {
+    id: "moderators.list",
+    method: "GET",
+    path: "/api/staff/moderators",
+    permission: "acp.members",
+    handler: moderatorsList,
+  },
+  {
+    id: "moderators.update",
+    method: "POST",
+    path: "/api/staff/moderators",
+    permission: "acp.members",
+    handler: moderatorsMutate,
+  },
+  {
+    id: "promotions.list",
+    method: "GET",
+    path: "/api/staff/promotions",
+    permission: "acp.groups",
+    handler: promotionsList,
+  },
+  {
+    id: "promotions.update",
+    method: "POST",
+    path: "/api/staff/promotions",
+    permission: "acp.groups",
+    handler: promotionsMutate,
   },
 ];
 

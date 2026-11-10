@@ -1,7 +1,13 @@
 import type { ComponentType } from "react";
 import { DashboardPage } from "./dashboard/DashboardPage.tsx";
 import { FlagsPage } from "./flags/FlagsPage.tsx";
+import { GroupSettingsPage } from "./groups/GroupSettingsPage.tsx";
+import { GroupsPage } from "./groups/GroupsPage.tsx";
 import { AdminLogPage } from "./log/AdminLogPage.tsx";
+import { MemberGroupsPage } from "./members/MemberGroupsPage.tsx";
+import { ModeratorsPage } from "./moderators/ModeratorsPage.tsx";
+import { MasksPage } from "./permissions/MasksPage.tsx";
+import { PromotionsPage } from "./promotions/PromotionsPage.tsx";
 import type { StaffSection } from "./sections.ts";
 import { BoardSettingsPage } from "./settings/BoardSettingsPage.tsx";
 import { StringOverridesPage } from "./strings/StringOverridesPage.tsx";
@@ -13,6 +19,12 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   boardSettings: BoardSettingsPage,
   stringOverrides: StringOverridesPage,
   flags: FlagsPage,
+  groups: GroupsPage,
+  groupSettings: GroupSettingsPage,
+  permissions: MasksPage,
+  memberGroups: MemberGroupsPage,
+  moderators: ModeratorsPage,
+  promotions: PromotionsPage,
 };
 
 export function sectionElement(section: StaffSection): ComponentType | null {

@@ -41,15 +41,19 @@ export interface GroupSettingDefinition {
   readonly values?: readonly string[];
 }
 
-export const SECTION_LABEL_KEYS: Readonly<Record<RegistrySection, string>> = {
-  acp: "staff.groups.section.acp",
-  board: "staff.groups.section.board",
-  posting: "staff.groups.section.posting",
-  members: "staff.groups.section.members",
-  moderation: "staff.groups.section.moderation",
-  display: "staff.groups.section.display",
-  restrictions: "staff.groups.section.restrictions",
-};
+const SECTION_LABELS = [
+  { section: "acp", labelKey: "staff.groups.section.acp" },
+  { section: "board", labelKey: "staff.groups.section.board" },
+  { section: "posting", labelKey: "staff.groups.section.posting" },
+  { section: "members", labelKey: "staff.groups.section.members" },
+  { section: "moderation", labelKey: "staff.groups.section.moderation" },
+  { section: "display", labelKey: "staff.groups.section.display" },
+  { section: "restrictions", labelKey: "staff.groups.section.restrictions" },
+] as const satisfies readonly { section: RegistrySection; labelKey: string }[];
+
+export const SECTION_LABEL_KEYS: Readonly<Record<RegistrySection, string>> = Object.fromEntries(
+  SECTION_LABELS.map((entry) => [entry.section, entry.labelKey]),
+) as Readonly<Record<RegistrySection, string>>;
 
 const PERMISSION_DEFINITIONS = [
   {
@@ -179,24 +183,29 @@ export const PERMISSION_KEYS: readonly PermissionKey[] = PERMISSION_DEFINITIONS.
   (definition) => definition.key,
 );
 
-const MODERATOR_POWER_LABEL_KEYS: Readonly<Record<(typeof MODERATOR_POWERS)[number], string>> = {
-  edit: "staff.groups.power.edit",
-  soft_delete: "staff.groups.power.softDelete",
-  hard_delete: "staff.groups.power.hardDelete",
-  restore: "staff.groups.power.restore",
-  move: "staff.groups.power.move",
-  merge: "staff.groups.power.merge",
-  split: "staff.groups.power.split",
-  pin: "staff.groups.power.pin",
-  lock: "staff.groups.power.lock",
-  approve: "staff.groups.power.approve",
-  see_unapproved: "staff.groups.power.seeUnapproved",
-  see_deleted: "staff.groups.power.seeDeleted",
-  view_ips: "staff.groups.power.viewIps",
-  warn: "staff.groups.power.warn",
-  view_edit_history: "staff.groups.power.viewEditHistory",
-  use_multimod: "staff.groups.power.useMultimod",
-};
+const MODERATOR_POWER_LABELS = [
+  { power: "edit", labelKey: "staff.groups.power.edit" },
+  { power: "soft_delete", labelKey: "staff.groups.power.softDelete" },
+  { power: "hard_delete", labelKey: "staff.groups.power.hardDelete" },
+  { power: "restore", labelKey: "staff.groups.power.restore" },
+  { power: "move", labelKey: "staff.groups.power.move" },
+  { power: "merge", labelKey: "staff.groups.power.merge" },
+  { power: "split", labelKey: "staff.groups.power.split" },
+  { power: "pin", labelKey: "staff.groups.power.pin" },
+  { power: "lock", labelKey: "staff.groups.power.lock" },
+  { power: "approve", labelKey: "staff.groups.power.approve" },
+  { power: "see_unapproved", labelKey: "staff.groups.power.seeUnapproved" },
+  { power: "see_deleted", labelKey: "staff.groups.power.seeDeleted" },
+  { power: "view_ips", labelKey: "staff.groups.power.viewIps" },
+  { power: "warn", labelKey: "staff.groups.power.warn" },
+  { power: "view_edit_history", labelKey: "staff.groups.power.viewEditHistory" },
+  { power: "use_multimod", labelKey: "staff.groups.power.useMultimod" },
+] as const satisfies readonly { power: (typeof MODERATOR_POWERS)[number]; labelKey: string }[];
+
+const MODERATOR_POWER_LABEL_KEYS: Readonly<Record<(typeof MODERATOR_POWERS)[number], string>> =
+  Object.fromEntries(
+    MODERATOR_POWER_LABELS.map((entry) => [entry.power, entry.labelKey]),
+  ) as Readonly<Record<(typeof MODERATOR_POWERS)[number], string>>;
 
 const MODERATOR_SETTING_DEFINITIONS: readonly GroupSettingDefinition[] = MODERATOR_POWERS.map(
   (power) => ({

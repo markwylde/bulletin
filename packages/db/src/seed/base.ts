@@ -4,6 +4,7 @@ import { adminLogSeedModule } from "./admin-log.ts";
 import { flagsSeedModule } from "./flags.ts";
 import { runSeeds, type SeedModule, SeedRegistry, type SeedResult } from "./framework.ts";
 import { membersSeedModule } from "./members.ts";
+import { permissionFixtureSeedModule } from "./permission-fixtures.ts";
 
 export const baseSeedModule: SeedModule = {
   name: "base",
@@ -44,6 +45,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         membersSeedModule,
         adminLogSeedModule,
         flagsSeedModule,
+        permissionFixtureSeedModule,
       ]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",

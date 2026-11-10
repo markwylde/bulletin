@@ -28,6 +28,9 @@ function isAllowed(file: SourceFile): boolean {
   return (
     file.path.startsWith("packages/domain/src/permissions/") ||
     file.path.startsWith("packages/db/src/seed/") ||
+    // Staff-admin screens read forum definitions behind an ACP guard; they are not a public
+    // content path.
+    file.path.startsWith("apps/staff-api/src/") ||
     isPermissionRepository(file)
   );
 }

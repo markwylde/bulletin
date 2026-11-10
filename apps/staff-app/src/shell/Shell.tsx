@@ -48,6 +48,36 @@ function SectionIcon({ icon }: { readonly icon: StaffIcon }) {
           <path d="M4 5h16v2H4zM4 9h16v2H4zM4 13h16v2H4zM4 17h16v2H4z" />
         </svg>
       );
+    case "groups":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20c0-3 3-5 6-5s6 2 6 5v1H2zm12 1v-1c0-2-1-3.6-2.5-4.6 1-.3 2-.4 2.5-.4 3 0 6 2 6 5v1z" />
+        </svg>
+      );
+    case "permissions":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6zm0 4 1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4L6.2 10l4-.6z" />
+        </svg>
+      );
+    case "members":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 22c0-4 3.6-6 8-6s8 2 8 6z" />
+        </svg>
+      );
+    case "moderators":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 3h10l-2 4 2 4H4zm0 0h2v18H4zm12 8 4 9h-2l-4-9z" />
+        </svg>
+      );
+    case "promotions":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M12 3 6 11h4v4h4v-4h4zM5 18h14v2H5z" />
+        </svg>
+      );
   }
 }
 

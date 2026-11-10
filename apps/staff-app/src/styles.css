@@ -1196,3 +1196,168 @@ textarea.form-input {
     grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
   }
 }
+
+.admin-panel {
+  margin-block: 1.5rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow);
+}
+
+.admin-panel h2 {
+  margin-block: 0 0.75rem;
+  font-size: 1.15rem;
+}
+
+.admin-panel h3 {
+  margin-block: 1.25rem 0.5rem;
+  font-size: 1rem;
+}
+
+.admin-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  margin-block-end: 0.75rem;
+}
+
+.admin-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+.admin-form label:has(> input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+}
+
+.admin-form input,
+.admin-form select {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.admin-form input[type="checkbox"] {
+  width: auto;
+  min-height: auto;
+}
+
+.admin-form button {
+  align-self: end;
+}
+
+.matrix-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.matrix-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  background: var(--surface);
+}
+
+.matrix-table th,
+.matrix-table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.matrix-table thead th {
+  background: var(--surface-alt);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.matrix-table tbody tr:last-child td,
+.matrix-table tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+.setting-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+}
+
+.setting-cell input[type="number"] {
+  width: 5.5rem;
+}
+
+.setting-cell button,
+.matrix-toggle {
+  min-height: 2.25rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.matrix-toggle {
+  width: 100%;
+  min-width: 4.5rem;
+}
+
+.matrix-toggle.is-on {
+  font-weight: 600;
+  color: var(--success);
+}
+
+.section-detail {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.check-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.group-title-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.group-swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+@media (max-width: 640px) {
+  .admin-form {
+    grid-template-columns: 1fr;
+  }
+
+  .matrix-table {
+    min-width: 560px;
+  }
+}

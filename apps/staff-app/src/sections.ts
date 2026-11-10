@@ -2,7 +2,17 @@ import type { AcpPermission } from "@bulletin/domain/permissions";
 
 export type StaffNavGroup = "overview" | "configuration";
 
-export type StaffIcon = "dashboard" | "flags" | "settings" | "strings" | "log";
+export type StaffIcon =
+  | "dashboard"
+  | "flags"
+  | "settings"
+  | "strings"
+  | "log"
+  | "groups"
+  | "permissions"
+  | "members"
+  | "moderators"
+  | "promotions";
 
 /** Section metadata only; route components are attached in `section-routes.tsx`. */
 export interface StaffSection {
@@ -55,6 +65,54 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     permission: "acp.strings",
     icon: "strings",
     labelKey: "staff.nav.strings",
+  },
+  {
+    id: "groups",
+    path: "/groups",
+    navGroup: "configuration",
+    permission: "acp.groups",
+    icon: "groups",
+    labelKey: "staff.nav.groups",
+  },
+  {
+    id: "groupSettings",
+    path: "/groups/settings",
+    navGroup: "configuration",
+    permission: "acp.groups",
+    icon: "settings",
+    labelKey: "staff.nav.groupSettings",
+  },
+  {
+    id: "permissions",
+    path: "/permissions",
+    navGroup: "configuration",
+    permission: "acp.permissions",
+    icon: "permissions",
+    labelKey: "staff.nav.permissions",
+  },
+  {
+    id: "memberGroups",
+    path: "/members/groups",
+    navGroup: "configuration",
+    permission: "acp.members.groups",
+    icon: "members",
+    labelKey: "staff.nav.memberGroups",
+  },
+  {
+    id: "moderators",
+    path: "/moderators",
+    navGroup: "configuration",
+    permission: "acp.members",
+    icon: "moderators",
+    labelKey: "staff.nav.moderators",
+  },
+  {
+    id: "promotions",
+    path: "/promotions",
+    navGroup: "configuration",
+    permission: "acp.groups",
+    icon: "promotions",
+    labelKey: "staff.nav.promotions",
   },
 ];
 

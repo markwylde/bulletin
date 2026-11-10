@@ -21,12 +21,12 @@
 
 ## 4. Staff screens
 
-- [ ] 4.1 Groups list and editor (create/rename/reorder/delete with replacement) with permission-denial tests and E2E at 360/1440
-- [ ] 4.2 Group settings sections and the cross-group matrix view, with E2E for editing a cell
-- [ ] 4.3 Masks editor and the forum × mask matrix editor (bulk toggles, inheritance indicators; enabled when forums exist), with E2E for a bulk toggle
-- [ ] 4.4 Member group management (primary/secondary, logged, session rotation) with integration tests
-- [ ] 4.5 Moderator assignment editor (member or group, powers, scope), with tests for the limited-moderator and this-forum-only scenarios
-- [ ] 4.6 Promotion rules editor, with an E2E test
+- [x] 4.1 Groups list and editor (create/rename/reorder/delete with replacement) with permission-denial tests and E2E at 360/1440
+- [x] 4.2 Group settings sections and the cross-group matrix view, with E2E for editing a cell
+- [x] 4.3 Masks editor and the forum × mask matrix editor (bulk toggles, inheritance indicators; enabled when forums exist), with E2E for a bulk toggle
+- [x] 4.4 Member group management (primary/secondary, logged, session rotation) with integration tests
+- [x] 4.5 Moderator assignment editor (member or group, powers, scope), with tests for the limited-moderator and this-forum-only scenarios
+- [x] 4.6 Promotion rules editor, with an E2E test
 
 ## 5. Strings and seed
 

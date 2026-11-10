@@ -68,6 +68,15 @@ function buildMatrixIndex(matrix: readonly ForumMatrixRow[]): ReadonlyMap<string
  * Resolves a mask's action bits for a forum through the inheritance chain: a row replaces the
  * inherited value when `inherits` is false, otherwise the parent's resolution is kept.
  */
+export function resolveForumMaskActions(
+  tree: ForumTree,
+  matrix: readonly ForumMatrixRow[],
+  forumId: string,
+  maskId: string,
+): number {
+  return resolveMaskActions(tree, buildMatrixIndex(matrix), forumId, maskId);
+}
+
 function resolveMaskActions(
   tree: ForumTree,
   index: ReadonlyMap<string, ForumMatrixRow>,
