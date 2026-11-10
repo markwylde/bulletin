@@ -174,6 +174,7 @@ integrationDescribe("default theme templates", () => {
             boardDescription: "A friendly place",
             categories: [],
             announcements: [],
+            flags: { announcements: true },
           },
         },
         {

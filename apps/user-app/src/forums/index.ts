@@ -57,6 +57,7 @@ export interface BoardIndexAnnouncement {
 export interface BoardIndexView {
   readonly categories: readonly BoardIndexCategory[];
   readonly announcements: readonly BoardIndexAnnouncement[];
+  readonly flags: Readonly<Record<string, boolean>>;
 }
 
 export interface BoardIndexInput {
@@ -64,6 +65,8 @@ export interface BoardIndexInput {
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext | null;
+  /** The `announcements` flag; direct builder tests default to on. */
+  readonly announcementsEnabled?: boolean;
   /** Test seam for announcement transitions. */
   readonly now?: Date;
 }
@@ -148,8 +151,11 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
   };
 
   const now = input.now ?? new Date();
-  const announcements = await loadAnnouncements(input.sql, now);
-  const notices = globalAnnouncements(announcements, snapshot.groupIds, now);
+  const announcementsEnabled = input.announcementsEnabled !== false;
+  const announcements = announcementsEnabled ? await loadAnnouncements(input.sql, now) : [];
+  const notices = announcementsEnabled
+    ? globalAnnouncements(announcements, snapshot.groupIds, now)
+    : [];
   const audience = announcementAudienceClass(announcements, snapshot.groupIds, now);
   const categories = rows
     .filter((row) => row.type === "category")
@@ -176,9 +182,10 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
         dismissible: announcement.dismissible,
         version: announcement.version,
       })),
+      flags: { announcements: announcementsEnabled },
     },
     visibilityKey: `${view.visibilityKey()}|audience:${audience}`,
     hasUnlockGrant: view.hasUnlockGrant,
-    ttlMs: nextAnnouncementTransitionMs(announcements, now),
+    ttlMs: announcementsEnabled ? nextAnnouncementTransitionMs(announcements, now) : null,
   };
 }

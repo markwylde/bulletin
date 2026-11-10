@@ -7,9 +7,11 @@ import {
   readTagVersion,
   type TagVersionSource,
 } from "@bulletin/cache";
+import { bumpFlagTag } from "@bulletin/db/flags";
 import { bumpAnnouncementTransitions } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
+  flagsSeedModule,
   groupsSeedModule,
   membersSeedModule,
   permissionFixtureSeedModule,
@@ -41,6 +43,7 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
       sql: database.sql,
       registry: new SeedRegistry([
         baseSeedModule,
+        flagsSeedModule,
         permissionFixtureSeedModule,
         groupsSeedModule,
         membersSeedModule,
@@ -374,6 +377,78 @@ integrationDescribe("announcement blocks", () => {
         beforeGlobal,
       );
       expect(await readTagVersion(database.sql, forumAnnouncementsTag("2"))).not.toBe(beforeForum);
+    });
+  }, 30_000);
+
+  test("hides announcement blocks when the flag is off and changes the cache variant", async () => {
+    await withSeededDb(async (database) => {
+      await createAnnouncement(database, { title: "Flagged notice", scope: "global" });
+      const member = await memberSession(database, "member-1");
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      async function setFlag(value: boolean): Promise<void> {
+        await database.sql`
+          UPDATE core.feature_flags SET default_value = ${value} WHERE key = 'announcements'
+        `;
+        await bumpFlagTag(database.sql);
+        await versions.refresh();
+      }
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const indexOn = await renderIndex(database, member, { cache, tagVersions: versions });
+        expect(indexOn.html).toContain("Flagged notice");
+        const on = await renderForum(database, "/forum/2-announcements", member, {
+          cache,
+          tagVersions: versions,
+        });
+
+        expect(on.kind).toBe("page");
+
+        if (on.kind !== "page") {
+          return;
+        }
+
+        expect(on.cache).toBe("miss");
+        expect(on.html).toContain("Flagged notice");
+
+        await setFlag(false);
+
+        const indexOff = await renderIndex(database, member, { cache, tagVersions: versions });
+        expect(indexOff.html).not.toContain("Flagged notice");
+        const off = await renderForum(database, "/forum/2-announcements", member, {
+          cache,
+          tagVersions: versions,
+        });
+
+        if (off.kind !== "page") {
+          return;
+        }
+
+        expect(off.cache).toBe("miss");
+        expect(off.variant).not.toBe(on.variant);
+        expect(off.html).not.toContain("Flagged notice");
+
+        await setFlag(true);
+
+        const back = await renderForum(database, "/forum/2-announcements", member, {
+          cache,
+          tagVersions: versions,
+        });
+
+        expect(back.kind).toBe("page");
+
+        if (back.kind === "page") {
+          expect(back.variant).toBe(on.variant);
+          expect(back.html).toContain("Flagged notice");
+        }
+      } finally {
+        await versions.close();
+      }
     });
   }, 30_000);
 });

@@ -27,4 +27,4 @@
 
 ## 5. Feature flag
 
-- [ ] 5.1 Register `announcements` with `defineFlag` (off in production defaults, on in the seed), gate the staff screen and announcement blocks; tests that announcements are absent when off, and a cache variant test for the flag toggle
+- [x] 5.1 Register `announcements` with `defineFlag` (off in production defaults, on in the seed), gate the staff screen and announcement blocks; tests that announcements are absent when off, and a cache variant test for the flag toggle

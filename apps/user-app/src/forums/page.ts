@@ -61,6 +61,7 @@ export interface ForumPageView {
   readonly isCategory: boolean;
   readonly locked: boolean;
   readonly children: readonly ForumPageChild[];
+  readonly flags: Readonly<Record<string, boolean>>;
 }
 
 export interface ForumPageInput {
@@ -73,6 +74,7 @@ export interface ForumPageInput {
   readonly forum: ForumRecord;
   readonly prefix: string | null;
   readonly now: Date;
+  readonly announcementsEnabled?: boolean;
 }
 
 export interface ForumPageBreadcrumb {
@@ -124,16 +126,21 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
   view.track(input.forum.id, "read", readable);
   const locked = input.forum.passwordProtected && !readable;
 
-  const announcements = await loadAnnouncements(input.sql, input.now);
-  const pageAnnouncements = announcementsForForum(
-    announcements,
-    { id: input.forum.id, path: input.forum.path },
-    groupIds,
-    input.now,
-  );
+  const announcementsEnabled = input.announcementsEnabled !== false;
+  const announcements = announcementsEnabled ? await loadAnnouncements(input.sql, input.now) : [];
+  const pageAnnouncements = announcementsEnabled
+    ? announcementsForForum(
+        announcements,
+        { id: input.forum.id, path: input.forum.path },
+        groupIds,
+        input.now,
+      )
+    : [];
   const audience = announcementAudienceClass(announcements, groupIds, input.now);
   const visibilityKey = `${view.visibilityKey()}|audience:${audience}`;
-  const ttlMs = nextAnnouncementTransitionMs(announcements, input.now);
+  const ttlMs = announcementsEnabled
+    ? nextAnnouncementTransitionMs(announcements, input.now)
+    : null;
 
   if (locked) {
     return {
@@ -155,6 +162,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         isCategory: false,
         locked: true,
         children: [],
+        flags: { announcements: announcementsEnabled },
       },
       visibilityKey,
       hasUnlockGrant: view.hasUnlockGrant,
@@ -219,6 +227,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
           title: child.title,
           href: canonicalUrl("forum", child.id, child.slug),
         })),
+      flags: { announcements: announcementsEnabled },
     },
     visibilityKey,
     hasUnlockGrant: view.hasUnlockGrant,

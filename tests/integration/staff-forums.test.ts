@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   baseSeedModule,
+  flagsSeedModule,
   groupsSeedModule,
   membersSeedModule,
   permissionFixtureSeedModule,
@@ -97,6 +98,7 @@ async function createHarness(database: TestDatabase): Promise<Harness> {
     sql: database.sql,
     registry: new SeedRegistry([
       baseSeedModule,
+      flagsSeedModule,
       permissionFixtureSeedModule,
       groupsSeedModule,
       membersSeedModule,
@@ -621,6 +623,36 @@ integrationDescribe("staff forum structure", () => {
       expect(await listDismissedAnnouncementIds(harness.database.sql, member.id)).not.toContain(
         announcement.id,
       );
+    });
+  }, 30_000);
+
+  test("gates the announcement screens on the announcements flag", async () => {
+    await withHarness(async (harness) => {
+      expect((await call(harness.api, harness.admin, "announcements.list")).status).toBe(200);
+
+      await harness.database.sql`
+        UPDATE core.feature_flags SET default_value = false WHERE key = 'announcements'
+      `;
+
+      expect((await call(harness.api, harness.admin, "announcements.list")).status).toBe(404);
+      expect(
+        (
+          await call(harness.api, harness.admin, "announcements.mutate", {
+            action: "delete",
+            id: "1",
+          })
+        ).status,
+      ).toBe(404);
+      const features = (await (await call(harness.api, harness.admin, "features.list")).json()) as {
+        flags: Record<string, boolean>;
+      };
+      expect(features.flags.announcements).toBe(false);
+
+      await harness.database.sql`
+        UPDATE core.feature_flags SET default_value = true WHERE key = 'announcements'
+      `;
+
+      expect((await call(harness.api, harness.admin, "announcements.list")).status).toBe(200);
     });
   }, 30_000);
 });

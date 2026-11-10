@@ -18,6 +18,7 @@ import {
   saveAnnouncement,
 } from "./announcements.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
+import { staffFeatureFlags, staffFlagEnabled } from "./features.ts";
 import { listFlagLog, listFlags, saveFlagRules } from "./flags.ts";
 import {
   createForum,
@@ -522,11 +523,23 @@ async function prefixesMutate(context: StaffRouteContext): Promise<Response> {
   }
 }
 
+async function featuresList(context: StaffRouteContext): Promise<Response> {
+  return json({ flags: await staffFeatureFlags(context.sql, context.session.memberId) });
+}
+
 async function announcementsList(context: StaffRouteContext): Promise<Response> {
+  if (!(await staffFlagEnabled(context.sql, context.session.memberId, "announcements"))) {
+    return json({ code: "not_found" }, 404);
+  }
+
   return json(await listAnnouncementsAdmin(context.sql));
 }
 
 async function announcementsMutate(context: StaffRouteContext): Promise<Response> {
+  if (!(await staffFlagEnabled(context.sql, context.session.memberId, "announcements"))) {
+    return json({ code: "not_found" }, 404);
+  }
+
   const body: unknown = await context.request.json().catch(() => null);
   const action = actionOf(body);
 
@@ -750,6 +763,13 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     permission: "acp.permissions",
     requiresStepUp: true,
     handler: masksMutate,
+  },
+  {
+    id: "features.list",
+    method: "GET",
+    path: "/api/staff/features",
+    permission: "acp.access",
+    handler: featuresList,
   },
   {
     id: "forums.list",

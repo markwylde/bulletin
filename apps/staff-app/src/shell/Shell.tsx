@@ -1,15 +1,14 @@
 import { isStaffScheme, type StaffScheme } from "@bulletin/domain/permissions";
 import { isLocale, type Locale } from "@bulletin/i18n";
 import { useLocale, useT } from "@bulletin/ui";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
-import { apiPost } from "../api.ts";
+import { apiGet, apiPost } from "../api.ts";
 import { BlocksPage } from "../dev/BlocksPage.tsx";
 import { sectionElement } from "../section-routes.tsx";
 import {
   canAccessSection,
-  STAFF_SECTIONS,
   type StaffIcon,
   type StaffSection,
   visibleSections,
@@ -234,6 +233,11 @@ export function Shell() {
   const { state } = useSession();
   const [navOpen, setNavOpen] = useState(false);
   const scheme = state.status === "authenticated" ? (state.session.scheme ?? "system") : "system";
+  const features = useQuery({
+    queryKey: ["staff", "features"],
+    queryFn: () => apiGet<{ flags: Record<string, boolean> }>("/api/staff/features"),
+    enabled: state.status === "authenticated",
+  });
 
   useEffect(() => {
     document.documentElement.dataset.scheme = scheme;
@@ -245,7 +249,9 @@ export function Shell() {
   }
 
   const session = state.session;
-  const sections = visibleSections(session.permissions);
+  const sections = visibleSections(session.permissions).filter(
+    (section) => section.id !== "announcements" || features.data?.flags.announcements === true,
+  );
 
   return (
     <div className="staff-shell" data-nav-open={navOpen} data-auth-state="authenticated">
@@ -275,7 +281,7 @@ export function Shell() {
 
       <main className="staff-main">
         <Routes>
-          {STAFF_SECTIONS.map((section) => (
+          {sections.map((section) => (
             <Route
               key={section.id}
               path={section.path}

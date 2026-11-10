@@ -22,7 +22,7 @@
     </div>
   </section>
 
-  {% if announcements.size > 0 %}
+  {% if flags.announcements and announcements.size > 0 %}
     <section class="bl-announcements" data-announcements aria-label="{% t "forum.announcements" %}">
       {% for announcement in announcements %}
         <article class="bl-card bl-announcement" data-announcement="{{ announcement.id }}">

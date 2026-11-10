@@ -4,6 +4,7 @@ import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { homeContract } from "../contracts.ts";
+import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import { type BoardIndexData, buildBoardIndex } from "../forums/index.ts";
 import type { ShellVariant } from "../http/cache.ts";
 import type { UserAppSessionContext } from "../session.ts";
@@ -37,6 +38,7 @@ interface HomeData {
   readonly boardName: string;
   readonly boardDescription: string;
   readonly index: BoardIndexData;
+  readonly flags: ViewerFlags;
 }
 
 /** The board index at `/` through the shared variant/cache/ETag pipeline (ADR 0006). */
@@ -51,17 +53,19 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
     // The view model is loaded after the cache captured its tag versions. A tree or settings
     // save that lands during it bumps `board`, and the pipeline renders again.
     prepare: async () => {
-      const [theme, settings, index] = await Promise.all([
+      const [theme, settings, flags] = await Promise.all([
         loadActiveTheme(input.sql),
         readBoardSettings(input.sql),
-        buildBoardIndex({
-          sql: input.sql,
-          locale: input.locale,
-          translate: input.translate,
-          session: input.session ?? null,
-          ...(input.now === undefined ? {} : { now: input.now }),
-        }),
+        loadViewerFlags(input.sql, input.session ?? null),
       ]);
+      const index = await buildBoardIndex({
+        sql: input.sql,
+        locale: input.locale,
+        translate: input.translate,
+        session: input.session ?? null,
+        announcementsEnabled: flags.values.announcements === true,
+        ...(input.now === undefined ? {} : { now: input.now }),
+      });
       const boardName = boardNameFrom(settings.boardName, input.translate);
       const boardDescription =
         settings.boardDescription.trim() || input.translate("user.placeholder.body");
@@ -79,9 +83,9 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
           pluginsGeneration: input.pluginsGeneration,
           locale: input.locale,
           colourScheme: input.colourScheme,
-          renderFlagsHash: "",
+          renderFlagsHash: flags.hash,
         }),
-        data: { theme, boardName, boardDescription, index },
+        data: { theme, boardName, boardDescription, index, flags },
         ...(index.ttlMs === null ? {} : { ttlMs: index.ttlMs }),
       };
     },
@@ -95,8 +99,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
         viewModel: {
           boardName,
           boardDescription,
-          categories: index.viewModel.categories,
-          announcements: index.viewModel.announcements,
+          ...index.viewModel,
         },
         breadcrumbs: [],
         route: homeContract,

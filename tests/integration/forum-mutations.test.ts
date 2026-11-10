@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createRenderCache, createTagVersions } from "@bulletin/cache";
 import {
   baseSeedModule,
+  flagsSeedModule,
   groupsSeedModule,
   membersSeedModule,
   moderatorAssignmentsSeedModule,
@@ -37,6 +38,7 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
       sql: database.sql,
       registry: new SeedRegistry([
         baseSeedModule,
+        flagsSeedModule,
         permissionFixtureSeedModule,
         groupsSeedModule,
         membersSeedModule,

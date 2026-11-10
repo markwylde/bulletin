@@ -68,6 +68,11 @@ integrationDescribe("forum seed", () => {
         throw new Error("Missing seeded forum or member");
       }
 
+      const [flag] = (await database.sql`
+        SELECT default_value, affects_render FROM core.feature_flags WHERE key = 'announcements'
+      `) as Array<{ default_value: boolean; affects_render: boolean }>;
+      expect(flag).toEqual({ default_value: true, affects_render: true });
+
       const [visibility] = (await database.sql`
         SELECT
           core.can_read_forum(${member.id}, ${staffOnly.id}) AS member_visible,

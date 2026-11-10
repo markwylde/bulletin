@@ -13,6 +13,7 @@ import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { forumContract } from "../contracts.ts";
+import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import type { ShellVariant } from "../http/cache.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
@@ -67,6 +68,7 @@ interface ForumRenderData {
   readonly boardName: string;
   readonly title: string;
   readonly page: Awaited<ReturnType<typeof buildForumPage>>;
+  readonly flags: ViewerFlags;
 }
 
 async function renderErrorPage(
@@ -187,27 +189,30 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     prepare: async () => {
-      const [theme, settings, page] = await Promise.all([
+      const [theme, settings, flags] = await Promise.all([
         loadActiveTheme(input.sql),
         readBoardSettings(input.sql),
-        buildForumPage({
-          sql: input.sql,
-          locale: input.locale,
-          translate: input.translate,
-          principal,
-          sessionId,
-          snapshot,
-          forum,
-          prefix,
-          now,
-        }),
+        loadViewerFlags(input.sql, input.session),
       ]);
+      const page = await buildForumPage({
+        sql: input.sql,
+        locale: input.locale,
+        translate: input.translate,
+        principal,
+        sessionId,
+        snapshot,
+        forum,
+        prefix,
+        now,
+        announcementsEnabled: flags.values.announcements === true,
+      });
       const boardName = boardNameFrom(settings.boardName, input.translate);
       const data: ForumRenderData = {
         theme,
         boardName,
         title: page.viewModel.title,
         page,
+        flags,
       };
 
       latest = data;
@@ -225,7 +230,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
           pluginsGeneration: input.pluginsGeneration,
           locale: input.locale,
           colourScheme: input.colourScheme,
-          renderFlagsHash: "",
+          renderFlagsHash: flags.hash,
         }),
         data,
         ...(page.ttlMs === null ? {} : { ttlMs: page.ttlMs }),

@@ -47,6 +47,18 @@ const FLAGS: readonly SeededFlag[] = [
     fullyOnDaysAgo: null,
   },
   {
+    key: "announcements",
+    description: "Global and forum announcements.",
+    owner: "core",
+    defaultValue: true,
+    affectsRender: true,
+    clientVisible: true,
+    rules: [],
+    createdDaysAgo: 30,
+    updatedDaysAgo: 1,
+    fullyOnDaysAgo: 1,
+  },
+  {
     key: "compactTopicList",
     description: "Compact topic rows with a smaller author column.",
     owner: "core",

@@ -53,8 +53,15 @@ export function assertFlagDefinitions(definitions: readonly FlagDefinition[]): v
   }
 }
 
-/**
- * Flags declared in code. The flag system itself ships unflagged (ADR 0010), so the registry
- * starts empty; every later feature adds its own flag here.
- */
-export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([]);
+/** Global and forum announcements (ADR 0010, change `forum-structure`). */
+export const announcementsFlag = defineFlag({
+  key: "announcements",
+  description: "Global and forum announcements.",
+  owner: "core",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** Every flag declared in code. Each feature adds its own entry here. */
+export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([announcementsFlag]);
