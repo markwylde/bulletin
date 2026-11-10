@@ -8,14 +8,19 @@ interface ForumRow {
 }
 
 /**
- * Loads the forum tree and its password flags. Change `forum-structure` owns the full forum
- * table; the permission compiler only needs the shape and whether a password is set.
+ * The permission compiler's `ForumTree` provider (ADR 0005). It reads every category and forum
+ * from `core.forums`, including password forums, and validates the adjacency list so a broken
+ * tree fails before it can be compiled into capability bits. The materialised `path` gives a
+ * stable tree order without a recursive query.
  */
 export async function loadForumTree(sql: SQL): Promise<ForumTree> {
   const rows = (await sql`
-    SELECT id, parent_id, (password_hash IS NOT NULL) AS password_protected
+    SELECT
+      id,
+      parent_id,
+      (password_hash IS NOT NULL) AS password_protected
     FROM core.forums
-    ORDER BY id
+    ORDER BY path, position, id
   `) as ForumRow[];
 
   return createForumTree(
