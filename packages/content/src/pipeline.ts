@@ -1,6 +1,5 @@
 import type { Root as HastRoot } from "hast";
 import type { Root as MdastRoot, Parent } from "mdast";
-import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import rehypeStringify from "rehype-stringify";
@@ -8,7 +7,7 @@ import remarkDirective from "remark-directive";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
-import { unified } from "unified";
+import { type Plugin, unified } from "unified";
 import {
   type BeforeSaveStage,
   createBeforeSaveRegistry,
@@ -32,6 +31,13 @@ import {
   type ReplaceWords,
   type SourceContext,
 } from "./types.ts";
+
+// The plugin's declaration chain references lib.dom, which would leak a partial DOM lib into
+// every server consumer. A non-literal dynamic import keeps its types out of our program.
+const HIGHLIGHT_MODULE = "rehype-highlight";
+const rehypeHighlight = (await import(HIGHLIGHT_MODULE)).default as Plugin<
+  [{ readonly detect?: boolean; readonly ignoreMissing?: boolean }?]
+>;
 
 export interface RenderContentOptions {
   readonly profile: ContentProfile;

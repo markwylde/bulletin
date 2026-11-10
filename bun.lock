@@ -8,6 +8,7 @@
         "@biomejs/biome": "2.6.6",
         "@bulletin/cache": "workspace:*",
         "@bulletin/config": "workspace:*",
+        "@bulletin/content": "workspace:*",
         "@bulletin/db": "workspace:*",
         "@bulletin/domain": "workspace:*",
         "@bulletin/flags": "workspace:*",
@@ -180,6 +181,7 @@
       "dependencies": {
         "@bulletin/cache": "workspace:*",
         "@bulletin/config": "workspace:*",
+        "@bulletin/content": "workspace:*",
         "@bulletin/domain": "workspace:*",
         "@bulletin/flags": "workspace:*",
         "@bulletin/i18n": "workspace:*",

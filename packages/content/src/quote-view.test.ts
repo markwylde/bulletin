@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type QuoteSnapshotView, resolveQuotePlaceholders } from "./quote-view.ts";
 import type { QuoteSourceRef } from "./types.ts";
+import { currentContentVersions } from "./versioning.ts";
 
 const MESSAGES: Record<string, string> = {
   "content.quote.unavailable": "Quoted content unavailable",
@@ -23,12 +24,16 @@ function placeholder(options: {
 }
 
 function snapshot(overrides: Partial<QuoteSnapshotView> = {}): QuoteSnapshotView {
+  const versions = currentContentVersions();
+
   return {
     id: "11",
     sourceKind: "post",
     sourceId: "5",
     sourceAuthorId: "2",
     bodyHtml: "<p>private text</p>",
+    renderVersion: versions.renderVersion,
+    sanitiserVersion: versions.sanitiserVersion,
     redactedAt: null,
     ...overrides,
   };
@@ -112,6 +117,22 @@ describe("quote resolution per viewer", () => {
 
     expect(html).toContain("Quoted content unavailable");
     expect(html).not.toContain("private text");
+  });
+
+  test("re-sanitises a stale snapshot before showing it", async () => {
+    const html = await resolveQuotePlaceholders(placeholder({}), {
+      resolver: resolver({
+        snapshot: snapshot({
+          sanitiserVersion: 0,
+          bodyHtml: '<p>old</p><img src=x onerror="alert(1)">',
+        }),
+      }),
+      viewerId: "1",
+      translate,
+    });
+
+    expect(html).toContain("<p>old</p>");
+    expect(html).not.toContain("onerror");
   });
 
   test("resolves several placeholders in order", async () => {

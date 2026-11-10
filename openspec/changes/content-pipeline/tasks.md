@@ -12,7 +12,7 @@
 
 ## 2. Versioning
 
-- [ ] 2.1 Implement `render_version`/`sanitiser_version` checks with on-read re-sanitise and the resumable re-render job; integration test for the emergency-fix scenario
+- [x] 2.1 Implement `render_version`/`sanitiser_version` checks with on-read re-sanitise and the resumable re-render job; integration test for the emergency-fix scenario
 
 ## 3. Embeds and unfurls
 

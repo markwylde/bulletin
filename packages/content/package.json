@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Markdown to sanitised HTML pipeline.",
   "exports": {
-    ".\"": "./src/index.ts",
+    ".": "./src/index.ts",
     "./types": "./src/types.ts"
   },
   "scripts": {

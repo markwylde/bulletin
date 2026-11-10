@@ -1,4 +1,5 @@
-import type { QuoteSourceKind, QuoteSourceRef } from "./types.ts";
+import type { ContentProfile, QuoteSourceKind, QuoteSourceRef, ReplaceWords } from "./types.ts";
+import { type ContentVersions, ensureCurrentRendering } from "./versioning.ts";
 
 export interface QuoteSnapshotView {
   readonly id: string;
@@ -6,6 +7,8 @@ export interface QuoteSnapshotView {
   readonly sourceId: string;
   readonly sourceAuthorId: string | null;
   readonly bodyHtml: string;
+  readonly renderVersion: number;
+  readonly sanitiserVersion: number;
   readonly redactedAt: Date | null;
 }
 
@@ -24,10 +27,18 @@ export interface ResolvedQuote {
   readonly html: string;
 }
 
+export interface QuoteRefreshOptions {
+  readonly profile?: ContentProfile;
+  readonly replaceWords?: ReplaceWords;
+  readonly versions?: ContentVersions;
+}
+
 export interface QuoteViewOptions {
   readonly resolver: QuoteViewResolver;
   readonly viewerId: string | null;
   readonly translate: (key: string) => string;
+  /** Stale snapshots are re-sanitised on read before they are shown (ADR 0007). */
+  readonly refresh?: QuoteRefreshOptions;
 }
 
 const PLACEHOLDER = /<bl-quote\b([^>]*)><\/bl-quote>/gi;
@@ -126,11 +137,18 @@ async function resolveOne(
     };
   }
 
+  const rendering = await ensureCurrentRendering(snapshot, {
+    profile: options.refresh?.profile ?? "post",
+    ...(options.refresh?.replaceWords === undefined
+      ? {}
+      : { replaceWords: options.refresh.replaceWords }),
+    ...(options.refresh?.versions === undefined ? {} : { versions: options.refresh.versions }),
+  });
   const link = sourceLink(ref, options.resolver, options.translate);
 
   return {
     state: "quote",
-    html: `<blockquote class="quote"><div class="quote-body">${snapshot.bodyHtml}</div>${link}</blockquote>`,
+    html: `<blockquote class="quote"><div class="quote-body">${rendering.bodyHtml}</div>${link}</blockquote>`,
   };
 }
 
