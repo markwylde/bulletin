@@ -20,6 +20,7 @@ export type PrefixMutationCode =
   | "invalid_labels"
   | "invalid_group"
   | "duplicate_key"
+  | "prefix_required_needs_prefix"
   | "not_found";
 
 export type PrefixMutation =
@@ -261,6 +262,21 @@ export async function deletePrefix(
 
       if (prefix === undefined) {
         return { ok: false, code: "not_found" } as const;
+      }
+
+      const required = (await tx`
+        SELECT f.id::text AS id
+        FROM core.forum_prefixes fp
+        JOIN core.forums f ON f.id = fp.forum_id
+        WHERE fp.prefix_id = ${input.id}
+          AND f.prefix_mode = 'required'
+          AND (
+            SELECT count(*) FROM core.forum_prefixes other WHERE other.forum_id = f.id
+          ) <= 1
+      `) as Array<{ id: string }>;
+
+      if (required.length > 0) {
+        return { ok: false, code: "prefix_required_needs_prefix" } as const;
       }
 
       await tx`DELETE FROM core.prefixes WHERE id = ${input.id}`;

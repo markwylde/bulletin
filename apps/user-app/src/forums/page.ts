@@ -10,6 +10,7 @@ import {
   announcementsForForum,
   CapabilityView,
   can,
+  filterVisibleAnnouncements,
   loadAnnouncements,
   nextAnnouncementTransitionMs,
   type PermissionSnapshot,
@@ -128,12 +129,19 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
   const locked = input.forum.passwordProtected && !readable;
 
   const announcementsEnabled = input.announcementsEnabled !== false;
-  const announcements = announcementsEnabled ? await loadAnnouncements(input.sql, input.now) : [];
+  const allAnnouncements = announcementsEnabled
+    ? await loadAnnouncements(input.sql, input.now)
+    : [];
+  const announcements = await filterVisibleAnnouncements(
+    input.sql,
+    input.principal,
+    allAnnouncements,
+    { tree, snapshot: input.snapshot, forumId: input.forum.id },
+  );
   const pageAnnouncements = announcementsEnabled
     ? announcementsForForum(
         announcements,
         { id: input.forum.id, path: input.forum.path },
-        groupIds,
         input.now,
       )
     : [];

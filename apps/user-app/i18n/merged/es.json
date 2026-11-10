@@ -72,6 +72,8 @@
   "forum.prefixAll": "Todos los temas",
   "forum.prefixFilter": "Filtrar por prefijo",
   "forum.rules.title": "Normas del foro",
+  "index.clickSuffix.one": "clic",
+  "index.clickSuffix.other": "clics",
   "index.lastPost": "Último mensaje {date}",
   "index.lastPostBy": "Último mensaje {date} por {member}",
   "index.postCount": "{count, plural, =1 {1 mensaje} other {# mensajes}}",

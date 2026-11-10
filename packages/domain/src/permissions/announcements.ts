@@ -1,6 +1,11 @@
 import { bumpCacheTags, forumAnnouncementsTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
 import type { SQL } from "bun";
+import { can } from "./can.ts";
 import { announcementAudience } from "./capability.ts";
+import type { ViewerPrincipal } from "./principal.ts";
+import { loadPermissionSnapshot, type PermissionSnapshot } from "./snapshot.ts";
+import type { ForumTree } from "./tree.ts";
+import { loadForumTree } from "./tree-store.ts";
 
 export type AnnouncementScope = "global" | "forums";
 
@@ -119,13 +124,6 @@ export function isAnnouncementActive(announcement: Announcement, now: Date): boo
   );
 }
 
-function visibleToGroups(announcement: Announcement, groupIds: readonly string[]): boolean {
-  return (
-    announcement.targetGroupIds.length === 0 ||
-    announcement.targetGroupIds.some((groupId) => groupIds.includes(groupId))
-  );
-}
-
 function targetsForum(announcement: Announcement, forum: ForumScope): boolean {
   if (announcement.scope === "global") {
     return true;
@@ -141,30 +139,53 @@ function targetsForum(announcement: Announcement, forum: ForumScope): boolean {
 /** Active announcements a viewer may see on the board index. */
 export function globalAnnouncements(
   announcements: readonly Announcement[],
-  groupIds: readonly string[],
   now: Date,
 ): readonly Announcement[] {
   return announcements.filter(
-    (announcement) =>
-      announcement.scope === "global" &&
-      isAnnouncementActive(announcement, now) &&
-      visibleToGroups(announcement, groupIds),
+    (announcement) => announcement.scope === "global" && isAnnouncementActive(announcement, now),
   );
 }
 
-/** Active announcements for one forum page (global plus forum-scoped), filtered by audience. */
+/** Active announcements for one forum page (global plus forum-scoped). */
 export function announcementsForForum(
   announcements: readonly Announcement[],
   forum: ForumScope,
-  groupIds: readonly string[],
   now: Date,
 ): readonly Announcement[] {
   return announcements.filter(
-    (announcement) =>
-      isAnnouncementActive(announcement, now) &&
-      targetsForum(announcement, forum) &&
-      visibleToGroups(announcement, groupIds),
+    (announcement) => isAnnouncementActive(announcement, now) && targetsForum(announcement, forum),
   );
+}
+
+export interface AnnouncementVisibilityScope {
+  readonly tree: ForumTree;
+  readonly snapshot: PermissionSnapshot;
+  readonly forumId?: string | null;
+}
+
+/** Removes announcements the viewer cannot see, through the single `can()` entry point. */
+export async function filterVisibleAnnouncements(
+  sql: SQL,
+  principal: ViewerPrincipal,
+  announcements: readonly Announcement[],
+  scope: AnnouncementVisibilityScope,
+): Promise<readonly Announcement[]> {
+  const visible: Announcement[] = [];
+
+  for (const announcement of announcements) {
+    if (
+      await can(sql, principal, "view_announcement", {
+        announcementId: announcement.id,
+        tree: scope.tree,
+        snapshot: scope.snapshot,
+        forumId: scope.forumId ?? null,
+      })
+    ) {
+      visible.push(announcement);
+    }
+  }
+
+  return visible;
 }
 
 /**
@@ -284,6 +305,19 @@ export async function dismissAnnouncement(
 
   if (!announcement.dismissible) {
     return "not_dismissible";
+  }
+
+  const tree = await loadForumTree(sql);
+  const snapshot = await loadPermissionSnapshot(sql, memberId, { tree });
+
+  if (
+    !(await can(sql, memberId, "view_announcement", {
+      announcementId: announcement.id,
+      tree,
+      snapshot,
+    }))
+  ) {
+    return "not_found";
   }
 
   await sql`

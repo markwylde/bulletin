@@ -3,19 +3,16 @@ import { useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
-
-interface AnnouncementRecord {
-  readonly id: string;
-  readonly title: string;
-  readonly body: string;
-  readonly scope: "global" | "forums";
-  readonly startsAt: string;
-  readonly endsAt: string | null;
-  readonly dismissible: boolean;
-  readonly version: number;
-  readonly targets: ReadonlyArray<{ forumId: string; includeSubforums: boolean }>;
-  readonly groupIds: readonly string[];
-}
+import {
+  type AnnouncementDraft,
+  type AnnouncementRecord,
+  type AnnouncementTarget,
+  draftFrom,
+  emptyDraft,
+  iso,
+  localInput,
+  payloadFromDraft,
+} from "./draft.ts";
 
 interface AnnouncementView {
   readonly announcements: readonly AnnouncementRecord[];
@@ -23,72 +20,11 @@ interface AnnouncementView {
   readonly groups: ReadonlyArray<{ id: string; key: string; title: string }>;
 }
 
-interface Draft {
-  readonly id: string | null;
-  readonly title: string;
-  readonly body: string;
-  readonly scope: "global" | "forums";
-  readonly startsAt: string;
-  readonly endsAt: string;
-  readonly dismissible: boolean;
-  readonly forumIds: readonly string[];
-  readonly includeSubforums: boolean;
-  readonly groupIds: readonly string[];
-}
-
-function localInput(iso: string | null): string {
-  if (iso === null) {
-    return "";
-  }
-
-  const date = new Date(iso);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
-
-function emptyDraft(): Draft {
-  return {
-    id: null,
-    title: "",
-    body: "",
-    scope: "global",
-    startsAt: localInput(new Date().toISOString()),
-    endsAt: "",
-    dismissible: true,
-    forumIds: [],
-    includeSubforums: true,
-    groupIds: [],
-  };
-}
-
-function draftFrom(announcement: AnnouncementRecord): Draft {
-  return {
-    id: announcement.id,
-    title: announcement.title,
-    body: announcement.body,
-    scope: announcement.scope,
-    startsAt: localInput(announcement.startsAt),
-    endsAt: localInput(announcement.endsAt),
-    dismissible: announcement.dismissible,
-    forumIds: announcement.targets.map((target) => target.forumId),
-    includeSubforums: announcement.targets.some((target) => target.includeSubforums),
-    groupIds: announcement.groupIds,
-  };
-}
-
-function iso(value: string): string | null {
-  if (value.trim() === "") {
-    return null;
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
 export function AnnouncementsPage() {
   const t = useT();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [draft, setDraft] = useState<AnnouncementDraft>(emptyDraft);
   const query = useQuery({
     queryKey: ["staff", "announcements"],
     queryFn: () => apiGet<AnnouncementView>("/api/staff/announcements"),
@@ -103,40 +39,40 @@ export function AnnouncementsPage() {
     onError: () => toast.pushToast({ messageKey: "staff.announcements.saveError", tone: "error" }),
   });
 
-  const toggle = (key: "forumIds" | "groupIds", id: string, checked: boolean): void => {
+  const toggleGroup = (id: string, checked: boolean): void => {
     setDraft((current) => ({
       ...current,
-      [key]: checked ? [...current[key], id] : current[key].filter((candidate) => candidate !== id),
+      groupIds: checked
+        ? [...current.groupIds, id]
+        : current.groupIds.filter((candidate) => candidate !== id),
+    }));
+  };
+
+  const toggleForum = (forumId: string, checked: boolean): void => {
+    setDraft((current) => ({
+      ...current,
+      targets: checked
+        ? [...current.targets, { forumId, includeSubforums: true }]
+        : current.targets.filter((target) => target.forumId !== forumId),
+    }));
+  };
+
+  const setTargetSubforums = (forumId: string, includeSubforums: boolean): void => {
+    setDraft((current) => ({
+      ...current,
+      targets: current.targets.map((target) =>
+        target.forumId === forumId ? { ...target, includeSubforums } : target,
+      ),
     }));
   };
 
   const submit = (): void => {
-    const startsAt = iso(draft.startsAt);
-    const endsAt = iso(draft.endsAt);
-
-    if (startsAt === null) {
+    if (iso(draft.startsAt) === null) {
       toast.pushToast({ messageKey: "staff.announcements.invalidSchedule", tone: "error" });
       return;
     }
 
-    save.mutate({
-      action: "save",
-      ...(draft.id === null ? {} : { id: draft.id }),
-      title: draft.title,
-      body: draft.body,
-      scope: draft.scope,
-      startsAt,
-      endsAt,
-      dismissible: draft.dismissible,
-      targets:
-        draft.scope === "forums"
-          ? draft.forumIds.map((forumId) => ({
-              forumId,
-              includeSubforums: draft.includeSubforums,
-            }))
-          : [],
-      groupIds: draft.groupIds,
-    });
+    save.mutate(payloadFromDraft(draft));
   };
 
   return (
@@ -276,34 +212,39 @@ export function AnnouncementsPage() {
               {draft.scope === "forums" ? (
                 <fieldset>
                   <legend>{t("staff.announcements.field.forums")}</legend>
-                  <label>
-                    <input
-                      type="checkbox"
-                      data-announcement-field="include-subforums"
-                      checked={draft.includeSubforums}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          includeSubforums: event.target.checked,
-                        }))
-                      }
-                    />
-                    <span>{t("staff.announcements.field.includeSubforums")}</span>
-                  </label>
                   <ul className="check-list">
-                    {query.data.forums.map((forum) => (
-                      <li key={forum.id}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            data-announcement-forum={forum.id}
-                            checked={draft.forumIds.includes(forum.id)}
-                            onChange={(event) => toggle("forumIds", forum.id, event.target.checked)}
-                          />
-                          <span>{forum.title}</span>
-                        </label>
-                      </li>
-                    ))}
+                    {query.data.forums.map((forum) => {
+                      const target: AnnouncementTarget | undefined = draft.targets.find(
+                        (candidate) => candidate.forumId === forum.id,
+                      );
+
+                      return (
+                        <li key={forum.id}>
+                          <label>
+                            <input
+                              type="checkbox"
+                              data-announcement-forum={forum.id}
+                              checked={target !== undefined}
+                              onChange={(event) => toggleForum(forum.id, event.target.checked)}
+                            />
+                            <span>{forum.title}</span>
+                          </label>
+                          {target === undefined ? null : (
+                            <label className="announcement-target-subforums">
+                              <input
+                                type="checkbox"
+                                data-announcement-target-subforums={forum.id}
+                                checked={target.includeSubforums}
+                                onChange={(event) =>
+                                  setTargetSubforums(forum.id, event.target.checked)
+                                }
+                              />
+                              <span>{t("staff.announcements.field.includeSubforums")}</span>
+                            </label>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </fieldset>
               ) : null}
@@ -319,7 +260,7 @@ export function AnnouncementsPage() {
                           type="checkbox"
                           data-announcement-group={group.id}
                           checked={draft.groupIds.includes(group.id)}
-                          onChange={(event) => toggle("groupIds", group.id, event.target.checked)}
+                          onChange={(event) => toggleGroup(group.id, event.target.checked)}
                         />
                         <span>{group.title}</span>
                       </label>

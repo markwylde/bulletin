@@ -58,7 +58,7 @@
                 {% if forum.redirect %}
                   <p class="bl-muted" data-redirect>
                     <a href="{{ forum.redirect.url }}" rel="nofollow noopener">{{ forum.redirect.url }}</a>
-                    <span class="bl-badge" data-redirect-clicks="{{ forum.id }}">{{ forum.redirect.clicks }}</span>
+                    <span class="bl-badge" data-redirect-clicks="{{ forum.id }}" data-redirect-count="{{ forum.redirect.count }}" data-click-suffix-one="{% t "index.clickSuffix.one" %}" data-click-suffix-other="{% t "index.clickSuffix.other" %}">{{ forum.redirect.clicks }}</span>
                   </p>
                 {% endif %}
                 {% if forum.subforums.size > 0 %}

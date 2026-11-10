@@ -3,6 +3,7 @@ import {
   announcementAudienceClass,
   CapabilityView,
   can,
+  filterVisibleAnnouncements,
   GUEST_PRINCIPAL,
   globalAnnouncements,
   loadAnnouncements,
@@ -29,6 +30,7 @@ export interface BoardIndexLastPost {
 
 export interface BoardIndexRedirect {
   readonly url: string;
+  readonly count: number;
   readonly clicks: string;
 }
 
@@ -133,6 +135,7 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
       forum.type === "redirect" && forum.redirectUrl !== null
         ? {
             url: forum.redirectUrl,
+            count: forum.redirectClicks,
             clicks: input.translate("index.redirectClicks", { count: forum.redirectClicks }),
           }
         : null;
@@ -152,10 +155,12 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
 
   const now = input.now ?? new Date();
   const announcementsEnabled = input.announcementsEnabled !== false;
-  const announcements = announcementsEnabled ? await loadAnnouncements(input.sql, now) : [];
-  const notices = announcementsEnabled
-    ? globalAnnouncements(announcements, snapshot.groupIds, now)
-    : [];
+  const allAnnouncements = announcementsEnabled ? await loadAnnouncements(input.sql, now) : [];
+  const announcements = await filterVisibleAnnouncements(input.sql, principal, allAnnouncements, {
+    tree,
+    snapshot,
+  });
+  const notices = announcementsEnabled ? globalAnnouncements(announcements, now) : [];
   const audience = announcementAudienceClass(announcements, snapshot.groupIds, now);
   const categories = rows
     .filter((row) => row.type === "category")

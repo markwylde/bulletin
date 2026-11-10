@@ -14,6 +14,7 @@ import { announceDismissResponse } from "./announcements.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
+import { redirectCountsResponse } from "./redirects.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
@@ -47,6 +48,10 @@ await startService({
   port,
   async fetch(request) {
     const { pathname } = new URL(request.url);
+
+    if (request.method === "GET" && pathname === "/api/forums/redirect-counts") {
+      return redirectCountsResponse(sql);
+    }
 
     const unlockMatch = /^\/api\/forums\/(\d+)\/unlock$/.exec(pathname);
 

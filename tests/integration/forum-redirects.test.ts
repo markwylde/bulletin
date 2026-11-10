@@ -15,12 +15,15 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
+import { listRedirectClickCounts } from "@bulletin/domain/forums";
 import { type ForumAction, forumActionMask } from "@bulletin/domain/permissions";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { redirectCountsResponse } from "../../apps/user-api/src/redirects.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { buildBoardIndex } from "../../apps/user-app/src/forums/index.ts";
 import { renderForumRoute } from "../../apps/user-app/src/forums/route.ts";
+import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -126,6 +129,49 @@ async function render(database: TestDatabase, ref: string, session: UserAppSessi
 }
 
 integrationDescribe("redirect forums and slug URLs", () => {
+  test("refreshes redirect counts outside a warm cached index", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await createForum(database, {
+        title: "Counted Elsewhere",
+        slug: "counted-elsewhere",
+        parentId: "1",
+        type: "redirect",
+        redirectUrl: "https://example.test/counted",
+      });
+      const member = await memberSession(database, "member-1");
+      const cache = createRenderCache({ tags: TRUSTED });
+      const input = {
+        sql: database.sql,
+        locale: "en" as const,
+        translate,
+        session: member,
+        pluginsGeneration: 1,
+        colourScheme: "system" as const,
+        cache,
+        tagVersions: TRUSTED,
+      };
+      const first = await renderHomeRoute(input);
+
+      expect(first.cache).toBe("miss");
+      expect(first.html).toContain(`data-redirect-clicks="${forum}"`);
+      expect(first.html).toContain("data-click-suffix-one");
+
+      await render(database, `/forum/${forum}-counted-elsewhere`, member);
+      await flushRedirectClicks(database.sql);
+
+      const warm = await renderHomeRoute(input);
+
+      expect(warm.cache).toBe("hit");
+      expect(warm.html).toBe(first.html);
+
+      const counts = await listRedirectClickCounts(database.sql);
+      expect(counts[forum]).toBe(1);
+
+      const fragment = await redirectCountsResponse(database.sql);
+      expect(((await fragment.json()) as { counts: Record<string, number> }).counts[forum]).toBe(1);
+    });
+  }, 30_000);
+
   test("counts a redirect click in the buffer and folds it into the index without invalidating", async () => {
     await withSeededDb(async (database) => {
       const forum = await createForum(database, {

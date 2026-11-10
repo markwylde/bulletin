@@ -464,6 +464,25 @@ integrationDescribe("staff forum structure", () => {
         groupIds: [members.id],
       });
 
+      const blocked = await call(harness.api, harness.admin, "prefixes.mutate", {
+        action: "delete",
+        id: prefix.id,
+      });
+      expect(blocked.status).toBe(409);
+
+      const optional = await call(harness.api, harness.admin, "forums.mutate", {
+        action: "settings",
+        id: forum,
+        description: "Needs a prefix",
+        rules: "Be nice",
+        showModerators: false,
+        language: "es",
+        defaultSort: "start_date",
+        prefixMode: "optional",
+        prefixIds: [],
+      });
+      expect(optional.status).toBe(200);
+
       const deleted = await call(harness.api, harness.admin, "prefixes.mutate", {
         action: "delete",
         id: prefix.id,
@@ -481,6 +500,10 @@ integrationDescribe("staff forum structure", () => {
   test("creates, edits and deletes announcements with scope, schedule and targeting", async () => {
     await withHarness(async (harness) => {
       const forum = await createForum(harness, { title: "Announcement Forum", type: "forum" });
+      const secondForum = await createForum(harness, {
+        title: "Second Announcement Forum",
+        type: "forum",
+      });
       const groups = (await (
         await call(harness.api, harness.admin, "announcements.list")
       ).json()) as {
@@ -503,7 +526,10 @@ integrationDescribe("staff forum structure", () => {
         startsAt,
         endsAt,
         dismissible: true,
-        targets: [{ forumId: forum, includeSubforums: true }],
+        targets: [
+          { forumId: forum, includeSubforums: true },
+          { forumId: secondForum, includeSubforums: false },
+        ],
         groupIds: [vip.id],
       });
 
@@ -530,7 +556,10 @@ integrationDescribe("staff forum structure", () => {
       }
 
       expect(announcement).toMatchObject({
-        targets: [{ forumId: forum, includeSubforums: true }],
+        targets: [
+          { forumId: forum, includeSubforums: true },
+          { forumId: secondForum, includeSubforums: false },
+        ],
         groupIds: [vip.id],
         dismissible: true,
       });
@@ -561,7 +590,10 @@ integrationDescribe("staff forum structure", () => {
         startsAt,
         endsAt,
         dismissible: true,
-        targets: [{ forumId: forum, includeSubforums: true }],
+        targets: [
+          { forumId: forum, includeSubforums: true },
+          { forumId: secondForum, includeSubforums: false },
+        ],
         groupIds: [vip.id],
       });
       expect(edited.status).toBe(200);

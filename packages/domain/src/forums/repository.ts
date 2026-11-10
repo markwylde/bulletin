@@ -251,6 +251,18 @@ export async function listForumModerators(
   });
 }
 
+/** Public redirect counters, refreshed independently of cached page HTML. */
+export async function listRedirectClickCounts(sql: SQL): Promise<Readonly<Record<string, number>>> {
+  const rows = (await sql`
+    SELECT id::text AS id, redirect_clicks::text AS clicks
+    FROM core.forums
+    WHERE type = 'redirect'
+    ORDER BY id
+  `) as Array<{ id: string; clicks: string }>;
+
+  return Object.fromEntries(rows.map((row) => [row.id, Number(row.clicks)]));
+}
+
 /**
  * The permission-filtered forum repository (ADR 0005). Every content query must live behind a
  * function that takes the viewer's capability accessor; the architecture test fails a build

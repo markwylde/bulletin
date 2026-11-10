@@ -72,6 +72,8 @@
   "forum.prefixAll": "All topics",
   "forum.prefixFilter": "Filter by prefix",
   "forum.rules.title": "Forum rules",
+  "index.clickSuffix.one": "click",
+  "index.clickSuffix.other": "clicks",
   "index.lastPost": "Last post {date}",
   "index.lastPostBy": "Last post {date} by {member}",
   "index.postCount": "{count, plural, =1 {1 post} other {# posts}}",

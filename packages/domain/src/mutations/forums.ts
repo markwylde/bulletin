@@ -17,9 +17,9 @@ export interface PrefixChange {
 }
 
 /** Prefix labels, colours and group restrictions live only on forum pages. */
-export const prefixMutation: Mutation<PrefixChange, unknown> = {
+export const prefixMutation: Mutation<PrefixChange, { readonly ok: boolean }> = {
   name: "prefix.update",
-  tags: (input) => uniqueTags(input.affectedForumIds.map(forumTag)),
+  tags: (input, result) => (result.ok ? uniqueTags(input.affectedForumIds.map(forumTag)) : []),
 };
 
 export interface AnnouncementChange {

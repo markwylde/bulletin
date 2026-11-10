@@ -30,6 +30,54 @@ export interface PrefixScope {
   readonly prefixId: string;
 }
 
+/** Announcement visibility combines its target groups with at least one visible target forum. */
+export interface AnnouncementPermissionScope {
+  readonly announcementId: string;
+  readonly tree: ForumTree;
+  readonly snapshot?: PermissionSnapshot;
+  /** The page forum, when evaluating a block on that page. */
+  readonly forumId?: string | null;
+}
+
+async function canViewAnnouncement(
+  sql: SQL,
+  principal: ViewerPrincipal,
+  scope: AnnouncementPermissionScope,
+): Promise<boolean> {
+  const [announcement] = (await sql`
+    SELECT id, scope FROM core.announcements WHERE id = ${scope.announcementId}
+  `) as Array<{ id: string; scope: "global" | "forums" }>;
+
+  if (announcement === undefined) {
+    return false;
+  }
+
+  const snapshot =
+    scope.snapshot ??
+    (await loadPermissionSnapshot(sql, principal, { tree: scope.tree, sessionId: null }));
+  const audience = (await sql`
+    SELECT group_id FROM core.announcement_groups WHERE announcement_id = ${announcement.id}
+  `) as Array<{ group_id: string }>;
+
+  if (audience.length > 0 && !audience.some((row) => snapshot.groupIds.includes(row.group_id))) {
+    return false;
+  }
+
+  if (scope.forumId !== undefined && scope.forumId !== null) {
+    return capabilityAnswer(snapshot, scope.forumId, "show");
+  }
+
+  if (announcement.scope === "global") {
+    return true;
+  }
+
+  const targets = (await sql`
+    SELECT forum_id FROM core.announcement_targets WHERE announcement_id = ${announcement.id}
+  `) as Array<{ forum_id: string }>;
+
+  return targets.some((target) => capabilityAnswer(snapshot, target.forum_id, "show"));
+}
+
 async function canViewPrefix(
   sql: SQL,
   principal: ViewerPrincipal,
@@ -58,15 +106,29 @@ export function can(
 export function can(
   sql: SQL,
   principal: ViewerPrincipal,
+  action: "view_announcement",
+  scope: AnnouncementPermissionScope,
+): Promise<boolean>;
+export function can(
+  sql: SQL,
+  principal: ViewerPrincipal,
   action: PermissionAction,
   scope?: PermissionScope,
 ): Promise<boolean>;
 export async function can(
   sql: SQL,
   principal: ViewerPrincipal,
-  action: PermissionAction | "view_prefix",
-  scope?: PermissionScope | PrefixScope,
+  action: PermissionAction | "view_prefix" | "view_announcement",
+  scope?: PermissionScope | PrefixScope | AnnouncementPermissionScope,
 ): Promise<boolean> {
+  if (action === "view_announcement") {
+    if (scope === undefined || !("announcementId" in scope)) {
+      return false;
+    }
+
+    return canViewAnnouncement(sql, principal, scope);
+  }
+
   if (action === "view_prefix") {
     if (scope === undefined || !("prefixId" in scope)) {
       return false;
