@@ -91,6 +91,27 @@ interface ForumPermissionRow {
   readonly inherits: boolean;
 }
 
+async function emitForumVisibility(tx: SQL, forumId: string, permVersion: string): Promise<void> {
+  await emit(tx, {
+    type: "forum.visibility.changed",
+    aggregateId: BigInt(forumId),
+    aggregateVersion: BigInt(permVersion),
+    payloadIds: { forumId: BigInt(forumId) },
+  });
+}
+
+/**
+ * A mask link, unlink or delete is global: it can change guest visibility on any forum.
+ * Emitting one event per root covers every subtree the worker has to purge (ADR 0006).
+ */
+async function emitAllForumsVisibility(tx: SQL, permVersion: string): Promise<void> {
+  const tree = await loadForumTree(tx);
+
+  for (const root of tree.roots) {
+    await emitForumVisibility(tx, root.id, permVersion);
+  }
+}
+
 async function matrixRows(sql: SQL): Promise<readonly ForumMatrixRow[]> {
   const rows = (await sql`
     SELECT forum_id, mask_id, actions, inherits FROM core.forum_permissions
@@ -259,7 +280,8 @@ export async function deleteMask(
     }
 
     await tx`DELETE FROM core.masks WHERE id = ${input.id}`;
-    await bumpPermVersion(tx);
+    const permVersion = await bumpPermVersion(tx);
+    await emitAllForumsVisibility(tx, permVersion);
     await writeAdminLog(tx, {
       actorMemberId,
       action: "mask.delete",
@@ -310,7 +332,8 @@ export async function linkGroupMask(
       `;
     }
 
-    await bumpPermVersion(tx);
+    const permVersion = await bumpPermVersion(tx);
+    await emitAllForumsVisibility(tx, permVersion);
     await writeAdminLog(tx, {
       actorMemberId,
       action: "mask.link",
@@ -390,12 +413,7 @@ export async function saveMatrixCell(
     }
 
     const permVersion = await bumpPermVersion(tx);
-    await emit(tx, {
-      type: "forum.visibility.changed",
-      aggregateId: BigInt(forumId),
-      aggregateVersion: BigInt(permVersion),
-      payloadIds: { forumId: BigInt(forumId) },
-    });
+    await emitForumVisibility(tx, forumId, permVersion);
     await writeAdminLog(tx, {
       actorMemberId,
       action: "mask.matrix.update",
@@ -483,12 +501,7 @@ export async function bulkToggleMatrix(
     }
 
     const permVersion = await bumpPermVersion(tx);
-    await emit(tx, {
-      type: "forum.visibility.changed",
-      aggregateId: BigInt(forumId),
-      aggregateVersion: BigInt(permVersion),
-      payloadIds: { forumId: BigInt(forumId) },
-    });
+    await emitForumVisibility(tx, forumId, permVersion);
     await writeAdminLog(tx, {
       actorMemberId,
       action: "mask.matrix.bulk",

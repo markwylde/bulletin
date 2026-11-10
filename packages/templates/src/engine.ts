@@ -1,4 +1,4 @@
-import { Liquid, type Template } from "liquidjs";
+import { Context, Liquid, type Template, toPromise, toValue } from "liquidjs";
 import { registerHookTag } from "./hook-tag.ts";
 import { registerIslandTag, type ServerIslandRegistry } from "./island-tag.ts";
 import { runtimeGlobals, type TemplateRuntime } from "./runtime.ts";
@@ -30,7 +30,64 @@ export interface TemplateEngineOptions {
 }
 
 /** Per-render overrides; used by tests and by routes that tighten a limit. */
-export type TemplateRenderOverrides = Partial<Pick<TemplateLimits, "renderLimit" | "memoryLimit">>;
+export type TemplateRenderOverrides = Partial<
+  Pick<TemplateLimits, "renderLimit" | "memoryLimit" | "outputLimit">
+>;
+
+/** Thrown by the counting emitter before the rendered output can exceed the byte budget. */
+export class OutputLimitExceededError extends Error {
+  readonly bytes: number;
+  readonly limit: number;
+
+  constructor(bytes: number, limit: number) {
+    super(`template output limit exceeded: ${bytes} bytes > ${limit}`);
+    this.name = "OutputLimitExceededError";
+    this.bytes = bytes;
+    this.limit = limit;
+  }
+}
+
+function outputText(value: unknown): string {
+  const resolved = toValue(value);
+
+  if (typeof resolved === "string") {
+    return resolved;
+  }
+
+  if (resolved === null || resolved === undefined) {
+    return "";
+  }
+
+  if (Array.isArray(resolved)) {
+    return resolved.map(outputText).join("");
+  }
+
+  return String(resolved);
+}
+
+/**
+ * LiquidJS's SimpleEmitter concatenates first and lets callers check afterwards. Themes are
+ * untrusted, so the budget has to apply at every write: a runaway loop of small static chunks
+ * then stops before it can hold more than the limit in memory (ADR 0008).
+ */
+class BoundedEmitter {
+  buffer = "";
+  #bytes = 0;
+
+  constructor(private readonly limit: number) {}
+
+  write(value: unknown): void {
+    const text = outputText(value);
+    const bytes = this.#bytes + Buffer.byteLength(text, "utf8");
+
+    if (bytes > this.limit) {
+      throw new OutputLimitExceededError(bytes, this.limit);
+    }
+
+    this.#bytes = bytes;
+    this.buffer += text;
+  }
+}
 
 export interface TemplateEngine {
   /** The underlying engine, for callers that need its options or tag registry. */
@@ -86,11 +143,21 @@ export function createTemplateEngine(options: TemplateEngineOptions): TemplateEn
       return liquid.parse(source);
     },
     render(parsed, viewModel, runtime, overrides = {}) {
-      return liquid.render(parsed, viewModel, {
-        globals: runtimeGlobals(runtime),
-        renderLimit: overrides.renderLimit ?? limits.renderLimit,
-        memoryLimit: overrides.memoryLimit ?? limits.memoryLimit,
-      }) as Promise<string>;
+      const emitter = new BoundedEmitter(overrides.outputLimit ?? limits.outputLimit);
+      const context = new Context(
+        viewModel,
+        liquid.options,
+        {
+          globals: runtimeGlobals(runtime),
+          renderLimit: overrides.renderLimit ?? limits.renderLimit,
+          memoryLimit: overrides.memoryLimit ?? limits.memoryLimit,
+        },
+        { liquid },
+      );
+
+      return toPromise(liquid.renderer.renderTemplates(parsed, context, emitter)).then(
+        () => emitter.buffer,
+      ) as Promise<string>;
     },
   };
 }

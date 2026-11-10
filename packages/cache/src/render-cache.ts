@@ -98,20 +98,18 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
     return options.tags.isTrusted();
   }
 
+  function bypassResult(key: string, html: string, tags: readonly string[]): RenderResult {
+    bypasses += 1;
+
+    return { key, html, status: "bypass", tags, versions: snapshot(tags) };
+  }
+
   return {
     async getOrRender<T>(request: RenderRequest<T>) {
       if (!(await trusted())) {
-        bypasses += 1;
         const prepared = await request.prepare();
-        const html = await request.render(prepared.data);
 
-        return {
-          key: prepared.key,
-          html,
-          status: "bypass",
-          tags: request.tags,
-          versions: snapshot(request.tags),
-        };
+        return bypassResult(prepared.key, await request.render(prepared.data), request.tags);
       }
 
       let key = "";
@@ -122,9 +120,17 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
         const prepared = await request.prepare();
 
         key = prepared.key;
+
+        // `prepare()` awaited. A listener failure during it means the versions just captured
+        // can no longer be trusted, so serve the fresh render as BYPASS and store nothing.
+        if (!(await trusted())) {
+          return bypassResult(key, await request.render(prepared.data), request.tags);
+        }
+
+        const preparedVersions = snapshot(request.tags);
         const cached = store.get(key);
 
-        if (cached !== undefined && sameVersions(cached.versions, current)) {
+        if (cached !== undefined && sameVersions(cached.versions, preparedVersions)) {
           hits += 1;
           return {
             key,
@@ -136,9 +142,16 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
         }
 
         html = await request.render(prepared.data);
+
+        // `render()` awaited. Recheck trust before returning the HTML and, below, before
+        // storing it: a listener loss must fail closed even mid-render.
+        if (!(await trusted())) {
+          return bypassResult(key, html, request.tags);
+        }
+
         const next = snapshot(request.tags);
 
-        if (sameVersions(next, current)) {
+        if (sameVersions(next, current) && sameVersions(preparedVersions, current)) {
           misses += 1;
           store.set(key, { html, versions: current }, Buffer.byteLength(html, "utf8"));
 
@@ -151,6 +164,10 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
       }
 
       // The tags kept moving for every attempt: serve this render but store nothing.
+      if (!(await trusted())) {
+        return bypassResult(key, html, request.tags);
+      }
+
       misses += 1;
 
       return {

@@ -94,6 +94,87 @@ describe("renderThemeTemplate", () => {
     expect(rendered.violations[0]?.message).toContain("output limit exceeded");
   });
 
+  test("falls back when a static override exceeds the output limit", async () => {
+    const activeEngine = engine();
+    const compiled = createCompileCache(activeEngine).compile(
+      buildTheme([
+        { name: "child", templates: { page: "<span>static</span>".repeat(500) } },
+        { name: "parent", templates: { page: "<p>parent fallback</p>" } },
+      ]),
+      1,
+    );
+
+    const rendered = await renderThemeTemplate({
+      engine: activeEngine,
+      compiled,
+      name: "page",
+      viewModel: {},
+      runtime,
+      limits: { outputLimit: 1_000 },
+    });
+
+    expect(rendered.html).toBe("<p>parent fallback</p>");
+    expect(rendered.template.themeName).toBe("parent");
+    expect(rendered.violations[0]?.kind).toBe("output");
+  });
+
+  test("enforces the output limit while repeated static markup is emitted", async () => {
+    const activeEngine = engine();
+    const compiled = createCompileCache(activeEngine).compile(
+      buildTheme([
+        {
+          name: "child",
+          templates: { page: "{% for i in (1..20000) %}<span>static</span>{% endfor %}" },
+        },
+        { name: "parent", templates: { page: "<p>parent fallback</p>" } },
+      ]),
+      1,
+    );
+
+    const rendered = await renderThemeTemplate({
+      engine: activeEngine,
+      compiled,
+      name: "page",
+      viewModel: {},
+      runtime,
+      limits: { outputLimit: 1_000 },
+    });
+
+    expect(rendered.html).toBe("<p>parent fallback</p>");
+    expect(rendered.template.themeName).toBe("parent");
+    expect(rendered.violations[0]?.kind).toBe("output");
+    expect(rendered.violations[0]?.message).toContain("output limit exceeded");
+  });
+
+  test("enforces the output limit before sanitising the fragment", async () => {
+    const activeEngine = engine();
+    const compiled = createCompileCache(activeEngine).compile(
+      buildTheme([
+        {
+          name: "child",
+          templates: {
+            page: "{% for i in (1..2000) %}<script>alert(1)</script>{% endfor %}",
+          },
+        },
+        { name: "parent", templates: { page: "<p>parent fallback</p>" } },
+      ]),
+      1,
+    );
+
+    const rendered = await renderThemeTemplate({
+      engine: activeEngine,
+      compiled,
+      name: "page",
+      viewModel: {},
+      runtime,
+      limits: { outputLimit: 1_000 },
+    });
+
+    expect(rendered.html).toBe("<p>parent fallback</p>");
+    expect(rendered.template.themeName).toBe("parent");
+    expect(rendered.violations[0]?.kind).toBe("output");
+  });
+
   test("reports a compile violation and renders the parent instead", async () => {
     const activeEngine = engine();
     const compiled = createCompileCache(activeEngine).compile(

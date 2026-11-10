@@ -3,6 +3,7 @@ import type { HealthCheck } from "@bulletin/config/server";
 import { type AuthService, type SessionRecord, STEP_UP_WINDOW_MS } from "@bulletin/domain/auth";
 import {
   type AcpPermission,
+  allForumTags,
   can,
   forumSubtreeTags,
   isAcpPermission,
@@ -398,6 +399,15 @@ async function purgeSubtreeOf(context: StaffRouteContext, body: unknown): Promis
   await context.purge.purge(await forumSubtreeTags(context.sql, forumId));
 }
 
+async function purgeAllForums(context: StaffRouteContext): Promise<void> {
+  if (context.purge === undefined) {
+    return;
+  }
+
+  // Best effort with a short timeout; workers retry from the domain event (ADR 0006).
+  await context.purge.purge(await allForumTags(context.sql));
+}
+
 async function masksMutate(context: StaffRouteContext): Promise<Response> {
   const body: unknown = await context.request.json().catch(() => null);
   const action = actionOf(body);
@@ -405,10 +415,24 @@ async function masksMutate(context: StaffRouteContext): Promise<Response> {
   switch (action) {
     case "save":
       return mutationResponse(await saveMask(context.sql, context.session.memberId, body));
-    case "delete":
-      return mutationResponse(await deleteMask(context.sql, context.session.memberId, body));
-    case "link":
-      return mutationResponse(await linkGroupMask(context.sql, context.session.memberId, body));
+    case "delete": {
+      const result = await deleteMask(context.sql, context.session.memberId, body);
+
+      if (result.ok) {
+        await purgeAllForums(context);
+      }
+
+      return mutationResponse(result);
+    }
+    case "link": {
+      const result = await linkGroupMask(context.sql, context.session.memberId, body);
+
+      if (result.ok) {
+        await purgeAllForums(context);
+      }
+
+      return mutationResponse(result);
+    }
     case "cell": {
       const result = await saveMatrixCell(context.sql, context.session.memberId, body);
 

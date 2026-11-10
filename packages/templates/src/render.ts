@@ -1,6 +1,7 @@
 import type { CompiledTheme, CompiledThemeTemplate, TemplateViolation } from "./compile.ts";
 import { describeError } from "./compile.ts";
 import type { TemplateEngine, TemplateLimits } from "./engine.ts";
+import { OutputLimitExceededError } from "./engine.ts";
 import type { TemplateRuntime } from "./runtime.ts";
 import { sanitiseRenderedMarkup } from "./sanitise.ts";
 
@@ -38,21 +39,10 @@ export class TemplateRenderError extends Error {
   }
 }
 
-class OutputLimitExceededError extends Error {
-  constructor(bytes: number, limit: number) {
-    super(`template output limit exceeded: ${bytes} bytes > ${limit}`);
-    this.name = "OutputLimitExceededError";
-  }
-}
-
-/**
- * True for LiquidJS resource-limit failures (render, memory and parse limits throw an
- * `AssertionError` whose message ends in "limit exceeded", wrapped by the engine). ADR 0008:
- * a template that exceeds a limit falls back to the parent theme's version.
- */
-export function isLimitViolation(error: unknown): boolean {
+function errorChain(error: unknown): readonly Error[] {
   const queue: unknown[] = [error];
   const seen = new Set<unknown>();
+  const chain: Error[] = [];
 
   while (queue.length > 0) {
     const current = queue.shift();
@@ -62,10 +52,7 @@ export function isLimitViolation(error: unknown): boolean {
     }
 
     seen.add(current);
-
-    if (/limit exceeded/i.test(current.message)) {
-      return true;
-    }
+    chain.push(current);
 
     const original = (current as { originalError?: unknown }).originalError;
 
@@ -80,7 +67,21 @@ export function isLimitViolation(error: unknown): boolean {
     }
   }
 
-  return false;
+  return chain;
+}
+
+/**
+ * True for LiquidJS resource-limit failures (render, memory and parse limits throw an
+ * `AssertionError` whose message ends in "limit exceeded", wrapped by the engine). ADR 0008:
+ * a template that exceeds a limit falls back to the parent theme's version.
+ */
+export function isLimitViolation(error: unknown): boolean {
+  return errorChain(error).some((current) => /limit exceeded/i.test(current.message));
+}
+
+/** True when the emitter stopped at the byte budget, even after Liquid wraps the error. */
+export function isOutputLimitViolation(error: unknown): boolean {
+  return errorChain(error).some((current) => current instanceof OutputLimitExceededError);
 }
 
 /**
@@ -110,6 +111,7 @@ export async function renderThemeTemplate(input: RenderTemplateInput): Promise<R
       const html = await input.engine.render(candidate.parsed, input.viewModel, input.runtime, {
         renderLimit: limits.renderLimit,
         memoryLimit: limits.memoryLimit,
+        outputLimit: limits.outputLimit,
       });
       // ADR 0008: re-sanitise every rendered fragment before it is cached or served.
       const sanitised = sanitiseRenderedMarkup(html);
@@ -123,22 +125,18 @@ export async function renderThemeTemplate(input: RenderTemplateInput): Promise<R
         });
       }
 
-      const bytes = Buffer.byteLength(sanitised.html, "utf8");
-
-      if (bytes > limits.outputLimit) {
-        throw new OutputLimitExceededError(bytes, limits.outputLimit);
-      }
-
       return { html: sanitised.html, template: candidate, violations };
     } catch (error) {
-      if (!(error instanceof OutputLimitExceededError) && !isLimitViolation(error)) {
+      const outputViolation = isOutputLimitViolation(error);
+
+      if (!outputViolation && !isLimitViolation(error)) {
         throw error;
       }
 
       violations.push({
         template: input.name,
         theme: candidate.themeName,
-        kind: error instanceof OutputLimitExceededError ? "output" : "render",
+        kind: outputViolation ? "output" : "render",
         message: describeError(error),
       });
     }

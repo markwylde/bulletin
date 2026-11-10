@@ -255,13 +255,86 @@ describe("render cache", () => {
     expect((await cache.getOrRender(request)).status).toBe("hit");
   });
 
+  test("bypasses a warmed entry when the listener is lost during prepare", async () => {
+    const tags = tagSource();
+    const cache = createRenderCache({ tags: tags.source });
+
+    expect(await cache.getOrRender(fixed("variant-a", [], () => "cached"))).toMatchObject({
+      status: "miss",
+      html: "cached",
+    });
+
+    const result = await cache.getOrRender({
+      tags: [],
+      prepare: async () => {
+        tags.setTrusted(false);
+        return { key: "variant-a", data: undefined };
+      },
+      render: () => "fresh",
+    });
+
+    expect(result).toMatchObject({ status: "bypass", html: "fresh" });
+    expect(cache.hits).toBe(0);
+    expect(cache.bypasses).toBe(1);
+  });
+
+  test("does not store HTML rendered after the listener is lost", async () => {
+    const tags = tagSource();
+    const cache = createRenderCache({ tags: tags.source });
+
+    const result = await cache.getOrRender({
+      tags: [],
+      prepare: async () => ({ key: "variant-a", data: undefined }),
+      render: () => {
+        tags.setTrusted(false);
+        return "untrusted render";
+      },
+    });
+
+    expect(result).toMatchObject({ status: "bypass", html: "untrusted render" });
+    expect(cache.size).toBe(0);
+    expect(cache.bypasses).toBe(1);
+  });
+
+  test("does not serve warmed HTML when a tag moves during prepare", async () => {
+    const tags = tagSource({ board: "1" });
+    const cache = createRenderCache({ tags: tags.source });
+
+    expect(await cache.getOrRender(fixed("home", ["board"], () => "cached"))).toMatchObject({
+      status: "miss",
+      html: "cached",
+    });
+
+    let prepares = 0;
+
+    const result = await cache.getOrRender({
+      tags: ["board"],
+      prepare: async () => {
+        prepares += 1;
+
+        if (prepares === 1) {
+          tags.bump("board");
+        }
+
+        return { key: "home", data: undefined };
+      },
+      render: () => "fresh",
+    });
+
+    expect(result).toMatchObject({ status: "miss", html: "fresh" });
+    expect(result.versions.get("board")).toBe("2");
+    expect(cache.hits).toBe(0);
+  });
+
   test("awaits the perm backstop before trusting versions", async () => {
     const tags = tagSource();
     const cache = createRenderCache({ tags: tags.source });
 
     await cache.getOrRender(fixed("a", [], () => "A"));
 
-    expect(tags.permChecks).toBe(1);
+    // Once before the lookup, once after prepare and once after render (trust is rechecked
+    // after every await so a lost listener fails closed).
+    expect(tags.permChecks).toBe(3);
   });
 
   test("fails closed when the perm backstop cannot reach Postgres", async () => {

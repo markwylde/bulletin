@@ -2,6 +2,13 @@ import { forumTag } from "@bulletin/cache";
 import type { SQL } from "bun";
 import { loadForumTree } from "./tree-store.ts";
 
+/** Every forum surrogate key; a global permission change may affect any forum page. */
+export async function allForumTags(sql: SQL): Promise<readonly string[]> {
+  const tree = await loadForumTree(sql);
+
+  return tree.ids.map(forumTag);
+}
+
 /**
  * Every CDN surrogate key a forum page may carry: the forum and its subtree. A permission
  * change at a forum must purge the whole subtree, since descendants inherit the visibility
