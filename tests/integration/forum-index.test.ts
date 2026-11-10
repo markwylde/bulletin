@@ -185,6 +185,38 @@ integrationDescribe("board index view model", () => {
     });
   }, 30_000);
 
+  test("renders siblings in their configured position order after a reorder", async () => {
+    await withSeededDb(async (database) => {
+      const announcements = await forumIdByTitle(database, "Announcements");
+      const general = await forumIdByTitle(database, "General Discussion");
+
+      await database.sql`
+        UPDATE core.forums
+        SET position = CASE WHEN id = ${general} THEN 0 ELSE 10 END
+        WHERE id IN (${announcements}, ${general})
+      `;
+
+      const trusted = { version: () => "0", isTrusted: () => true };
+      const result = await renderHomeRoute({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        session: await memberSession(database, "member-1"),
+        pluginsGeneration: 1,
+        colourScheme: "system",
+        cache: createRenderCache({ tags: trusted }),
+        tagVersions: trusted,
+      });
+
+      const generalAt = result.html.indexOf(`data-forum-link="${general}"`);
+      const announcementsAt = result.html.indexOf(`data-forum-link="${announcements}"`);
+
+      expect(generalAt).toBeGreaterThan(-1);
+      expect(announcementsAt).toBeGreaterThan(-1);
+      expect(generalAt).toBeLessThan(announcementsAt);
+    });
+  }, 30_000);
+
   test("registers guest, member and hidden-permission variants without leaking forums", async () => {
     await withSeededDb(async (database) => {
       const member = await memberSession(database, "member-1");

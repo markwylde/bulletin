@@ -14,7 +14,6 @@ import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { forumContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
-import type { ShellVariant } from "../http/cache.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";

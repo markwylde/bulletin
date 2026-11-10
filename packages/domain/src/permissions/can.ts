@@ -8,6 +8,7 @@ import {
 import { isGuestPrincipal, type ViewerPrincipal } from "./principal.ts";
 import { isPermissionKey, type PermissionKey } from "./registry.ts";
 import { capabilityAnswer, loadPermissionSnapshot, type PermissionSnapshot } from "./snapshot.ts";
+import { loadMemberGroups } from "./store.ts";
 import type { ForumTree } from "./tree.ts";
 
 /**
@@ -24,44 +25,86 @@ export interface PermissionScope {
   readonly snapshot?: PermissionSnapshot;
 }
 
+/** A prefix restriction is evaluated against the same compiled group set as forum actions. */
+export interface PrefixScope {
+  readonly prefixId: string;
+}
+
+async function canViewPrefix(
+  sql: SQL,
+  principal: ViewerPrincipal,
+  prefixId: string,
+): Promise<boolean> {
+  const groups = await loadMemberGroups(sql, principal);
+  const groupIds = new Set(groups.map((group) => group.groupId));
+  const restricted = (await sql`
+    SELECT group_id FROM core.prefix_groups WHERE prefix_id = ${prefixId}
+  `) as Array<{ group_id: string }>;
+
+  return restricted.length === 0 || restricted.some((row) => groupIds.has(row.group_id));
+}
+
 /**
  * The single authorisation entry point (ADR 0005). Callers never inspect groups or masks.
- * Forum-level checks without a scope are denied.
+ * Forum-level checks without a scope are denied. Prefix availability is checked here too, so
+ * restricted prefixes cannot be filtered by ad-hoc group checks in a view.
  */
-export async function can(
+export function can(
+  sql: SQL,
+  principal: ViewerPrincipal,
+  action: "view_prefix",
+  scope: PrefixScope,
+): Promise<boolean>;
+export function can(
   sql: SQL,
   principal: ViewerPrincipal,
   action: PermissionAction,
   scope?: PermissionScope,
+): Promise<boolean>;
+export async function can(
+  sql: SQL,
+  principal: ViewerPrincipal,
+  action: PermissionAction | "view_prefix",
+  scope?: PermissionScope | PrefixScope,
 ): Promise<boolean> {
+  if (action === "view_prefix") {
+    if (scope === undefined || !("prefixId" in scope)) {
+      return false;
+    }
+
+    return canViewPrefix(sql, principal, scope.prefixId);
+  }
+
+  const forumScope = scope as PermissionScope | undefined;
+
   if (isModeratorPower(action)) {
-    if (scope === undefined) {
+    if (forumScope === undefined) {
       return false;
     }
 
     const snapshot =
-      scope.snapshot ??
+      forumScope.snapshot ??
       (await loadPermissionSnapshot(sql, principal, {
-        tree: scope.tree,
-        sessionId: scope.sessionId ?? null,
+        tree: forumScope.tree,
+        sessionId: forumScope.sessionId ?? null,
       }));
 
-    return capabilityAnswer(snapshot, scope.forumId, action);
+    return capabilityAnswer(snapshot, forumScope.forumId, action);
   }
 
   if (isForumAction(action)) {
-    if (scope === undefined) {
+    if (forumScope === undefined) {
       return false;
     }
 
     const snapshot =
-      scope.snapshot ??
+      forumScope.snapshot ??
       (await loadPermissionSnapshot(sql, principal, {
-        tree: scope.tree,
-        sessionId: scope.sessionId ?? null,
+        tree: forumScope.tree,
+        sessionId: forumScope.sessionId ?? null,
       }));
 
-    return capabilityAnswer(snapshot, scope.forumId, action);
+    return capabilityAnswer(snapshot, forumScope.forumId, action);
   }
 
   if (!isPermissionKey(action)) {

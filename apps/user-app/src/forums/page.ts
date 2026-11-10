@@ -1,4 +1,5 @@
 import {
+  type ForumPrefix,
   type ForumRecord,
   listForumModerators,
   listForumPrefixes,
@@ -137,7 +138,27 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
       )
     : [];
   const audience = announcementAudienceClass(announcements, groupIds, input.now);
-  const visibilityKey = `${view.visibilityKey()}|audience:${audience}`;
+  const allPrefixes =
+    locked || input.forum.type === "category"
+      ? []
+      : await listForumPrefixes(input.sql, input.forum.id, input.locale);
+  const prefixes: ForumPrefix[] = [];
+
+  for (const prefix of allPrefixes) {
+    if (await can(input.sql, input.principal, "view_prefix", { prefixId: prefix.id })) {
+      prefixes.push(prefix);
+    }
+  }
+
+  const prefixKey = Bun.hash
+    .xxHash64(
+      prefixes
+        .map((prefix) => prefix.id)
+        .sort()
+        .join("\u0000"),
+    )
+    .toString(16);
+  const visibilityKey = `${view.visibilityKey()}|audience:${audience}|prefixes:${prefixKey}`;
   const ttlMs = announcementsEnabled
     ? nextAnnouncementTransitionMs(announcements, input.now)
     : null;
@@ -170,14 +191,9 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     };
   }
 
-  const [prefixes, moderators] = await Promise.all([
-    input.forum.type === "category"
-      ? Promise.resolve([])
-      : listForumPrefixes(input.sql, input.forum.id, groupIds, input.locale),
-    input.forum.showModerators
-      ? listForumModerators(input.sql, input.forum.id, ancestorIds)
-      : Promise.resolve([]),
-  ]);
+  const moderators = input.forum.showModerators
+    ? await listForumModerators(input.sql, input.forum.id, ancestorIds)
+    : [];
   const activePrefix =
     input.prefix !== null && prefixes.some((prefix) => prefix.key === input.prefix)
       ? input.prefix

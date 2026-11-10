@@ -219,11 +219,8 @@ integrationDescribe("forum page", () => {
         throw new Error("Missing leaf forum");
       }
 
-      const result = await render(
-        database,
-        await forumHref(database, leaf),
-        await memberSession(database, "member-1"),
-      );
+      const member = await memberSession(database, "member-1");
+      const result = await render(database, await forumHref(database, leaf), member);
 
       expect(result.kind).toBe("page");
 
@@ -241,6 +238,27 @@ integrationDescribe("forum page", () => {
       }
 
       expect(result.html).toContain("Level 6");
+
+      // Every normal forum links to its direct children, so the five levels can be navigated
+      // from the top without going back to the index.
+      const chain = ["2", ...ids];
+
+      for (let index = 0; index < chain.length - 1; index += 1) {
+        const parentId = chain[index];
+        const childId = chain[index + 1];
+
+        if (parentId === undefined || childId === undefined) {
+          continue;
+        }
+
+        const parentPage = await render(database, await forumHref(database, parentId), member);
+
+        expect(parentPage.kind).toBe("page");
+
+        if (parentPage.kind === "page") {
+          expect(parentPage.html).toContain(`data-forum-child="${childId}"`);
+        }
+      }
     });
   }, 30_000);
 
@@ -308,6 +326,70 @@ integrationDescribe("forum page", () => {
       if (adminPage.kind === "page") {
         expect(adminPage.html).toContain('data-prefix-key="staff_only"');
         expect(adminPage.html).toContain("Staff only");
+      }
+    });
+  }, 30_000);
+
+  test("keeps a group-restricted prefix out of a regular member's warm-cache variant", async () => {
+    await withSeededDb(async (database) => {
+      const [prefix] = (await database.sql`
+        INSERT INTO core.prefixes (key, colour) VALUES ('vip_only', '#c0a000') RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (prefix === undefined) {
+        throw new Error("Could not create prefix");
+      }
+
+      await database.sql`
+        INSERT INTO core.prefix_labels (prefix_id, locale, label)
+        VALUES (${prefix.id}, 'en', 'VIP only')
+      `;
+      await database.sql`
+        INSERT INTO core.forum_prefixes (forum_id, prefix_id) VALUES (2, ${prefix.id})
+      `;
+      await database.sql`
+        INSERT INTO core.prefix_groups (prefix_id, group_id)
+        SELECT ${prefix.id}, id FROM core.groups WHERE key = 'vip'
+      `;
+
+      const vipId = await createMember(database, "VIP Prefix Reader", ["members", "vip"]);
+      const vip: UserAppSessionContext = {
+        memberId: vipId,
+        sessionId: "0",
+        reauthAt: new Date().toISOString(),
+        locale: "en",
+        displayName: "VIP Prefix Reader",
+      };
+      const regular = await memberSession(database, "member-1");
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const ref = await forumHref(database, "2");
+        const first = await render(database, ref, vip, { cache, tagVersions: versions });
+        const second = await render(database, ref, regular, { cache, tagVersions: versions });
+        const warm = await render(database, ref, vip, { cache, tagVersions: versions });
+
+        expect(first.kind).toBe("page");
+        expect(second.kind).toBe("page");
+        expect(warm.kind).toBe("page");
+
+        if (first.kind !== "page" || second.kind !== "page" || warm.kind !== "page") {
+          return;
+        }
+
+        expect(first.cache).toBe("miss");
+        expect(first.html).toContain('data-prefix-key="vip_only"');
+        expect(second.cache).toBe("miss");
+        expect(second.variant).not.toBe(first.variant);
+        expect(second.html).not.toContain('data-prefix-key="vip_only"');
+        expect(warm.cache).toBe("hit");
+      } finally {
+        await versions.close();
       }
     });
   }, 30_000);

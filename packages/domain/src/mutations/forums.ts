@@ -11,6 +11,17 @@ export interface ForumSettingsChange {
   readonly affectedForumIds: readonly string[];
 }
 
+export interface PrefixChange {
+  /** Forums whose prefix set uses this prefix; only their pages render the labels. */
+  readonly affectedForumIds: readonly string[];
+}
+
+/** Prefix labels, colours and group restrictions live only on forum pages. */
+export const prefixMutation: Mutation<PrefixChange, unknown> = {
+  name: "prefix.update",
+  tags: (input) => uniqueTags(input.affectedForumIds.map(forumTag)),
+};
+
 export interface AnnouncementChange {
   readonly announcementId: string;
   readonly scope: "global" | "forums";

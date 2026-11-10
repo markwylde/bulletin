@@ -67,7 +67,9 @@ Astro.response.status = result.status;
   body={result.html}
   visitor={session === null ? "guest" : "member"}
   serverLocale={locale}
-  localeSource={Astro.locals.localeSource}
+  {...(Astro.locals.localeSource === undefined
+    ? {}
+    : { localeSource: Astro.locals.localeSource })}
 >
   <script>import "../../forums/client.ts";</script>
   <script>import "../../announcements/client.ts";</script>

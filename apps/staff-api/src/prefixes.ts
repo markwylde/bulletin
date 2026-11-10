@@ -1,3 +1,4 @@
+import { prefixMutation, runMutation } from "@bulletin/domain/mutations";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
 
@@ -36,6 +37,14 @@ const COLOUR = /^#[0-9a-fA-F]{6}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function prefixForumIds(sql: SQL, prefixId: string): Promise<readonly string[]> {
+  const rows = (await sql`
+    SELECT forum_id::text AS forum_id FROM core.forum_prefixes WHERE prefix_id = ${prefixId}
+  `) as Array<{ forum_id: string }>;
+
+  return rows.map((row) => row.forum_id);
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -162,61 +171,68 @@ export async function savePrefix(
     }
   }
 
-  try {
-    return await sql.begin(async (tx) => {
-      let prefixId = id;
+  const affectedForumIds = id === null ? [] : await prefixForumIds(sql, id);
 
-      if (prefixId === null) {
-        const [row] = (await tx`
+  try {
+    return await runMutation({
+      sql,
+      mutation: prefixMutation,
+      input: { affectedForumIds },
+      apply: async (tx) => {
+        let prefixId = id;
+
+        if (prefixId === null) {
+          const [row] = (await tx`
           INSERT INTO core.prefixes (key, colour) VALUES (${key}, ${colour}) RETURNING id
         `) as Array<{ id: string }>;
 
-        if (row === undefined) {
-          throw new Error("Prefix insert returned no row");
-        }
+          if (row === undefined) {
+            throw new Error("Prefix insert returned no row");
+          }
 
-        prefixId = row.id;
-      } else {
-        const [row] = (await tx`
+          prefixId = row.id;
+        } else {
+          const [row] = (await tx`
           SELECT id FROM core.prefixes WHERE id = ${prefixId} FOR UPDATE
         `) as Array<{ id: string }>;
 
-        if (row === undefined) {
-          return { ok: false, code: "not_found" } as const;
+          if (row === undefined) {
+            return { ok: false, code: "not_found" } as const;
+          }
+
+          await tx`UPDATE core.prefixes SET key = ${key}, colour = ${colour} WHERE id = ${prefixId}`;
         }
 
-        await tx`UPDATE core.prefixes SET key = ${key}, colour = ${colour} WHERE id = ${prefixId}`;
-      }
+        await tx`DELETE FROM core.prefix_labels WHERE prefix_id = ${prefixId}`;
 
-      await tx`DELETE FROM core.prefix_labels WHERE prefix_id = ${prefixId}`;
+        for (const locale of PREFIX_LOCALES) {
+          const label = labels[locale];
 
-      for (const locale of PREFIX_LOCALES) {
-        const label = labels[locale];
-
-        if (label !== undefined) {
-          await tx`
+          if (label !== undefined) {
+            await tx`
             INSERT INTO core.prefix_labels (prefix_id, locale, label)
             VALUES (${prefixId}, ${locale}, ${label})
           `;
+          }
         }
-      }
 
-      await tx`DELETE FROM core.prefix_groups WHERE prefix_id = ${prefixId}`;
+        await tx`DELETE FROM core.prefix_groups WHERE prefix_id = ${prefixId}`;
 
-      for (const groupId of groupIds) {
-        await tx`
+        for (const groupId of groupIds) {
+          await tx`
           INSERT INTO core.prefix_groups (prefix_id, group_id) VALUES (${prefixId}, ${groupId})
         `;
-      }
+        }
 
-      await writeAdminLog(tx, {
-        actorMemberId,
-        action: id === null ? "prefix.create" : "prefix.update",
-        targetType: "prefix",
-        targetId: prefixId,
-        summary: { key, colour, labels, groupIds },
-      });
-      return { ok: true } as const;
+        await writeAdminLog(tx, {
+          actorMemberId,
+          action: id === null ? "prefix.create" : "prefix.update",
+          targetType: "prefix",
+          targetId: prefixId,
+          summary: { key, colour, labels, groupIds },
+        });
+        return { ok: true } as const;
+      },
     });
   } catch (error) {
     return { ok: false, code: isUniqueViolation(error) ? "duplicate_key" : "invalid_request" };
@@ -232,23 +248,30 @@ export async function deletePrefix(
     return { ok: false, code: "invalid_request" };
   }
 
-  return sql.begin(async (tx) => {
-    const [prefix] = (await tx`
-      SELECT id, key FROM core.prefixes WHERE id = ${input.id} FOR UPDATE
-    `) as Array<{ id: string; key: string }>;
+  const affectedForumIds = await prefixForumIds(sql, input.id);
 
-    if (prefix === undefined) {
-      return { ok: false, code: "not_found" } as const;
-    }
+  return runMutation({
+    sql,
+    mutation: prefixMutation,
+    input: { affectedForumIds },
+    apply: async (tx) => {
+      const [prefix] = (await tx`
+        SELECT id, key FROM core.prefixes WHERE id = ${input.id} FOR UPDATE
+      `) as Array<{ id: string; key: string }>;
 
-    await tx`DELETE FROM core.prefixes WHERE id = ${input.id}`;
-    await writeAdminLog(tx, {
-      actorMemberId,
-      action: "prefix.delete",
-      targetType: "prefix",
-      targetId: prefix.id,
-      summary: { key: prefix.key },
-    });
-    return { ok: true } as const;
+      if (prefix === undefined) {
+        return { ok: false, code: "not_found" } as const;
+      }
+
+      await tx`DELETE FROM core.prefixes WHERE id = ${input.id}`;
+      await writeAdminLog(tx, {
+        actorMemberId,
+        action: "prefix.delete",
+        targetType: "prefix",
+        targetId: prefix.id,
+        summary: { key: prefix.key },
+      });
+      return { ok: true } as const;
+    },
   });
 }

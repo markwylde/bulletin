@@ -74,6 +74,21 @@
         <div data-topic-list-empty>{{ emptyState }}</div>
       {% endif %}
 
+      {% unless isCategory %}
+        {% if children.size > 0 %}
+          <section class="bl-card" data-subforums-block>
+            <h2 class="bl-card__title">{% t "index.subforums" %}</h2>
+            <ul class="bl-forum-list" data-forum-children>
+              {% for child in children %}
+                <li class="bl-forum-list__item">
+                  <a class="bl-forum-list__link" href="{{ child.href }}" data-forum-child="{{ child.id }}">{{ child.title }}</a>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+      {% endunless %}
+
       {% if moderators.size > 0 %}
         <section class="bl-card" data-moderators aria-label="{% t "forum.moderators" %}">
           <h2 class="bl-card__title">{% t "forum.moderators" %}</h2>

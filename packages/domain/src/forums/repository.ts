@@ -98,6 +98,48 @@ function toForum(row: ForumRow): ForumRecord {
   };
 }
 
+/** Sibling order is `position`, then id; path labels are ids and must never drive display order. */
+function orderBySiblings(forums: readonly ForumRecord[]): readonly ForumRecord[] {
+  const byParent = new Map<string | null, ForumRecord[]>();
+
+  for (const forum of forums) {
+    const siblings = byParent.get(forum.parentId) ?? [];
+    siblings.push(forum);
+    byParent.set(forum.parentId, siblings);
+  }
+
+  for (const siblings of byParent.values()) {
+    siblings.sort(
+      (left, right) => left.position - right.position || left.id.localeCompare(right.id),
+    );
+  }
+
+  const ordered: ForumRecord[] = [];
+  const seen = new Set<string>();
+  const walk = (parentId: string | null): void => {
+    for (const forum of byParent.get(parentId) ?? []) {
+      if (seen.has(forum.id)) {
+        continue;
+      }
+
+      seen.add(forum.id);
+      ordered.push(forum);
+      walk(forum.id);
+    }
+  };
+
+  walk(null);
+
+  // Defensive: a visible orphan (which the ancestor rule should prevent) still renders once.
+  for (const forum of forums) {
+    if (!seen.has(forum.id)) {
+      ordered.push(forum);
+    }
+  }
+
+  return ordered;
+}
+
 export interface ForumPrefix {
   readonly id: string;
   readonly key: string;
@@ -118,64 +160,45 @@ interface PrefixRow {
   readonly colour: string;
   readonly locale: string | null;
   readonly label: string | null;
-  readonly group_id: string | null;
 }
 
-/**
- * Prefixes enabled on a forum and offered to this viewer (ADR 0005: group-restricted prefixes
- * are filtered from the view model, never from the shared HTML).
- */
+/** Every prefix enabled on a forum; the caller filters availability through `can()`. */
 export async function listForumPrefixes(
   sql: SQL,
   forumId: string,
-  groupIds: readonly string[],
   locale: string,
 ): Promise<readonly ForumPrefix[]> {
   const rows = (await sql`
-    SELECT p.id, p.key, p.colour, pl.locale, pl.label, pg.group_id
+    SELECT p.id, p.key, p.colour, pl.locale, pl.label
     FROM core.forum_prefixes fp
     JOIN core.prefixes p ON p.id = fp.prefix_id
     LEFT JOIN core.prefix_labels pl ON pl.prefix_id = p.id
-    LEFT JOIN core.prefix_groups pg ON pg.prefix_id = p.id
     WHERE fp.forum_id = ${forumId}
-    ORDER BY fp.position, p.display_order, p.id, pl.locale, pg.group_id
+    ORDER BY fp.position, p.display_order, p.id, pl.locale
   `) as PrefixRow[];
 
-  const grouped = new Map<
-    string,
-    { key: string; colour: string; labels: Map<string, string>; groups: Set<string> }
-  >();
+  const grouped = new Map<string, { key: string; colour: string; labels: Map<string, string> }>();
 
   for (const row of rows) {
     const entry = grouped.get(row.id) ?? {
       key: row.key,
       colour: row.colour,
       labels: new Map<string, string>(),
-      groups: new Set<string>(),
     };
 
     if (row.locale !== null && row.label !== null) {
       entry.labels.set(row.locale, row.label);
     }
 
-    if (row.group_id !== null) {
-      entry.groups.add(row.group_id);
-    }
-
     grouped.set(row.id, entry);
   }
 
-  return [...grouped.entries()]
-    .filter(
-      ([, entry]) =>
-        entry.groups.size === 0 || [...entry.groups].some((groupId) => groupIds.includes(groupId)),
-    )
-    .map(([id, entry]) => ({
-      id,
-      key: entry.key,
-      label: entry.labels.get(locale) ?? entry.labels.get("en") ?? entry.key,
-      colour: entry.colour,
-    }));
+  return [...grouped.entries()].map(([id, entry]) => ({
+    id,
+    key: entry.key,
+    label: entry.labels.get(locale) ?? entry.labels.get("en") ?? entry.key,
+    colour: entry.colour,
+  }));
 }
 
 interface ModeratorRow {
@@ -250,7 +273,7 @@ export async function listVisibleForums(
     ORDER BY f.path, f.position, f.id
   `) as ForumRow[];
 
-  return rows.filter((row) => capability.has(row.id, "show")).map(toForum);
+  return orderBySiblings(rows.filter((row) => capability.has(row.id, "show")).map(toForum));
 }
 
 export async function readVisibleForum(
