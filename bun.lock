@@ -9,6 +9,7 @@
         "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
         "@bulletin/domain": "workspace:*",
+        "@bulletin/flags": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "@bulletin/test-utils": "workspace:*",
         "@types/bun": "1.4.4",
@@ -32,6 +33,7 @@
         "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
         "@bulletin/domain": "workspace:*",
+        "@bulletin/flags": "workspace:*",
       },
     },
     "apps/staff-app": {
@@ -59,6 +61,7 @@
         "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
         "@bulletin/domain": "workspace:*",
+        "@bulletin/flags": "workspace:*",
       },
     },
     "apps/user-app": {
@@ -78,6 +81,7 @@
       "dependencies": {
         "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
+        "@bulletin/flags": "workspace:*",
       },
     },
     "mocks/cdn": {
@@ -144,8 +148,10 @@
     "packages/db": {
       "name": "@bulletin/db",
       "dependencies": {
+        "@bulletin/cache": "workspace:*",
         "@bulletin/config": "workspace:*",
         "@bulletin/domain": "workspace:*",
+        "@bulletin/flags": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "pg-boss": "12.38.1",
       },
@@ -160,6 +166,9 @@
     },
     "packages/flags": {
       "name": "@bulletin/flags",
+      "dependencies": {
+        "@bulletin/cache": "workspace:*",
+      },
     },
     "packages/i18n": {
       "name": "@bulletin/i18n",
@@ -180,6 +189,7 @@
     "packages/templates": {
       "name": "@bulletin/templates",
       "dependencies": {
+        "@bulletin/flags": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "liquidjs": "^10.30.1",
       },
