@@ -64,7 +64,7 @@ integrationDescribe("staff auto-promotion", () => {
 
       const clicked = await view.evaluate<boolean>(`(() => {
         const row = [...document.querySelectorAll('[data-promotion-row]')].find((candidate) =>
-          (candidate.textContent ?? '').includes('days_since_joining ≥ ${threshold}')
+          (candidate.textContent ?? '').includes('≥ ${threshold}')
         );
         const button = row?.querySelector('[data-promotion-edit]');
         if (!(button instanceof HTMLElement)) return false;

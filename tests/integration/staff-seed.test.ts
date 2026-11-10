@@ -4,7 +4,9 @@ import {
   adminLogSeedModule,
   baseSeedModule,
   flagsSeedModule,
+  groupsSeedModule,
   membersSeedModule,
+  permissionFixtureSeedModule,
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
@@ -23,7 +25,13 @@ integrationDescribe("staff console seed", () => {
     await withTestDatabase({ adminUrl, prefix: "staff_seed" }, async ({ sql }) => {
       const result = await runSeeds({
         sql,
-        registry: new SeedRegistry([baseSeedModule, membersSeedModule, adminLogSeedModule]),
+        registry: new SeedRegistry([
+          baseSeedModule,
+          permissionFixtureSeedModule,
+          groupsSeedModule,
+          membersSeedModule,
+          adminLogSeedModule,
+        ]),
       });
 
       expect(result.ran).toBe(true);

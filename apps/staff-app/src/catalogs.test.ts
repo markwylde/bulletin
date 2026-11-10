@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import {
+  GROUP_SETTINGS,
+  promotionCriteria,
+  SECTION_LABEL_KEYS,
+} from "@bulletin/domain/permissions";
 import { type Catalog, LOCALES, type Locale } from "@bulletin/i18n";
 import { STAFF_CATALOGS } from "./catalogs.ts";
 
@@ -36,6 +41,18 @@ const REQUIRED_KEYS = [
   "staff.flags.log.change",
   "staff.flags.group.guests",
   "staff.flags.group.superModerators",
+  "staff.nav.groups",
+  "staff.nav.groupSettings",
+  "staff.nav.permissions",
+  "staff.nav.memberGroups",
+  "staff.nav.moderators",
+  "staff.nav.promotions",
+  "staff.groups.titlePage",
+  "staff.groups.settings.title",
+  "staff.masks.title",
+  "staff.memberGroups.title",
+  "staff.moderators.title",
+  "staff.promotions.title",
   "ui.form.error.required",
   "ui.form.error.min",
   "ui.form.error.max",
@@ -58,6 +75,31 @@ describe("staff catalogs", () => {
       for (const locale of LOCALES) {
         expect(STAFF_CATALOGS[locale][key]).toBeString();
         expect(STAFF_CATALOGS[locale][key]?.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("translates every group-settings, section, power and criterion label", () => {
+    const keys = new Set<string>();
+
+    for (const definition of GROUP_SETTINGS) {
+      keys.add(definition.labelKey);
+    }
+
+    for (const key of Object.values(SECTION_LABEL_KEYS)) {
+      keys.add(key);
+    }
+
+    for (const criterion of promotionCriteria.list()) {
+      keys.add(criterion.labelKey);
+    }
+
+    expect(keys.size).toBeGreaterThan(50);
+
+    for (const key of keys) {
+      for (const locale of LOCALES) {
+        const catalog: Catalog = STAFF_CATALOGS[locale];
+        expect(catalog[key]?.trim().length ?? 0).toBeGreaterThan(0);
       }
     }
   });

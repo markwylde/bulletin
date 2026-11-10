@@ -1,0 +1,280 @@
+import {
+  type ForumAction,
+  forumActionMask,
+  MODERATOR_POWERS,
+  moderatorSettingKey,
+} from "@bulletin/domain/permissions";
+import type { SQL } from "bun";
+import type { SeedModule } from "./framework.ts";
+
+interface GroupSeed {
+  readonly key: string;
+  readonly title: string;
+  readonly displayOrder: number;
+  readonly colour: string | null;
+  readonly icon: string | null;
+}
+
+const GROUPS: readonly GroupSeed[] = [
+  { key: "guests", title: "Guests", displayOrder: 10, colour: null, icon: null },
+  {
+    key: "members",
+    title: "Members",
+    displayOrder: 20,
+    colour: null,
+    icon: "user",
+  },
+  {
+    key: "regulars",
+    title: "Regulars",
+    displayOrder: 25,
+    colour: "#2f855a",
+    icon: "star",
+  },
+  { key: "vip", title: "VIP", displayOrder: 30, colour: "#c0a000", icon: "crown" },
+  {
+    key: "banned",
+    title: "Banned",
+    displayOrder: 40,
+    colour: "#a02a2a",
+    icon: "ban",
+  },
+  {
+    key: "moderators",
+    title: "Moderators",
+    displayOrder: 45,
+    colour: "#3157c7",
+    icon: "shield",
+  },
+  {
+    key: "super_moderators",
+    title: "Super Moderators",
+    displayOrder: 50,
+    colour: "#7d3fc4",
+    icon: "shield",
+  },
+  {
+    key: "administrators",
+    title: "Administrators",
+    displayOrder: 60,
+    colour: "#a02a2a",
+    icon: "key",
+  },
+];
+
+const MASKS = [
+  {
+    key: "guest",
+    title: "Guest",
+    description: "Read-only access for guests.",
+    displayOrder: 5,
+  },
+  {
+    key: "standard",
+    title: "Standard",
+    description: "Read and post access for members.",
+    displayOrder: 10,
+  },
+  {
+    key: "staff",
+    title: "Staff",
+    description: "Full access for staff groups.",
+    displayOrder: 20,
+  },
+] as const;
+
+const GUEST_GROUPS = ["guests"];
+const STANDARD_GROUPS = ["members", "regulars", "vip", "moderators", "super_moderators"];
+const STAFF_GROUPS = ["administrators", "super_moderators"];
+
+async function groupIds(sql: SQL): Promise<Map<string, string>> {
+  const rows = (await sql`
+    SELECT key, id FROM core.groups
+  `) as Array<{ key: string; id: string }>;
+  return new Map(rows.map((row) => [row.key, row.id]));
+}
+
+async function setForumMatrix(
+  sql: SQL,
+  forumId: string,
+  maskId: string,
+  actions: readonly ForumAction[],
+  inherits = false,
+): Promise<void> {
+  await sql`
+    INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+    VALUES (${forumId}, ${maskId}, ${forumActionMask(actions)}, ${inherits})
+    ON CONFLICT (forum_id, mask_id) DO UPDATE
+      SET actions = EXCLUDED.actions, inherits = EXCLUDED.inherits, updated_at = now()
+  `;
+}
+
+/**
+ * Groups, masks, the seeded forum matrix, global moderator powers and promotion rules.
+ * Runs after the fixture forums and before members, so `Members` is promoted to `Regulars`.
+ */
+export const groupsSeedModule: SeedModule = {
+  name: "groups",
+  dependsOn: ["base", "permission-fixtures"],
+  async run({ sql }) {
+    for (const group of GROUPS) {
+      await sql`
+        INSERT INTO core.groups (key, title, is_system, display_order, name_colour, icon)
+        VALUES (
+          ${group.key}, ${group.title},
+          ${["guests", "members", "banned", "super_moderators", "administrators"].includes(group.key)},
+          ${group.displayOrder}, ${group.colour}, ${group.icon}
+        )
+        ON CONFLICT (key) DO UPDATE
+          SET title = EXCLUDED.title,
+              display_order = EXCLUDED.display_order,
+              name_colour = EXCLUDED.name_colour,
+              icon = EXCLUDED.icon
+      `;
+    }
+
+    const ids = await groupIds(sql);
+    const masks = new Map<string, string>();
+
+    for (const mask of MASKS) {
+      const [row] = (await sql`
+        INSERT INTO core.masks (key, title, description, display_order)
+        VALUES (${mask.key}, ${mask.title}, ${mask.description}, ${mask.displayOrder})
+        ON CONFLICT (key) DO UPDATE
+          SET title = EXCLUDED.title,
+              description = EXCLUDED.description,
+              display_order = EXCLUDED.display_order
+        RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (row === undefined) {
+        throw new Error(`Could not seed mask ${mask.key}`);
+      }
+
+      masks.set(mask.key, row.id);
+    }
+
+    for (const [maskKey, groupKeys] of [
+      ["guest", GUEST_GROUPS],
+      ["standard", STANDARD_GROUPS],
+      ["staff", STAFF_GROUPS],
+    ] as const) {
+      const maskId = masks.get(maskKey);
+
+      if (maskId === undefined) {
+        throw new Error(`Missing mask ${maskKey}`);
+      }
+
+      for (const groupKey of groupKeys) {
+        const groupId = ids.get(groupKey);
+
+        if (groupId === undefined) {
+          throw new Error(`Missing group ${groupKey}`);
+        }
+
+        await sql`
+          INSERT INTO core.group_masks (group_id, mask_id)
+          VALUES (${groupId}, ${maskId})
+          ON CONFLICT DO NOTHING
+        `;
+      }
+    }
+
+    const forums = (await sql`
+      SELECT id FROM core.forums ORDER BY id
+    `) as Array<{ id: string }>;
+    const guest = masks.get("guest");
+    const standard = masks.get("standard");
+    const staff = masks.get("staff");
+
+    if (guest !== undefined && forums[0] !== undefined) {
+      await setForumMatrix(sql, forums[0].id, guest, ["show", "read"]);
+    }
+
+    if (standard !== undefined && forums[0] !== undefined) {
+      await setForumMatrix(sql, forums[0].id, standard, ["show", "read"]);
+
+      for (const forum of forums.slice(1, 3)) {
+        await setForumMatrix(sql, forum.id, standard, ["show", "read", "reply", "upload", "vote"]);
+      }
+    }
+
+    if (staff !== undefined && forums[0] !== undefined) {
+      await setForumMatrix(sql, forums[0].id, staff, [
+        "show",
+        "read",
+        "start",
+        "reply",
+        "upload",
+        "download",
+        "vote",
+      ]);
+    }
+
+    for (const groupKey of ["super_moderators", "administrators"]) {
+      const groupId = ids.get(groupKey);
+
+      if (groupId === undefined) {
+        continue;
+      }
+
+      for (const power of MODERATOR_POWERS) {
+        await sql`
+          INSERT INTO core.group_settings (group_id, key, value)
+          VALUES (${groupId}, ${moderatorSettingKey(power)}, 'true'::jsonb)
+          ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        `;
+      }
+    }
+
+    const displayColours: Array<[string, string]> = [
+      ["regulars", "green"],
+      ["vip", "gold"],
+      ["moderators", "blue"],
+    ];
+
+    for (const [groupKey, colour] of displayColours) {
+      const groupId = ids.get(groupKey);
+
+      if (groupId === undefined) {
+        continue;
+      }
+
+      await sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${groupId}, 'display.name_colour', to_jsonb(${colour}::text))
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+      `;
+    }
+
+    const members = ids.get("members");
+    const regulars = ids.get("regulars");
+    const vip = ids.get("vip");
+
+    for (const [from, to, days] of [
+      [members, regulars, 30],
+      [regulars, vip, 180],
+    ] as const) {
+      if (from === undefined || to === undefined) {
+        continue;
+      }
+
+      const existing = (await sql`
+        SELECT 1
+        FROM core.promotion_rules
+        WHERE from_group_id = ${from} AND to_group_id = ${to}
+        LIMIT 1
+      `) as unknown[];
+
+      if (existing.length === 0) {
+        await sql`
+          INSERT INTO core.promotion_rules (
+            from_group_id, to_group_id, criteria, position, enabled
+          ) VALUES (
+            ${from}, ${to}, ${{ days_since_joining: days }}, ${days}, true
+          )
+        `;
+      }
+    }
+  },
+};

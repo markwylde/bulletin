@@ -30,5 +30,5 @@
 
 ## 5. Strings and seed
 
-- [ ] 5.1 Add en/es/fr strings for every registry entry label and staff screen; verify completeness
-- [ ] 5.2 Seed groups (Guests, Members, Regulars, VIP, Moderators, Super Moderators, Administrators, Banned), masks, promotion rules and moderator assignments matching the darkauth-mock profiles; verify after `docker compose up --watch`
+- [x] 5.1 Add en/es/fr strings for every registry entry label and staff screen; verify completeness
+- [x] 5.2 Seed groups (Guests, Members, Regulars, VIP, Moderators, Super Moderators, Administrators, Banned), masks, promotion rules and moderator assignments matching the darkauth-mock profiles; verify after `docker compose up --watch`

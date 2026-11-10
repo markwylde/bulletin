@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   baseSeedModule,
+  groupsSeedModule,
   membersSeedModule,
+  permissionFixtureSeedModule,
   runSeeds,
   SEEDED_PROFILES,
   SeedRegistry,
@@ -21,7 +23,12 @@ integrationDescribe("member seed", () => {
     await withTestDatabase({ adminUrl, prefix: "member_seed" }, async ({ sql }) => {
       await runSeeds({
         sql,
-        registry: new SeedRegistry([baseSeedModule, membersSeedModule]),
+        registry: new SeedRegistry([
+          baseSeedModule,
+          permissionFixtureSeedModule,
+          groupsSeedModule,
+          membersSeedModule,
+        ]),
       });
 
       const members = (await sql`

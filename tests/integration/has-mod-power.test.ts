@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   baseSeedModule,
   createSeededRng,
+  groupsSeedModule,
   membersSeedModule,
+  permissionFixtureSeedModule,
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
@@ -324,8 +326,18 @@ integrationDescribe("core.has_mod_power", () => {
     await withDb("mod_power_property", async (database) => {
       await runSeeds({
         sql: database.sql,
-        registry: new SeedRegistry([baseSeedModule, membersSeedModule]),
+        registry: new SeedRegistry([
+          baseSeedModule,
+          permissionFixtureSeedModule,
+          groupsSeedModule,
+          membersSeedModule,
+        ]),
       });
+
+      // The property tree is the only forum tree in the database; seeded fixture forums (and
+      // their seeded moderator assignments) would otherwise be compared against a TS tree that
+      // does not contain them.
+      await database.sql`DELETE FROM core.forums`;
 
       const rng = createSeededRng(2026);
       const nodes = await createForest(database, rng, 4, 6);
