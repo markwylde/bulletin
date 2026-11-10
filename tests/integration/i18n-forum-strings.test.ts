@@ -71,6 +71,80 @@ describe("forum-structure strings", () => {
     expect(missing).toEqual([]);
   });
 
+  test("the topic, posting, poll, history and unread keys are present", () => {
+    const keys = [
+      "index.topicReplies",
+      "index.topicViews",
+      "topic.pinned",
+      "topic.locked",
+      "topic.moved",
+      "topic.pagination",
+      "topic.previousPage",
+      "topic.nextPage",
+      "topic.pageOf",
+      "topic.backToForum",
+      "topic.modNote",
+      "topic.views",
+      "topic.firstUnread",
+      "topic.new",
+      "topic.title",
+      "topic.prefix",
+      "topic.choosePrefix",
+      "topic.create",
+      "topic.postFailed",
+      "topic.delete",
+      "topic.confirmDelete",
+      "post.quote",
+      "post.history",
+      "post.delete",
+      "post.restore",
+      "post.hardDelete",
+      "post.confirmDelete",
+      "post.confirmHardDelete",
+      "post.edit",
+      "post.body",
+      "post.redact",
+      "post.save",
+      "post.editFailed",
+      "post.reply",
+      "post.submitReply",
+      "post.permalink",
+      "post.deleted",
+      "post.unapproved",
+      "post.editedByAt",
+      "poll.title",
+      "poll.vote",
+      "poll.voteFailed",
+      "poll.results",
+      "poll.voters",
+      "poll.add",
+      "poll.question",
+      "poll.choice",
+      "poll.multiple",
+      "poll.addChoice",
+      "poll.remove",
+      "poll.addQuestion",
+      "poll.closesAt",
+      "poll.resultsVisible",
+      "read.markForum",
+      "read.markBoard",
+      "member.postCount",
+      "member.deletedName",
+      "member.noGroup",
+    ] as const;
+    const missing: string[] = [];
+
+    for (const key of keys) {
+      for (const locale of LOCALES) {
+        if (USER_CATALOGS[locale][key] === undefined) {
+          missing.push(`${locale} ${key}`);
+        }
+      }
+    }
+
+    expect(missing).toEqual([]);
+  });
+
   test("the index, forum, prefix and announcement keys are present", () => {
     const userKeys = [
       "index.topicCount",

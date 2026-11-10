@@ -2,6 +2,7 @@ import { renderContent } from "@bulletin/content";
 import { slugify } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
 import type { SeedModule } from "./framework.ts";
+import { seedBulkTopics } from "./topics-bulk.ts";
 
 interface SeedReply {
   readonly sub: string;
@@ -123,7 +124,8 @@ async function forumIds(sql: SQL): Promise<Map<string, string>> {
 export const topicsSeedModule: SeedModule = {
   name: "topics",
   dependsOn: ["base", "forums", "groups", "forum-extras", "members"],
-  async run({ sql }) {
+  async run(context) {
+    const { sql } = context;
     const existing = (await sql`SELECT 1 FROM core.topics LIMIT 1`) as unknown[];
 
     if (existing.length > 0) {
@@ -254,5 +256,7 @@ export const topicsSeedModule: SeedModule = {
         WHERE id = ${forumId}
       `;
     }
+
+    await seedBulkTopics(context, members, forums);
   },
 };

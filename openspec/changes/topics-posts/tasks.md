@@ -38,8 +38,8 @@
 
 ## 6. Strings and seed
 
-- [ ] 6.1 Add en/es/fr strings for topic lists, topic view, posting, polls, history and unread; verify completeness
-- [ ] 6.2 Seed thousands of topics and posts across forums (realistic markdown, quotes, mentions, code, embeds, edits with history, soft-deleted posts, pinned/locked/moved topics, polls with votes, read markers for seeded members) in en/es/fr; verify after `docker compose up --watch`
+- [x] 6.1 Add en/es/fr strings for topic lists, topic view, posting, polls, history and unread; verify completeness
+- [x] 6.2 Seed thousands of topics and posts across forums (realistic markdown, quotes, mentions, code, embeds, edits with history, soft-deleted posts, pinned/locked/moved topics, polls with votes, read markers for seeded members) in en/es/fr; verify after `docker compose up --watch`
 
 ## 7. Feature flag
 
