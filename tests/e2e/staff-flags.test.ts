@@ -9,9 +9,9 @@ import {
 } from "@bulletin/test-utils/e2e";
 import { staffBaseUrl } from "@bulletin/test-utils/urls";
 
-// Run against a freshly seeded stack:
+// Run against a freshly seeded stack, exactly as local development starts it:
 //   docker compose down -v
-//   docker compose up -d --build
+//   docker compose up --watch
 //   bun run test:e2e
 
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
@@ -19,9 +19,36 @@ const integrationDescribe = ENABLED ? describe : describe.skip;
 const STAFF_URL = staffBaseUrl();
 const FLAG = "quickReply";
 
+function rowSelector(key: string): string {
+  return `[data-table-row="${key}"], [data-card-row="${key}"]`;
+}
+
+function rowIncludes(key: string, text: string): string {
+  return `[...document.querySelectorAll('${rowSelector(key)}')].some(
+    (row) => (row.textContent ?? "").includes(${JSON.stringify(text)})
+  )`;
+}
+
+async function waitForSeededFlags(view: Bun.WebView): Promise<void> {
+  for (const key of ["newEditor", "quickReply", "compactTopicList"]) {
+    await waitForSelector(view, `[data-edit-flag="${key}"]`);
+  }
+
+  // The seed covers a group-targeted flag, a percentage rollout and a flag with no rules.
+  await waitForExpression(view, rowIncludes("newEditor", "On for Super moderators"));
+  await waitForExpression(
+    view,
+    `[...document.querySelectorAll('${rowSelector("quickReply")}')].some((row) =>
+      /On for \\d+% of members/.test(row.textContent ?? "")
+    )`,
+  );
+  await waitForExpression(view, rowIncludes("compactTopicList", "No rules"));
+}
+
 async function editFlag(view: Bun.WebView): Promise<void> {
   await loginAs(view, "admin");
   await waitForSelector(view, '[data-page="flags"]');
+  await waitForSeededFlags(view);
   await waitForSelector(view, `[data-edit-flag="${FLAG}"]`);
 
   // The seeded fully-on flag from over 90 days ago is highlighted for removal.

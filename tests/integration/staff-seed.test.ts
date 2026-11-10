@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { readFlagVersion } from "@bulletin/db/flags";
 import {
   adminLogSeedModule,
   baseSeedModule,
+  flagsSeedModule,
   membersSeedModule,
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
 import { withTestDatabase } from "@bulletin/test-utils/database";
+import { listFlags } from "../../apps/staff-api/src/flags.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -71,6 +74,61 @@ integrationDescribe("staff console seed", () => {
         before: { boardName: "Bulletin Forum" },
         after: { boardName: "Bulletin" },
       });
+    });
+  }, 30_000);
+});
+
+integrationDescribe("flags seed", () => {
+  test("seeds a group-targeted, a 50% rollout and a render-affecting flag", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "flags_seed" }, async ({ sql }) => {
+      const registry = new SeedRegistry([baseSeedModule, flagsSeedModule]);
+      expect((await runSeeds({ sql, registry })).ran).toBe(true);
+      expect(await readFlagVersion(sql)).toBe("1");
+
+      const now = Date.now();
+      const flags = await listFlags(sql, now);
+      const byKey = new Map(flags.map((flag) => [flag.key, flag]));
+
+      expect([...byKey.keys()]).toEqual(["compactTopicList", "newEditor", "quickReply"]);
+
+      expect(byKey.get("newEditor")).toMatchObject({
+        description: "Markdown WYSIWYG editor for new posts.",
+        owner: "content",
+        defaultValue: false,
+        affectsRender: false,
+        rules: [{ type: "group", groups: ["super_moderators"], value: true }],
+        stale: false,
+      });
+      expect(byKey.get("quickReply")).toMatchObject({
+        defaultValue: false,
+        affectsRender: false,
+        rules: [{ type: "percentage", percent: 50, value: true }],
+        stale: false,
+      });
+      expect(byKey.get("compactTopicList")).toMatchObject({
+        defaultValue: true,
+        affectsRender: true,
+        clientVisible: false,
+        rules: [],
+        stale: true,
+      });
+      expect(byKey.get("compactTopicList")?.ageDays).toBeGreaterThanOrEqual(139);
+
+      // A second start does not reseed, so staff edits survive (ADR 0002).
+      await sql`
+        UPDATE core.feature_flags
+        SET rules = '[{"type": "percentage", "percent": 25, "value": true}]'::jsonb,
+            updated_at = now()
+        WHERE key = 'quickReply'
+      `;
+      expect((await runSeeds({ sql, registry })).ran).toBe(false);
+      expect((await listFlags(sql, now)).find((flag) => flag.key === "quickReply")?.rules).toEqual([
+        { type: "percentage", percent: 25, value: true },
+      ]);
     });
   }, 30_000);
 });
