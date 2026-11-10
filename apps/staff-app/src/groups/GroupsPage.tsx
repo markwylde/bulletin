@@ -3,7 +3,7 @@ import { useToast } from "@bulletin/ui/feedback";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { apiGet, apiPost } from "../api.ts";
+import { ApiError, apiGet, apiPost } from "../api.ts";
 
 interface GroupView {
   readonly id: string;
@@ -78,7 +78,14 @@ export function GroupsPage() {
       toast.pushToast({ messageKey: "staff.groups.saved", tone: "success" });
       void refresh();
     },
-    onError: () => toast.pushToast({ messageKey: "staff.groups.saveError", tone: "error" }),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "group_in_use") {
+        toast.pushToast({ messageKey: "staff.groups.deleteInUse", tone: "error" });
+        return;
+      }
+
+      toast.pushToast({ messageKey: "staff.groups.saveError", tone: "error" });
+    },
   });
 
   const selectGroup = (group: GroupView): void => {

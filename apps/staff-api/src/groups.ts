@@ -35,7 +35,8 @@ export interface GroupMutationFailure {
     | "duplicate_key"
     | "not_found"
     | "system_group"
-    | "replacement_required";
+    | "replacement_required"
+    | "group_in_use";
   readonly fields?: readonly string[];
 }
 
@@ -51,6 +52,15 @@ function isUniqueViolation(error: unknown): boolean {
     error !== null &&
     (("code" in error && (error as { code?: string }).code === "23505") ||
       ("errno" in error && (error as { errno?: string }).errno === "23505"))
+  );
+}
+
+function isForeignKeyViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (("code" in error && (error as { code?: string }).code === "23503") ||
+      ("errno" in error && (error as { errno?: string }).errno === "23503"))
   );
 }
 
@@ -327,76 +337,99 @@ export async function deleteGroup(
   const replacement =
     typeof input.replacementGroupId === "string" ? input.replacementGroupId : null;
 
-  return sql.begin(async (tx) => {
-    const [group] = (await tx`
-      SELECT id, key, title, is_system
-      FROM core.groups
-      WHERE id = ${input.id}
-      FOR UPDATE
-    `) as Array<{ id: string; key: string; title: string; is_system: boolean }>;
+  try {
+    return await sql.begin(async (tx) => {
+      const [group] = (await tx`
+        SELECT id, key, title, is_system
+        FROM core.groups
+        WHERE id = ${input.id}
+        FOR UPDATE
+      `) as Array<{ id: string; key: string; title: string; is_system: boolean }>;
 
-    if (group === undefined) {
-      return { ok: false, code: "not_found" } as const;
-    }
-
-    if (group.is_system) {
-      return { ok: false, code: "system_group" } as const;
-    }
-
-    const [count] = (await tx`
-      SELECT count(*)::int AS primary_members
-      FROM core.member_groups
-      WHERE group_id = ${input.id} AND is_primary
-    `) as Array<{ primary_members: number }>;
-    const primaryMembers = count?.primary_members ?? 0;
-
-    if (primaryMembers > 0) {
-      if (replacement === null || replacement === input.id) {
-        return { ok: false, code: "replacement_required" } as const;
+      if (group === undefined) {
+        return { ok: false, code: "not_found" } as const;
       }
 
-      const [target] = (await tx`
-        SELECT id, key FROM core.groups WHERE id = ${replacement}
-      `) as Array<{ id: string; key: string }>;
-
-      if (target === undefined) {
-        return { ok: false, code: "invalid_group" } as const;
+      if (group.is_system) {
+        return { ok: false, code: "system_group" } as const;
       }
 
-      // Remove the replacement group's secondary row so the primary move cannot conflict.
-      await tx`
-        DELETE FROM core.member_groups secondary
-        USING core.member_groups current
-        WHERE current.group_id = ${input.id}
-          AND current.is_primary
-          AND secondary.member_id = current.member_id
-          AND secondary.group_id = ${replacement}
-          AND NOT secondary.is_primary
-      `;
-      await tx`
-        UPDATE core.member_groups
-        SET group_id = ${replacement}
+      // An empty audience means "everyone". Deleting a referenced group would cascade its
+      // allow-list away and widen the audience, so refuse until staff remove the reference.
+      const [references] = (await tx`
+        SELECT
+          EXISTS (SELECT 1 FROM core.announcement_groups WHERE group_id = ${input.id})
+            AS announcements,
+          EXISTS (SELECT 1 FROM core.prefix_groups WHERE group_id = ${input.id})
+            AS prefixes
+      `) as Array<{ announcements: boolean; prefixes: boolean }>;
+
+      if (references?.announcements === true || references?.prefixes === true) {
+        return { ok: false, code: "group_in_use" } as const;
+      }
+
+      const [count] = (await tx`
+        SELECT count(*)::int AS primary_members
+        FROM core.member_groups
         WHERE group_id = ${input.id} AND is_primary
-      `;
+      `) as Array<{ primary_members: number }>;
+      const primaryMembers = count?.primary_members ?? 0;
+
+      if (primaryMembers > 0) {
+        if (replacement === null || replacement === input.id) {
+          return { ok: false, code: "replacement_required" } as const;
+        }
+
+        const [target] = (await tx`
+          SELECT id, key FROM core.groups WHERE id = ${replacement}
+        `) as Array<{ id: string; key: string }>;
+
+        if (target === undefined) {
+          return { ok: false, code: "invalid_group" } as const;
+        }
+
+        // Remove the replacement group's secondary row so the primary move cannot conflict.
+        await tx`
+          DELETE FROM core.member_groups secondary
+          USING core.member_groups current
+          WHERE current.group_id = ${input.id}
+            AND current.is_primary
+            AND secondary.member_id = current.member_id
+            AND secondary.group_id = ${replacement}
+            AND NOT secondary.is_primary
+        `;
+        await tx`
+          UPDATE core.member_groups
+          SET group_id = ${replacement}
+          WHERE group_id = ${input.id} AND is_primary
+        `;
+      }
+
+      await tx`DELETE FROM core.groups WHERE id = ${input.id}`;
+      await bumpPermVersion(tx);
+      await writeAdminLog(tx, {
+        actorMemberId,
+        action: "group.delete",
+        targetType: "group",
+        targetId: group.id,
+        summary: {
+          key: group.key,
+          title: group.title,
+          primaryMembersMoved: primaryMembers,
+          replacementGroupId: replacement,
+        },
+      });
+
+      return { ok: true } as const;
+    });
+  } catch (error) {
+    // The restricting foreign keys are the backstop when a reference is added concurrently.
+    if (isForeignKeyViolation(error)) {
+      return { ok: false, code: "group_in_use" };
     }
 
-    await tx`DELETE FROM core.groups WHERE id = ${input.id}`;
-    await bumpPermVersion(tx);
-    await writeAdminLog(tx, {
-      actorMemberId,
-      action: "group.delete",
-      targetType: "group",
-      targetId: group.id,
-      summary: {
-        key: group.key,
-        title: group.title,
-        primaryMembersMoved: primaryMembers,
-        replacementGroupId: replacement,
-      },
-    });
-
-    return { ok: true } as const;
-  });
+    throw error;
+  }
 }
 
 export async function saveGroupSetting(

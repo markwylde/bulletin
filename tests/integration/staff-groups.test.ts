@@ -344,6 +344,63 @@ integrationDescribe("staff group and permission screens", () => {
     });
   }, 30_000);
 
+  test("refuses to delete a group that scopes an announcement or prefix", async () => {
+    await withDb("staff_groups_in_use", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const admin = await createMember(database, "In Use Admin", ["administrators"]);
+        const session = await createSession(database, admin);
+        const group = await createGroup(database, "restricted_audience");
+        const [announcement] = (await database.sql`
+          INSERT INTO core.announcements (title, scope)
+          VALUES ('Restricted notice', 'global')
+          RETURNING id
+        `) as Array<{ id: string }>;
+        const [prefix] = (await database.sql`
+          INSERT INTO core.prefixes (key) VALUES ('restricted_label') RETURNING id
+        `) as Array<{ id: string }>;
+
+        if (announcement === undefined || prefix === undefined) {
+          throw new Error("Could not create the restricting rows");
+        }
+
+        await database.sql`
+          INSERT INTO core.announcement_groups (announcement_id, group_id)
+          VALUES (${announcement.id}, ${group})
+        `;
+        await database.sql`
+          INSERT INTO core.prefix_groups (prefix_id, group_id)
+          VALUES (${prefix.id}, ${group})
+        `;
+
+        const refused = await call(api, session, "groups.update", {
+          action: "delete",
+          id: group,
+        });
+        expect(refused.status).toBe(409);
+        expect(await refused.json()).toEqual({ code: "group_in_use" });
+
+        const [remaining] = (await database.sql`
+          SELECT count(*)::int AS groups FROM core.groups WHERE id = ${group}
+        `) as Array<{ groups: number }>;
+        expect(remaining?.groups).toBe(1);
+
+        await database.sql`DELETE FROM core.announcement_groups WHERE group_id = ${group}`;
+        await database.sql`DELETE FROM core.prefix_groups WHERE group_id = ${group}`;
+
+        const deleted = await call(api, session, "groups.update", {
+          action: "delete",
+          id: group,
+        });
+        expect(deleted.status).toBe(200);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
   test("saves a group setting cell and bumps perm", async () => {
     await withDb("staff_group_settings", async (database) => {
       const { api, auth, sql } = await createStaffApiFor(database);

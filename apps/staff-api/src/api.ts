@@ -349,6 +349,7 @@ function mutationResponse(
           result.code === "system_group" ||
           result.code === "system_mask" ||
           result.code === "replacement_required" ||
+          result.code === "group_in_use" ||
           result.code === "prefix_required_needs_prefix" ||
           result.code === "topic_choice_required" ||
           result.code === "invalid_topic_choice"

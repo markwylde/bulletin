@@ -184,6 +184,7 @@
   "staff.groups.create.submit": "Créer le groupe",
   "staff.groups.create.title": "Créer un groupe",
   "staff.groups.delete": "Supprimer le groupe",
+  "staff.groups.deleteInUse": "Ce groupe est utilisé par l'audience d'une annonce ou une restriction de préfixe. Supprimez ces références avant de le supprimer.",
   "staff.groups.edit": "Modifier",
   "staff.groups.editor.title": "Modifier {group}",
   "staff.groups.empty": "Aucun groupe pour le moment.",

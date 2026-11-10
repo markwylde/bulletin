@@ -184,6 +184,7 @@
   "staff.groups.create.submit": "Create group",
   "staff.groups.create.title": "Create a group",
   "staff.groups.delete": "Delete group",
+  "staff.groups.deleteInUse": "This group is used by an announcement audience or a prefix restriction. Remove those references before deleting it.",
   "staff.groups.edit": "Edit",
   "staff.groups.editor.title": "Edit {group}",
   "staff.groups.empty": "No groups yet.",
