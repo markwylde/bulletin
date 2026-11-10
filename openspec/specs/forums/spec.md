@@ -1,0 +1,60 @@
+# forums Specification
+
+## Purpose
+Defines how the board is organised into categories, forums and sub-forums, and the settings
+each forum carries.
+
+## Requirements
+
+### Requirement: Forum tree
+The board SHALL be organised as categories containing forums, and forums SHALL contain sub-forums to any depth. Admins SHALL reorder and move any node. Moving a forum under its own descendant SHALL be rejected.
+
+#### Scenario: Deep nesting
+- **WHEN** an admin creates a sub-forum five levels deep
+- **THEN** it appears under its parent, with breadcrumbs showing every ancestor
+
+#### Scenario: Cycle rejected
+- **WHEN** an admin moves a forum under one of its own sub-forums
+- **THEN** the move is rejected with an error
+
+### Requirement: Board index
+The board index SHALL list the categories and forums the viewer may `show`, each with description, sub-forum links, topic and post counts, and the latest post the viewer may `read`.
+
+#### Scenario: Hidden forum omitted
+- **WHEN** a viewer lacks `show` on a forum
+- **THEN** the board index omits it and its sub-forums
+
+### Requirement: Redirect forums
+A redirect forum SHALL link to a URL instead of containing topics. Clicks SHALL be counted and displayed. Redirect forums SHALL respect `show` permission.
+
+#### Scenario: Follow redirect
+- **WHEN** a member clicks a redirect forum
+- **THEN** they are sent to its URL, and the click count increases by one
+
+### Requirement: Forum rules box
+A forum MAY have rules text in markdown, shown above its topic list. It SHALL be collapsible, and its collapsed state SHALL be remembered per viewer.
+
+#### Scenario: Rules shown
+- **WHEN** a member opens a forum with rules
+- **THEN** the rules appear above the topic list
+
+### Requirement: Topic prefixes
+Admins SHALL define topic prefixes (label and colour, translatable) and enable a set per forum, marking prefixes as required or optional. Prefixes MAY be restricted to groups.
+
+#### Scenario: Group-restricted prefix
+- **WHEN** a prefix is restricted to Staff and a regular member requests the prefixes available in a forum
+- **THEN** the restricted prefix is not offered
+
+### Requirement: Slugged URLs
+Categories and forums SHALL have URLs of the form `/forum/<id>-<slug>`, resolved by numeric ID only. Requests with a missing or outdated slug SHALL permanently redirect to the current one.
+
+#### Scenario: Renamed forum
+- **WHEN** a forum is renamed and an old URL is requested
+- **THEN** the response is a 301 to the URL with the new slug
+
+### Requirement: Forum deletion
+Deleting a forum SHALL move its sub-forums to the deleted forum's parent. Once topics exist, deletion SHALL also require choosing whether its topics move to another forum or are deleted.
+
+#### Scenario: Delete with sub-forums
+- **WHEN** an admin deletes a forum that has two sub-forums
+- **THEN** the sub-forums move up one level and keep their settings
