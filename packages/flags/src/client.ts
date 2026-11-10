@@ -1,4 +1,3 @@
-/** Browser-safe feature flag helpers: no evaluation runtime, no Bun hashing. */
+/** Browser-safe feature flag helpers: rule parsing and types only, no evaluation runtime. */
 export * from "./rules.ts";
-export * from "./staleness.ts";
 export * from "./types.ts";

@@ -4,3 +4,4 @@ export * from "./defaults.ts";
 export * from "./evaluate.ts";
 export * from "./middleware.ts";
 export * from "./runtime.ts";
+export * from "./staleness.ts";

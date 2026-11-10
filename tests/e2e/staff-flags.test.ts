@@ -136,4 +136,62 @@ integrationDescribe("staff feature flags", () => {
       ).toBeGreaterThan(2);
     });
   }, 180_000);
+
+  test("removes the final rule, saves the empty list and keeps it after a reload", async () => {
+    await withPage({ url: `${STAFF_URL}/flags`, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "admin");
+      await waitForSelector(view, '[data-page="flags"]');
+      await waitForSelector(view, '[data-edit-flag="newEditor"]');
+      await clickSelector(view, '[data-edit-flag="newEditor"]');
+      await waitForSelector(view, '[data-flag-editor="newEditor"] [data-form="flag-rules"]');
+
+      await clickSelector(view, '[data-flag-editor="newEditor"] [data-rule-remove="0"]');
+      await waitForExpression(
+        view,
+        `!document.querySelector('[data-flag-editor="newEditor"] [data-rule-order]')`,
+      );
+
+      // The submit control must survive an empty rule list, otherwise the default cannot return.
+      await waitForSelector(view, '[data-flag-editor="newEditor"] [data-form-submit]');
+      expect(
+        await view.evaluate<boolean>(
+          `document.querySelector('[data-flag-editor="newEditor"] [data-form-submit]')?.hasAttribute("disabled") === false`,
+        ),
+      ).toBe(true);
+
+      await clickSelector(view, '[data-flag-editor="newEditor"] [data-form-submit]');
+      await waitForSelector(view, '[data-toast-tone="success"]');
+      await waitForExpression(view, rowIncludes("newEditor", "No rules"), 20_000);
+      await waitForExpression(
+        view,
+        `[...document.querySelectorAll("[data-flag-log-entry]")].some(
+          (entry) => (entry.textContent ?? "").includes("newEditor: No rules")
+        )`,
+      );
+
+      // Reloading proves the empty rule list reached the database.
+      await view.navigate(`${STAFF_URL}/flags`);
+      await waitForSelector(view, '[data-page="flags"]');
+      await waitForExpression(view, rowIncludes("newEditor", "No rules"), 20_000);
+
+      // Restore the seeded group rule so the suite can run again without a database reset.
+      await clickSelector(view, '[data-edit-flag="newEditor"]');
+      await waitForSelector(view, '[data-flag-editor="newEditor"] [data-form="flag-rules"]');
+      await clickSelector(view, '[data-flag-editor="newEditor"] [data-add-rule="group"]');
+      await waitForSelector(
+        view,
+        '[data-flag-editor="newEditor"] [data-form-field="rule-0-groups"]',
+      );
+      await clickSelector(
+        view,
+        '[data-flag-editor="newEditor"] [data-form-field="rule-0-groups"] input[value="super_moderators"]',
+      );
+      await clickSelector(
+        view,
+        '[data-flag-editor="newEditor"] [data-form-field="rule-0-value"] input',
+      );
+      await clickSelector(view, '[data-flag-editor="newEditor"] [data-form-submit]');
+      await waitForExpression(view, rowIncludes("newEditor", "On for Super moderators"), 20_000);
+    });
+  }, 180_000);
 });

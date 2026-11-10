@@ -3,6 +3,7 @@ import { MAX_FLAG_RULES, parseFlagRulesInput } from "./rules.ts";
 
 describe("staff flag rule input", () => {
   test("accepts ordered group and percentage rules", () => {
+    expect(parseFlagRulesInput([])).toEqual({ ok: true, rules: [] });
     expect(
       parseFlagRulesInput([
         { type: "group", groups: ["members", "administrators"], value: true },

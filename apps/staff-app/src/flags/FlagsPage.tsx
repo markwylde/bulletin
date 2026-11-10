@@ -117,47 +117,46 @@ function FlagEditor({
       {draft.rules.length === 0 ? (
         <p className="widget-muted">{t("staff.flags.rule.none")}</p>
       ) : (
-        <>
-          <ul className="flag-rule-order" aria-label={t("staff.flags.rule.order")}>
-            {draft.rules.map((rule, index) => (
-              <li key={rule.id} data-rule-order={rule.id}>
-                <span>{t("staff.flags.rule.position", { index: index + 1 })}</span>
-                <button
-                  type="button"
-                  data-rule-up={rule.id}
-                  disabled={index === 0}
-                  onClick={() => onMoveRule(index, -1)}
-                >
-                  {t("staff.flags.rule.moveUp")}
-                </button>
-                <button
-                  type="button"
-                  data-rule-down={rule.id}
-                  disabled={index === draft.rules.length - 1}
-                  onClick={() => onMoveRule(index, 1)}
-                >
-                  {t("staff.flags.rule.moveDown")}
-                </button>
-                <button
-                  type="button"
-                  data-rule-remove={rule.id}
-                  onClick={() => onRemoveRule(rule.id)}
-                >
-                  {t("staff.flags.rule.remove")}
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          <FormRenderer
-            definition={ruleFormDefinition(draft.rules)}
-            values={draft.values}
-            onChange={onChange}
-            onSubmit={(values) => onSubmit(rulesFromValues(draft.rules, values))}
-            submitting={submitting}
-          />
-        </>
+        <ul className="flag-rule-order" aria-label={t("staff.flags.rule.order")}>
+          {draft.rules.map((rule, index) => (
+            <li key={rule.id} data-rule-order={rule.id}>
+              <span>{t("staff.flags.rule.position", { index: index + 1 })}</span>
+              <button
+                type="button"
+                data-rule-up={rule.id}
+                disabled={index === 0}
+                onClick={() => onMoveRule(index, -1)}
+              >
+                {t("staff.flags.rule.moveUp")}
+              </button>
+              <button
+                type="button"
+                data-rule-down={rule.id}
+                disabled={index === draft.rules.length - 1}
+                onClick={() => onMoveRule(index, 1)}
+              >
+                {t("staff.flags.rule.moveDown")}
+              </button>
+              <button
+                type="button"
+                data-rule-remove={rule.id}
+                onClick={() => onRemoveRule(rule.id)}
+              >
+                {t("staff.flags.rule.remove")}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
+
+      {/* Also rendered with no rules, so staff can save an empty list and restore the default. */}
+      <FormRenderer
+        definition={ruleFormDefinition(draft.rules)}
+        values={draft.values}
+        onChange={onChange}
+        onSubmit={(values) => onSubmit(rulesFromValues(draft.rules, values))}
+        submitting={submitting}
+      />
     </section>
   );
 }

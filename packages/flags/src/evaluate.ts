@@ -13,6 +13,22 @@ export function flagBucket(key: string, memberId: string): number {
 
 /** Rules run in order and the first match wins; no match falls through to the default. */
 export function evaluateFlag(definition: FlagDefinition, viewer: FlagViewer): boolean {
+  return evaluateFlagWithBucket(
+    definition,
+    viewer,
+    viewer.memberId === null ? 0 : flagBucket(definition.key, viewer.memberId),
+  );
+}
+
+/**
+ * The rule walk with an explicit bucket. `evaluateFlag` derives the bucket from the member id;
+ * the staleness check uses this form to cover every bucket boundary without inventing members.
+ */
+export function evaluateFlagWithBucket(
+  definition: FlagDefinition,
+  viewer: FlagViewer,
+  bucket: number,
+): boolean {
   const isGuest = viewer.memberId === null;
 
   for (const rule of definition.rules) {
@@ -30,7 +46,7 @@ export function evaluateFlag(definition: FlagDefinition, viewer: FlagViewer): bo
       continue;
     }
 
-    if (flagBucket(definition.key, viewer.memberId) < rule.percent * 100) {
+    if (bucket < rule.percent * 100) {
       return rule.value;
     }
   }
