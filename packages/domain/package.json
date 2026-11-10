@@ -17,7 +17,8 @@
     "./urls": "./src/urls/index.ts",
     "./board": "./src/board/index.ts",
     "./mutations": "./src/mutations/index.ts",
-    "./visits": "./src/visits/index.ts"
+    "./visits": "./src/visits/index.ts",
+    "./content": "./src/content/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -26,6 +27,7 @@
     "@bulletin/cache": "workspace:*",
     "@bulletin/i18n": "workspace:*",
     "@darkauth/client": "1.32.0",
-    "jose": "6.2.16"
+    "jose": "6.2.16",
+    "@bulletin/content": "workspace:*"
   }
 }

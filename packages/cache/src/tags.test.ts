@@ -4,6 +4,7 @@ import {
   GLOBAL_CACHE_TAGS,
   i18nTag,
   memberTag,
+  postSnapshotsTag,
   themeTag,
   topicPagesTag,
   topicTag,
@@ -16,6 +17,7 @@ describe("cache tags", () => {
     expect(topicTag("345")).toBe("topic:345");
     expect(topicPagesTag("345")).toBe("topic:345:pages");
     expect(topicViewsTag("345")).toBe("topic:345:views");
+    expect(postSnapshotsTag("9876")).toBe("post:9876:snapshots");
     expect(memberTag("7")).toBe("member:7");
     expect(themeTag(3)).toBe("theme:3");
     expect(i18nTag("fr")).toBe("i18n:fr");
@@ -34,5 +36,6 @@ describe("cache tags", () => {
   test("rejects a non-numeric resource id", () => {
     expect(() => forumTag("general")).toThrow("numeric id");
     expect(() => topicTag("")).toThrow("numeric id");
+    expect(() => postSnapshotsTag("12ab")).toThrow("numeric id");
   });
 });
