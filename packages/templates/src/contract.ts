@@ -99,10 +99,6 @@ export function validateContract(
   const tags = contract.tags;
 
   if (typeof tags !== "function") {
-    if (tags.length === 0) {
-      fail("declares no cache tags");
-    }
-
     for (const tag of tags) {
       if (!TAG_PATTERN.test(tag)) {
         fail(`cache tag "${tag}" is not a valid tag name`);

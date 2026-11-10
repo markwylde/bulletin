@@ -9,6 +9,7 @@ import {
   type SpikeHookFixture,
 } from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { spikeRenderingContract } from "../../apps/user-app/src/contracts.ts";
 import { renderSpikePage } from "../../apps/user-app/src/spike/page.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -90,6 +91,7 @@ function input(
     bust: 0,
     locale: "en",
     translate: createServerT("en", { shipped: SHIPPED }),
+    contract: spikeRenderingContract,
     ...overrides,
   };
 }

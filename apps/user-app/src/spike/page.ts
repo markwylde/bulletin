@@ -1,6 +1,7 @@
 import { createFragmentCache, type FragmentCache, fragmentKey } from "@bulletin/cache";
 import type { Locale, Translator } from "@bulletin/i18n";
 import {
+  contractTags,
   createCompileCache,
   createTemplateEngine,
   escapeHtml,
@@ -10,15 +11,16 @@ import {
   SPIKE_FOOTER_TEMPLATE,
   SPIKE_PAGE_TEMPLATE,
   SPIKE_PLUGIN_GENERATIONS,
-  SPIKE_ROUTE,
   SPIKE_THEMES,
   type SpikeThemeName,
   safeHtml,
   type TemplateRuntime,
   type TemplateViolation,
+  type ViewModelContract,
 } from "@bulletin/templates";
 import { SERVER_ISLANDS } from "@bulletin/ui/islands/server";
 import type { SQL } from "bun";
+import type { SpikeViewModel } from "../contracts.ts";
 
 export interface SpikeOptions {
   readonly theme: SpikeThemeName;
@@ -75,6 +77,8 @@ export interface SpikeRenderInput extends SpikeOptions {
   readonly sql: SQL;
   readonly locale: Locale;
   readonly translate: Translator;
+  /** The route's view-model contract (task 2.4): its route, tags and CDN eligibility. */
+  readonly contract: ViewModelContract<SpikeViewModel>;
 }
 
 export type SpikeRenderOutcome =
@@ -83,6 +87,8 @@ export type SpikeRenderOutcome =
       readonly html: string;
       readonly cache: "HIT" | "MISS";
       readonly variant: string;
+      /** Cache tags declared by the contract for this view model. */
+      readonly tags: readonly string[];
       readonly errors: readonly string[];
     }
   | { readonly status: "not_found" };
@@ -107,8 +113,9 @@ export async function renderSpikePage(
     return { status: "not_found" };
   }
 
+  const tags = contractTags(input.contract, { theme: input.theme, plugins: input.plugins });
   const variant = fragmentKey({
-    route: SPIKE_ROUTE,
+    route: input.contract.route,
     theme: theme.theme.name,
     themeVersion: theme.theme.version,
     plugins: input.plugins,
@@ -173,6 +180,7 @@ export async function renderSpikePage(
     html: rendered.html,
     cache: rendered.status === "hit" ? "HIT" : "MISS",
     variant,
+    tags,
     errors,
   };
 }

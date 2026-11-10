@@ -1,6 +1,7 @@
 ---
 import { createServerT } from "@bulletin/i18n";
 import { USER_CATALOGS } from "../../catalogs.ts";
+import { spikeRenderingContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
 import { parseSpikeOptions, renderSpikePage, spikeEnabled } from "../../spike/page.ts";
 
@@ -27,6 +28,7 @@ const outcome = await renderSpikePage({
   sql: readSql(),
   locale,
   translate,
+  contract: spikeRenderingContract,
 });
 
 if (outcome.status === "not_found") {
@@ -36,7 +38,12 @@ if (outcome.status === "not_found") {
 Astro.response.headers.set("x-spike-cache", outcome.cache);
 Astro.response.headers.set("x-spike-variant", outcome.variant);
 Astro.response.headers.set("x-spike-errors", String(outcome.errors.length));
-Astro.response.headers.set("cache-control", "private, no-store");
+// The contract decides CDN eligibility and carries the page's cache tags (ADR 0006).
+Astro.response.headers.set("surrogate-key", outcome.tags.join(" "));
+Astro.response.headers.set(
+  "cache-control",
+  spikeRenderingContract.cdnCacheable ? "public, s-maxage=15, stale-while-revalidate=15" : "private, no-store",
+);
 ---
 
 <!doctype html>

@@ -30,20 +30,34 @@ function spikeUrl(params: Record<string, string | number>): string {
 async function fetchSpike(params: Record<string, string | number>): Promise<{
   readonly html: string;
   readonly cache: string | null;
+  readonly surrogateKey: string | null;
+  readonly cacheControl: string | null;
 }> {
   const response = await fetch(spikeUrl(params));
 
   expect(response.status).toBe(200);
-  return { html: await response.text(), cache: response.headers.get("x-spike-cache") };
+  return {
+    html: await response.text(),
+    cache: response.headers.get("x-spike-cache"),
+    surrogateKey: response.headers.get("surrogate-key"),
+    cacheControl: response.headers.get("cache-control"),
+  };
 }
 
 integrationDescribe("spike S1 rendering", () => {
   test("serves the island's server HTML before scripts run", async () => {
     const run = bust();
-    const { html, cache } = await fetchSpike({ theme: "alt", plugins: 2, bust: run });
+    const { html, cache, surrogateKey, cacheControl } = await fetchSpike({
+      theme: "alt",
+      plugins: 2,
+      bust: run,
+    });
 
     expect(cache).toBe("MISS");
     expect(html).toContain('<bl-island data-name="SpikeCounter"');
+    // The contract declares the route's CDN eligibility and cache tags.
+    expect(surrogateKey).toBe("theme:alt plugins");
+    expect(cacheControl).toBe("private, no-store");
     expect(html).toContain('data-spike-layout="alt"');
     expect(html).toContain('data-spike-hook="2"');
     expect(html).toContain('data-spike-plugin="installed"');

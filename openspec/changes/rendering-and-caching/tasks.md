@@ -10,7 +10,7 @@
 - [x] 2.1 Implement `packages/templates` (DB template loading with parent fallback, compile cache keyed by theme version and plugin generation, `{% t %}`, `{% island %}`, `{% hook %}`, autoescape, `SafeHtml` type) with unit tests for fallback and escaping
 - [x] 2.2 Implement save-time template validation (parse5 + theme sanitiser profile) with an XSS corpus test covering every rejected construct
 - [x] 2.3 Implement resource limits and parent fallback on violation, with tests for the runaway-loop scenario
-- [ ] 2.4 Implement the view-model contract API (`deps`, `tags`, CDN eligibility, required islands) and the CI check that every user-app route declares one, with contract tests on the demo route
+- [x] 2.4 Implement the view-model contract API (`deps`, `tags`, CDN eligibility, required islands) and the CI check that every user-app route declares one, with contract tests on the demo route
 
 ## 3. Islands
 

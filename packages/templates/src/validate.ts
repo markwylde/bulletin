@@ -302,7 +302,6 @@ function findUnsupportedTags(source: string): readonly TemplateIssue[] {
       line,
       column: offset - before.lastIndexOf("\n"),
       element: tag,
-      attribute: tag,
     });
   }
 

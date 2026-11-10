@@ -28,7 +28,11 @@ export function isTemplateRuntime(value: unknown): value is TemplateRuntime {
 
   const candidate = value as Partial<TemplateRuntime>;
 
-  return typeof candidate.translate === "function" && typeof candidate.hooks === "object";
+  return (
+    typeof candidate.translate === "function" &&
+    typeof candidate.hooks === "object" &&
+    candidate.hooks !== null
+  );
 }
 
 /** Reads the runtime a template is being rendered with; missing runtime is a bug, not a theme error. */
