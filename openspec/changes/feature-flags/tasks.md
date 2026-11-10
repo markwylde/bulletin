@@ -12,5 +12,5 @@
 
 ## 3. Strings and seed
 
-- [ ] 3.1 Add en/es/fr strings for the flags section; verify completeness
+- [x] 3.1 Add en/es/fr strings for the flags section; verify completeness
 - [ ] 3.2 Seed three example flags (group-targeted, 50% rollout, render-affecting), and verify they show in the staff app after `docker compose up --watch`

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LOCALES } from "@bulletin/i18n";
+import { type Catalog, LOCALES, type Locale } from "@bulletin/i18n";
 import { STAFF_CATALOGS } from "./catalogs.ts";
 
 const REQUIRED_KEYS = [
@@ -7,9 +7,35 @@ const REQUIRED_KEYS = [
   "staff.nav.adminLog",
   "staff.nav.boardSettings",
   "staff.nav.strings",
+  "staff.nav.flags",
   "staff.settings.board.title",
   "staff.log.title",
   "staff.strings.title",
+  "staff.flags.title",
+  "staff.flags.intro",
+  "staff.flags.key",
+  "staff.flags.description",
+  "staff.flags.owner",
+  "staff.flags.default",
+  "staff.flags.rules",
+  "staff.flags.ageDays",
+  "staff.flags.status",
+  "staff.flags.edit",
+  "staff.flags.saveRules",
+  "staff.flags.saved",
+  "staff.flags.rule.group",
+  "staff.flags.rule.percentage",
+  "staff.flags.rule.groups",
+  "staff.flags.rule.percent",
+  "staff.flags.rule.on",
+  "staff.flags.summary.groupOn",
+  "staff.flags.summary.groupOff",
+  "staff.flags.summary.percentOn",
+  "staff.flags.summary.percentOff",
+  "staff.flags.log.title",
+  "staff.flags.log.change",
+  "staff.flags.group.guests",
+  "staff.flags.group.superModerators",
   "ui.form.error.required",
   "ui.form.error.min",
   "ui.form.error.max",
@@ -32,6 +58,21 @@ describe("staff catalogs", () => {
       for (const locale of LOCALES) {
         expect(STAFF_CATALOGS[locale][key]).toBeString();
         expect(STAFF_CATALOGS[locale][key]?.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test("ships every flags-section string in all three locales", () => {
+    const catalogs: Readonly<Record<Locale, Catalog>> = STAFF_CATALOGS;
+    const flagsKeys = Object.keys(STAFF_CATALOGS.en).filter(
+      (key) => key === "staff.nav.flags" || key.startsWith("staff.flags."),
+    );
+
+    expect(flagsKeys.length).toBeGreaterThanOrEqual(50);
+
+    for (const locale of LOCALES) {
+      for (const key of flagsKeys) {
+        expect(catalogs[locale][key]?.trim().length).toBeGreaterThan(0);
       }
     }
   });
