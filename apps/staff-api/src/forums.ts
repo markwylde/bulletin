@@ -4,6 +4,7 @@ import { bumpPermVersion, hashForumPassword, loadForumTree } from "@bulletin/dom
 import { slugify } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
+import { loadStaffContentRenderOptions } from "./content-dependencies.ts";
 
 export type ForumType = "category" | "forum" | "redirect";
 export type ForumDefaultSort = "last_post" | "start_date" | "title";
@@ -609,6 +610,7 @@ export async function saveForumSettings(
     profile: "rules",
     context: { kind: "forum_post", forumId },
     authorId: actorMemberId,
+    ...(await loadStaffContentRenderOptions(sql, actorMemberId)),
   });
   const affected = affectedIds(tree, forumId, forum.parentId);
 

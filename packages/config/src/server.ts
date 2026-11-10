@@ -289,6 +289,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       ...(options.security.connectSrc === undefined
         ? {}
         : { connectSrc: options.security.connectSrc }),
+      ...(options.security.frameSrc === undefined ? {} : { frameSrc: options.security.frameSrc }),
     });
   };
 

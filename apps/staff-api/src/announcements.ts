@@ -2,6 +2,7 @@ import { saveContent } from "@bulletin/content";
 import { announcementMutation, runMutation } from "@bulletin/domain/mutations";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
+import { loadStaffContentRenderOptions } from "./content-dependencies.ts";
 
 export type AnnouncementScope = "global" | "forums";
 
@@ -268,6 +269,7 @@ export async function saveAnnouncement(
     profile: "rules",
     context: { kind: "forum_post", forumId: targets[0]?.forumId ?? "1" },
     authorId: actorMemberId,
+    ...(await loadStaffContentRenderOptions(sql, actorMemberId)),
   });
 
   if (groupIds.length > 0) {

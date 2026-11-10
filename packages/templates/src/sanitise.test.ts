@@ -32,6 +32,37 @@ describe("sanitiseRenderedMarkup", () => {
     ]);
   });
 
+  test("keeps a content-pipeline player only on an allowlisted provider origin", () => {
+    const player =
+      '<div class="embed embed-youtube"><iframe data-bl-embed="youtube" ' +
+      'src="https://www.youtube-nocookie.com/embed/abc" title="YouTube" loading="lazy" ' +
+      'allowfullscreen srcdoc="<script>alert(1)</script>"></iframe></div>';
+    const result = sanitiseRenderedMarkup(player, {
+      trustedFrameOrigins: ["https://www.youtube-nocookie.com"],
+    });
+
+    expect(result.html).toContain('<iframe data-bl-embed="youtube"');
+    expect(result.html).toContain('src="https://www.youtube-nocookie.com/embed/abc"');
+    expect(result.html).not.toContain("srcdoc");
+    expect(result.removed).toEqual(["the srcdoc attribute on iframe"]);
+  });
+
+  test("removes unmarked iframes and players on an untrusted origin", () => {
+    const unmarked = sanitiseRenderedMarkup(
+      '<iframe src="https://www.youtube-nocookie.com/embed/abc"></iframe>',
+      { trustedFrameOrigins: ["https://www.youtube-nocookie.com"] },
+    );
+    const offOrigin = sanitiseRenderedMarkup(
+      '<iframe data-bl-embed="youtube" src="https://evil.example/embed/abc"></iframe>',
+      { trustedFrameOrigins: ["https://www.youtube-nocookie.com"] },
+    );
+
+    expect(unmarked.html).toBe("");
+    expect(unmarked.removed).toEqual(["the iframe element"]);
+    expect(offOrigin.html).toBe("");
+    expect(offOrigin.removed).toEqual(["the iframe element"]);
+  });
+
   test("strips event handlers and forbidden URL schemes but keeps the element", () => {
     const result = sanitiseRenderedMarkup(
       '<div onclick="steal()" data-x="1">' +

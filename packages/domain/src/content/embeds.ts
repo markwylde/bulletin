@@ -148,6 +148,29 @@ export async function listEmbedProviders(
   return rows.map(toRecord);
 }
 
+/**
+ * The exact `https` origins of provider embed templates. The user app allows only these in
+ * `frame-src` and the theme renderer keeps only these content-pipeline players (ADR 0007,
+ * 0008, 0018), so a theme can never frame an arbitrary site.
+ */
+export function embedProviderOrigins(providers: readonly EmbedProvider[]): readonly string[] {
+  const origins = new Set<string>();
+
+  for (const provider of providers) {
+    try {
+      const url = new URL(provider.embedUrl.replaceAll("{id}", "test"));
+
+      if (url.protocol === "https:") {
+        origins.add(url.origin);
+      }
+    } catch {
+      // An invalid template is rejected when it is saved; skip it defensively here.
+    }
+  }
+
+  return [...origins].sort();
+}
+
 export async function saveEmbedProvider(sql: SQL, value: unknown): Promise<EmbedProviderResult> {
   const parsed = parseEmbedProviderInput(value);
 

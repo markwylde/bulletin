@@ -2,8 +2,12 @@ import type { Root } from "hast";
 import { visit } from "unist-util-visit";
 import type { ReplaceWords } from "./types.ts";
 
-/** Pipeline rules change only with a code release; filter edits add their own version. */
-export const BASE_RENDER_VERSION = 1;
+/**
+ * Pipeline rules change only with a code release; filter edits add their own version.
+ * Version 2 marks embed players with `data-bl-embed` so the theme renderer can keep them
+ * while still rejecting every theme-authored iframe (ADR 0007, 0008).
+ */
+export const BASE_RENDER_VERSION = 2;
 export const SANITISER_VERSION = 1;
 
 /**

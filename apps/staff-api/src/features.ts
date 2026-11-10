@@ -22,7 +22,18 @@ export async function staffFeatureFlags(
   return flags;
 }
 
+/** One server-side flag value for the signed-in staff member; unknown flags fail closed. */
+export async function staffFlagValue(sql: SQL, memberId: string, key: string): Promise<boolean> {
+  const [definitions, viewer] = await Promise.all([
+    loadStoredFlags(sql),
+    loadFlagViewer(sql, memberId),
+  ]);
+  const definition = definitions.find((candidate) => candidate.key === key);
+
+  return definition !== undefined && evaluateFlag(definition, viewer);
+}
+
 /** One server-side flag guard for the staff API; unknown or disabled flags fail closed. */
 export async function staffFlagEnabled(sql: SQL, memberId: string, key: string): Promise<boolean> {
-  return (await staffFeatureFlags(sql, memberId))[key] === true;
+  return staffFlagValue(sql, memberId, key);
 }

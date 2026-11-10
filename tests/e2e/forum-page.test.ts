@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { VIEWPORTS, type ViewportName, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
-import { userBaseUrl } from "@bulletin/test-utils/urls";
+import {
+  loginAs,
+  VIEWPORTS,
+  type ViewportName,
+  waitForSelector,
+  withPage,
+} from "@bulletin/test-utils/e2e";
+import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -9,7 +15,9 @@ import { userBaseUrl } from "@bulletin/test-utils/urls";
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
 const USER_URL = userBaseUrl();
+const STAFF_URL = staffBaseUrl();
 const VIEWPORT_NAMES = Object.keys(VIEWPORTS) as ViewportName[];
+const EMBED_SRC = "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ";
 
 function forumUrl(ref: string): string {
   return new URL(`/forum/${ref}`, USER_URL).toString();
@@ -55,6 +63,63 @@ integrationDescribe("forum page", () => {
       );
     });
   }, 90_000);
+
+  test("a YouTube embed renders through the theme and CSP allows its exact origin", async () => {
+    await withPage({ url: `${STAFF_URL}/forums`, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "admin");
+      await waitForSelector(view, '[data-page="forums"]', 20_000);
+      const rules = `Watch this video:\n\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ`;
+      const status = await view.evaluate<number>(`(async () => {
+        const token = sessionStorage.getItem("bulletin_csrf_token");
+        const response = await fetch("/api/staff/forums", {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+            ...(token === null ? {} : { "x-bulletin-csrf": token }),
+          },
+          body: JSON.stringify({
+            action: "settings",
+            id: "2",
+            rules: ${JSON.stringify(rules)},
+            prefixIds: [],
+          }),
+        });
+
+        return response.status;
+      })()`);
+
+      if (status !== 200) {
+        throw new Error(`Could not save the forum rules (status ${status})`);
+      }
+
+      await view.navigate(forumUrl("2-announcements"));
+      await waitForSelector(view, "iframe[data-bl-embed]", 20_000);
+
+      const player = await view.evaluate<{ count: number; src: string | null }>(
+        `(() => {
+          const frames = document.querySelectorAll("iframe[data-bl-embed]");
+          const first = frames[0] ?? null;
+          return { count: frames.length, src: first instanceof HTMLIFrameElement ? first.src : null };
+        })()`,
+      );
+
+      expect(player.count).toBe(1);
+      expect(player.src).toBe(EMBED_SRC);
+
+      // The page allows exactly the provider origin, never `*`; a blocked frame would also
+      // have been reported as a console error by the harness above.
+      const csp = await view.evaluate<string | null>(
+        `fetch(location.href, { credentials: "include" })
+          .then((response) => response.headers.get("content-security-policy"))`,
+      );
+
+      expect(csp).toContain("frame-src ");
+      expect(csp).toContain("https://www.youtube-nocookie.com");
+      expect(csp).not.toContain("frame-src *");
+    });
+  }, 120_000);
 
   test("prompts for the password instead of showing content", async () => {
     await withPage(

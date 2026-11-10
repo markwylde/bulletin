@@ -129,6 +129,9 @@ export function expandEmbedPlaceholders(
           type: "element",
           tagName: "iframe",
           properties: {
+            // The marker is what lets the theme renderer keep this frame after theme
+            // sanitising (ADR 0008); member or theme markup never carries it.
+            dataBlEmbed: provider.key,
             src,
             title: provider.title,
             loading: "lazy",

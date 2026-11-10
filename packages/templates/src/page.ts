@@ -22,6 +22,8 @@ export interface RenderThemePageInput {
   readonly runtime: TemplateRuntime;
   /** Regions rendered first and exposed to the page as `{{ regionName }}`. */
   readonly regions?: readonly ThemeRegion[];
+  /** Exact allowlisted embed origins a content pipeline player may frame (ADR 0007, 0008). */
+  readonly trustedFrameOrigins?: readonly string[];
 }
 
 export interface RenderedThemePage {
@@ -49,6 +51,9 @@ export async function renderThemePage(input: RenderThemePageInput): Promise<Rend
       name: region.name,
       viewModel: region.viewModel,
       runtime: input.runtime,
+      ...(input.trustedFrameOrigins === undefined
+        ? {}
+        : { trustedFrameOrigins: input.trustedFrameOrigins }),
     });
 
     rendered[region.name] = result;
@@ -60,6 +65,9 @@ export async function renderThemePage(input: RenderThemePageInput): Promise<Rend
     name: input.name,
     viewModel: { ...input.viewModel, ...regionViewModel },
     runtime: input.runtime,
+    ...(input.trustedFrameOrigins === undefined
+      ? {}
+      : { trustedFrameOrigins: input.trustedFrameOrigins }),
   });
 
   return {

@@ -1,5 +1,6 @@
 import { queueSystemAudit } from "@bulletin/domain/audit";
 import { parseCookieHeader } from "@bulletin/domain/auth";
+import { embedProviderOrigins, listEmbedProviders } from "@bulletin/domain/content";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { BP_COOKIE_NAME, type ColorScheme, parseBpCookie } from "@bulletin/i18n";
 import {
@@ -266,6 +267,11 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
     },
   };
   const compiled = compiledThemes.compile(theme, generation);
+  // Content embeds stay in the page only when their frame origin is an enabled provider
+  // (ADR 0007, 0008). Provider changes are rare, and this runs on a cache miss only.
+  const trustedFrameOrigins = embedProviderOrigins(
+    await listEmbedProviders(input.sql).catch(() => []),
+  );
   let page: RenderedThemePage;
 
   try {
@@ -276,6 +282,7 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
       viewModel: input.viewModel,
       runtime,
       regions: pageRegions(input),
+      trustedFrameOrigins,
     });
   } catch (error) {
     // A template that failed to compile never reaches `page.violations`; report it before the

@@ -3,6 +3,7 @@ import { createDrainController } from "@bulletin/config/drain";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
+import { embedProviderOrigins, listEmbedProviders } from "@bulletin/domain/content";
 import { BP_COOKIE_NAME, resolveRequestLocale } from "@bulletin/i18n";
 import { canViewOffline, readBoard } from "./board.ts";
 import { closeCacheRuntime } from "./cache-runtime.ts";
@@ -58,11 +59,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const finish = drain?.track();
   const nonce = createCspNonce();
   context.locals.cspNonce = nonce;
+  // Populated for page requests once the allowlisted embed providers are known. APIs and
+  // health checks frame nothing, so they keep the default `none`.
+  let frameSrc: readonly string[] = [];
   const secure = (response: Response): Response =>
     applySecurityHeaders(response, {
       nonce,
       nodeEnv,
       connectSrc: [authIssuer],
+      frameSrc,
     });
 
   try {
@@ -106,6 +111,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
       } catch {
         boardFailed = true;
       }
+
+      // The content pipeline only embeds allowlisted providers, so their exact origins are
+      // the only frames the page may load (ADR 0018). A provider read failure fails closed.
+      frameSrc = embedProviderOrigins(await listEmbedProviders(readSql()).catch(() => []));
 
       if (sessionContext !== null) {
         context.locals.locale = sessionContext.locale;

@@ -12,6 +12,8 @@ export interface RenderTemplateInput {
   readonly name: string;
   readonly viewModel: object;
   readonly runtime: TemplateRuntime;
+  /** Exact allowlisted embed origins a content pipeline player may frame (ADR 0007, 0008). */
+  readonly trustedFrameOrigins?: readonly string[];
   /** Tightens the engine limits for this render (tests, previews). */
   readonly limits?: Partial<Pick<TemplateLimits, "renderLimit" | "memoryLimit" | "outputLimit">>;
 }
@@ -114,7 +116,12 @@ export async function renderThemeTemplate(input: RenderTemplateInput): Promise<R
         outputLimit: limits.outputLimit,
       });
       // ADR 0008: re-sanitise every rendered fragment before it is cached or served.
-      const sanitised = sanitiseRenderedMarkup(html);
+      const sanitised = sanitiseRenderedMarkup(
+        html,
+        input.trustedFrameOrigins === undefined
+          ? {}
+          : { trustedFrameOrigins: input.trustedFrameOrigins },
+      );
 
       if (sanitised.removed.length > 0) {
         violations.push({

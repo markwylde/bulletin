@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   baseSeedModule,
+  emoticonSeedModule,
   flagsSeedModule,
   groupsSeedModule,
   membersSeedModule,
@@ -102,6 +103,7 @@ async function createHarness(database: TestDatabase): Promise<Harness> {
       permissionFixtureSeedModule,
       groupsSeedModule,
       membersSeedModule,
+      emoticonSeedModule,
       themesSeedModule,
     ]),
   });
@@ -494,6 +496,98 @@ integrationDescribe("staff forum structure", () => {
         prefixes: Array<{ id: string }>;
       };
       expect(afterDelete.prefixes).toHaveLength(0);
+    });
+  }, 30_000);
+
+  test("staff saves render emoticons, mentions, embeds and respect the content flags", async () => {
+    await withHarness(async (harness) => {
+      const forum = await createForum(harness, { title: "Rich Content Forum", type: "forum" });
+      const body = [
+        "Hi @Admin :smile:",
+        "",
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "",
+        "https://example.com/article",
+      ].join("\n");
+      const startsAt = new Date(Date.now() - 60_000).toISOString();
+      const saved = await call(harness.api, harness.admin, "announcements.mutate", {
+        action: "save",
+        title: "Rich content notice",
+        body,
+        scope: "forums",
+        startsAt,
+        dismissible: true,
+        targets: [{ forumId: forum, includeSubforums: false }],
+        groupIds: [],
+      });
+
+      expect(saved.status).toBe(200);
+
+      const [announcement] = (await harness.database.sql`
+        SELECT body_html FROM core.announcements WHERE title = 'Rich content notice'
+      `) as Array<{ body_html: string }>;
+
+      if (announcement === undefined) {
+        throw new Error("Missing announcement");
+      }
+
+      expect(announcement.body_html).toContain('alt="Smile"');
+      expect(announcement.body_html).toContain('class="emoticon"');
+      expect(announcement.body_html).toContain('href="/profile/');
+      expect(announcement.body_html).toContain('data-bl-embed="youtube"');
+      expect(announcement.body_html).toContain(
+        'src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"',
+      );
+      expect(announcement.body_html).toContain("<bl-unfurl");
+
+      const settings = await call(harness.api, harness.admin, "forums.mutate", {
+        action: "settings",
+        id: forum,
+        rules: body,
+        prefixIds: [],
+      });
+
+      expect(settings.status).toBe(200);
+
+      const [rules] = (await harness.database.sql`
+        SELECT rules_html FROM core.forums WHERE id = ${forum}
+      `) as Array<{ rules_html: string }>;
+
+      if (rules === undefined) {
+        throw new Error("Missing forum rules");
+      }
+
+      expect(rules.rules_html).toContain('alt="Smile"');
+      expect(rules.rules_html).toContain('href="/profile/');
+      expect(rules.rules_html).toContain('data-bl-embed="youtube"');
+      expect(rules.rules_html).toContain("<bl-unfurl");
+
+      // Flags are evaluated for the author: turning them off reverts mentions and preview
+      // cards to ordinary text and links, while emoticons and embeds stay core (ADR 0010).
+      await harness.database.sql`
+        UPDATE core.feature_flags SET default_value = false WHERE key IN ('mentions', 'unfurls')
+      `;
+      const plain = await call(harness.api, harness.admin, "forums.mutate", {
+        action: "settings",
+        id: forum,
+        rules: body,
+        prefixIds: [],
+      });
+
+      expect(plain.status).toBe(200);
+
+      const [plainRules] = (await harness.database.sql`
+        SELECT rules_html FROM core.forums WHERE id = ${forum}
+      `) as Array<{ rules_html: string }>;
+
+      if (plainRules === undefined) {
+        throw new Error("Missing forum rules");
+      }
+
+      expect(plainRules.rules_html).toContain('alt="Smile"');
+      expect(plainRules.rules_html).toContain('data-bl-embed="youtube"');
+      expect(plainRules.rules_html).not.toContain('href="/profile/');
+      expect(plainRules.rules_html).not.toContain("<bl-unfurl");
     });
   }, 30_000);
 

@@ -7,11 +7,14 @@ export interface SecurityHeadersOptions {
   readonly nodeEnv: SecurityNodeEnv;
   /** Extra origins allowed by `connect-src` (the DarkAuth issuer for browser apps). */
   readonly connectSrc?: readonly string[];
+  /** Exact allowlisted embed origins allowed by `frame-src` (ADR 0007, 0008). */
+  readonly frameSrc?: readonly string[];
 }
 
 export interface SecurityHeadersConfig {
   readonly nodeEnv: SecurityNodeEnv;
   readonly connectSrc?: readonly string[];
+  readonly frameSrc?: readonly string[];
 }
 
 export function createCspNonce(): string {
@@ -20,6 +23,7 @@ export function createCspNonce(): string {
 
 export function contentSecurityPolicy(options: SecurityHeadersOptions): string {
   const connectSrc = ["'self'", ...(options.connectSrc ?? [])].join(" ");
+  const frameSrc = options.frameSrc === undefined ? null : options.frameSrc.join(" ");
 
   return [
     "default-src 'none'",
@@ -28,6 +32,7 @@ export function contentSecurityPolicy(options: SecurityHeadersOptions): string {
     "font-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     `script-src 'self' 'nonce-${options.nonce}'`,
+    frameSrc === null || frameSrc === "" ? "frame-src 'none'" : `frame-src ${frameSrc}`,
     "base-uri 'none'",
     "form-action 'self'",
     "frame-ancestors 'none'",

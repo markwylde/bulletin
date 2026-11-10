@@ -12,13 +12,23 @@ describe("security headers", () => {
       nonce: "abc123",
       nodeEnv: "development",
       connectSrc: ["http://auth.bulletin.localhost:8080"],
+      frameSrc: ["https://www.youtube-nocookie.com", "https://player.vimeo.com"],
     });
 
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("script-src 'self' 'nonce-abc123'");
     expect(csp).toContain("connect-src 'self' http://auth.bulletin.localhost:8080");
+    expect(csp).toContain("frame-src https://www.youtube-nocookie.com https://player.vimeo.com");
+    expect(csp).not.toContain("frame-src *");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain("strict-transport-security");
+  });
+
+  test("frames nothing when no embed provider is allowlisted", () => {
+    const csp = contentSecurityPolicy({ nonce: "n", nodeEnv: "development" });
+
+    expect(csp).toContain("frame-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
   });
 
   test("adds nosniff, referrer policy and production HSTS", () => {

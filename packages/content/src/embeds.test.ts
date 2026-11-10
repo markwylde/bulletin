@@ -57,6 +57,7 @@ describe("embed allowlist", () => {
     const result = await renderContent("https://www.youtube.com/watch?v=dQw4w9WgXcQ", options());
 
     expect(result.bodyHtml).toContain('<div class="embed embed-youtube">');
+    expect(result.bodyHtml).toContain('data-bl-embed="youtube"');
     expect(result.bodyHtml).toContain('src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ"');
     expect(result.bodyHtml).toContain('title="YouTube"');
     expect(result.bodyHtml).not.toContain("<bl-embed");

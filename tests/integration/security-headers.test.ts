@@ -49,6 +49,16 @@ integrationDescribe("security headers", () => {
 
       const nonce = nonceFrom(response.headers.get("content-security-policy"));
       const body = await response.text();
+
+      if (app.name === "user-app") {
+        // ADR 0018: content-pipeline players are the only frames, from exact provider origins.
+        const csp = response.headers.get("content-security-policy") ?? "";
+        expect(csp).toContain("frame-src ");
+        expect(csp).toContain("https://www.youtube-nocookie.com");
+        expect(csp).toContain("https://player.vimeo.com");
+        expect(csp).not.toContain("frame-src *");
+      }
+
       // Every inline executable script must carry this response's nonce. A page with none is
       // fine; data blocks are not executable and are exempt.
       for (const tag of body.match(/<script\b[^>]*>/g) ?? []) {
