@@ -11,17 +11,30 @@ export interface PermissionSnapshotCacheOptions {
   readonly maxBytes?: number;
 }
 
-export interface PermissionSnapshotCache {
-  /** Static compiler inputs (tree, group→mask links, matrix, global powers). */
-  data(load: () => Promise<PermissionData>): Promise<PermissionData>;
-  /** Group snapshots shared by every member with the same sorted group-ID set. */
-  group(key: string, load: () => Promise<CompiledGroupSnapshot>): Promise<CompiledGroupSnapshot>;
-  invalidate(): void;
+export interface Versioned<T> {
+  readonly version: string;
+  readonly value: T;
 }
 
 interface Entry<T> {
   readonly version: string;
   readonly value: T;
+}
+
+export interface PermissionSnapshotCache {
+  /** Static compiler inputs (tree, group→mask links, matrix, global powers). */
+  data(load: () => Promise<PermissionData>): Promise<Versioned<PermissionData>>;
+  /**
+   * Group snapshots shared by every member with the same sorted group-ID set. Returns `null`
+   * when `perm` moved since `dataVersion`, so callers reload the data instead of compiling a
+   * stale matrix under the new version.
+   */
+  group(
+    key: string,
+    dataVersion: string,
+    load: () => Promise<CompiledGroupSnapshot>,
+  ): Promise<Versioned<CompiledGroupSnapshot> | null>;
+  invalidate(): void;
 }
 
 const DEFAULT_BACKSTOP_MS = 1_000;
@@ -76,25 +89,37 @@ export function createPermissionSnapshotCache(
       const current = await version();
 
       if (dataEntry !== null && dataEntry.version === current) {
-        return dataEntry.value;
+        return dataEntry;
       }
 
       const value = await load();
       dataEntry = { version: current, value };
-      return value;
+      return dataEntry;
     },
 
-    async group(key, load) {
+    async group(key, dataVersion, load) {
       const current = await version();
+
+      if (current !== dataVersion) {
+        return null;
+      }
+
       const cached = groups.get(key);
 
       if (cached !== undefined && cached.version === current) {
-        return cached.value;
+        return cached;
       }
 
       const value = await load();
-      groups.set(key, { version: current, value }, groupSnapshotBytes(value));
-      return value;
+      const after = await version();
+
+      if (after !== current) {
+        return null;
+      }
+
+      const entry = { version: after, value };
+      groups.set(key, entry, groupSnapshotBytes(value));
+      return entry;
     },
 
     invalidate() {

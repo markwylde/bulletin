@@ -321,6 +321,24 @@ export async function linkGroupMask(
   });
 }
 
+async function lockMask(tx: SQL, maskId: string): Promise<void> {
+  await tx`SELECT pg_advisory_xact_lock(hashtext(${`bulletin.mask_matrix:${maskId}`})::bigint)`;
+}
+
+async function setMatrixActions(
+  tx: SQL,
+  forumId: string,
+  maskId: string,
+  actions: number,
+): Promise<void> {
+  await tx`
+    INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits, updated_at)
+    VALUES (${forumId}, ${maskId}, ${actions}, false, now())
+    ON CONFLICT (forum_id, mask_id) DO UPDATE
+      SET actions = EXCLUDED.actions, inherits = false, updated_at = now()
+  `;
+}
+
 export async function saveMatrixCell(
   sql: SQL,
   actorMemberId: string,
@@ -346,6 +364,8 @@ export async function saveMatrixCell(
   const allowed = input.allowed;
 
   return sql.begin(async (tx) => {
+    // Serialize matrix edits for a mask before reading inherited values.
+    await lockMask(tx, maskId);
     const tree = await loadForumTree(tx);
     const [mask] = (await tx`
       SELECT id, key FROM core.masks WHERE id = ${maskId}
@@ -365,13 +385,7 @@ export async function saveMatrixCell(
       const effective = resolveForumMaskActions(tree, rows, forumId, maskId);
       const bit = capabilityBitMask(action);
       const actions = allowed ? effective | bit : effective & ~bit;
-
-      await tx`
-        INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits, updated_at)
-        VALUES (${forumId}, ${maskId}, ${actions}, false, now())
-        ON CONFLICT (forum_id, mask_id) DO UPDATE
-          SET actions = EXCLUDED.actions, inherits = false, updated_at = now()
-      `;
+      await setMatrixActions(tx, forumId, maskId, actions);
     }
 
     await bumpPermVersion(tx);
@@ -399,8 +413,6 @@ export async function bulkToggleMatrix(
 ): Promise<MaskMutation> {
   if (
     !isRecord(input) ||
-    typeof input.categoryId !== "string" ||
-    typeof input.maskId !== "string" ||
     typeof input.permissionAction !== "string" ||
     typeof input.allowed !== "boolean"
   ) {
@@ -411,44 +423,78 @@ export async function bulkToggleMatrix(
     return { ok: false, code: "invalid_action" };
   }
 
+  const scopes = ["forumId", "maskId"].filter((key) => typeof input[key] === "string");
+
+  if (scopes.length !== 1) {
+    return { ok: false, code: "invalid_request" };
+  }
+
   const action = input.permissionAction;
-  const categoryId = input.categoryId;
-  const maskId = input.maskId;
   const allowed = input.allowed;
+  const bit = capabilityBitMask(action);
 
   return sql.begin(async (tx) => {
     const tree = await loadForumTree(tx);
-    const [mask] = (await tx`
-      SELECT id, key FROM core.masks WHERE id = ${maskId}
+    const allMasks = (await tx`
+      SELECT id, key FROM core.masks ORDER BY id
     `) as Array<{ id: string; key: string }>;
 
-    if (tree.get(categoryId) === undefined || mask === undefined) {
+    let targetMasks = allMasks;
+    let targetForums = tree.ids;
+    let scope: "row" | "column" = "column";
+    let scopeId = "";
+
+    if (typeof input.forumId === "string") {
+      scope = "row";
+      scopeId = input.forumId;
+      targetForums = [input.forumId];
+    } else if (typeof input.maskId === "string") {
+      scope = "column";
+      scopeId = input.maskId;
+      targetMasks = allMasks.filter((mask) => mask.id === input.maskId);
+    }
+
+    if (
+      targetMasks.length === 0 ||
+      targetForums.some((forumId) => tree.get(forumId) === undefined)
+    ) {
       return { ok: false, code: "not_found" } as const;
     }
 
-    const rows = await matrixRows(tx);
-    const effective = resolveForumMaskActions(tree, rows, categoryId, maskId);
-    const bit = capabilityBitMask(action);
-    const actions = allowed ? effective | bit : effective & ~bit;
+    // Lock every affected mask in sorted order so row bulk cannot deadlock with other edits.
+    for (const mask of [...targetMasks].sort((left, right) => left.id.localeCompare(right.id))) {
+      await lockMask(tx, mask.id);
+    }
 
-    await tx`
-      INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits, updated_at)
-      VALUES (${categoryId}, ${maskId}, ${actions}, false, now())
-      ON CONFLICT (forum_id, mask_id) DO UPDATE
-        SET actions = EXCLUDED.actions, inherits = false, updated_at = now()
-    `;
+    const rows = await matrixRows(tx);
+    const updates: Array<{ forumId: string; mask: { id: string; key: string }; actions: number }> =
+      [];
+
+    for (const mask of targetMasks) {
+      for (const forumId of targetForums) {
+        const effective = resolveForumMaskActions(tree, rows, forumId, mask.id);
+        const actions = allowed ? effective | bit : effective & ~bit;
+        updates.push({ forumId, mask, actions });
+      }
+    }
+
+    for (const update of updates) {
+      await setMatrixActions(tx, update.forumId, update.mask.id, update.actions);
+    }
 
     await bumpPermVersion(tx);
     await writeAdminLog(tx, {
       actorMemberId,
       action: "mask.matrix.bulk",
       targetType: "mask",
-      targetId: mask.id,
+      targetId: targetMasks.length === 1 ? (targetMasks[0]?.id ?? null) : null,
       summary: {
-        forumId: categoryId,
-        mask: mask.key,
+        scope,
+        scopeId,
         action,
         allowed,
+        masks: targetMasks.map((mask) => mask.key),
+        forums: targetForums,
       },
     });
     return { ok: true } as const;

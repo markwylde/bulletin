@@ -19,7 +19,6 @@ export interface ModeratorView {
     thisForumOnly: boolean;
   }>;
   readonly groups: ReadonlyArray<{ id: string; key: string; title: string }>;
-  readonly members: ReadonlyArray<{ id: string; displayName: string }>;
   readonly forums: ReadonlyArray<{ id: string; parentId: string | null }>;
   readonly powers: readonly ModeratorPower[];
 }
@@ -65,13 +64,6 @@ export async function listModerators(sql: SQL): Promise<ModeratorView> {
   const groups = (await sql`
     SELECT id, key, title FROM core.groups ORDER BY display_order, id
   `) as Array<{ id: string; key: string; title: string }>;
-  const members = (await sql`
-    SELECT id, display_name
-    FROM core.members
-    WHERE display_name IS NOT NULL
-    ORDER BY display_name
-    LIMIT 200
-  `) as Array<{ id: string; display_name: string }>;
   const forums = (await sql`
     SELECT id, parent_id FROM core.forums ORDER BY id
   `) as Array<{ id: string; parent_id: string | null }>;
@@ -88,10 +80,6 @@ export async function listModerators(sql: SQL): Promise<ModeratorView> {
       thisForumOnly: row.this_forum_only,
     })),
     groups,
-    members: members.map((member) => ({
-      id: member.id,
-      displayName: member.display_name,
-    })),
     forums: forums.map((forum) => ({ id: forum.id, parentId: forum.parent_id })),
     powers: MODERATOR_POWERS,
   };
@@ -261,4 +249,37 @@ export async function deleteModerator(
 
     return { ok: true } as const;
   });
+}
+
+export interface ModeratorMemberPage {
+  readonly members: ReadonlyArray<{ id: string; displayName: string }>;
+  readonly nextOffset: number | null;
+}
+
+/** Searchable, paginated member picker for the moderator editor. */
+export async function searchModeratorMembers(
+  sql: SQL,
+  query: string,
+  offset: number,
+  limit: number,
+): Promise<ModeratorMemberPage> {
+  const safeLimit = Math.min(50, Math.max(1, Math.trunc(limit)));
+  const safeOffset = Math.max(0, Math.trunc(offset));
+  const trimmed = query.trim();
+
+  const rows = (await sql`
+    SELECT id, display_name
+    FROM core.members
+    WHERE display_name IS NOT NULL
+      AND (${trimmed} = '' OR display_name ILIKE ${`%${trimmed}%`})
+    ORDER BY display_name, id
+    LIMIT ${safeLimit + 1}
+    OFFSET ${safeOffset}
+  `) as Array<{ id: string; display_name: string }>;
+  const page = rows.slice(0, safeLimit);
+
+  return {
+    members: page.map((row) => ({ id: row.id, displayName: row.display_name })),
+    nextOffset: rows.length > safeLimit ? safeOffset + safeLimit : null,
+  };
 }

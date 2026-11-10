@@ -36,6 +36,7 @@ import {
   listModerators,
   type ModeratorMutation,
   saveModerator,
+  searchModeratorMembers,
 } from "./moderators.ts";
 import {
   deletePromotionRule,
@@ -401,6 +402,26 @@ async function moderatorsList(context: StaffRouteContext): Promise<Response> {
   return json(await listModerators(context.sql));
 }
 
+async function moderatorMembers(context: StaffRouteContext): Promise<Response> {
+  const query = context.url.searchParams.get("query") ?? "";
+  const offsetParam = context.url.searchParams.get("offset");
+  const limitParam = context.url.searchParams.get("limit");
+  const offset = offsetParam === null ? 0 : Number(offsetParam);
+  const limit = limitParam === null ? 50 : Number(limitParam);
+
+  if (
+    !Number.isInteger(offset) ||
+    offset < 0 ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > 50
+  ) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  return json(await searchModeratorMembers(context.sql, query, offset, limit));
+}
+
 async function moderatorsMutate(context: StaffRouteContext): Promise<Response> {
   const body: unknown = await context.request.json().catch(() => null);
   const action = actionOf(body);
@@ -592,6 +613,13 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/moderators",
     permission: "acp.members",
     handler: moderatorsList,
+  },
+  {
+    id: "moderators.members",
+    method: "GET",
+    path: "/api/staff/moderators/members",
+    permission: "acp.members",
+    handler: moderatorMembers,
   },
   {
     id: "moderators.update",

@@ -81,9 +81,8 @@ export function MasksPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createDraft, setCreateDraft] = useState<MaskDraft>(EMPTY_DRAFT);
   const [editDraft, setEditDraft] = useState<MaskDraft>(EMPTY_DRAFT);
-  const [bulkCategory, setBulkCategory] = useState("");
-  const [bulkAction, setBulkAction] = useState<ForumAction>("read");
-  const [bulkAllowed, setBulkAllowed] = useState(true);
+  const [gridAction, setGridAction] = useState<ForumAction>("read");
+  const [gridAllowed, setGridAllowed] = useState(true);
   const query = useQuery({
     queryKey: ["staff", "masks"],
     queryFn: () => apiGet<MatrixView>("/api/staff/masks"),
@@ -304,28 +303,14 @@ export function MasksPage() {
                 ))}
               </ul>
 
-              <h3>{t("staff.masks.bulk.title")}</h3>
-              <div className="admin-form" data-bulk-toggle>
-                <label>
-                  <span>{t("staff.masks.bulk.category")}</span>
-                  <select
-                    data-bulk-category
-                    value={bulkCategory}
-                    onChange={(event) => setBulkCategory(event.target.value)}
-                  >
-                    {query.data.forums.map((forum) => (
-                      <option key={forum.id} value={forum.id}>
-                        {`#${forum.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <h3>{t("staff.masks.grid.title")}</h3>
+              <div className="admin-form">
                 <label>
                   <span>{t("staff.masks.bulk.action")}</span>
                   <select
-                    data-bulk-action
-                    value={bulkAction}
-                    onChange={(event) => setBulkAction(event.target.value as ForumAction)}
+                    data-grid-action
+                    value={gridAction}
+                    onChange={(event) => setGridAction(event.target.value as ForumAction)}
                   >
                     {FORUM_ACTIONS.map((action) => (
                       <option key={action} value={action}>
@@ -337,28 +322,93 @@ export function MasksPage() {
                 <label>
                   <input
                     type="checkbox"
-                    data-bulk-allowed
-                    checked={bulkAllowed}
-                    onChange={(event) => setBulkAllowed(event.target.checked)}
+                    data-grid-allowed
+                    checked={gridAllowed}
+                    onChange={(event) => setGridAllowed(event.target.checked)}
                   />
                   <span>{t("staff.masks.bulk.allow")}</span>
                 </label>
-                <button
-                  type="button"
-                  data-bulk-submit
-                  disabled={save.isPending || bulkCategory === ""}
-                  onClick={() =>
-                    save.mutate({
-                      action: "bulk",
-                      categoryId: bulkCategory,
-                      maskId: selected.id,
-                      permissionAction: bulkAction,
-                      allowed: bulkAllowed,
-                    })
-                  }
-                >
-                  {t("staff.masks.bulk.submit")}
-                </button>
+              </div>
+              <div className="matrix-scroll" data-matrix-scroll>
+                <table className="matrix-table" data-mask-grid>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t("staff.masks.forum")}</th>
+                      {query.data.masks.map((mask) => (
+                        <th key={mask.id} scope="col">
+                          <span>{mask.title}</span>
+                          <button
+                            type="button"
+                            data-grid-column-bulk={mask.key}
+                            onClick={() =>
+                              save.mutate({
+                                action: "bulk",
+                                maskId: mask.id,
+                                permissionAction: gridAction,
+                                allowed: gridAllowed,
+                              })
+                            }
+                          >
+                            {t("staff.masks.grid.bulkColumn")}
+                          </button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {query.data.forums.map((forum) => (
+                      <tr key={forum.id} data-grid-row={forum.id}>
+                        <th scope="row">
+                          <span>{`#${forum.id}`}</span>
+                          <button
+                            type="button"
+                            data-grid-row-bulk={forum.id}
+                            onClick={() =>
+                              save.mutate({
+                                action: "bulk",
+                                forumId: forum.id,
+                                permissionAction: gridAction,
+                                allowed: gridAllowed,
+                              })
+                            }
+                          >
+                            {t("staff.masks.grid.bulkRow")}
+                          </button>
+                        </th>
+                        {query.data.masks.map((mask) => {
+                          const row = query.data.rows.find(
+                            (candidate) =>
+                              candidate.forumId === forum.id && candidate.maskId === mask.id,
+                          );
+                          const allowed =
+                            row !== undefined &&
+                            (row.effectiveActions & capabilityBitMask(gridAction)) !== 0;
+                          return (
+                            <td key={mask.id} data-label={mask.title}>
+                              <button
+                                type="button"
+                                className={allowed ? "matrix-toggle is-on" : "matrix-toggle"}
+                                data-grid-cell={`${forum.id}:${mask.key}:${gridAction}`}
+                                data-grid-allowed={allowed}
+                                onClick={() =>
+                                  save.mutate({
+                                    action: "cell",
+                                    forumId: forum.id,
+                                    maskId: mask.id,
+                                    permissionAction: gridAction,
+                                    allowed: !allowed,
+                                  })
+                                }
+                              >
+                                {allowed ? t("staff.masks.allowed") : t("staff.masks.denied")}
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
 
               <h3>{t("staff.masks.matrix.title")}</h3>

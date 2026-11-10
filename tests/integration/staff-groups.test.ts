@@ -11,6 +11,7 @@ import {
   type StaffApi,
   type StaffRoute,
 } from "../../apps/staff-api/src/api.ts";
+import { saveMatrixCell } from "../../apps/staff-api/src/masks.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -425,7 +426,6 @@ integrationDescribe("staff group and permission screens", () => {
           (
             await call(api, session, "masks.update", {
               action: "bulk",
-              categoryId: category,
               maskId: mask.id,
               permissionAction: "read",
               allowed: true,
@@ -439,6 +439,18 @@ integrationDescribe("staff group and permission screens", () => {
         );
         expect(childRow?.effectiveActions).toBeGreaterThan(0);
         expect((childRow?.effectiveActions ?? 0) & 2).toBe(2);
+
+        // Row bulk applies the action to every mask on one forum.
+        expect(
+          (
+            await call(api, session, "masks.update", {
+              action: "bulk",
+              forumId: category,
+              permissionAction: "reply",
+              allowed: true,
+            })
+          ).status,
+        ).toBe(200);
 
         expect(
           (
@@ -455,6 +467,52 @@ integrationDescribe("staff group and permission screens", () => {
         await auth.close();
         await sql.close();
       }
+    });
+  }, 30_000);
+
+  test("serializes concurrent matrix edits so a revocation is not restored", async () => {
+    await withDb("staff_masks_concurrent", async (database) => {
+      const admin = await createMember(database, "Concurrent Mask Admin", ["administrators"]);
+      const forum = await createForum(database);
+      const [mask] = (await database.sql`
+        INSERT INTO core.masks (key, title) VALUES ('concurrent', 'Concurrent')
+        RETURNING id
+      `) as Array<{ id: string }>;
+
+      if (mask === undefined) {
+        throw new Error("Could not create mask");
+      }
+
+      await database.sql`
+        INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+        VALUES (${forum}, ${mask.id}, ${forumActionMask(["show", "read"])}, false)
+      `;
+
+      const results = await Promise.all([
+        saveMatrixCell(database.sql, admin, {
+          forumId: forum,
+          maskId: mask.id,
+          permissionAction: "read",
+          allowed: false,
+        }),
+        saveMatrixCell(database.sql, admin, {
+          forumId: forum,
+          maskId: mask.id,
+          permissionAction: "reply",
+          allowed: true,
+        }),
+      ]);
+
+      expect(results.every((result) => result.ok)).toBe(true);
+
+      const [row] = (await database.sql`
+        SELECT actions FROM core.forum_permissions
+        WHERE forum_id = ${forum} AND mask_id = ${mask.id}
+      `) as Array<{ actions: number }>;
+
+      const actions = row?.actions ?? 0;
+      expect(actions & 2).toBe(0);
+      expect(actions & 8).toBe(8);
     });
   }, 30_000);
 
@@ -594,6 +652,75 @@ integrationDescribe("staff group and permission screens", () => {
       }
     });
   }, 30_000);
+
+  test("searches and paginates members beyond the old 200-member limit", async () => {
+    await withDb("staff_moderator_member_search", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const admin = await createMember(database, "Search Admin", ["administrators"]);
+        const session = await createSession(database, admin);
+
+        for (let index = 0; index < 205; index += 1) {
+          const name = `Bulk Member ${String(index).padStart(3, "0")}`;
+          await database.sql`
+            INSERT INTO core.members (display_name, name_skeleton)
+            VALUES (${name}, ${displayNameSkeleton(name)})
+          `;
+        }
+
+        const firstPage = (await (
+          await callPath(
+            api,
+            session,
+            "GET",
+            "/api/staff/moderators/members?query=Bulk%20Member&limit=50",
+          )
+        ).json()) as {
+          members: Array<{ id: string; displayName: string }>;
+          nextOffset: number | null;
+        };
+        expect(firstPage.members).toHaveLength(50);
+        expect(firstPage.nextOffset).toBe(50);
+
+        const target = (await (
+          await callPath(
+            api,
+            session,
+            "GET",
+            "/api/staff/moderators/members?query=Bulk%20Member%20204",
+          )
+        ).json()) as { members: Array<{ id: string; displayName: string }> };
+
+        expect(target.members).toHaveLength(1);
+        const member = target.members[0];
+
+        if (member === undefined) {
+          throw new Error("Could not find the 205th member");
+        }
+
+        const forum = await createForum(database);
+        const saved = await call(api, session, "moderators.update", {
+          action: "save",
+          forumId: forum,
+          assigneeKind: "member",
+          assigneeId: member.id,
+          powers: ["pin"],
+          thisForumOnly: true,
+        });
+        expect(saved.status).toBe(200);
+
+        const [assignment] = (await database.sql`
+          SELECT id FROM core.moderators
+          WHERE forum_id = ${forum} AND member_id = ${member.id}
+        `) as Array<{ id: string }>;
+        expect(assignment).toBeDefined();
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 60_000);
 
   test("creates, updates and deletes promotion rules", async () => {
     await withDb("staff_promotions", async (database) => {

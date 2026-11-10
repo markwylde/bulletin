@@ -1,7 +1,7 @@
 import { MODERATOR_POWERS, type ModeratorPower } from "@bulletin/domain/permissions";
 import { useT } from "@bulletin/ui";
 import { useToast } from "@bulletin/ui/feedback";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
 
@@ -17,7 +17,6 @@ interface ModeratorView {
     thisForumOnly: boolean;
   }>;
   readonly groups: ReadonlyArray<{ id: string; key: string; title: string }>;
-  readonly members: ReadonlyArray<{ id: string; displayName: string }>;
   readonly forums: ReadonlyArray<{ id: string; parentId: string | null }>;
   readonly powers: readonly ModeratorPower[];
 }
@@ -45,10 +44,28 @@ export function ModeratorsPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [selectedMemberName, setSelectedMemberName] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["staff", "moderators"],
     queryFn: () => apiGet<ModeratorView>("/api/staff/moderators"),
   });
+  const memberQuery = useInfiniteQuery({
+    queryKey: ["staff", "moderator-members", memberSearch],
+    queryFn: ({ pageParam }) =>
+      apiGet<{
+        members: Array<{ id: string; displayName: string }>;
+        nextOffset: number | null;
+      }>(
+        `/api/staff/moderators/members?query=${encodeURIComponent(
+          memberSearch,
+        )}&offset=${pageParam}`,
+      ),
+    initialPageParam: 0,
+    getNextPageParam: (last) => last.nextOffset,
+    enabled: draft.assigneeKind === "member",
+  });
+  const memberOptions = memberQuery.data?.pages.flatMap((page) => page.members) ?? [];
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => apiPost("/api/staff/moderators", body),
     onSuccess: () => {
@@ -64,10 +81,8 @@ export function ModeratorsPage() {
     }
   }, [query.data, draft.forumId]);
 
-  const assignees =
-    draft.assigneeKind === "member"
-      ? (query.data?.members.map((member) => ({ id: member.id, label: member.displayName })) ?? [])
-      : (query.data?.groups.map((group) => ({ id: group.id, label: group.title })) ?? []);
+  const groupOptions =
+    query.data?.groups.map((group) => ({ id: group.id, label: group.title })) ?? [];
 
   const selectAssignment = (assignment: ModeratorView["assignments"][number]): void => {
     setDraft({
@@ -78,6 +93,8 @@ export function ModeratorsPage() {
       powers: assignment.powers,
       thisForumOnly: assignment.thisForumOnly,
     });
+    setSelectedMemberName(assignment.memberName);
+    setMemberSearch("");
   };
 
   return (
@@ -182,23 +199,78 @@ export function ModeratorsPage() {
                   <option value="group">{t("staff.moderators.group")}</option>
                 </select>
               </label>
-              <label>
-                <span>{t("staff.moderators.assignee")}</span>
-                <select
-                  data-moderator-assignee
-                  value={draft.assigneeId}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, assigneeId: event.target.value }))
-                  }
-                >
-                  <option value="">{t("staff.moderators.assignee.none")}</option>
-                  {assignees.map((assignee) => (
-                    <option key={assignee.id} value={assignee.id}>
-                      {assignee.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {draft.assigneeKind === "member" ? (
+                <>
+                  <label>
+                    <span>{t("staff.moderators.searchMembers")}</span>
+                    <input
+                      type="search"
+                      data-moderator-member-search
+                      value={memberSearch}
+                      onChange={(event) => {
+                        setMemberSearch(event.target.value);
+                        setSelectedMemberName(null);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span>{t("staff.moderators.assignee")}</span>
+                    <select
+                      data-moderator-assignee
+                      value={draft.assigneeId}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setDraft((current) => ({ ...current, assigneeId: value }));
+                        setSelectedMemberName(
+                          memberOptions.find((member) => member.id === value)?.displayName ??
+                            selectedMemberName,
+                        );
+                      }}
+                    >
+                      <option value="">{t("staff.moderators.assignee.none")}</option>
+                      {draft.assigneeId !== "" &&
+                      !memberOptions.some((member) => member.id === draft.assigneeId) ? (
+                        <option value={draft.assigneeId}>
+                          {selectedMemberName ?? draft.assigneeId}
+                        </option>
+                      ) : null}
+                      {memberOptions.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.displayName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {memberQuery.hasNextPage ? (
+                    <button
+                      type="button"
+                      data-moderator-member-more
+                      disabled={memberQuery.isFetchingNextPage}
+                      onClick={() => void memberQuery.fetchNextPage()}
+                    >
+                      {t("staff.moderators.loadMore")}
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <label>
+                  <span>{t("staff.moderators.assignee")}</span>
+                  <select
+                    data-moderator-assignee
+                    value={draft.assigneeId}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, assigneeId: event.target.value }))
+                    }
+                  >
+                    <option value="">{t("staff.moderators.assignee.none")}</option>
+                    {groupOptions.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
                 <input
                   type="checkbox"

@@ -213,6 +213,57 @@ integrationDescribe("permission snapshot", () => {
     });
   }, 30_000);
 
+  test("retries when a revocation lands between loading data and compiling the group", async () => {
+    await withDb("snapshot_interleaved_revoke", async (database) => {
+      const forum = await createForum(database);
+      const maskId = await createMask(database, "standard");
+      const membersGroup = (await database.sql`
+        SELECT id FROM core.groups WHERE key = 'members'
+      `) as Array<{ id: string }>;
+      const groupId = membersGroup[0]?.id;
+
+      if (groupId === undefined) {
+        throw new Error("Missing members group");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_masks (group_id, mask_id) VALUES (${groupId}, ${maskId})
+      `;
+      await setMatrix(database, forum, maskId, ["show", "read"]);
+
+      const member = await createMember(database, "Interleaved Member", ["members"]);
+      const tree = await loadForumTree(database.sql);
+      let clock = 0;
+      let version = 0;
+      let versionReads = 0;
+      const service = createPermissionService({
+        sql: database.sql,
+        now: () => {
+          clock += 1_000;
+          return clock;
+        },
+        backstopMs: 1_000,
+        readVersion: async () => {
+          versionReads += 1;
+
+          if (versionReads === 2) {
+            // Revoke read exactly between the data load and the group compile.
+            version = 1;
+            await database.sql`
+              UPDATE core.forum_permissions
+              SET actions = ${forumActionMask(["show"])}
+              WHERE forum_id = ${forum} AND mask_id = ${maskId}
+            `;
+          }
+
+          return String(version);
+        },
+      });
+
+      expect(await service.can(member, "read", { forumId: forum, tree })).toBe(false);
+    });
+  }, 30_000);
+
   test("revokes read in a cached snapshot within the one-second backstop", async () => {
     await withDb("snapshot_revoke", async (database) => {
       const forum = await createForum(database);

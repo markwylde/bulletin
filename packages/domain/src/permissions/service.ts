@@ -4,10 +4,12 @@ import { can, type PermissionAction, type PermissionScope } from "./can.ts";
 import { memberBanned } from "./moderator.ts";
 import { mergeGroupSettings } from "./registry.ts";
 import {
+  type CompiledGroupSnapshot,
   capabilityAnswer,
   compileGroupSnapshot,
   compileMemberSnapshot,
   loadPermissionData,
+  type PermissionData,
   type PermissionSnapshot,
 } from "./snapshot.ts";
 import { createPermissionSnapshotCache, createSqlPermVersionReader } from "./snapshot-cache.ts";
@@ -51,12 +53,33 @@ export function createPermissionService(options: PermissionServiceOptions): Perm
     memberId: string,
     request: PermissionSnapshotRequest = {},
   ): Promise<PermissionSnapshot> {
-    const data = await cache.data(() => loadPermissionData(options.sql));
     const groups = await loadMemberGroups(options.sql, memberId);
     const groupIds = groups.map((group) => group.groupId).sort();
-    const groupSnapshot = await cache.group(groupIds.join(","), async () =>
-      compileGroupSnapshot(data, groupIds),
-    );
+    const groupKey = groupIds.join(",");
+    let resolved: { data: PermissionData; group: CompiledGroupSnapshot } | null = null;
+
+    // The data and the compilation must share one `perm` version. If a write lands between
+    // loading the matrix and storing the group snapshot, retry instead of compiling stale data
+    // under the new version.
+    for (let attempt = 0; attempt < 3 && resolved === null; attempt += 1) {
+      const dataEntry = await cache.data(() => loadPermissionData(options.sql));
+      const groupEntry = await cache.group(groupKey, dataEntry.version, async () =>
+        compileGroupSnapshot(dataEntry.value, groupIds),
+      );
+
+      if (groupEntry !== null) {
+        resolved = { data: dataEntry.value, group: groupEntry.value };
+      }
+    }
+
+    if (resolved === null) {
+      // Keep making progress under continuous writes; serve a fresh uncached compile.
+      const data = await loadPermissionData(options.sql);
+      resolved = { data, group: compileGroupSnapshot(data, groupIds) };
+    }
+
+    const data = resolved.data;
+    const groupSnapshot = resolved.group;
     const assignments = await loadModeratorAssignments(options.sql, memberId);
     const settings = mergeGroupSettings(groups);
     const primaryGroupId = groups.find((group) => group.isPrimary)?.groupId ?? null;

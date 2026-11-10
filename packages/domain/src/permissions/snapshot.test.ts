@@ -318,6 +318,26 @@ describe("snapshot compilation property tests", () => {
     expect(hasCapabilityBit(group.bits.get("1") ?? 0, "read")).toBe(true);
   });
 
+  test("a root row marked inherits=true resolves to zero", () => {
+    const tree = createForumTree([{ id: "1", parentId: null, passwordProtected: false }]);
+    const data: PermissionData = {
+      tree,
+      masksByGroup: new Map([["1", ["10"]]]),
+      matrix: [
+        {
+          forumId: "1",
+          maskId: "10",
+          actions: forumActionMask(["show", "read"]),
+          inherits: true,
+        },
+      ],
+      globalPowersByGroup: new Map(),
+    };
+    const group = compileGroupSnapshot(data, ["1"]);
+
+    expect(group.bits.get("1")).toBe(0);
+  });
+
   test("a hidden ancestor hides every descendant", () => {
     const tree = createForumTree([
       { id: "1", parentId: null, passwordProtected: false },

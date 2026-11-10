@@ -358,6 +358,60 @@ integrationDescribe("core.has_mod_power", () => {
     });
   }, 30_000);
 
+  test("treats a root row marked inherits=true as empty in SQL", async () => {
+    await withDb("mod_power_root_inherits", async (database) => {
+      const [forum] = (await database.sql`
+        INSERT INTO core.forums DEFAULT VALUES RETURNING id
+      `) as Array<{ id: string }>;
+      const [mask] = (await database.sql`
+        INSERT INTO core.masks (key, title) VALUES ('root_inherit', 'Root inherit') RETURNING id
+      `) as Array<{ id: string }>;
+      const ids = await groupIds(database);
+      const members = ids.get("members");
+      const superModerators = ids.get("super_moderators");
+
+      if (forum === undefined || mask === undefined || members === undefined) {
+        throw new Error("Missing seed rows");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_masks (group_id, mask_id) VALUES (${members}, ${mask.id})
+      `;
+      await database.sql`
+        INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+        VALUES (${forum.id}, ${mask.id}, ${forumActionMask(["show", "read"])}, true)
+      `;
+
+      const memberId = await createMember(database, "Root Inherit Member");
+      await addToGroup(database, memberId, "members", true);
+
+      if (superModerators !== undefined) {
+        await addToGroup(database, memberId, "super_moderators", false);
+        await database.sql`
+          INSERT INTO core.group_settings (group_id, key, value)
+          VALUES (${superModerators}, 'moderation.pin', 'true'::jsonb)
+        `;
+      }
+
+      const [root] = (await database.sql`
+        SELECT core.can_read_forum(${memberId}, ${forum.id}) AS readable
+      `) as Array<{ readable: boolean }>;
+      expect(root?.readable).toBe(false);
+      expect(await sqlHasModPower(database, memberId, forum.id, "pin")).toBe(false);
+
+      await database.sql`
+        UPDATE core.forum_permissions SET inherits = false
+        WHERE forum_id = ${forum.id} AND mask_id = ${mask.id}
+      `;
+
+      const [fixed] = (await database.sql`
+        SELECT core.can_read_forum(${memberId}, ${forum.id}) AS readable
+      `) as Array<{ readable: boolean }>;
+      expect(fixed?.readable).toBe(true);
+      expect(await sqlHasModPower(database, memberId, forum.id, "pin")).toBe(true);
+    });
+  }, 30_000);
+
   test("agrees with can() across seeded members, random assignments and fixture trees", async () => {
     await withDb("mod_power_property", async (database) => {
       await runSeeds({

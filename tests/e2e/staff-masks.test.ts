@@ -38,21 +38,31 @@ integrationDescribe("staff permission masks", () => {
       await clickSelector(view, `[data-mask-edit="${key}"]`);
       await waitForSelector(view, `[data-mask-editor="${key}"]`);
 
-      const category = await view.evaluate<string>(
-        "document.querySelector('[data-bulk-category]')?.options[0]?.value ?? ''",
+      await setInputValue(view, "[data-grid-action]", "read");
+
+      const forumId = await view.evaluate<string>(
+        "document.querySelector('[data-grid-row-bulk]')?.getAttribute('data-grid-row-bulk') ?? ''",
       );
-      expect(category).not.toBe("");
+      expect(forumId).not.toBe("");
 
-      await setInputValue(view, "[data-bulk-category]", category);
-      await setInputValue(view, "[data-bulk-action]", "read");
-      await clickSelector(view, "[data-bulk-submit]");
+      // Row bulk: every mask grants read on one forum.
+      await clickSelector(view, `[data-grid-row-bulk="${forumId}"]`);
       await waitForSelector(view, '[data-toast-tone="success"]');
-
       await waitForExpression(
         view,
-        `[...document.querySelectorAll('[data-mask-matrix] tbody tr')].some((row) =>
-          row.querySelector('[data-matrix-cell$=":read"][data-allowed="true"]') &&
-          row.querySelector('[data-matrix-inherits]')
+        `[...document.querySelectorAll('[data-grid-cell^="${forumId}:"]')].every(
+          (cell) => cell.getAttribute('data-grid-allowed') === 'true'
+        )`,
+        20_000,
+      );
+
+      // Column bulk: the new mask grants read on every forum.
+      await clickSelector(view, `[data-grid-column-bulk="${key}"]`);
+      await waitForSelector(view, '[data-toast-tone="success"]');
+      await waitForExpression(
+        view,
+        `[...document.querySelectorAll('[data-grid-cell$=":${key}:read"]')].every(
+          (cell) => cell.getAttribute('data-grid-allowed') === 'true'
         )`,
         20_000,
       );
