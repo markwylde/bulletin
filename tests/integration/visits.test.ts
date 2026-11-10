@@ -99,6 +99,21 @@ integrationDescribe("read-path visits", () => {
     });
   });
 
+  test("a forum visit keeps an unread topic whose ID matches the forum ID", async () => {
+    await withDb(async (database) => {
+      const memberId = await createMember(database, "Matching ID member");
+
+      const result = await recordVisit(database.sql, {
+        viewerKey: `member:${memberId}`,
+        ctx: "forum:2",
+        topics: ["2", "201"],
+        memberId,
+      });
+
+      expect(result.unread).toEqual(["2", "201"]);
+    });
+  });
+
   test("presence is refreshed at most once a minute", async () => {
     await withDb(async (database) => {
       const viewerKey = "guest:11111111-2222-3333-4444-555555555555";

@@ -162,7 +162,11 @@ export async function recordVisit(sql: SQL, input: VisitInput): Promise<VisitRes
     return { unread: [] };
   }
 
-  const candidates = input.topics.filter((topicId) => topicId !== context.id);
+  // Only the topic being read is implicitly read; a forum's ID can equal a topic's ID.
+  const candidates =
+    context.kind === "topic"
+      ? input.topics.filter((topicId) => topicId !== context.id)
+      : input.topics;
 
   if (candidates.length === 0) {
     return { unread: [] };
