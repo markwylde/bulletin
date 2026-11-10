@@ -198,6 +198,75 @@ integrationDescribe("topic routing, stubs, view counts and permalinks", () => {
     });
   }, 45_000);
 
+  test("never redirects to restricted topics before authorisation", async () => {
+    await withSeededDb(async (database) => {
+      const staff = await forumId(database, "staff-room");
+      const offTopic = await forumId(database, "off-topic");
+      const moderator = await memberSession(database, "super-mod");
+      const privateTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: moderator.memberId,
+          forumId: staff,
+          title: "Restricted redirect title",
+          bodyMd: "Private.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const direct = await renderTopicRoute({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session: null,
+          ref: `${privateTopic.topicId}-wrong-restricted-slug`,
+          pluginsGeneration: 1,
+          colourScheme: "system",
+          cache,
+          tagVersions: versions,
+        });
+        expect(direct.kind).toBe("page");
+        expect(direct.kind === "page" ? direct.status : 0).toBe(404);
+
+        const [stub] = (await database.sql`
+          INSERT INTO core.topics (
+            forum_id, title, slug, starter_id, locked, moved_to, stub_expires_at
+          )
+          VALUES (
+            ${offTopic}, 'Restricted redirect title', 'restricted-redirect-title',
+            ${moderator.memberId}, true, ${privateTopic.topicId}, now() + interval '1 day'
+          )
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+
+        if (stub === undefined) {
+          throw new Error("Could not create the stub");
+        }
+
+        const moved = await renderTopicRoute({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session: null,
+          ref: `${stub.id}-restricted-redirect-title`,
+          pluginsGeneration: 1,
+          colourScheme: "system",
+          cache,
+          tagVersions: versions,
+        });
+        expect(moved.kind).toBe("page");
+        expect(moved.kind === "page" ? moved.status : 0).toBe(404);
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
   test("counts a guest view once per bucket and flushes without bumping the content tag", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");

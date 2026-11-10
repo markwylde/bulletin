@@ -472,6 +472,185 @@ integrationDescribe("topic posting API", () => {
     });
   }, 30_000);
 
+  test("moderators can edit their own expired posts", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const moderator = await memberId(database, "super-mod");
+      const created = await startTopic(database.sql, {
+        actorId: moderator,
+        forumId: offTopic,
+        title: "Moderator old post",
+        bodyMd: "Old body.",
+      });
+
+      if (!created.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'posting.edit_window_minutes', to_jsonb(60)
+        FROM core.groups WHERE key = 'members'
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      await database.sql`
+        UPDATE core.posts SET created_at = now() - interval '2 hours'
+        WHERE id = ${created.result.postId}
+      `;
+
+      expect(
+        (
+          await editPostResponse(
+            database.sql,
+            session(moderator),
+            created.result.postId,
+            request("POST", { bodyMd: "Edited by moderator." }),
+          )
+        ).status,
+      ).toBe(200);
+    });
+  }, 30_000);
+
+  test("restore requires approve for held posts", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const created = await startTopic(database.sql, {
+        actorId: author,
+        forumId: offTopic,
+        title: "Held restore",
+        bodyMd: "Held body.",
+      });
+
+      if (!created.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await database.sql`
+        UPDATE core.posts SET visibility = 'unapproved' WHERE id = ${created.result.postId}
+      `;
+
+      const [restoreOnly] = (await database.sql`
+        INSERT INTO core.members (display_name) VALUES ('Restore Only') RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (restoreOnly === undefined) {
+        throw new Error("Could not create the restore-only member");
+      }
+
+      await database.sql`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        SELECT ${restoreOnly.id}, id, true FROM core.groups WHERE key = 'members'
+      `;
+      await database.sql`
+        INSERT INTO core.moderators (forum_id, member_id, powers, this_forum_only)
+        VALUES (${offTopic}, ${restoreOnly.id}, '{restore}'::text[], true)
+      `;
+
+      expect(
+        (
+          await postDeleteResponse(
+            database.sql,
+            session(restoreOnly.id),
+            created.result.postId,
+            request("POST", { action: "restore" }),
+          )
+        ).status,
+      ).toBe(403);
+
+      expect(
+        (
+          await postDeleteResponse(
+            database.sql,
+            session(await memberId(database, "super-mod")),
+            created.result.postId,
+            request("POST", { action: "restore" }),
+          )
+        ).status,
+      ).toBe(200);
+
+      const [row] = (await database.sql`
+        SELECT visibility FROM core.posts WHERE id = ${created.result.postId}
+      `) as Array<{ visibility: string }>;
+      expect(row?.visibility).toBe("visible");
+    });
+  }, 30_000);
+
+  test("a concurrent move cannot change the forum used for reply authorisation", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const staff = await forumId(database, "staff-room");
+      const author = await memberId(database, "member-1");
+      const created = await startTopic(database.sql, {
+        actorId: author,
+        forumId: offTopic,
+        title: "Move race",
+        bodyMd: "Body.",
+      });
+
+      if (!created.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      const mover = await database.sql.reserve();
+
+      try {
+        await mover.unsafe("BEGIN");
+        await mover`UPDATE core.topics SET forum_id = ${staff} WHERE id = ${created.result.topicId}`;
+        const pending = replyResponse(
+          database.sql,
+          session(author),
+          created.result.topicId,
+          request("POST", { bodyMd: "Raced reply." }),
+        );
+
+        await Bun.sleep(100);
+        await mover.unsafe("COMMIT");
+        const response = await pending;
+
+        expect(response.status).toBe(403);
+      } finally {
+        await mover.unsafe("ROLLBACK").catch(() => undefined);
+        await mover.release();
+      }
+    });
+  }, 30_000);
+
+  test("guests can read public history but not when the board setting is off", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const created = await startTopic(database.sql, {
+        actorId: author,
+        forumId: offTopic,
+        title: "Guest history",
+        bodyMd: "First version.",
+      });
+
+      if (!created.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await editPostResponse(
+        database.sql,
+        session(author),
+        created.result.postId,
+        request("POST", { bodyMd: "Second version." }),
+      );
+      await database.sql`UPDATE core.board_settings SET public_edit_history = true WHERE id = 1`;
+
+      const guest = await postHistoryResponse(database.sql, null, created.result.postId);
+      expect(guest.status).toBe(200);
+      const payload = (await guest.json()) as { revisions: unknown[] };
+      expect(payload.revisions.length).toBeGreaterThan(0);
+
+      await database.sql`UPDATE core.board_settings SET public_edit_history = false WHERE id = 1`;
+      expect((await postHistoryResponse(database.sql, null, created.result.postId)).status).toBe(
+        401,
+      );
+    });
+  }, 30_000);
+
   test("promotes a member exactly once when the approved post count reaches the rule", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");

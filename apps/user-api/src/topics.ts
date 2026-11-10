@@ -2,6 +2,7 @@ import { evaluatePromotion } from "@bulletin/db/jobs";
 import { readBoardSettings } from "@bulletin/domain/board";
 import {
   can,
+  GUEST_PRINCIPAL,
   loadForumTree,
   loadPermissionSnapshot,
   type PermissionSnapshot,
@@ -227,6 +228,7 @@ export async function replyResponse(
     const created = await reply(locked, {
       actorId: session.memberId,
       topicId,
+      sessionId: session.id ?? session.sessionId ?? null,
       bodyMd,
     });
 
@@ -283,7 +285,7 @@ export async function editPostResponse(
 /** `GET /api/posts/<id>/history` (task 3.3). */
 export async function postHistoryResponse(
   sql: SQL,
-  session: Session,
+  session: Session | null,
   postId: string,
 ): Promise<Response> {
   const post = await readPostContext(sql, postId);
@@ -292,34 +294,40 @@ export async function postHistoryResponse(
     return json({ code: "post_not_found" }, 404);
   }
 
-  const [{ tree, snapshot }, settings] = await Promise.all([
-    permissionSnapshot(sql, session),
-    readBoardSettings(sql),
-  ]);
-  const sessionId = session.id ?? session.sessionId ?? null;
+  const settings = await readBoardSettings(sql);
+  const tree = await loadForumTree(sql);
+  const principal = session === null ? GUEST_PRINCIPAL : session.memberId;
+  const sessionId = session === null ? null : (session.id ?? session.sessionId ?? null);
+  const snapshot = await loadPermissionSnapshot(sql, principal, { tree, sessionId });
+
+  if (session === null && !settings.publicEditHistory) {
+    return json({ code: "unauthenticated" }, 401);
+  }
+
   const permissionScope = { forumId: post.forumId, tree, sessionId, snapshot };
 
-  if (!(await can(sql, session.memberId, "read", permissionScope))) {
+  if (!(await can(sql, principal, "read", permissionScope))) {
     return json({ code: "forbidden" }, 403);
   }
 
   if (
     post.visibility === "soft_deleted" &&
-    !(await can(sql, session.memberId, "see_deleted", permissionScope))
+    !(await can(sql, principal, "see_deleted", permissionScope))
   ) {
     return json({ code: "forbidden" }, 403);
   }
 
   if (
     post.visibility === "unapproved" &&
-    post.authorId !== session.memberId &&
-    !(await can(sql, session.memberId, "see_unapproved", permissionScope))
+    (session === null || post.authorId !== session.memberId) &&
+    !(await can(sql, principal, "see_unapproved", permissionScope))
   ) {
     return json({ code: "forbidden" }, 403);
   }
 
+  const viewerId = session?.memberId ?? null;
   const allowed = await viewerCanReadPostHistory(sql, {
-    viewerId: session.memberId,
+    viewerId,
     forumId: post.forumId,
     tree,
     publicHistory: settings.publicEditHistory,
@@ -331,7 +339,7 @@ export async function postHistoryResponse(
 
   const revisions = await readPostHistory(sql, {
     postId,
-    viewerId: session.memberId,
+    viewerId,
     forumId: post.forumId,
     tree,
     publicHistory: settings.publicEditHistory,

@@ -12,7 +12,7 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
-import { editPost, pin, reply, startTopic } from "@bulletin/domain/topics";
+import { editPost, pin, reply, restore, softDelete, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -496,6 +496,82 @@ integrationDescribe("forum topic list and topic view", () => {
         );
         expect(firstBlock?.status).toBe("hit");
         expect(editedBlock?.status).toBe("miss");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 45_000);
+
+  test("delete and restore invalidate the affected post block", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+      const moderator = await memberSession(database, "super-mod");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Delete cache topic",
+          bodyMd: "First block.",
+        }),
+      );
+      const second = expectOk(
+        await reply(database.sql, {
+          actorId: author.memberId,
+          topicId: topic.topicId,
+          bodyMd: "Second block.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const base = createRenderCache({ tags: versions });
+        const calls: Array<{ readonly key: string; readonly status: string }> = [];
+        const counted = {
+          ...base,
+          getOrRender: async (request: Parameters<typeof base.getOrRender>[0]) => {
+            const result = await base.getOrRender(request);
+            calls.push({ key: result.key, status: result.status });
+            return result;
+          },
+        };
+        const render = () =>
+          topicCache(database, moderator, `${topic.topicId}-delete-cache-topic`, counted, versions);
+
+        await render();
+        calls.length = 0;
+        expectOk(
+          await softDelete(database.sql, {
+            actorId: moderator.memberId,
+            postId: second.postId,
+          }),
+        );
+        await versions.refresh();
+        const deleted = await render();
+        const deletedHtml = deleted.kind === "page" ? deleted.html : "";
+        expect(
+          calls.find((call) => call.key.startsWith(`post-block:${second.postId}:`))?.status,
+        ).toBe("miss");
+        expect(deletedHtml).toContain("data-post-deleted");
+        expect(deletedHtml).toContain('data-post-action="restore"');
+
+        calls.length = 0;
+        expectOk(
+          await restore(database.sql, {
+            actorId: moderator.memberId,
+            postId: second.postId,
+          }),
+        );
+        await versions.refresh();
+        const restored = await render();
+        expect(
+          calls.find((call) => call.key.startsWith(`post-block:${second.postId}:`))?.status,
+        ).toBe("miss");
+        expect(restored.kind === "page" ? restored.html : "").not.toContain("data-post-deleted");
       } finally {
         await versions.close();
       }

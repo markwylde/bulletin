@@ -226,17 +226,27 @@ export async function readPollVote(
     : { pollId: row.poll_id, memberId: row.member_id, createdAt: row.created_at };
 }
 
-export async function canReadPoll(sql: SQL, memberId: string, forumId: string): Promise<boolean> {
+export async function canReadPoll(
+  sql: SQL,
+  memberId: string,
+  forumId: string,
+  sessionId: string | null = null,
+): Promise<boolean> {
   const tree = await loadForumTree(sql);
-  return can(sql, memberId, "read", { forumId, tree });
+  return can(sql, memberId, "read", { forumId, tree, sessionId });
 }
 
-export async function canVoteInPoll(sql: SQL, memberId: string, forumId: string): Promise<boolean> {
+export async function canVoteInPoll(
+  sql: SQL,
+  memberId: string,
+  forumId: string,
+  sessionId: string | null = null,
+): Promise<boolean> {
   const tree = await loadForumTree(sql);
 
   return (
-    (await can(sql, memberId, "read", { forumId, tree })) &&
-    (await can(sql, memberId, "vote", { forumId, tree }))
+    (await can(sql, memberId, "read", { forumId, tree, sessionId })) &&
+    (await can(sql, memberId, "vote", { forumId, tree, sessionId }))
   );
 }
 
@@ -244,9 +254,10 @@ export async function canModeratePoll(
   sql: SQL,
   memberId: string,
   forumId: string,
+  sessionId: string | null = null,
 ): Promise<boolean> {
   const tree = await loadForumTree(sql);
-  return can(sql, memberId, "edit", { forumId, tree });
+  return can(sql, memberId, "edit", { forumId, tree, sessionId });
 }
 
 export async function pollEditWindowMinutes(sql: SQL, memberId: string): Promise<number> {
@@ -322,6 +333,38 @@ export async function replacePoll(
     readonly allowVotedChoiceRemoval: boolean;
   },
 ): Promise<void> {
+  const questionById = new Map(poll.questions.map((question) => [question.id, question]));
+  const seenQuestions = new Set<string>();
+  const seenChoices = new Set<string>();
+
+  for (const question of input.questions) {
+    if (question.id !== undefined) {
+      if (seenQuestions.has(question.id) || !questionById.has(question.id)) {
+        throw new Error("invalid_poll");
+      }
+
+      seenQuestions.add(question.id);
+    }
+
+    for (const choice of question.choices) {
+      if (choice.id === undefined) {
+        continue;
+      }
+
+      if (question.id === undefined || seenChoices.has(choice.id)) {
+        throw new Error("invalid_poll");
+      }
+
+      const original = questionById.get(question.id);
+
+      if (original?.choices.some((candidate) => candidate.id === choice.id) !== true) {
+        throw new Error("invalid_poll");
+      }
+
+      seenChoices.add(choice.id);
+    }
+  }
+
   const existingVotes = new Map<string, number>();
 
   for (const question of poll.questions) {

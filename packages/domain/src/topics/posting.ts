@@ -62,6 +62,7 @@ export interface StartTopicInput {
 export interface ReplyInput {
   readonly actorId: string;
   readonly topicId: string;
+  readonly sessionId?: string | null;
   readonly bodyMd: string;
 }
 
@@ -249,14 +250,6 @@ export async function reply(
     return { ok: false, code: "forbidden" };
   }
 
-  const mayReplyWhenLocked = await actorCanModerate(
-    sql,
-    input.actorId,
-    "lock",
-    topic.forumId,
-    tree,
-  );
-
   try {
     const result = await runMutation({
       sql,
@@ -270,7 +263,31 @@ export async function reply(
           reject("topic_not_found");
         }
 
-        if (current.locked && !mayReplyWhenLocked) {
+        const freshTree = await loadForumTree(tx);
+
+        if (
+          !(await actorCanForumAction(
+            tx,
+            input.actorId,
+            "reply",
+            current.forumId,
+            freshTree,
+            input.sessionId ?? null,
+          ))
+        ) {
+          reject("forbidden");
+        }
+
+        const currentMayBypassLock = await actorCanModerate(
+          tx,
+          input.actorId,
+          "lock",
+          current.forumId,
+          freshTree,
+          input.sessionId ?? null,
+        );
+
+        if (current.locked && !currentMayBypassLock) {
           reject("locked");
         }
 
@@ -364,19 +381,18 @@ export async function editPost(
     input.sessionId ?? null,
   );
 
-  if (isAuthor) {
+  if (isAuthor && !canModerate) {
     const windowMinutes = await editWindowMinutes(sql, input.actorId);
     const ageMinutes = (Date.now() - post.createdAt.getTime()) / 60_000;
 
     if (windowMinutes > 0 && ageMinutes > windowMinutes) {
       return { ok: false, code: "edit_window_expired" };
     }
-  } else if (!canModerate) {
+  } else if (!isAuthor && !canModerate) {
     return { ok: false, code: "forbidden" };
   }
 
-  const redact = input.redact ?? !isAuthor;
-  const mayRedact = redact && canModerate && !isAuthor;
+  const mayRedact = (input.redact ?? !isAuthor) && canModerate && !isAuthor;
 
   try {
     const result = await runMutation({
@@ -388,6 +404,43 @@ export async function editPost(
 
         if (current === null || current.visibility !== "visible") {
           reject("post_not_found");
+        }
+
+        const freshTree = await loadForumTree(tx);
+        const currentIsAuthor = current.authorId !== null && current.authorId === input.actorId;
+        const currentCanModerate = await actorCanModerate(
+          tx,
+          input.actorId,
+          "edit",
+          current.forumId,
+          freshTree,
+          input.sessionId ?? null,
+        );
+
+        if (
+          !(await actorCanForumAction(
+            tx,
+            input.actorId,
+            "read",
+            current.forumId,
+            freshTree,
+            input.sessionId ?? null,
+          ))
+        ) {
+          reject("forbidden");
+        }
+
+        if (!currentIsAuthor && !currentCanModerate) {
+          reject("forbidden");
+        }
+
+        if (currentIsAuthor && !currentCanModerate) {
+          const currentWindow = await editWindowMinutes(tx, input.actorId);
+          const currentAge = (Date.now() - current.createdAt.getTime()) / 60_000;
+
+          if (currentWindow > 0 && currentAge > currentWindow) {
+            reject("edit_window_expired");
+          }
         }
 
         await insertPostRevision(tx, current);
@@ -411,7 +464,10 @@ export async function editPost(
           editedBy: input.actorId,
         });
 
-        if (mayRedact) {
+        const currentRedact =
+          (input.redact ?? !currentIsAuthor) && currentCanModerate && !currentIsAuthor;
+
+        if (currentRedact) {
           await protectPostRevisions(tx, current.id);
           await redactQuoteSnapshotsInTransaction(tx, { kind: "post", id: current.id });
         }
@@ -419,7 +475,7 @@ export async function editPost(
         return {
           topicId: current.topicId,
           postId: current.id,
-          redacted: mayRedact,
+          redacted: currentRedact,
         } satisfies PostEditSummary;
       },
     });

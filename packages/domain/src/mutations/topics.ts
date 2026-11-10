@@ -86,12 +86,12 @@ export const postEditMutation: Mutation<PostEditSummary, PostEditSummary> = {
 
 export const postDeleteMutation: Mutation<{ readonly postId: string }, TopicContentSummary> = {
   name: "post.delete",
-  tags: (_input, result) => contentTags(result),
+  tags: (input, result) => uniqueTags([postTag(input.postId), ...contentTags(result)]),
 };
 
 export const postRestoreMutation: Mutation<{ readonly postId: string }, TopicContentSummary> = {
   name: "post.restore",
-  tags: (_input, result) => contentTags(result),
+  tags: (input, result) => uniqueTags([postTag(input.postId), ...contentTags(result)]),
 };
 
 export const topicHardDeleteMutation: Mutation<{ readonly topicId: string }, TopicContentSummary> =

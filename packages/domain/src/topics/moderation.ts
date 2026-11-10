@@ -133,6 +133,33 @@ export async function softDelete(
           reject("post_not_found");
         }
 
+        const freshTree = await loadForumTree(tx);
+        const currentIsAuthor = current.authorId !== null && current.authorId === input.actorId;
+        const readable = await actorCanForumAction(
+          tx,
+          input.actorId,
+          "read",
+          current.forumId,
+          freshTree,
+          input.sessionId ?? null,
+        );
+        const allowed =
+          readable &&
+          (currentIsAuthor
+            ? await memberMayDeleteOwnPosts(tx, input.actorId)
+            : await actorCanModerate(
+                tx,
+                input.actorId,
+                "soft_delete",
+                current.forumId,
+                freshTree,
+                input.sessionId ?? null,
+              ));
+
+        if (!allowed) {
+          reject("forbidden");
+        }
+
         if (current.visibility === "visible") {
           await setPostVisibility(tx, current.id, "soft_deleted");
           await adjustForumPostCount(tx, current.forumId, -1);
@@ -178,12 +205,13 @@ export async function restore(
   }
 
   const tree = await loadForumTree(sql);
+  const power = post.visibility === "unapproved" ? "approve" : "restore";
 
   if (
     !(await actorCanModerate(
       sql,
       input.actorId,
-      "restore",
+      power,
       post.forumId,
       tree,
       input.sessionId ?? null,
@@ -216,6 +244,22 @@ export async function restore(
         }
 
         if (current.visibility !== "visible") {
+          const currentPower = current.visibility === "unapproved" ? "approve" : "restore";
+          const freshTree = await loadForumTree(tx);
+
+          if (
+            !(await actorCanModerate(
+              tx,
+              input.actorId,
+              currentPower,
+              current.forumId,
+              freshTree,
+              input.sessionId ?? null,
+            ))
+          ) {
+            reject("forbidden");
+          }
+
           await setPostVisibility(tx, current.id, "visible");
           await adjustForumPostCount(tx, current.forumId, 1);
 
@@ -299,6 +343,21 @@ async function hardDeletePost(
           reject("first_post_requires_topic_delete");
         }
 
+        const freshTree = await loadForumTree(tx);
+
+        if (
+          !(await actorCanModerate(
+            tx,
+            input.actorId,
+            "hard_delete",
+            current.forumId,
+            freshTree,
+            input.sessionId ?? null,
+          ))
+        ) {
+          reject("forbidden");
+        }
+
         await deletePostRow(tx, current.id);
 
         if (current.visibility === "visible") {
@@ -367,6 +426,21 @@ async function hardDeleteTopic(
 
         if (current === null) {
           reject("topic_not_found");
+        }
+
+        const freshTree = await loadForumTree(tx);
+
+        if (
+          !(await actorCanModerate(
+            tx,
+            input.actorId,
+            "hard_delete",
+            current.forumId,
+            freshTree,
+            input.sessionId ?? null,
+          ))
+        ) {
+          reject("forbidden");
         }
 
         const postCount = await visiblePostCount(tx, current.id);
@@ -584,6 +658,29 @@ export async function move(
 
         if (current === null || current.movedTo !== null) {
           reject("topic_not_found");
+        }
+
+        const freshTree = await loadForumTree(tx);
+
+        if (
+          !(await actorCanModerate(
+            tx,
+            input.actorId,
+            "move",
+            current.forumId,
+            freshTree,
+            input.sessionId ?? null,
+          )) ||
+          !(await actorCanForumAction(
+            tx,
+            input.actorId,
+            "show",
+            destination.id,
+            freshTree,
+            input.sessionId ?? null,
+          ))
+        ) {
+          reject("forbidden");
         }
 
         const postCount = await visiblePostCount(tx, current.id);

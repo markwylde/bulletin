@@ -215,6 +215,7 @@ function validSelections(poll: PollRecord, selections: readonly VoteSelection[])
 export interface VoteInput {
   readonly actorId: string;
   readonly pollId: string;
+  readonly sessionId?: string | null;
   readonly selections: readonly VoteSelection[];
   readonly now?: Date;
 }
@@ -229,7 +230,7 @@ export async function vote(
     return { ok: false, code: "not_found" };
   }
 
-  if (!(await canVoteInPoll(sql, input.actorId, poll.forumId))) {
+  if (!(await canVoteInPoll(sql, input.actorId, poll.forumId, input.sessionId ?? null))) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -305,6 +306,7 @@ export async function pollResults(
   input: {
     readonly pollId: string;
     readonly actorId: string | null;
+    readonly sessionId?: string | null;
     readonly now?: Date;
   },
 ): Promise<PollOutcome<PollResults>> {
@@ -314,14 +316,22 @@ export async function pollResults(
     return { ok: false, code: "not_found" };
   }
 
-  if (input.actorId === null || !(await canReadPoll(sql, input.actorId, poll.forumId))) {
+  if (
+    input.actorId === null ||
+    !(await canReadPoll(sql, input.actorId, poll.forumId, input.sessionId ?? null))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
   const now = input.now ?? new Date();
   const closed = poll.closesAt !== null && poll.closesAt.getTime() <= now.getTime();
   const voted = (await readPollVote(sql, poll.id, input.actorId)) !== null;
-  const moderator = await canModeratePoll(sql, input.actorId, poll.forumId);
+  const moderator = await canModeratePoll(
+    sql,
+    input.actorId,
+    poll.forumId,
+    input.sessionId ?? null,
+  );
 
   if (!(poll.resultsVisibleBeforeVoting || voted || moderator || closed)) {
     return { ok: false, code: "forbidden" };
@@ -344,6 +354,7 @@ export async function editPoll(
   input: {
     readonly actorId: string;
     readonly pollId: string;
+    readonly sessionId?: string | null;
     readonly poll: PollInput;
     readonly confirmRemoveVoted?: boolean;
     readonly now?: Date;
@@ -355,10 +366,15 @@ export async function editPoll(
     return { ok: false, code: "not_found" };
   }
 
-  const moderator = await canModeratePoll(sql, input.actorId, poll.forumId);
+  const moderator = await canModeratePoll(
+    sql,
+    input.actorId,
+    poll.forumId,
+    input.sessionId ?? null,
+  );
   const starter = poll.starterId === input.actorId;
 
-  if (!(await canReadPoll(sql, input.actorId, poll.forumId))) {
+  if (!(await canReadPoll(sql, input.actorId, poll.forumId, input.sessionId ?? null))) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -402,6 +418,10 @@ export async function editPoll(
   } catch (error) {
     if (error instanceof Error && error.message === "voted_choice") {
       return { ok: false, code: "voted_choice" };
+    }
+
+    if (error instanceof Error && error.message === "invalid_poll") {
+      return { ok: false, code: "invalid_poll" };
     }
 
     const failure = rejected(error);

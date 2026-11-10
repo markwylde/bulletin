@@ -9,6 +9,8 @@ import type { SQL } from "bun";
 
 interface Session {
   readonly memberId: string;
+  readonly id?: string;
+  readonly sessionId?: string;
 }
 
 const NO_STORE = { "cache-control": "no-store" } as const;
@@ -87,7 +89,12 @@ export async function pollVoteResponse(
     return json({ code: "invalid_choice" }, 400);
   }
 
-  const result = await vote(sql, { actorId: session.memberId, pollId, selections });
+  const result = await vote(sql, {
+    actorId: session.memberId,
+    pollId,
+    sessionId: session.id ?? session.sessionId ?? null,
+    selections,
+  });
   return result.ok ? json({ ok: true, ...result.result }) : failure(result.code);
 }
 
@@ -101,7 +108,11 @@ export async function pollResultsResponse(
     return json({ code: "unauthenticated" }, 401);
   }
 
-  const result = await pollResults(sql, { pollId, actorId: session.memberId });
+  const result = await pollResults(sql, {
+    pollId,
+    actorId: session.memberId,
+    sessionId: session.id ?? session.sessionId ?? null,
+  });
   return result.ok ? json(result.result) : failure(result.code);
 }
 
@@ -122,6 +133,7 @@ export async function pollEditResponse(
   const result = await editPoll(sql, {
     actorId: session.memberId,
     pollId,
+    sessionId: session.id ?? session.sessionId ?? null,
     poll,
     ...(body?.confirmRemoveVoted === true ? { confirmRemoveVoted: true } : {}),
   });

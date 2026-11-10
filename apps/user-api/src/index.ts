@@ -265,13 +265,9 @@ await startService({
     const postHistoryMatch = /^\/api\/posts\/(\d+)\/history$/.exec(pathname);
 
     if (request.method === "GET" && postHistoryMatch !== null) {
-      const response = await auth.handle(request, async ({ session }) => {
-        if (session === null) {
-          return Response.json({ code: "unauthenticated" }, { status: 401 });
-        }
-
-        return postHistoryResponse(sql, session, postHistoryMatch[1] ?? "");
-      });
+      const response = await auth.handle(request, async ({ session }) =>
+        postHistoryResponse(sql, session, postHistoryMatch[1] ?? ""),
+      );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

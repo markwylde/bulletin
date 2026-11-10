@@ -151,14 +151,34 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     return renderErrorPage(input, 404);
   }
 
+  const tree = await loadForumTree(input.sql);
+  const principal = input.session?.memberId ?? GUEST_PRINCIPAL;
+  const sessionId = input.session?.sessionId ?? null;
+  const snapshot = await loadPermissionSnapshot(input.sql, principal, { tree, sessionId });
+
   if (topic.movedTo !== null) {
     if (topic.stubExpiresAt !== null && topic.stubExpiresAt.getTime() <= Date.now()) {
       return renderErrorPage(input, 404);
     }
 
     const target = await readTopicTarget(input.sql, topic.movedTo);
+    const targetTopic = target === null ? null : await readTopic(input.sql, target.id);
+    const sourceReadable = await can(input.sql, principal, "read", {
+      forumId: topic.forumId,
+      tree,
+      sessionId,
+      snapshot,
+    });
+    const targetReadable =
+      targetTopic !== null &&
+      (await can(input.sql, principal, "read", {
+        forumId: targetTopic.forumId,
+        tree,
+        sessionId,
+        snapshot,
+      }));
 
-    if (target === null) {
+    if (!sourceReadable || !targetReadable || target === null) {
       return renderErrorPage(input, 404);
     }
 
@@ -170,10 +190,6 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     };
   }
 
-  const tree = await loadForumTree(input.sql);
-  const principal = input.session?.memberId ?? GUEST_PRINCIPAL;
-  const sessionId = input.session?.sessionId ?? null;
-  const snapshot = await loadPermissionSnapshot(input.sql, principal, { tree, sessionId });
   const routeView = new CapabilityView({
     ...snapshot,
     deps: topicCapabilityDeps(tree, topic.forumId, []),
@@ -185,12 +201,6 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     return renderErrorPage(input, 404);
   }
 
-  const slug = resolveResourceUrl(parsed, topic.slug);
-
-  if (slug.status === 301 && slug.location !== null) {
-    return { kind: "redirect", status: 301, location: slug.location, reason: "slug" };
-  }
-
   const readable = await can(input.sql, principal, "read", {
     forumId: forum.id,
     tree,
@@ -200,6 +210,12 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
 
   if (!readable) {
     return renderErrorPage(input, 403);
+  }
+
+  const slug = resolveResourceUrl(parsed, topic.slug);
+
+  if (slug.status === 301 && slug.location !== null) {
+    return { kind: "redirect", status: 301, location: slug.location, reason: "slug" };
   }
 
   const seeUnapproved = await can(input.sql, principal, "see_unapproved", {

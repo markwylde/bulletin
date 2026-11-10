@@ -533,6 +533,134 @@ integrationDescribe("polls", () => {
     });
   }, 30_000);
 
+  test("crafted question/choice moves cannot delete a voted question", async () => {
+    await withSeededDb(async (database) => {
+      const created = await createPollTopic(database, poll(), "Crafted edit poll");
+      const starter = await memberSession(database, "member-1");
+      const stored = await readPollForTopic(database.sql, created.topicId);
+
+      if (
+        stored === null ||
+        stored.questions[0] === undefined ||
+        stored.questions[1] === undefined
+      ) {
+        throw new Error("Missing poll questions");
+      }
+
+      const first = stored.questions[0];
+      const second = stored.questions[1];
+      const votedChoice = first.choices[0];
+
+      if (votedChoice === undefined) {
+        throw new Error("Missing voted choice");
+      }
+
+      await vote(database.sql, {
+        actorId: starter.memberId,
+        pollId: created.pollId,
+        selections: selectionsFor(stored),
+      });
+
+      const crafted = {
+        ...poll(),
+        questions: [
+          {
+            id: second.id,
+            prompt: second.prompt,
+            multiple: second.multiple,
+            choices: [
+              ...second.choices.map((choice) => ({ id: choice.id, label: choice.label })),
+              { id: votedChoice.id, label: votedChoice.label },
+            ],
+          },
+        ],
+      } satisfies PollInput;
+
+      expect(
+        await editPoll(database.sql, {
+          actorId: starter.memberId,
+          pollId: created.pollId,
+          poll: crafted,
+        }),
+      ).toEqual({ ok: false, code: "invalid_poll" });
+
+      const [votes] = (await database.sql`
+        SELECT
+          (SELECT count(*)::int FROM core.poll_votes WHERE poll_id = ${created.pollId}) AS votes,
+          (SELECT count(*)::int FROM core.poll_questions WHERE poll_id = ${created.pollId}) AS questions
+      `) as Array<{ votes: number; questions: number }>;
+      expect(votes).toEqual({ votes: 1, questions: 2 });
+    });
+  }, 30_000);
+
+  test("password-forum unlocks flow through poll results and voting", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const general = await forumId(database, "general-discussion");
+      const created = await startTopic(database.sql, {
+        actorId: member.memberId,
+        forumId: general,
+        title: "Password poll",
+        bodyMd: "Body.",
+        poll: poll({ resultsVisibleBeforeVoting: true }),
+      });
+
+      if (!created.ok) {
+        throw new Error(`Could not create the password poll: ${created.code}`);
+      }
+
+      const stored = await readPollForTopic(database.sql, created.result.topicId);
+
+      if (stored === null) {
+        throw new Error("Missing password poll");
+      }
+
+      const [session] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${member.memberId}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (session === undefined) {
+        throw new Error("Could not create a session");
+      }
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${session.id}, 'forum_password', ${general})
+      `;
+
+      expect(
+        await pollResults(database.sql, {
+          pollId: stored.id,
+          actorId: member.memberId,
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+      expect(
+        await pollResults(database.sql, {
+          pollId: stored.id,
+          actorId: member.memberId,
+          sessionId: session.id,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(
+        await vote(database.sql, {
+          actorId: member.memberId,
+          pollId: stored.id,
+          selections: selectionsFor(stored),
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+      expect(
+        await vote(database.sql, {
+          actorId: member.memberId,
+          pollId: stored.id,
+          sessionId: session.id,
+          selections: selectionsFor(stored),
+        }),
+      ).toMatchObject({ ok: true });
+    });
+  }, 30_000);
+
   test("editing outside the starter's window is rejected", async () => {
     await withSeededDb(async (database) => {
       const created = await createPollTopic(database, poll(), "Old poll");
