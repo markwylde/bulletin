@@ -8,6 +8,11 @@ export const EVENT_CATALOG = {
     aggregateType: "member",
     payloadIds: ["memberId", "fromGroupId", "toGroupId", "ruleId"],
   },
+  // A forum's visibility may have changed for some group; workers purge its CDN subtree.
+  "forum.visibility.changed": {
+    aggregateType: "forum",
+    payloadIds: ["forumId"],
+  },
 } as const;
 
 export type EventType = keyof typeof EVENT_CATALOG;

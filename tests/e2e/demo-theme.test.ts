@@ -72,7 +72,7 @@ integrationDescribe("demo theme", () => {
       const html = await view.evaluate<string>("document.body.innerHTML");
       expect(html).toContain("Demo topic 1");
       // Shared HTML carries a placeholder, never personal data (ADR 0006 task 6.3 fills it).
-      expect(html).toContain('data-overlay-context="topic:2-1"');
+      expect(html).toContain('data-overlay-context="topic:201"');
     });
   });
 

@@ -1,3 +1,4 @@
+import { createCdnPurger } from "@bulletin/cache";
 import { createLogger, loadConfig, parseReplicas } from "@bulletin/config";
 import {
   createDatabaseCheck,
@@ -45,7 +46,9 @@ const checks = [
   { name: "migrations", check: () => migrationsCurrent(sql) },
   listener,
 ];
-const api = createStaffApi({ auth, sql, checks });
+const purgeUrl = Bun.env.BULLETIN_CDN_PURGE_URL;
+const purge = purgeUrl === undefined ? undefined : createCdnPurger({ url: purgeUrl });
+const api = createStaffApi({ auth, sql, checks, ...(purge === undefined ? {} : { purge }) });
 
 await startService({
   service: "staff-api",

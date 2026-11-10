@@ -1,3 +1,4 @@
+import { createCdnPurger } from "@bulletin/cache";
 import { createLogger, loadConfig, parseReplicas } from "@bulletin/config";
 import {
   createDatabaseCheck,
@@ -16,6 +17,7 @@ import { createPromotionJobs } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
+import { createCoreEventHandler } from "./core-events.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "workers", level: config.logLevel });
@@ -35,14 +37,24 @@ const boss = await createPgBossQueue({
   max: 10,
 });
 
-// Core subscribers are added by later changes. The relay and worker run from day one so the
-// outbox never accumulates unpublished events silently.
-const subscribers: EventSubscriber[] = [];
+// The CDN purge endpoint is deployment configuration; without it nothing can be purged and
+// the event handler logs the miss instead of retrying forever.
+const purgeUrl = Bun.env.BULLETIN_CDN_PURGE_URL;
+const purger = purgeUrl === undefined ? undefined : createCdnPurger({ url: purgeUrl });
+
+// The core subscriber handles cache invalidation events; later changes add their own handlers.
+const subscribers: EventSubscriber[] = [{ name: "core", types: "*" }];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
 const eventWorker = await createEventWorker({
   boss: boss.boss,
   sql,
-  handlers: {},
+  handlers: {
+    core: createCoreEventHandler({
+      sql,
+      ...(purger === undefined ? {} : { purger }),
+      logger,
+    }),
+  },
   logger,
 });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });

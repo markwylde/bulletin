@@ -47,7 +47,8 @@ export const demoContract = defineContract<DemoViewModel>({
   route: "/_demo/[id]",
   deps: [],
   tags: (model) => [`forum:${model.forumId}`],
-  cdnCacheable: false,
+  // Guests share the fixture forum page; members and unlock grants stay private (ADR 0006).
+  cdnCacheable: true,
   requiredIslands: [...DEMO_SHELL_ISLANDS, "SpikeCounter"],
 });
 

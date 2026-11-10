@@ -15,6 +15,7 @@ import {
   type StaffScheme,
 } from "../permissions/acp.ts";
 import { can } from "../permissions/can.ts";
+import { memberViewerKey, parseTopicIds, parseVisitContext, recordVisit } from "../visits/index.ts";
 import type { AuthRouterOptions, SessionCapabilities } from "./router.ts";
 import { createAuthRouter, guestView, sessionView } from "./router.ts";
 import { createSessionStore, type SessionRecord, type SessionStore } from "./session-store.ts";
@@ -352,6 +353,55 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
     });
   }
 
+  async function memberOverlay(request: Request): Promise<Response> {
+    // ADR 0018: the bootstrap call is CSRF-exempt, so it requires this header (which forces a
+    // preflight cross-site) in addition to the origin check `handle` already performed.
+    if (request.headers.get("x-bulletin-overlay") !== "1") {
+      return json({ code: "overlay_required" }, 403);
+    }
+
+    return withSession(request, async ({ session, csrfToken }) => {
+      if (session === null) {
+        return json({ code: "unauthenticated" }, 401);
+      }
+
+      const body = await readJsonBody(request);
+      const ctx = body?.ctx;
+
+      if (typeof ctx !== "string" || ctx.length > 64 || parseVisitContext(ctx) === null) {
+        return json({ code: "invalid_context" }, 400);
+      }
+
+      const topics = parseTopicIds(body?.topics);
+      const visits = await recordVisit(options.sql, {
+        viewerKey: memberViewerKey(session.memberId),
+        ctx,
+        topics,
+        memberId: session.memberId,
+      });
+      const payload = {
+        ctx,
+        csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
+        unread: visits.unread,
+        // Counts arrive with `events-notifications`; the overlay shape is fixed now.
+        counts: { notifications: 0, conversations: 0 },
+      };
+      const text = JSON.stringify(payload);
+      const etag = `"${new Bun.CryptoHasher("sha256").update(text).digest("hex")}"`;
+      const headers = new Headers({
+        "cache-control": "private, no-cache",
+        "content-type": "application/json; charset=utf-8",
+        etag,
+      });
+
+      if (request.headers.get("if-none-match") === etag) {
+        return new Response(null, { status: 304, headers });
+      }
+
+      return new Response(text, { status: 200, headers });
+    });
+  }
+
   async function nameHistory(request: Request, memberId: string): Promise<Response> {
     return withSession(request, async ({ session }) => {
       if (session === null) {
@@ -441,6 +491,18 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       });
     }
 
+    if (options.kind === "user" && pathname === "/api/test/reset-rate-buckets") {
+      if (request.method !== "POST") {
+        return Promise.resolve(json({ code: "method_not_allowed" }, 405));
+      }
+
+      // Test-only (development): clear the UNLOGGED flood-control buckets so re-runs start
+      // from an empty window. The origin check in `handle` still applies.
+      return Promise.resolve(
+        options.sql`DELETE FROM core.rate_buckets`.then(() => json({ ok: true })),
+      );
+    }
+
     if (options.kind === "user" && pathname === "/api/test/reset-display-name") {
       if (request.method !== "POST") {
         return Promise.resolve(json({ code: "method_not_allowed" }, 405));
@@ -513,7 +575,10 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           return json({ code: "invalid_origin" }, 403);
         }
 
-        if (!isCsrfExempt(request.method, pathname)) {
+        const resetRateBuckets =
+          options.testEndpoints === true && pathname === "/api/test/reset-rate-buckets";
+
+        if (!isCsrfExempt(request.method, pathname) && !resetRateBuckets) {
           const token = parseCookieHeader(request.headers.get("cookie"))[cookieName];
           const session = token === undefined ? null : await sessions.find(options.kind, token);
 
@@ -598,6 +663,14 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         }
 
         return ownSessions(request);
+      }
+
+      if (pathname === "/api/me/overlay") {
+        if (request.method !== "POST") {
+          return json({ code: "method_not_allowed" }, 405);
+        }
+
+        return memberOverlay(request);
       }
 
       if (options.kind === "staff") {

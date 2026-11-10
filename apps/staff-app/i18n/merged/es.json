@@ -252,6 +252,7 @@
   "staff.masks.grid.scope": "Categoría",
   "staff.masks.grid.title": "Foros × máscaras",
   "staff.masks.groups.title": "Grupos que usan esta máscara",
+  "staff.masks.guestRevocationNote": "Los invitados pueden seguir viendo un foro revocado hasta 30 segundos mientras se completa la purga de la CDN.",
   "staff.masks.inherits": "heredado",
   "staff.masks.intro": "Conjuntos reutilizables de permisos y la matriz foro × máscara.",
   "staff.masks.key": "Clave",

@@ -42,6 +42,8 @@ interface DemoBase {
   readonly visibilityKey: string | null;
   /** Whether the deleted fixture topic is shown (a moderator-only request parameter). */
   readonly showDeleted: boolean;
+  /** A session unlock grant also makes the response private (ADR 0006). */
+  readonly hasUnlockGrant: boolean;
 }
 
 /** The states the demo route can render; only `content` contains the required counter. */
@@ -92,6 +94,7 @@ function errorPage(
     breadcrumbs,
     visibilityKey,
     showDeleted: false,
+    hasUnlockGrant: false,
     viewModel: { code, message },
   };
 }
@@ -150,6 +153,17 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
   const forumTitle = demoTitle(input.translate, node.id);
   const isCategory = node.parentId === null;
   const locked = node.passwordProtected && !view.read(node.id);
+
+  // A forum with `show` but no `read` is a denial; a password forum offers the unlock form.
+  if (!isCategory && !locked && !view.read(node.id)) {
+    return errorPage(
+      "forbidden",
+      input.translate("theme.error.forbidden"),
+      breadcrumbs,
+      title,
+      visibilityKey,
+    );
+  }
   const base = {
     forumId: node.id,
     forumTitle,
@@ -166,6 +180,7 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
       breadcrumbs,
       visibilityKey,
       showDeleted: false,
+      hasUnlockGrant: view.hasUnlockGrant,
       viewModel: base,
     };
   }
@@ -192,7 +207,7 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
   const topics = isCategory
     ? []
     : Array.from({ length: topicCount }, (_, index) => ({
-        id: `${node.id}-${index + 1}`,
+        id: `${node.id}0${index + 1}`,
         title: input.translate("demo.topic.title", { id: index + 1 }),
         deleted: index === DELETED_TOPIC_INDEX,
       })).filter((topic) => !topic.deleted || showDeleted);
@@ -204,6 +219,7 @@ export async function buildDemoPage(input: DemoPageInput): Promise<DemoOutcome> 
     breadcrumbs,
     visibilityKey,
     showDeleted,
+    hasUnlockGrant: view.hasUnlockGrant,
     viewModel: {
       ...base,
       children,

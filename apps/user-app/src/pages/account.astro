@@ -51,6 +51,7 @@ const labels = accountLabels(translate);
   locale={locale}
   body={rendered.html}
   authState="authenticated"
+  visitor="member"
 >
   <script type="application/json" id="account-labels" set:html={JSON.stringify(labels)}></script>
   <script>import "../account/client.ts";</script>

@@ -7,6 +7,7 @@ import { readSql } from "../db.ts";
 import { demoEnabled } from "../demo/enabled.ts";
 import { renderDemoRoute } from "../demo/route.ts";
 import { loadViewerFlags } from "../flags.ts";
+import { applyCacheHeaders, isNotModified, requestHasSession } from "../http/cache.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
 import {
   boardNameFrom,
@@ -23,7 +24,11 @@ const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 const session = Astro.locals.session ?? null;
+const dev = import.meta.env.DEV;
+const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
+const hasSessionCookie = requestHasSession(Astro.request.headers.get("cookie"), nodeEnv);
 const demoMatch = /^_demo\/([^/]+)\/?$/.exec(Astro.params.path ?? "");
+const headers = new Headers();
 
 let status = 404;
 let pageTitle = translate("theme.error.title");
@@ -48,12 +53,37 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
     theme,
     flags,
     cache: runtime.cache,
+    tagVersions: runtime.tags,
   });
+
+  applyCacheHeaders(headers, {
+    cdnCacheable: demoContract.cdnCacheable,
+    hasSession: hasSessionCookie,
+    hasUnlockGrant: result.hasUnlockGrant,
+    tags: result.tags,
+    etag: result.etag,
+    dev,
+    status: result.cache,
+    key: result.variant,
+  });
+
+  if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
+    return new Response(null, { status: 304, headers });
+  }
 
   status = result.status;
   pageTitle = result.title;
   body = result.html;
 } else {
+  applyCacheHeaders(headers, {
+    cdnCacheable: false,
+    hasSession: hasSessionCookie,
+    hasUnlockGrant: false,
+    tags: [],
+    etag: null,
+    dev,
+  });
+
   const page = await renderThemedPage({
     sql,
     boardName,
@@ -73,9 +103,17 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
 }
 
 Astro.response.status = status;
-Astro.response.headers.set("cache-control", "private, no-store");
+
+for (const [name, value] of headers) {
+  Astro.response.headers.set(name, value);
+}
 ---
 
-<ThemeLayout title={`${pageTitle} · ${boardName}`} locale={locale} body={body}>
+<ThemeLayout
+  title={`${pageTitle} · ${boardName}`}
+  locale={locale}
+  body={body}
+  visitor={session === null ? "guest" : "member"}
+>
   <script>import "../demo/client.ts";</script>
 </ThemeLayout>

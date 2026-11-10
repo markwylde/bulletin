@@ -7,13 +7,15 @@ interface Props {
   readonly body: string;
   /** Set on pages that require a member, so the auth helpers can detect the state. */
   readonly authState?: "authenticated";
+  /** Chooses the overlay (members) or the beacon (guests) for visit recording. */
+  readonly visitor: "member" | "guest";
 }
 
-const { title, locale, body, authState } = Astro.props;
+const { title, locale, body, authState, visitor } = Astro.props;
 ---
 
 <!doctype html>
-<html lang={locale} data-auth-state={authState}>
+<html lang={locale} data-auth-state={authState} data-visitor={visitor}>
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="data:," />
@@ -24,5 +26,6 @@ const { title, locale, body, authState } = Astro.props;
     <div set:html={body} />
     <slot />
     <script>import "../islands.ts";</script>
+    <script>import "../visits.ts";</script>
   </body>
 </html>

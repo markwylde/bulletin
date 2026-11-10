@@ -15,7 +15,8 @@
     "./net": "./src/net/index.ts",
     "./urls": "./src/urls/index.ts",
     "./board": "./src/board/index.ts",
-    "./mutations": "./src/mutations/index.ts"
+    "./mutations": "./src/mutations/index.ts",
+    "./visits": "./src/visits/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

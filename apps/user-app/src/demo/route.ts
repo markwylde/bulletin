@@ -1,9 +1,16 @@
-import { forumTag, type RenderCache, type RenderStatus, variantKey } from "@bulletin/cache";
+import {
+  forumTag,
+  type RenderCache,
+  type RenderStatus,
+  type TagVersionSource,
+  variantKey,
+} from "@bulletin/cache";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import type { LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { DEMO_SHELL_ISLANDS, demoContract } from "../contracts.ts";
 import type { ViewerFlags } from "../flags.ts";
+import { etagFor } from "../http/cache.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { renderThemedPage } from "../theme/render.ts";
 import { buildDemoPage } from "./page.ts";
@@ -21,6 +28,8 @@ export interface DemoRouteInput {
   readonly theme: LoadedTheme | null;
   readonly flags: ViewerFlags;
   readonly cache: RenderCache;
+  /** Needed for the ETag; while untrusted the response carries no ETag (ADR 0006). */
+  readonly tagVersions?: TagVersionSource | null;
 }
 
 export interface DemoRouteResult {
@@ -31,6 +40,8 @@ export interface DemoRouteResult {
   readonly cache: RenderStatus | null;
   readonly variant: string | null;
   readonly tags: readonly string[];
+  readonly etag: string | null;
+  readonly hasUnlockGrant: boolean;
   readonly errors: readonly string[];
 }
 
@@ -82,6 +93,8 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
       cache: null,
       variant: null,
       tags: [],
+      etag: null,
+      hasUnlockGrant: outcome.hasUnlockGrant,
       errors: page.errors,
     };
   }
@@ -109,6 +122,12 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
     },
   });
 
+  const source = input.tagVersions ?? null;
+  const etag =
+    source !== null && source.isTrusted()
+      ? etagFor(variant, new Map(tags.map((tag) => [tag, source.version(tag)])))
+      : null;
+
   return {
     status: outcome.template === "error" ? outcome.status : 200,
     html: rendered.html,
@@ -116,6 +135,8 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
     cache: rendered.status,
     variant,
     tags,
+    etag,
+    hasUnlockGrant: outcome.hasUnlockGrant,
     errors,
   };
 }

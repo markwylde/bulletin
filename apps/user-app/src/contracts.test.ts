@@ -38,7 +38,7 @@ describe("route contracts", () => {
 
     expect(contract).toBe(demoContract);
     expect(contract?.deps).toEqual([]);
-    expect(contract?.cdnCacheable).toBe(false);
+    expect(contract?.cdnCacheable).toBe(true);
     expect(contract?.requiredIslands).toEqual(["LanguageSwitcher", "SpikeCounter"]);
     expect(contractTags(demoContract, { forumId: "2" })).toEqual(["forum:2"]);
     expect(ISLAND_NAMES).toContain("SpikeCounter");

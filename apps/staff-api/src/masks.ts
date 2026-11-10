@@ -1,3 +1,4 @@
+import { emit } from "@bulletin/db/events";
 import {
   bumpPermVersion,
   capabilityBitMask,
@@ -388,7 +389,13 @@ export async function saveMatrixCell(
       await setMatrixActions(tx, forumId, maskId, actions);
     }
 
-    await bumpPermVersion(tx);
+    const permVersion = await bumpPermVersion(tx);
+    await emit(tx, {
+      type: "forum.visibility.changed",
+      aggregateId: BigInt(forumId),
+      aggregateVersion: BigInt(permVersion),
+      payloadIds: { forumId: BigInt(forumId) },
+    });
     await writeAdminLog(tx, {
       actorMemberId,
       action: "mask.matrix.update",
@@ -475,7 +482,13 @@ export async function bulkToggleMatrix(
       await setMatrixActions(tx, update.forumId, update.mask.id, update.actions);
     }
 
-    await bumpPermVersion(tx);
+    const permVersion = await bumpPermVersion(tx);
+    await emit(tx, {
+      type: "forum.visibility.changed",
+      aggregateId: BigInt(forumId),
+      aggregateVersion: BigInt(permVersion),
+      payloadIds: { forumId: BigInt(forumId) },
+    });
     await writeAdminLog(tx, {
       actorMemberId,
       action: "mask.matrix.bulk",

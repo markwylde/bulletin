@@ -2,6 +2,7 @@ export * from "./acp.ts";
 export * from "./actions.ts";
 export * from "./can.ts";
 export * from "./capability.ts";
+export * from "./forum-tags.ts";
 export * from "./moderator.ts";
 export * from "./perm-version.ts";
 export * from "./principal.ts";

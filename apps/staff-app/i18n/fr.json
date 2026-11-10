@@ -251,6 +251,7 @@
   "staff.masks.grid.scope": "Catégorie",
   "staff.masks.grid.title": "Forums × masques",
   "staff.masks.groups.title": "Groupes utilisant ce masque",
+  "staff.masks.guestRevocationNote": "Les invités peuvent voir un forum révoqué pendant 30 secondes au maximum, le temps que la purge du CDN s’achève.",
   "staff.masks.inherits": "hérité",
   "staff.masks.intro": "Ensembles réutilisables de permissions et matrice forum × masque.",
   "staff.masks.key": "Clé",

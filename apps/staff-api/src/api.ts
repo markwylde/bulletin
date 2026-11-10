@@ -1,8 +1,10 @@
+import type { CdnPurger } from "@bulletin/cache";
 import type { HealthCheck } from "@bulletin/config/server";
 import { type AuthService, type SessionRecord, STEP_UP_WINDOW_MS } from "@bulletin/domain/auth";
 import {
   type AcpPermission,
   can,
+  forumSubtreeTags,
   isAcpPermission,
   isStaffScheme,
 } from "@bulletin/domain/permissions";
@@ -57,6 +59,8 @@ export interface StaffRouteContext {
   readonly session: SessionRecord;
   readonly sql: SQL;
   readonly checks: readonly HealthCheck[];
+  /** Best-effort CDN purge for visibility changes (ADR 0006). */
+  readonly purge?: CdnPurger;
 }
 
 export interface StaffRoute {
@@ -75,6 +79,7 @@ export interface StaffApiOptions {
   readonly auth: AuthService;
   readonly sql: SQL;
   readonly checks?: readonly HealthCheck[];
+  readonly purge?: CdnPurger;
 }
 
 export interface StaffApi {
@@ -378,6 +383,21 @@ async function masksList(context: StaffRouteContext): Promise<Response> {
   return json(await listPermissionMatrix(context.sql));
 }
 
+async function purgeSubtreeOf(context: StaffRouteContext, body: unknown): Promise<void> {
+  if (context.purge === undefined || body === null || typeof body !== "object") {
+    return;
+  }
+
+  const forumId = (body as Record<string, unknown>).forumId;
+
+  if (typeof forumId !== "string") {
+    return;
+  }
+
+  // Best effort with a short timeout; workers retry from the domain event (ADR 0006).
+  await context.purge.purge(await forumSubtreeTags(context.sql, forumId));
+}
+
 async function masksMutate(context: StaffRouteContext): Promise<Response> {
   const body: unknown = await context.request.json().catch(() => null);
   const action = actionOf(body);
@@ -389,10 +409,24 @@ async function masksMutate(context: StaffRouteContext): Promise<Response> {
       return mutationResponse(await deleteMask(context.sql, context.session.memberId, body));
     case "link":
       return mutationResponse(await linkGroupMask(context.sql, context.session.memberId, body));
-    case "cell":
-      return mutationResponse(await saveMatrixCell(context.sql, context.session.memberId, body));
-    case "bulk":
-      return mutationResponse(await bulkToggleMatrix(context.sql, context.session.memberId, body));
+    case "cell": {
+      const result = await saveMatrixCell(context.sql, context.session.memberId, body);
+
+      if (result.ok) {
+        await purgeSubtreeOf(context, body);
+      }
+
+      return mutationResponse(result);
+    }
+    case "bulk": {
+      const result = await bulkToggleMatrix(context.sql, context.session.memberId, body);
+
+      if (result.ok) {
+        await purgeSubtreeOf(context, body);
+      }
+
+      return mutationResponse(result);
+    }
     default:
       return json({ code: "invalid_request" }, 400);
   }
@@ -713,6 +747,7 @@ export function createStaffApi(options: StaffApiOptions): StaffApi {
           session,
           sql: options.sql,
           checks,
+          ...(options.purge === undefined ? {} : { purge: options.purge }),
         });
       });
 

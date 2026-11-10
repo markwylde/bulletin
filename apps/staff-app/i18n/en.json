@@ -251,6 +251,7 @@
   "staff.masks.grid.scope": "Category",
   "staff.masks.grid.title": "Forums × masks",
   "staff.masks.groups.title": "Groups using this mask",
+  "staff.masks.guestRevocationNote": "Guests may keep seeing a revoked forum for up to 30 seconds while the CDN purge completes.",
   "staff.masks.inherits": "inherited",
   "staff.masks.intro": "Reusable forum permission sets and the forum × mask matrix.",
   "staff.masks.key": "Key",

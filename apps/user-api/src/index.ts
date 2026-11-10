@@ -10,6 +10,7 @@ import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
+import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 
@@ -56,6 +57,18 @@ await startService({
 
         return forumUnlockResponse(sql, session, unlockMatch[1] ?? "", request);
       });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (pathname === "/api/beacon") {
+      if (request.method !== "POST") {
+        return Response.json({ code: "method_not_allowed" }, { status: 405 });
+      }
+
+      const response = await auth.handle(request, async ({ session }) =>
+        beaconResponse(sql, request, { session, nodeEnv: config.nodeEnv }),
+      );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

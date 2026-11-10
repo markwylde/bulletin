@@ -159,6 +159,25 @@ integrationDescribe("default theme templates", () => {
     });
   });
 
+  test("denies a forum the viewer can see but not read", async () => {
+    await withSeededDb(async (database) => {
+      const session = await memberSession(database, "member-1");
+
+      await database.sql`
+        UPDATE core.forum_permissions
+        SET actions = actions & ~3
+        WHERE forum_id = 2
+          AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+      `;
+
+      const page = await renderDemo(database, session, "2");
+
+      expect(page.status).toBe(403);
+      expect(page.html).toContain("data-theme-error");
+      expect(page.html).not.toContain("data-demo-topics");
+    });
+  });
+
   test("shows the empty state for a forum with no topics", async () => {
     await withSeededDb(async (database) => {
       const session = await memberSession(database, "member-1");

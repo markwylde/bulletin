@@ -1,6 +1,7 @@
 /** Cache layers, variant keys and invalidation for the rendered page stack. */
 export * from "./bounded.ts";
 export * from "./keys.ts";
+export * from "./purge.ts";
 export * from "./render-cache.ts";
 export * from "./tag-listener.ts";
 export * from "./tags.ts";

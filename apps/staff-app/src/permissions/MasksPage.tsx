@@ -435,6 +435,9 @@ export function MasksPage() {
               </div>
 
               <h3>{t("staff.masks.matrix.title")}</h3>
+              <p className="lede" data-masks-guest-note>
+                {t("staff.masks.guestRevocationNote")}
+              </p>
               <div className="matrix-scroll" data-matrix-scroll>
                 <table className="matrix-table" data-mask-matrix={selected.key}>
                   <thead>

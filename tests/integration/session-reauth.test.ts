@@ -1333,7 +1333,7 @@ integrationDescribe("silent re-auth and background grace", () => {
         expect(session.status).toBe(400);
         expect(await session.json()).toEqual({ code: "invalid_request" });
 
-        for (const path of ["/api/beacon", "/api/me/overlay", "/api/notifications/unsubscribe"]) {
+        for (const path of ["/api/beacon", "/api/notifications/unsubscribe"]) {
           const raw = await service.handle(
             new Request(`http://api.test${path}`, {
               method: "POST",
@@ -1342,6 +1342,16 @@ integrationDescribe("silent re-auth and background grace", () => {
           );
           expect(raw).toBeNull();
         }
+
+        // The overlay is exempt from CSRF but owns its own required header (ADR 0018).
+        const overlay = await service.handle(
+          new Request("http://api.test/api/me/overlay", {
+            method: "POST",
+            headers: { origin: USER_ORIGIN, cookie },
+          }),
+        );
+        expect(overlay?.status).toBe(403);
+        expect(await overlay?.json()).toEqual({ code: "overlay_required" });
 
         const unknown = await service.handle(
           new Request("http://api.test/api/not-a-route", {

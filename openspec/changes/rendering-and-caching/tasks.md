@@ -33,10 +33,10 @@
 
 ## 6. HTTP layer
 
-- [ ] 6.1 Implement CDN eligibility, the `bp` cookie variant, `Cache-Control`, `Surrogate-Key`, ETag/304 and the dev diagnostic headers, with integration tests for each scenario via the CDN mock
-- [ ] 6.2 Implement purge on guest revocation (request-path best effort plus retrying job) and the 30 s window note in the staff app; integration test for the forum-made-private scenario
-- [ ] 6.3 Implement the overlay endpoint and client applier (unread placeholder, counts, CSRF token), with an integration test that shared HTML contains no personal data
-- [ ] 6.4 Implement the visit-recording side channel: overlay side effects for members and `POST /api/beacon` for guests (guest cookie ID, per-IP rate limit, UNLOGGED buffers), with tests for the guest-view-on-CDN and views-do-not-invalidate scenarios
+- [x] 6.1 Implement CDN eligibility, the `bp` cookie variant, `Cache-Control`, `Surrogate-Key`, ETag/304 and the dev diagnostic headers, with integration tests for each scenario via the CDN mock
+- [x] 6.2 Implement purge on guest revocation (request-path best effort plus retrying job) and the 30 s window note in the staff app; integration test for the forum-made-private scenario
+- [x] 6.3 Implement the overlay endpoint and client applier (unread placeholder, counts, CSRF token), with an integration test that shared HTML contains no personal data
+- [x] 6.4 Implement the visit-recording side channel: overlay side effects for members and `POST /api/beacon` for guests (guest cookie ID, per-IP rate limit, UNLOGGED buffers), with tests for the guest-view-on-CDN and views-do-not-invalidate scenarios
 - [ ] 6.5 Give user-app its `user_app` DB pool and LISTEN connection, and add a test that user-app performs no writes outside the UNLOGGED read-path buffers (presence, views, redirect clicks)
 
 ## 7. Performance

@@ -48,6 +48,7 @@ const labels = displayNameLabels(translate);
   locale={locale}
   body={rendered.html}
   authState="authenticated"
+  visitor="member"
 >
   <script type="application/json" id="display-name-labels" set:html={JSON.stringify(labels)}></script>
   <script>import "../display-name/client.ts";</script>

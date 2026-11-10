@@ -1,0 +1,102 @@
+import {
+  clientIp,
+  parseCookieHeader,
+  type SessionRecord,
+  serializeCookie,
+} from "@bulletin/domain/auth";
+import {
+  BEACON_RATE_LIMIT,
+  BEACON_RATE_WINDOW_MS,
+  consumeRateBucket,
+  GUEST_COOKIE_MAX_AGE_SECONDS,
+  guestCookieName,
+  guestViewerKey,
+  isGuestId,
+  parseVisitContext,
+  recordVisit,
+} from "@bulletin/domain/visits";
+import type { SQL } from "bun";
+
+const NO_STORE = { "cache-control": "no-store" } as const;
+
+export interface BeaconOptions {
+  readonly session: SessionRecord | null;
+  readonly nodeEnv: "development" | "test" | "production";
+  readonly now?: Date;
+}
+
+async function readContext(request: Request): Promise<string | null> {
+  const text = await request.text();
+
+  if (text.trim() === "") {
+    return null;
+  }
+
+  try {
+    const value: unknown = JSON.parse(text);
+
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return null;
+    }
+
+    const ctx = (value as Record<string, unknown>).ctx;
+    return typeof ctx === "string" && ctx.length <= 64 ? ctx : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `POST /api/beacon` (ADR 0006, 0018): a guest's view and presence, with a pseudonymous
+ * cookie and a per-IP bucket. Members do not send it; their overlay request records visits.
+ */
+export async function beaconResponse(
+  sql: SQL,
+  request: Request,
+  options: BeaconOptions,
+): Promise<Response> {
+  if (options.session !== null) {
+    // A signed-in visitor records visits through the overlay; ignore a stray beacon.
+    return new Response(null, { status: 204, headers: NO_STORE });
+  }
+
+  const allowed = await consumeRateBucket(sql, {
+    key: `beacon:${clientIp(request) ?? "unknown"}`,
+    limit: BEACON_RATE_LIMIT,
+    windowMs: BEACON_RATE_WINDOW_MS,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+
+  if (!allowed) {
+    return new Response(null, {
+      status: 429,
+      headers: { ...NO_STORE, "retry-after": String(BEACON_RATE_WINDOW_MS / 1_000) },
+    });
+  }
+
+  const ctx = await readContext(request);
+
+  if (ctx === null || parseVisitContext(ctx) === null) {
+    return Response.json({ code: "invalid_context" }, { status: 400, headers: NO_STORE });
+  }
+
+  const cookies = parseCookieHeader(request.headers.get("cookie"));
+  const cookieName = guestCookieName(options.nodeEnv);
+  const existing = cookies[cookieName];
+  const guestId = isGuestId(existing) ? existing : crypto.randomUUID();
+  const headers = new Headers(NO_STORE);
+
+  if (guestId !== existing) {
+    headers.set(
+      "set-cookie",
+      serializeCookie(cookieName, guestId, {
+        maxAge: GUEST_COOKIE_MAX_AGE_SECONDS,
+        secure: options.nodeEnv === "production",
+      }),
+    );
+  }
+
+  await recordVisit(sql, { viewerKey: guestViewerKey(guestId), ctx });
+
+  return new Response(null, { status: 204, headers });
+}
