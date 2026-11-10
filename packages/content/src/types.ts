@@ -113,3 +113,29 @@ export class ContentError extends Error {
     this.code = code;
   }
 }
+
+/** An admin-configured embed provider (ADR 0007). `urlPattern` captures the id in group 1. */
+export interface EmbedProvider {
+  readonly key: string;
+  readonly title: string;
+  readonly urlPattern: string;
+  /** HTTPS template with `{id}` replaced by the captured id. */
+  readonly embedUrl: string;
+}
+
+export interface EmbedMatch {
+  readonly provider: EmbedProvider;
+  readonly id: string;
+  readonly url: string;
+  readonly embedUrl: string;
+}
+
+export interface UnfurlPreview {
+  readonly kind: "opengraph" | "oembed";
+  readonly url: string;
+  readonly title: string;
+  readonly description: string | null;
+  readonly siteName: string | null;
+  readonly provider: string | null;
+  readonly imageUrl: string | null;
+}

@@ -5,7 +5,7 @@ import { visit } from "unist-util-visit";
 export function addLinkRel(tree: Root): void {
   visit(tree, "element", (node) => {
     if (node.tagName === "a") {
-      node.properties["rel"] = ["nofollow", "ugc", "noopener"];
+      node.properties.rel = ["nofollow", "ugc", "noopener"];
     }
   });
 }

@@ -18,6 +18,7 @@ import {
   saveAnnouncement,
 } from "./announcements.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
+import { listEmbedProvidersForStaff, mutateEmbedProvider } from "./embeds.ts";
 import { staffFeatureFlags, staffFlagEnabled } from "./features.ts";
 import { listFlagLog, listFlags, saveFlagRules } from "./flags.ts";
 import {
@@ -301,6 +302,27 @@ async function overrideRevert(context: StaffRouteContext): Promise<Response> {
   }
 
   return json({ ok: true });
+}
+
+async function embedsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listEmbedProvidersForStaff(context.sql));
+}
+
+async function embedsMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await mutateEmbedProvider(context.sql, context.session.memberId, body);
+
+  if (result.ok) {
+    return json({ ok: true });
+  }
+
+  return json(
+    {
+      code: result.code,
+      ...(result.fields === undefined ? {} : { fields: result.fields }),
+    },
+    result.code === "not_found" ? 404 : 400,
+  );
 }
 
 async function flagList(context: StaffRouteContext): Promise<Response> {
@@ -656,6 +678,20 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/settings/board",
     permission: "acp.settings",
     handler: updateBoardSettings,
+  },
+  {
+    id: "settings.embeds",
+    method: "GET",
+    path: "/api/staff/settings/embeds",
+    permission: "acp.settings",
+    handler: embedsList,
+  },
+  {
+    id: "settings.embeds.update",
+    method: "POST",
+    path: "/api/staff/settings/embeds",
+    permission: "acp.settings",
+    handler: embedsMutate,
   },
   {
     id: "i18n.keys",

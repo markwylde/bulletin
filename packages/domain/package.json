@@ -28,6 +28,7 @@
     "@bulletin/i18n": "workspace:*",
     "@darkauth/client": "1.32.0",
     "jose": "6.2.16",
-    "@bulletin/content": "workspace:*"
+    "@bulletin/content": "workspace:*",
+    "parse5": "8.1.1"
   }
 }

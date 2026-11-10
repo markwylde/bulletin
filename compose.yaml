@@ -682,6 +682,8 @@ services:
       DATABASE_URL: postgres://workers@postgres:5432/bulletin
       MIGRATION_DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
       PG_BOSS_DATABASE_URL: postgres://workers@postgres:5432/bulletin
+      # Local-only: the unfurl worker must reach the oEmbed mock (ADR 0002, 0016).
+      SAFE_FETCH_DEV_ALLOW: oembed
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres

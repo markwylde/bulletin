@@ -15,6 +15,8 @@ const COMMON_ATTRIBUTES: NonNullable<Schema["attributes"]> = {
   pre: [["className", "hljs"]],
   span: [["className", HLJS_CLASS, "spoiler"]],
   "bl-quote": ["dataSourceKind", "dataSource", "dataSnapshot"],
+  "bl-embed": ["dataProvider", "dataEmbedId"],
+  "bl-unfurl": ["dataUrl", "dataUrlHash"],
 };
 
 const PROFILE_ATTRIBUTES: Record<ContentProfile, NonNullable<Schema["attributes"]>> = {
@@ -51,6 +53,8 @@ const MARKDOWN_TAGS = [
 
 const POST_TAGS = [
   ...MARKDOWN_TAGS,
+  "bl-embed",
+  "bl-unfurl",
   "img",
   "input",
   "table",

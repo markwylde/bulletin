@@ -437,7 +437,8 @@ export function createSafeFetch(config: SafeFetchConfig = {}): SafeFetch {
   };
 }
 
-function envAllowlist(): readonly string[] {
+/** Dev-only outbound host allowlist from `SAFE_FETCH_DEV_ALLOW` (ADR 0016). */
+export function safeFetchDevAllowlist(): readonly string[] {
   const value = Bun.env.SAFE_FETCH_DEV_ALLOW;
   return value === undefined
     ? []
@@ -447,4 +448,4 @@ function envAllowlist(): readonly string[] {
         .filter(Boolean);
 }
 
-export const safeFetch: SafeFetch = createSafeFetch({ devAllow: envAllowlist() });
+export const safeFetch: SafeFetch = createSafeFetch({ devAllow: safeFetchDevAllowlist() });

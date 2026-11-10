@@ -5,7 +5,9 @@
   "description": "Markdown to sanitised HTML pipeline.",
   "exports": {
     ".": "./src/index.ts",
-    "./types": "./src/types.ts"
+    "./types": "./src/types.ts",
+    "./embeds": "./src/embeds.ts",
+    "./unfurls": "./src/unfurls.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -16,8 +16,8 @@
 
 ## 3. Embeds and unfurls
 
-- [ ] 3.1 Implement the embed allowlist (admin-configurable providers) and render wrapper, with unit tests
-- [ ] 3.2 Implement the unfurl worker (SSRF guard incl. redirects, size/time caps, OpenGraph/oEmbed parsing, cache, refresh) against `mocks/oembed`, with tests for the internal-address and preview-card scenarios
+- [x] 3.1 Implement the embed allowlist (admin-configurable providers) and render wrapper, with unit tests
+- [x] 3.2 Implement the unfurl worker (SSRF guard incl. redirects, size/time caps, OpenGraph/oEmbed parsing, cache, refresh) against `mocks/oembed`, with tests for the internal-address and preview-card scenarios
 
 ## 4. Editor
 

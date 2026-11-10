@@ -64,7 +64,7 @@ function walk(node: Nodes, parts: string[]): void {
   }
 
   if (element.tagName === "img") {
-    const alt = element.properties["alt"];
+    const alt = element.properties.alt;
     parts.push(typeof alt === "string" ? alt : "");
     return;
   }

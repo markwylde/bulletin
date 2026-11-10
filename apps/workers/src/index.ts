@@ -18,6 +18,7 @@ import {
   createForumJobs,
   createMaintenanceJobs,
   createPromotionJobs,
+  createUnfurlJobs,
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
@@ -66,6 +67,7 @@ const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger }
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
 const forumJobs = await createForumJobs({ boss: boss.boss, sql, logger });
 const contentJobs = await createContentJobs({ boss: boss.boss, sql, logger });
+const unfurlJobs = await createUnfurlJobs({ boss: boss.boss, sql, logger });
 
 let relayInFlight: Promise<void> | undefined;
 const relayTimer = setInterval(() => {
@@ -108,6 +110,7 @@ await startService({
     await maintenanceJobs.stop();
     await forumJobs.stop();
     await contentJobs.stop();
+    await unfurlJobs.stop();
     await promotionJobs.stop();
     await eventWorker.stop();
     await boss.stop();
@@ -118,6 +121,7 @@ await startService({
   await maintenanceJobs.stop();
   await forumJobs.stop();
   await contentJobs.stop();
+  await unfurlJobs.stop();
   await promotionJobs.stop();
   await boss.stop();
   throw error;

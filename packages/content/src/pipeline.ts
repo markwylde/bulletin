@@ -14,7 +14,9 @@ import {
   defaultBeforeSaveStages,
   type SaveCheckContext,
 } from "./before-save.ts";
+import { expandEmbedPlaceholders } from "./embeds.ts";
 import { applyInlineExtensions } from "./extensions/inline.ts";
+import { applyLinkExtensions } from "./extensions/links.ts";
 import { applyQuoteDirectives, type QuoteDirectiveResult } from "./extensions/quotes.ts";
 import { addLinkRel } from "./links.ts";
 import { renderVersionFor, SANITISER_VERSION, transformReplaceWords } from "./replace-words.ts";
@@ -23,6 +25,7 @@ import { toPlainText } from "./text.ts";
 import {
   ContentError,
   type ContentProfile,
+  type EmbedProvider,
   type Emoticon,
   type MentionResolver,
   type QuotePipeline,
@@ -45,6 +48,9 @@ export interface RenderContentOptions {
   readonly authorId: string;
   readonly emoticons?: readonly Emoticon[];
   readonly mentions?: MentionResolver;
+  readonly embeds?: readonly EmbedProvider[];
+  /** Adds unfurl card placeholders for standalone links (the `unfurls` flag). */
+  readonly unfurls?: boolean;
   readonly quotes?: QuotePipeline;
   readonly replaceWords?: ReplaceWords;
 }
@@ -80,6 +86,9 @@ function processorFor(options: RenderContentOptions) {
       transformReplaceWords(tree, options.replaceWords);
     })
     .use(rehypeSanitize, profileSchema(options.profile))
+    .use(() => (tree: HastRoot) => {
+      expandEmbedPlaceholders(tree, options.embeds ?? []);
+    })
     .use(rehypeHighlight, { detect: false, ignoreMissing: true })
     .use(() => (tree: HastRoot) => {
       addLinkRel(tree);
@@ -137,6 +146,13 @@ async function renderMarkdown(
     ...(options.emoticons === undefined ? {} : { emoticons: options.emoticons }),
     ...(options.mentions === undefined ? {} : { mentions: options.mentions }),
   });
+
+  if (options.profile === "post" || options.profile === "rules") {
+    applyLinkExtensions(tree, {
+      ...(options.embeds === undefined ? {} : { embeds: options.embeds }),
+      ...(options.unfurls === undefined ? {} : { unfurls: options.unfurls }),
+    });
+  }
 
   let quotes: QuoteDirectiveResult = { quoteSources: [], quotedForumIds: [] };
 
