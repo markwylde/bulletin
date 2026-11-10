@@ -15,6 +15,7 @@ export const FLAGS_TAG = "flags";
 /** The evaluated render flags for one viewer, plus the variant hash (ADR 0006, 0010). */
 export interface ViewerFlags {
   readonly values: Readonly<Record<string, boolean>>;
+  readonly clientFlags: Readonly<Record<string, boolean>>;
   readonly hash: string;
 }
 
@@ -90,5 +91,9 @@ export async function loadViewerFlags(
 
   await runtime.ensureFresh();
 
-  return { values: runtime.renderFlags(viewer), hash: runtime.renderFlagsHash(viewer) };
+  return {
+    values: runtime.renderFlags(viewer),
+    clientFlags: runtime.clientFlags(viewer),
+    hash: runtime.renderFlagsHash(viewer),
+  };
 }

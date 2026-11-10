@@ -17,6 +17,7 @@ import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { draftDeleteResponse, draftGetResponse, draftSaveResponse } from "./drafts.ts";
 import { emoticonImageResponse, listEmoticonsResponse } from "./emoticons.ts";
+import { createUserApiFlags } from "./flag-guard.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 import { memberSuggestResponse } from "./members.ts";
 import { redirectCountsResponse } from "./redirects.ts";
@@ -37,6 +38,7 @@ await runBaseSeed({
 });
 
 const sql = createServiceSql("user-api", databaseUrl);
+const flags = createUserApiFlags(sql);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
 const listener = await createListenerCheck(sql);
 const auth = await createAuthService({
@@ -152,7 +154,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return memberSuggestResponse(sql, new URL(request.url));
+        return flags.guard("mentions", session.memberId)(request, () =>
+          memberSuggestResponse(sql, new URL(request.url)),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

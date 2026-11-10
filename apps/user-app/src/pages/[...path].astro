@@ -31,6 +31,7 @@ const headers = new Headers();
 let status = 404;
 let pageTitle = translate("theme.error.title");
 let body: string;
+let clientFlagsJson: string | undefined;
 let documentTitle = `${pageTitle} · ${boardName}`;
 
 if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
@@ -73,6 +74,7 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
   pageTitle = result.title;
   documentTitle = `${pageTitle} · ${result.boardName}`;
   body = result.html;
+  clientFlagsJson = result.clientFlagsJson;
 } else {
   applyCacheHeaders(headers, {
     cdnCacheable: false,
@@ -109,6 +111,7 @@ for (const [name, value] of headers) {
   locale={locale}
   body={body}
   visitor={session === null ? "guest" : "member"}
+  clientFlagsJson={clientFlagsJson}
 >
   <script>import "../demo/client.ts";</script>
 </ThemeLayout>

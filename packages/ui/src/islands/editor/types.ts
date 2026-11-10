@@ -35,6 +35,7 @@ export interface EditorProps {
   readonly initialMarkdown: string;
   readonly emoticons: readonly EditorEmoticon[];
   readonly labels: EditorLabels;
+  readonly flags: { readonly mentions: boolean };
 }
 
 export type EditorMode = "wysiwyg" | "source";

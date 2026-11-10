@@ -104,8 +104,10 @@ integrationDescribe("flags seed", () => {
       expect([...byKey.keys()]).toEqual([
         "announcements",
         "compactTopicList",
+        "mentions",
         "newEditor",
         "quickReply",
+        "unfurls",
       ]);
 
       expect(byKey.get("announcements")).toMatchObject({

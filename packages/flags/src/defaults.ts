@@ -63,5 +63,28 @@ export const announcementsFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Link preview cards fetched by the unfurl worker (ADR 0007). */
+export const unfurlsFlag = defineFlag({
+  key: "unfurls",
+  description: "Link preview cards fetched by workers.",
+  owner: "content",
+  default: false,
+  affectsRender: true,
+});
+
+/** @mentions and the editor autocomplete (ADR 0007). */
+export const mentionsFlag = defineFlag({
+  key: "mentions",
+  description: "Member mentions and editor autocomplete.",
+  owner: "content",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
-export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([announcementsFlag]);
+export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
+  announcementsFlag,
+  unfurlsFlag,
+  mentionsFlag,
+]);

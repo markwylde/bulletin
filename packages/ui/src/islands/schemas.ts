@@ -66,6 +66,7 @@ export const editorSchema = v.strictObject({
   initialMarkdown: v.pipe(v.string(), v.maxLength(100_000)),
   emoticons: v.array(editorEmoticonSchema),
   labels: editorLabelsSchema,
+  flags: v.strictObject({ mentions: v.boolean() }),
 });
 
 export const localeSuggestionSchema = v.strictObject({

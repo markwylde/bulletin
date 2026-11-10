@@ -18,6 +18,7 @@ integrationDescribe("staff emoticon sets", () => {
       await loginAs(view, "admin");
       await view.navigate(new URL("/settings/emoticons", STAFF_URL).toString());
       await waitForSelector(view, '[data-page="emoticons"]');
+      await waitForSelector(view, "[data-emoticon-set-list]");
 
       expect(await view.evaluate<number>("document.documentElement.clientWidth")).toBe(360);
       expect(

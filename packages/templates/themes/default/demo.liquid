@@ -1,4 +1,6 @@
 {{ header }}
+{% if flags.mentions %}<span data-mentions-enabled hidden></span>{% endif %}
+{% if flags.unfurls %}<span data-unfurls-enabled hidden></span>{% endif %}
 <main id="main" class="bl-main" data-demo-page data-demo-id="{{ forumId }}" data-overlay-ctx="forum:{{ forumId }}">
   {{ breadcrumbs }}
   <header class="bl-page__header">

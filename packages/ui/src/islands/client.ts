@@ -1,6 +1,7 @@
 import { type ComponentType, createElement } from "react";
 import { hydrateRoot } from "react-dom/client";
 import * as v from "valibot";
+import { FlagsProvider } from "../flags.tsx";
 import {
   editorSchema,
   type IslandPropsSchema,
@@ -19,6 +20,28 @@ export interface ClientIsland {
   readonly prepare: (input: unknown) => IslandPreparation;
 }
 
+function clientFlags(root: ParentNode): Readonly<Record<string, boolean>> {
+  const raw = root.querySelector("[data-client-flags]")?.getAttribute("data-client-flags");
+
+  if (raw === null || raw === undefined || raw.trim() === "") {
+    return {};
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter((entry): entry is [string, boolean] => entry[1] === true),
+    );
+  } catch {
+    return {};
+  }
+}
+
 function defineClientIsland<TProps extends object>(
   schema: IslandPropsSchema<TProps>,
   load: () => Promise<ComponentType<TProps>>,
@@ -35,7 +58,14 @@ function defineClientIsland<TProps extends object>(
         ok: true,
         async hydrate(container) {
           const Component = await load();
-          hydrateRoot(container, createElement(Component, parsed.output));
+          hydrateRoot(
+            container,
+            createElement(
+              FlagsProvider,
+              { value: clientFlags(container.ownerDocument) },
+              createElement(Component, parsed.output),
+            ),
+          );
         },
       };
     },

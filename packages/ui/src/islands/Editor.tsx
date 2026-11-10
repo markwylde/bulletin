@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FlagsProvider, useFlag } from "../flags.tsx";
 import {
   clearDraft,
   type EditorDraft,
@@ -46,7 +47,16 @@ function wrapSelection(
 }
 
 /** The editor island (ADR 0007): WYSIWYG/source, toolbar, emoticons, mentions and drafts. */
-export function Editor({ contextKey, initialMarkdown, emoticons, labels }: EditorProps) {
+export function Editor(props: EditorProps) {
+  return (
+    <FlagsProvider value={{ mentions: props.flags.mentions }}>
+      <EditorContent {...props} />
+    </FlagsProvider>
+  );
+}
+
+function EditorContent({ contextKey, initialMarkdown, emoticons, labels }: EditorProps) {
+  const mentionsEnabled = useFlag("mentions");
   const [mode, setMode] = useState<EditorMode>("source");
   const [markdown, setMarkdown] = useState(initialMarkdown);
   const [dirty, setDirty] = useState(false);
@@ -202,7 +212,7 @@ export function Editor({ contextKey, initialMarkdown, emoticons, labels }: Edito
   }, [csrfToken, contextKey, dirty, markdown]);
 
   useEffect(() => {
-    if (mentionQuery === null) {
+    if (mentionQuery === null || !mentionsEnabled) {
       setMentions([]);
       setMentionOpen(false);
       return;
@@ -232,7 +242,7 @@ export function Editor({ contextKey, initialMarkdown, emoticons, labels }: Edito
     return () => {
       clearTimeout(timer);
     };
-  }, [mentionQuery]);
+  }, [mentionQuery, mentionsEnabled]);
 
   function switchMode(next: EditorMode): void {
     if (next === mode) {
@@ -528,14 +538,16 @@ export function Editor({ contextKey, initialMarkdown, emoticons, labels }: Edito
         >
           ☺
         </button>
-        <button
-          type="button"
-          aria-label={labels.mention}
-          data-editor-mention
-          onClick={() => insertPlainText("@")}
-        >
-          @
-        </button>
+        {mentionsEnabled ? (
+          <button
+            type="button"
+            aria-label={labels.mention}
+            data-editor-mention
+            onClick={() => insertPlainText("@")}
+          >
+            @
+          </button>
+        ) : null}
       </div>
 
       {emoticonOpen ? (
@@ -561,7 +573,7 @@ export function Editor({ contextKey, initialMarkdown, emoticons, labels }: Edito
         </div>
       ) : null}
 
-      {mentionOpen ? (
+      {mentionsEnabled && mentionOpen ? (
         <div
           className="bl-editor__mentions"
           data-mention-list

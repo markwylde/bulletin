@@ -162,6 +162,7 @@ async function editorPage(input: DemoPageInput): Promise<DemoForumPage> {
         contextKey: "demo:editor",
         initialMarkdown: "# Demo post\n\n:::disabled-plugin\nraw [b]hi[/b]\n:::",
         emoticons,
+        flags: { mentions: true },
         labels: {
           editor: translate("editor.label"),
           toolbar: translate("editor.toolbar"),

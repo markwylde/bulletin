@@ -13,9 +13,21 @@ interface Props {
   readonly serverLocale?: string;
   readonly localeSource?: "member" | "guest";
   readonly robots?: "noindex";
+  /** Client-visible flags as JSON; only affects the island provider, never shared content. */
+  readonly clientFlagsJson?: string | undefined;
 }
 
-const { title, locale, body, authState, visitor, serverLocale, localeSource, robots } = Astro.props;
+const {
+  title,
+  locale,
+  body,
+  authState,
+  visitor,
+  serverLocale,
+  localeSource,
+  robots,
+  clientFlagsJson,
+} = Astro.props;
 ---
 
 <!doctype html>
@@ -25,6 +37,7 @@ const { title, locale, body, authState, visitor, serverLocale, localeSource, rob
   data-visitor={visitor}
   data-server-locale={serverLocale}
   data-locale-source={localeSource}
+  data-client-flags={clientFlagsJson}
 >
   <head>
     <meta charset="utf-8" />

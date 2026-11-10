@@ -39,6 +39,7 @@ export interface DemoRouteResult {
   readonly tags: readonly string[];
   readonly etag: string | null;
   readonly hasUnlockGrant: boolean;
+  readonly clientFlagsJson: string;
   readonly errors: readonly string[];
 }
 
@@ -103,7 +104,21 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
   };
 
   const renderOutcome = async (data: DemoData) => {
-    const flags = { compactTopicList: data.flags.values.compactTopicList === true };
+    const flags = {
+      compactTopicList: data.flags.values.compactTopicList === true,
+      mentions: data.flags.values.mentions === true,
+      unfurls: data.flags.values.unfurls === true,
+    };
+
+    const viewModel: Record<string, unknown> = { ...data.outcome.viewModel, flags };
+    const editor = viewModel.editor;
+
+    if (typeof editor === "object" && editor !== null && !Array.isArray(editor)) {
+      viewModel.editor = {
+        ...editor,
+        flags: { mentions: flags.mentions },
+      };
+    }
 
     return renderThemedPage({
       sql: input.sql,
@@ -111,7 +126,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
       locale: input.locale,
       translate: input.translate,
       template: data.outcome.template,
-      viewModel: { ...data.outcome.viewModel, flags },
+      viewModel,
       breadcrumbs: data.outcome.breadcrumbs,
       route: {
         route: demoContract.route,
@@ -138,6 +153,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
       tags: [],
       etag: null,
       hasUnlockGrant: data.outcome.hasUnlockGrant,
+      clientFlagsJson: JSON.stringify(data.flags.clientFlags),
       errors: page.errors,
     };
   }
@@ -175,6 +191,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
     tags: rendered.tags,
     etag: rendered.etag,
     hasUnlockGrant: latest.outcome.hasUnlockGrant,
+    clientFlagsJson: JSON.stringify(latest.flags.clientFlags),
     errors: rendered.errors,
   };
 }

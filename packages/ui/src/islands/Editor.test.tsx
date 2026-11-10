@@ -29,6 +29,20 @@ const labels: EditorLabels = {
 };
 
 describe("Editor server markup", () => {
+  test("hides the mention control when the mentions flag is off", () => {
+    const props = {
+      contextKey: "reply:topic:1",
+      initialMarkdown: "",
+      emoticons: [],
+      labels,
+    };
+    const off = renderToStaticMarkup(<Editor {...props} flags={{ mentions: false }} />);
+    const on = renderToStaticMarkup(<Editor {...props} flags={{ mentions: true }} />);
+
+    expect(off).not.toContain('aria-label="Mention a member"');
+    expect(on).toContain('aria-label="Mention a member"');
+  });
+
   test("renders a usable source editor and the translated toolbar", () => {
     const html = renderToStaticMarkup(
       <Editor
@@ -36,6 +50,7 @@ describe("Editor server markup", () => {
         initialMarkdown="Hello **world**"
         emoticons={[{ code: "smile", src: "/files/smile.svg", alt: "Smile" }]}
         labels={labels}
+        flags={{ mentions: true }}
       />,
     );
 
