@@ -38,7 +38,7 @@ export interface QuoteSourceRef {
 
 export interface QuoteSource {
   readonly ref: QuoteSourceRef;
-  readonly sourceAuthorId: string;
+  readonly sourceAuthorId: string | null;
   readonly bodyMd: string;
   /** Forum id for post quotes, conversation id for message quotes. */
   readonly contextId: string | null;
@@ -58,7 +58,7 @@ export interface QuoteSourceResolver {
 export interface QuoteSnapshotDraft {
   readonly sourceKind: QuoteSourceKind;
   readonly sourceId: string;
-  readonly sourceAuthorId: string;
+  readonly sourceAuthorId: string | null;
   readonly bodyMd: string;
   readonly bodyHtml: string;
   readonly renderVersion: number;
