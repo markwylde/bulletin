@@ -149,6 +149,62 @@ function periodStart(period: LeaderboardPeriod, now: Date): Date | null {
 }
 
 /** Rebuilds every materialised period/metric from authoritative posts and reactions. */
+/** Rebuilds every materialised period/metric in the caller's transaction. */
+export async function rebuildLeaderboards(
+  tx: SQL,
+  now: Date = new Date(),
+): Promise<LeaderboardRecomputeResult> {
+  let rows = 0;
+
+  for (const period of LEADERBOARD_PERIODS) {
+    const start = periodStart(period, now);
+
+    for (const metric of LEADERBOARD_METRICS) {
+      await tx`
+        DELETE FROM core.leaderboard_entries
+        WHERE period = ${period} AND metric = ${metric}
+      `;
+
+      const inserted =
+        metric === "posts"
+          ? ((await tx`
+              INSERT INTO core.leaderboard_entries (
+                period, metric, member_id, forum_id, value, updated_at
+              )
+              SELECT
+                ${period}, 'posts', p.author_id, t.forum_id, count(*)::int, ${now}
+              FROM core.posts p
+              JOIN core.topics t ON t.id = p.topic_id
+              WHERE p.visibility = 'visible'
+                AND p.author_id IS NOT NULL
+                AND (${start}::timestamptz IS NULL OR p.created_at >= ${start})
+              GROUP BY p.author_id, t.forum_id
+              RETURNING 1
+            `) as unknown[])
+          : ((await tx`
+              INSERT INTO core.leaderboard_entries (
+                period, metric, member_id, forum_id, value, updated_at
+              )
+              SELECT
+                ${period}, 'reactions', p.author_id, t.forum_id, count(*)::int, ${now}
+              FROM core.post_reactions pr
+              JOIN core.posts p ON p.id = pr.post_id
+              JOIN core.topics t ON t.id = p.topic_id
+              WHERE p.visibility = 'visible'
+                AND p.author_id IS NOT NULL
+                AND (${start}::timestamptz IS NULL OR pr.created_at >= ${start})
+              GROUP BY p.author_id, t.forum_id
+              RETURNING 1
+            `) as unknown[]);
+
+      rows += inserted.length;
+    }
+  }
+
+  return { rows };
+}
+
+/** Rebuilds leaderboards with the cache-tag bump (the hourly worker entry point). */
 export async function recomputeLeaderboards(
   sql: SQL,
   now: Date = new Date(),
@@ -157,55 +213,6 @@ export async function recomputeLeaderboards(
     sql,
     mutation: leaderboardMutation,
     input: {},
-    apply: async (tx) => {
-      let rows = 0;
-
-      for (const period of LEADERBOARD_PERIODS) {
-        const start = periodStart(period, now);
-
-        for (const metric of LEADERBOARD_METRICS) {
-          await tx`
-            DELETE FROM core.leaderboard_entries
-            WHERE period = ${period} AND metric = ${metric}
-          `;
-
-          const inserted =
-            metric === "posts"
-              ? ((await tx`
-                  INSERT INTO core.leaderboard_entries (
-                    period, metric, member_id, forum_id, value, updated_at
-                  )
-                  SELECT
-                    ${period}, 'posts', p.author_id, t.forum_id, count(*)::int, ${now}
-                  FROM core.posts p
-                  JOIN core.topics t ON t.id = p.topic_id
-                  WHERE p.visibility = 'visible'
-                    AND p.author_id IS NOT NULL
-                    AND (${start}::timestamptz IS NULL OR p.created_at >= ${start})
-                  GROUP BY p.author_id, t.forum_id
-                  RETURNING 1
-                `) as unknown[])
-              : ((await tx`
-                  INSERT INTO core.leaderboard_entries (
-                    period, metric, member_id, forum_id, value, updated_at
-                  )
-                  SELECT
-                    ${period}, 'reactions', p.author_id, t.forum_id, count(*)::int, ${now}
-                  FROM core.post_reactions pr
-                  JOIN core.posts p ON p.id = pr.post_id
-                  JOIN core.topics t ON t.id = p.topic_id
-                  WHERE p.visibility = 'visible'
-                    AND p.author_id IS NOT NULL
-                    AND (${start}::timestamptz IS NULL OR pr.created_at >= ${start})
-                  GROUP BY p.author_id, t.forum_id
-                  RETURNING 1
-                `) as unknown[]);
-
-          rows += inserted.length;
-        }
-      }
-
-      return { rows };
-    },
+    apply: (tx) => rebuildLeaderboards(tx, now),
   });
 }

@@ -12,6 +12,7 @@ import { groupsSeedModule } from "./groups.ts";
 import { membersSeedModule } from "./members.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
 import { notificationsSeedModule } from "./notifications.ts";
+import { profilesSeedModule } from "./profiles.ts";
 import { reactionsSeedModule } from "./reactions.ts";
 import { reputationSeedModule } from "./reputation.ts";
 import { themesSeedModule } from "./themes.ts";
@@ -63,6 +64,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         moderatorAssignmentsSeedModule,
         topicsSeedModule,
         reputationSeedModule,
+        profilesSeedModule,
         notificationsSeedModule,
         attachmentSeedModule,
         adminLogSeedModule,

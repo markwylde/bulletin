@@ -35,8 +35,8 @@
 
 ## 6. Strings and seed
 
-- [ ] 6.1 Add en/es/fr strings for profiles, fields, signatures, relationships, directory, ranks and badges; verify completeness
-- [ ] 6.2 Seed custom fields (including a staff-only field), signatures, ranks, badges (manual and automatic) and awards, ignores, friendships, presence and leaderboard data; verify after `docker compose up --watch`
+- [x] 6.1 Add en/es/fr strings for profiles, fields, signatures, relationships, directory, ranks and badges; verify completeness
+- [x] 6.2 Seed custom fields (including a staff-only field), signatures, ranks, badges (manual and automatic) and awards, ignores, friendships, presence and leaderboard data; verify after `docker compose up --watch`
 
 ## 7. Feature flag
 
