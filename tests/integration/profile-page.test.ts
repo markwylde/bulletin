@@ -18,6 +18,7 @@ import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { createTestDatabase, type TestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { isNotModified } from "../../apps/user-app/src/http/cache.ts";
 import {
   PROFILE_FRAGMENT_TTL_MS,
   type ProfileRouteInput,
@@ -505,6 +506,16 @@ integrationDescribe("profile page (member-profiles)", () => {
       const refreshed = await render(harness, { session: member });
       expect(refreshed.cache).toBe("miss");
       expect(htmlOf(refreshed)).not.toBe(htmlOf(first));
+
+      // The HTML validator moved with the activity, so a conditional request cannot 304 and
+      // serve the stale timestamp from the old fragment.
+      if (first.kind !== "page" || refreshed.kind !== "page") {
+        throw new Error("Expected rendered pages");
+      }
+
+      expect(refreshed.status).toBe(200);
+      expect(refreshed.etag).not.toBe(first.etag);
+      expect(isNotModified(first.etag, refreshed.etag)).toBe(false);
     } finally {
       await close(harness);
     }

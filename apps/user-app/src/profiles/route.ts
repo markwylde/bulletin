@@ -144,6 +144,9 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
     cache: input.cache,
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
+    // Last-active activity changes inside the fragment TTL without moving `member:{id}`, so
+    // the ETag must cover the rendered HTML or revalidation keeps the stale activity.
+    contentValidator: true,
     prepare: async () => {
       const [theme, settings, flags, tree] = await Promise.all([
         loadActiveTheme(input.sql),
