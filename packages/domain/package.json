@@ -16,6 +16,7 @@
     "./net": "./src/net/index.ts",
     "./urls": "./src/urls/index.ts",
     "./board": "./src/board/index.ts",
+    "./events": "./src/events/index.ts",
     "./mutations": "./src/mutations/index.ts",
     "./visits": "./src/visits/index.ts",
     "./content": "./src/content/index.ts",

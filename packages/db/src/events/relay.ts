@@ -1,6 +1,6 @@
+import type { EventType } from "@bulletin/domain/events";
+import { type StoredEvent, toBigInt } from "@bulletin/domain/events";
 import type { SQL } from "bun";
-import type { EventType } from "./catalog.ts";
-import { type StoredEvent, toBigInt } from "./events.ts";
 
 export interface JobQueue {
   send(

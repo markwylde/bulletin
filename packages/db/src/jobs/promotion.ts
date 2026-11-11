@@ -1,11 +1,11 @@
 import type { Logger } from "@bulletin/config";
+import { emit, toBigInt } from "@bulletin/domain/events";
 import {
   promotionCriteria as defaultPromotionCriteria,
   type PromotionCriteriaRegistry,
 } from "@bulletin/domain/permissions";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
-import { emit, toBigInt } from "../events/events.ts";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
 
 export const PROMOTION_EVALUATE_QUEUE = "promotion.evaluate";

@@ -1,7 +1,7 @@
 import type { Logger } from "@bulletin/config";
+import { loadEvent, type StoredEvent } from "@bulletin/domain/events";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
-import { loadEvent, type StoredEvent } from "./events.ts";
 
 export interface EventJob {
   readonly eventId: string;
