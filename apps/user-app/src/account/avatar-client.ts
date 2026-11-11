@@ -74,13 +74,7 @@ function draw(): void {
   context.drawImage(image, sourceX, sourceY, sourceEdge, sourceEdge, 0, 0, outputEdge, outputEdge);
 }
 
-fileInput?.addEventListener("change", () => {
-  const file = fileInput.files?.[0];
-
-  if (file === undefined) {
-    return;
-  }
-
+function loadFile(file: File): void {
   if (file.size > 10 * 1024 * 1024) {
     showError(labels?.tooLarge ?? "");
     return;
@@ -108,7 +102,21 @@ fileInput?.addEventListener("change", () => {
   };
   reader.onerror = () => showError(labels?.invalid ?? "");
   reader.readAsDataURL(file);
-});
+}
+
+function loadSelectedFile(): void {
+  const file = fileInput?.files?.[0];
+
+  if (file !== undefined) {
+    loadFile(file);
+  }
+}
+
+fileInput?.addEventListener("change", loadSelectedFile);
+
+// The island is a deferred module: a file can be chosen (and `change` fire) before it runs, so
+// pick up a selection that arrived early instead of dropping it and leaving Save disabled.
+loadSelectedFile();
 
 zoom?.addEventListener("input", draw);
 
