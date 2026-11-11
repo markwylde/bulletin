@@ -157,6 +157,64 @@ export async function readAttachmentById(sql: SQL, id: string): Promise<Attachme
   return row === undefined ? null : attachmentFromRow(row);
 }
 
+export interface DownloadableAttachment {
+  readonly id: string;
+  readonly storageKey: string;
+  readonly contentType: string;
+  readonly filename: string;
+  /** Forums whose visible posts reference the attachment; permission is checked on each. */
+  readonly forumIds: readonly string[];
+}
+
+/**
+ * A published attachment plus the forums it appears in. Unreferenced, hidden or rejected
+ * attachments are not downloadable; the caller re-checks `can(download)` per request.
+ */
+export async function readDownloadableAttachment(
+  sql: SQL,
+  id: string,
+): Promise<DownloadableAttachment | null> {
+  const rows = (await sql`
+    SELECT id, storage_key, verified_type, filename
+    FROM core.attachments
+    WHERE id = ${id}
+      AND state = 'ready'
+      AND deleted_at IS NULL
+      AND storage_key IS NOT NULL
+      AND verified_type IS NOT NULL
+  `) as Array<{
+    id: string;
+    storage_key: string;
+    verified_type: string;
+    filename: string;
+  }>;
+  const row = rows[0];
+
+  if (row === undefined) {
+    return null;
+  }
+
+  const forums = (await sql`
+    SELECT DISTINCT t.forum_id::text AS forum_id
+    FROM core.post_attachments pa
+    JOIN core.posts p ON p.id = pa.post_id AND p.visibility = 'visible'
+    JOIN core.topics t ON t.id = p.topic_id
+    WHERE pa.attachment_id = ${id}
+  `) as Array<{ forum_id: string }>;
+
+  if (forums.length === 0) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    storageKey: row.storage_key,
+    contentType: row.verified_type,
+    filename: row.filename,
+    forumIds: forums.map((forum) => forum.forum_id),
+  };
+}
+
 export interface RecordSnapshotInput {
   readonly id: string;
   readonly memberId: string;

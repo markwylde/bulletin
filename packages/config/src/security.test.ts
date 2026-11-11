@@ -13,11 +13,13 @@ describe("security headers", () => {
       nodeEnv: "development",
       connectSrc: ["http://auth.bulletin.localhost:8080"],
       frameSrc: ["https://www.youtube-nocookie.com", "https://player.vimeo.com"],
+      imgSrc: ["http://files.bulletin.localhost:8080"],
     });
 
     expect(csp).toContain("default-src 'none'");
     expect(csp).toContain("script-src 'self' 'nonce-abc123'");
     expect(csp).toContain("connect-src 'self' http://auth.bulletin.localhost:8080");
+    expect(csp).toContain("img-src 'self' data: http://files.bulletin.localhost:8080");
     expect(csp).toContain("frame-src https://www.youtube-nocookie.com https://player.vimeo.com");
     expect(csp).not.toContain("frame-src *");
     expect(csp).toContain("frame-ancestors 'none'");

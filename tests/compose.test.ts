@@ -187,6 +187,19 @@ describe("compose stack", () => {
     }
   });
 
+  test("the files origin adds inert-content headers and routes presigned S3 paths", async () => {
+    const caddyfile = await Bun.file(new URL("../apps/proxy/Caddyfile", import.meta.url)).text();
+    const start = caddyfile.indexOf("http://files.bulletin.localhost");
+    const end = caddyfile.indexOf("http://plugins.bulletin.localhost");
+    const files = caddyfile.slice(start, end);
+
+    expect(files).toContain("handle /_mocks/s3/*");
+    expect(files).toContain("reverse_proxy s3:4001");
+    expect(files).toContain('X-Content-Type-Options "nosniff"');
+    expect(files).toContain("Content-Security-Policy \"sandbox; default-src 'none'\"");
+    expect(files).toContain('Referrer-Policy "strict-origin-when-cross-origin"');
+  });
+
   test("the compose project name follows COMPOSE_PROJECT_NAME and defaults to bulletin", () => {
     expect(compose.name).toBe(`\${COMPOSE_PROJECT_NAME:-bulletin}`);
     expect(interpolate(compose.name ?? "", {})).toBe("bulletin");

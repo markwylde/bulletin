@@ -13,7 +13,7 @@
 
 ## 3. Delivery
 
-- [ ] 3.1 Download endpoint with per-request `can(download)`, 60 s presigned redirect, files-origin headers in Caddy, inline-vs-download rules, and redirect-only CDN caching for session-less guest-visible attachments; tests for unauthorised, revoked, HTML-attachment and guest-redirect-caching scenarios (via the CDN mock)
+- [x] 3.1 Download endpoint with per-request `can(download)`, 60 s presigned redirect, files-origin headers in Caddy, inline-vs-download rules, and redirect-only CDN caching for session-less guest-visible attachments; tests for unauthorised, revoked, HTML-attachment and guest-redirect-caching scenarios (via the CDN mock)
 - [ ] 3.2 Image proxy for unfurl card images, reusing the pipeline; integration test
 
 ## 4. Editor and posts

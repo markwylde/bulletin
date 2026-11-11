@@ -290,6 +290,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
         ? {}
         : { connectSrc: options.security.connectSrc }),
       ...(options.security.frameSrc === undefined ? {} : { frameSrc: options.security.frameSrc }),
+      ...(options.security.imgSrc === undefined ? {} : { imgSrc: options.security.imgSrc }),
     });
   };
 

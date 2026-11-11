@@ -224,9 +224,27 @@ export function createS3Handler(options: S3MockOptions): (request: Request) => P
         return s3Error("NoSuchKey", "The specified key does not exist", 404);
       }
 
+      const headers = objectHeaders(object);
+      const overrides: ReadonlyArray<[string, string]> = [
+        ["response-content-type", "content-type"],
+        ["response-content-disposition", "content-disposition"],
+        ["response-content-encoding", "content-encoding"],
+        ["response-content-language", "content-language"],
+        ["response-cache-control", "cache-control"],
+        ["response-expires", "expires"],
+      ];
+
+      for (const [parameter, header] of overrides) {
+        const value = url.searchParams.get(parameter);
+
+        if (value !== null) {
+          headers.set(header, value);
+        }
+      }
+
       return cors(
         new Response(request.method === "HEAD" ? null : object.body, {
-          headers: objectHeaders(object),
+          headers,
         }),
       );
     }

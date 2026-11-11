@@ -16,6 +16,7 @@
     "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
+    "@bulletin/storage": "workspace:*",
     "@bulletin/templates": "workspace:*",
     "@bulletin/ui": "workspace:*",
     "astro": "7.4.7",

@@ -87,6 +87,22 @@ describe("S3 mock", () => {
     expect(await get.text()).toBe("from presign");
   });
 
+  test("applies response overrides to presigned GETs", async () => {
+    const { client } = serverFor(createMemoryStore());
+
+    await client.write("att/html", "<p>hi</p>", { type: "text/html" });
+    const url = client.presign("att/html", {
+      expiresIn: 60,
+      type: "text/plain",
+      contentDisposition: 'attachment; filename="download.txt"',
+    });
+    const response = await fetch(url);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="download.txt"');
+  });
+
   test("copies an object server-side", async () => {
     const { client } = serverFor(createMemoryStore());
 

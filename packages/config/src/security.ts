@@ -9,12 +9,15 @@ export interface SecurityHeadersOptions {
   readonly connectSrc?: readonly string[];
   /** Exact allowlisted embed origins allowed by `frame-src` (ADR 0007, 0008). */
   readonly frameSrc?: readonly string[];
+  /** Public user-content origin allowed by `img-src` (the files origin, ADR 0019). */
+  readonly imgSrc?: readonly string[];
 }
 
 export interface SecurityHeadersConfig {
   readonly nodeEnv: SecurityNodeEnv;
   readonly connectSrc?: readonly string[];
   readonly frameSrc?: readonly string[];
+  readonly imgSrc?: readonly string[];
 }
 
 export function createCspNonce(): string {
@@ -23,12 +26,13 @@ export function createCspNonce(): string {
 
 export function contentSecurityPolicy(options: SecurityHeadersOptions): string {
   const connectSrc = ["'self'", ...(options.connectSrc ?? [])].join(" ");
+  const imgSrc = ["'self'", "data:", ...(options.imgSrc ?? [])].join(" ");
   const frameSrc = options.frameSrc === undefined ? null : options.frameSrc.join(" ");
 
   return [
     "default-src 'none'",
     `connect-src ${connectSrc}`,
-    "img-src 'self' data:",
+    `img-src ${imgSrc}`,
     "font-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     `script-src 'self' 'nonce-${options.nonce}'`,

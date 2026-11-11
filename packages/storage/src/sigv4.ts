@@ -21,6 +21,10 @@ export interface PresignUrlOptions {
   readonly expiresIn: number;
   /** Extra headers whose values are part of the signature, e.g. `content-length`. */
   readonly signedHeaders?: Readonly<Record<string, string>>;
+  /** `response-content-type` override, used only by GET presigns. */
+  readonly responseContentType?: string;
+  /** `response-content-disposition` override, used only by GET presigns. */
+  readonly responseContentDisposition?: string;
   readonly now?: Date;
 }
 
@@ -163,13 +167,23 @@ export function presignUrl(options: PresignUrlOptions): string {
   };
   const canonical = canonicalHeaders(headers);
   const scope = credentialScope(options.credentials, dateStamp);
-  const query = canonicalQuery([
+  const pairs: Array<readonly [string, string]> = [
     ["X-Amz-Algorithm", ALGORITHM],
     ["X-Amz-Credential", `${options.credentials.accessKeyId}/${scope}`],
     ["X-Amz-Date", stamp],
     ["X-Amz-Expires", String(options.expiresIn)],
     ["X-Amz-SignedHeaders", canonical.names],
-  ]);
+  ];
+
+  if (options.responseContentType !== undefined) {
+    pairs.push(["response-content-type", options.responseContentType]);
+  }
+
+  if (options.responseContentDisposition !== undefined) {
+    pairs.push(["response-content-disposition", options.responseContentDisposition]);
+  }
+
+  const query = canonicalQuery(pairs);
   const request = [
     options.method,
     options.url.pathname || "/",

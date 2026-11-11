@@ -41,7 +41,7 @@ afterEach(() => {
   }
 });
 
-function start(): Harness {
+function start(options: { readonly publicEndpoint?: string } = {}): Harness {
   const requests: RecordedRequest[] = [];
   const handler = createS3Handler({
     store: createMemoryStore(),
@@ -65,6 +65,7 @@ function start(): Harness {
 
   const storage = createStorage({
     endpoint: `http://127.0.0.1:${server.port}`,
+    ...(options.publicEndpoint === undefined ? {} : { publicEndpoint: options.publicEndpoint }),
     bucket: "bulletin",
     accessKeyId: credentials.accessKeyId,
     secretAccessKey: credentials.secretAccessKey,
@@ -122,6 +123,22 @@ describe("storage client", () => {
 });
 
 describe("presigned uploads", () => {
+  test("signs presigned URLs for the public files origin, not the internal endpoint", () => {
+    const { storage } = start({
+      publicEndpoint: "http://files.bulletin.localhost:18080/_mocks/s3",
+    });
+    const get = storage.presignGet("att/abc", {
+      responseContentDisposition: 'attachment; filename="a.txt"',
+    });
+    const put = storage.presignPut("quarantine/abc", { contentLength: 3 });
+
+    expect(
+      get.startsWith("http://files.bulletin.localhost:18080/_mocks/s3/bulletin/att/abc?"),
+    ).toBe(true);
+    expect(get).toContain("response-content-disposition=attachment");
+    expect(put.startsWith("http://files.bulletin.localhost:18080/_mocks/s3/bulletin/")).toBe(true);
+  });
+
   test("uploads through a presigned PUT", async () => {
     const { storage } = start();
     const key = quarantineKey();

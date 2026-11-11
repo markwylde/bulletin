@@ -81,9 +81,28 @@ http://staff.bulletin.localhost:{$BULLETIN_HTTP_PORT:8080} {
 	}
 }
 
-# Attachments and avatars (ADR 0019) are served by the user API for now.
+# Attachments, avatars and proxied images (ADR 0019). Public presigned URLs point at this
+# origin; Caddy adds the headers that make arbitrary user content inert in a browser.
 http://files.bulletin.localhost:{$BULLETIN_HTTP_PORT:8080} {
-	reverse_proxy user-api:3001
+	handle /health/* {
+		reverse_proxy user-api:3001
+	}
+
+	# Presigned S3 paths keep their full path: the signature covers /_mocks/s3/... and the
+	# upstream mock expects the same base path (compose sets MOCK_BASE_PATH).
+	handle /_mocks/s3/* {
+		reverse_proxy s3:4001
+	}
+
+	handle /_mocks/s3 {
+		redir * /_mocks/s3/ 308
+	}
+
+	header {
+		X-Content-Type-Options "nosniff"
+		Content-Security-Policy "sandbox; default-src 'none'"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
 }
 
 # Plugin iframe apps (ADR 0009) are served by the sandbox host.

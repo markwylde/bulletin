@@ -4,7 +4,10 @@ export const PRESIGN_PUT_EXPIRES_IN = 300;
 export const PRESIGN_GET_EXPIRES_IN = 60;
 
 export interface StorageConfig {
+  /** Internal endpoint used for object operations (put/get/copy/list). */
   readonly endpoint: string;
+  /** Public origin baked into presigned URLs; defaults to `endpoint`. */
+  readonly publicEndpoint?: string;
   readonly bucket: string;
   readonly accessKeyId: string;
   readonly secretAccessKey: string;
@@ -62,8 +65,8 @@ function encodeKeyPath(key: string): string {
     .join("/");
 }
 
-function objectUrl(config: StorageConfig, key: string): URL {
-  const base = config.endpoint.replace(/\/+$/, "");
+function objectUrl(config: StorageConfig, key: string, endpoint = config.endpoint): URL {
+  const base = endpoint.replace(/\/+$/, "");
   return new URL(`${base}/${encodeURIComponent(config.bucket)}/${encodeKeyPath(key)}`);
 }
 
@@ -84,6 +87,7 @@ export function createStorage(config: StorageConfig): StorageClient {
     ...(config.region === undefined ? {} : { region: config.region }),
   });
   const credentials = credentialsOf(config);
+  const publicEndpoint = config.publicEndpoint ?? config.endpoint;
 
   return {
     async put(key, data, options = {}) {
@@ -156,13 +160,17 @@ export function createStorage(config: StorageConfig): StorageClient {
     },
 
     presignGet(key, options = {}) {
-      return client.presign(key, {
+      return presignUrl({
         method: "GET",
+        url: objectUrl(config, key, publicEndpoint),
+        credentials,
         expiresIn: options.expiresIn ?? PRESIGN_GET_EXPIRES_IN,
-        ...(options.responseContentType === undefined ? {} : { type: options.responseContentType }),
+        ...(options.responseContentType === undefined
+          ? {}
+          : { responseContentType: options.responseContentType }),
         ...(options.responseContentDisposition === undefined
           ? {}
-          : { contentDisposition: options.responseContentDisposition }),
+          : { responseContentDisposition: options.responseContentDisposition }),
       });
     },
 
@@ -171,7 +179,7 @@ export function createStorage(config: StorageConfig): StorageClient {
       // contract needs the exact declared size enforced by the bucket (ADR 0019).
       return presignUrl({
         method: "PUT",
-        url: objectUrl(config, key),
+        url: objectUrl(config, key, publicEndpoint),
         credentials,
         expiresIn: options.expiresIn ?? PRESIGN_PUT_EXPIRES_IN,
         ...(options.contentLength === undefined

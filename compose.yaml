@@ -11,8 +11,11 @@ x-app-environment: &app-environment
   BULLETIN_AUTH_ISSUER: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
   BULLETIN_USER_ORIGIN: "http://bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
   BULLETIN_STAFF_ORIGIN: "http://staff.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
+  BULLETIN_FILES_ORIGIN: "http://files.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
   # The CDN mock's surrogate-key purge endpoint (ADR 0006). Set on staff-api and workers.
   BULLETIN_CDN_PURGE_URL: "http://cdn:4006/purge"
+  # Presigned URLs point at the files origin, never at the internal S3 endpoint (ADR 0019).
+  S3_PUBLIC_ENDPOINT: "http://files.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}/_mocks/s3"
   # Local-only defaults (ADR 0002). packages/config rejects them in production.
   SESSION_SECRET: bulletin-development-only-session-secret
   SEED: "42"
@@ -403,6 +406,11 @@ services:
       PORT: "4321"
       DATABASE_URL: postgres://user_app@postgres:5432/bulletin
       USER_API_INTERNAL_URL: http://user-api:3001
+      S3_ENDPOINT: http://s3:4001/_mocks/s3
+      S3_BUCKET: bulletin
+      S3_ACCESS_KEY_ID: bulletin
+      S3_SECRET_ACCESS_KEY: bulletin-secret
+      S3_REGION: us-east-1
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
