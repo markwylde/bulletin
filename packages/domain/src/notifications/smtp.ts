@@ -13,6 +13,19 @@ export interface SmtpMessage {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
+/** A safe SMTP failure: the code and the command stage, never the server's raw reply line. */
+export class SmtpError extends Error {
+  readonly code: string;
+  readonly stage: string;
+
+  constructor(code: string, stage: string) {
+    super(`SMTP ${stage} rejected with ${code}`);
+    this.name = "SmtpError";
+    this.code = code;
+    this.stage = stage;
+  }
+}
+
 export interface SmtpOptions {
   /** `smtp://host:port`, optionally with `user:pass@`. */
   readonly url: string;
@@ -136,42 +149,44 @@ export async function sendSmtpMail(options: SmtpOptions): Promise<void> {
     }
   };
 
-  const expect = async (codes: readonly string[]): Promise<void> => {
+  const expect = async (codes: readonly string[], stage: string): Promise<void> => {
     const line = await readLine();
     const code = line.slice(0, 3);
 
     if (!codes.includes(code)) {
-      throw new Error(`SMTP ${code}: ${line}`);
+      // Never include the reply text or the envelope: it may contain a recipient address and is
+      // persisted in pg-boss dead letters (ADR 0012).
+      throw new SmtpError(code, stage);
     }
 
     if (line[3] === "-") {
-      await expect(codes);
+      await expect(codes, stage);
     }
   };
 
-  const command = async (value: string, codes: readonly string[]): Promise<void> => {
+  const command = async (value: string, codes: readonly string[], stage: string): Promise<void> => {
     socket.write(`${value}\r\n`);
-    await expect(codes);
+    await expect(codes, stage);
   };
 
   const exchange = async (): Promise<void> => {
-    await expect(["220"]);
-    await command("EHLO bulletin.local", ["250"]);
+    await expect(["220"], "greeting");
+    await command("EHLO bulletin.local", ["250"], "ehlo");
 
     if (url.username !== "") {
       const credentials = Buffer.from(
         `\u0000${decodeURIComponent(url.username)}\u0000${decodeURIComponent(url.password)}`,
         "utf8",
       ).toString("base64");
-      await command(`AUTH PLAIN ${credentials}`, ["235"]);
+      await command(`AUTH PLAIN ${credentials}`, ["235"], "auth");
     }
 
-    await command(`MAIL FROM:<${mailbox(options.message.from)}>`, ["250"]);
-    await command(`RCPT TO:<${mailbox(options.message.to)}>`, ["250", "251"]);
-    await command("DATA", ["354"]);
+    await command(`MAIL FROM:<${mailbox(options.message.from)}>`, ["250"], "mail-from");
+    await command(`RCPT TO:<${mailbox(options.message.to)}>`, ["250", "251"], "rcpt-to");
+    await command("DATA", ["354"], "data");
     socket.write(`${buildRawMessage(options.message)}\r\n`);
-    await expect(["250"]);
-    await command("QUIT", ["221"]);
+    await expect(["250"], "message");
+    await command("QUIT", ["221"], "quit");
   };
 
   const timeoutMs = options.timeoutMs ?? 10_000;

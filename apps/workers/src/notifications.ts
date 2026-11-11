@@ -21,7 +21,9 @@ export const NOTIFICATION_FANOUT_QUEUE = "notifications.fanout";
 
 export interface FanoutJob {
   readonly eventId: string;
-  readonly chunk: number;
+  /** Member-id boundaries, so a recipient change cannot shift another chunk's range. */
+  readonly afterMemberId: string;
+  readonly throughMemberId: string;
 }
 
 export interface NotificationsHandlerOptions {
@@ -123,7 +125,12 @@ export async function processNotificationRecipients(
         created ?? (await notificationIdForEvent(tx, event.id, recipient.memberId));
 
       if (channels.email && notificationId !== null) {
-        const intent = await createNotificationEmailIntent(tx, recipient.memberId, notificationId);
+        const intent = await createNotificationEmailIntent(
+          tx,
+          recipient.memberId,
+          notificationId,
+          event.id,
+        );
 
         if (intent !== null) {
           emailIntents.push(intent.toString());
@@ -154,10 +161,20 @@ export function createNotificationsEventHandler(
     }
 
     if (eligible.length > NOTIFICATION_FANOUT_CHUNK && options.enqueueFanout !== undefined) {
-      const chunks = Math.ceil(eligible.length / NOTIFICATION_FANOUT_CHUNK);
+      let afterMemberId = "0";
+      let chunks = 0;
 
-      for (let chunk = 0; chunk < chunks; chunk += 1) {
-        await options.enqueueFanout({ eventId: event.id.toString(), chunk });
+      for (let start = 0; start < eligible.length; start += NOTIFICATION_FANOUT_CHUNK) {
+        const chunk = eligible.slice(start, start + NOTIFICATION_FANOUT_CHUNK);
+        const throughMemberId = chunk[chunk.length - 1]?.memberId ?? afterMemberId;
+
+        await options.enqueueFanout({
+          eventId: event.id.toString(),
+          afterMemberId,
+          throughMemberId,
+        });
+        afterMemberId = throughMemberId;
+        chunks += 1;
       }
 
       options.logger?.info("notifications.fanned_out", {
@@ -185,6 +202,26 @@ export function createNotificationsEventHandler(
   };
 }
 
+/**
+ * Processes one stable member-id range. Permissions are rechecked inside the range, so a member
+ * who lost access is skipped without shifting anyone else's batch.
+ */
+export async function processNotificationChunk(
+  options: NotificationsHandlerOptions,
+  event: StoredEvent,
+  job: FanoutJob,
+): Promise<number> {
+  const eligible = await eligibleRecipients(options, event);
+  const after = BigInt(job.afterMemberId);
+  const through = BigInt(job.throughMemberId);
+  const chunk = eligible.filter((recipient) => {
+    const id = BigInt(recipient.memberId);
+    return id > after && id <= through;
+  });
+
+  return processNotificationRecipients(options, event, chunk);
+}
+
 export interface NotificationsFanoutWorkerOptions extends NotificationsHandlerOptions {
   readonly boss: PgBoss;
 }
@@ -207,16 +244,11 @@ export async function createNotificationsFanoutWorker(
         continue;
       }
 
-      const eligible = await eligibleRecipients(options, event);
-      const chunk = eligible.slice(
-        job.data.chunk * NOTIFICATION_FANOUT_CHUNK,
-        (job.data.chunk + 1) * NOTIFICATION_FANOUT_CHUNK,
-      );
-      const processed = await processNotificationRecipients(options, event, chunk);
+      const processed = await processNotificationChunk(options, event, job.data);
 
       options.logger?.info("notifications.chunk", {
         eventId: job.data.eventId,
-        chunk: job.data.chunk,
+        throughMemberId: job.data.throughMemberId,
         count: processed,
       });
     }

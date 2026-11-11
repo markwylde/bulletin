@@ -17,7 +17,7 @@ import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/databa
 import {
   createNotificationsEventHandler,
   eligibleRecipients,
-  processNotificationRecipients,
+  processNotificationChunk,
 } from "../../apps/workers/src/notifications.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -709,10 +709,18 @@ integrationDescribe("notifications subscriber", () => {
         }),
       );
       const event = await latestEvent(database, "post.created");
-      const jobs: Array<{ eventId: string; chunk: number }> = [];
+      const jobs: Array<{
+        eventId: string;
+        afterMemberId: string;
+        throughMemberId: string;
+      }> = [];
       const options = {
         sql: database.sql,
-        async enqueueFanout(job: { eventId: string; chunk: number }) {
+        async enqueueFanout(job: {
+          eventId: string;
+          afterMemberId: string;
+          throughMemberId: string;
+        }) {
           jobs.push(job);
         },
       };
@@ -723,19 +731,35 @@ integrationDescribe("notifications subscriber", () => {
       const eligible = await eligibleRecipients(options, event);
       expect(eligible.length).toBeGreaterThan(500);
 
+      // A member in the first batch unfollows before the second batch runs. With member-id
+      // boundaries the later batch keeps the same range instead of shifting and skipping.
+      const removed = eligible[0];
+      const last = eligible[eligible.length - 1];
+
+      if (removed === undefined || last === undefined) {
+        throw new Error("Missing recipient boundaries");
+      }
+
+      await database.sql`
+        DELETE FROM core.followed_topics
+        WHERE member_id = ${removed.memberId} AND topic_id = ${topic.topicId}
+      `;
+
       for (const job of jobs) {
-        await processNotificationRecipients(
-          options,
-          event,
-          eligible.slice(job.chunk * 500, (job.chunk + 1) * 500),
-        );
+        await processNotificationChunk(options, event, job);
       }
 
       const [count] = (await database.sql`
         SELECT count(*)::int AS count FROM core.notifications
         WHERE type = 'topic.reply' AND topic_id = ${topic.topicId}
       `) as Array<{ count: number }>;
-      expect(count?.count).toBe(eligible.length);
+      expect(count?.count).toBe(eligible.length - 1);
+
+      const [lastNotified] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.notifications
+        WHERE member_id = ${last.memberId} AND topic_id = ${topic.topicId}
+      `) as Array<{ count: number }>;
+      expect(lastNotified?.count).toBe(1);
     });
   }, 120_000);
 

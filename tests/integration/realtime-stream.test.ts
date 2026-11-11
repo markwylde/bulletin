@@ -451,6 +451,71 @@ integrationDescribe("realtime stream", () => {
     });
   }, 30_000);
 
+  test("an unlocked password forum streams and stops when the grant is revoked", async () => {
+    await withSeededDb(async (database) => {
+      const locked = await forumId(database, "general-discussion");
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const [adminSession] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${admin}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (adminSession === undefined) {
+        throw new Error("Missing admin session");
+      }
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${adminSession.id}, 'forum_password', ${locked})
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: admin,
+          forumId: locked,
+          sessionId: adminSession.id,
+          title: "Locked forum topic",
+          bodyMd: "Body.",
+        }),
+      );
+
+      const { id, record } = await createSession(database, member);
+
+      // The connection itself is only allowed by a grant, not by the session row.
+      const unlocked = await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${id}, 'forum_password', ${locked})
+        ON CONFLICT DO NOTHING
+        RETURNING 1
+      `;
+      expect(unlocked).toHaveLength(1);
+
+      const opened = await streamResponse({
+        sql: database.sql,
+        session: record,
+        request: new Request(
+          `http://user.test/api/stream?topic=${topic.topicId}&post=${topic.postId}`,
+        ),
+      });
+      expect(opened.status).toBe(200);
+      await opened.body?.cancel().catch(() => undefined);
+
+      await database.sql`
+        DELETE FROM core.session_grants
+        WHERE session_id = ${id} AND kind = 'forum_password' AND resource_id = ${locked}
+      `;
+      const refused = await streamResponse({
+        sql: database.sql,
+        session: record,
+        request: new Request(
+          `http://user.test/api/stream?topic=${topic.topicId}&post=${topic.postId}`,
+        ),
+      });
+      expect(refused.status).toBe(404);
+    });
+  }, 30_000);
+
   test("reconciles a dropped wake-up, the initial gap and a cross-tab mark-read", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");

@@ -12,6 +12,7 @@ import {
 import { follow } from "@bulletin/domain/follows";
 import {
   digestFrequency,
+  digestItems,
   pendingDigestDeliveries,
   queueDigests,
   setDigestFrequency,
@@ -23,6 +24,7 @@ import { createMailStore } from "@bulletin/mock-mail/message";
 import { startSmtpServer } from "@bulletin/mock-mail/smtp";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { userOrigin } from "@bulletin/test-utils/urls";
+import { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { notificationDigestResponse } from "../../apps/user-api/src/notifications.ts";
 import { createDigestJobs, deliverDigestEmail } from "../../apps/workers/src/digest.ts";
@@ -35,6 +37,7 @@ const SECRET = "digest-test-secret";
 async function withMailStack(
   run: (context: {
     readonly database: TestDatabase;
+    readonly worker: SQL;
     readonly store: ReturnType<typeof createMailStore>;
     readonly options: EmailOptions;
   }) => Promise<void>,
@@ -60,16 +63,26 @@ async function withMailStack(
         ]),
       });
 
-      await run({
-        database,
-        store,
-        options: {
-          smtpUrl: `smtp://127.0.0.1:${server.port}`,
-          mailFrom: "Bulletin <no-reply@bulletin.test>",
-          userOrigin: userOrigin(),
-          unsubscribeSecret: SECRET,
-        },
-      });
+      const workerUrl = new URL(database.url);
+      workerUrl.username = "workers";
+      workerUrl.password = "";
+      const worker = new SQL(workerUrl.toString());
+
+      try {
+        await run({
+          database,
+          worker,
+          store,
+          options: {
+            smtpUrl: `smtp://127.0.0.1:${server.port}`,
+            mailFrom: "Bulletin <no-reply@bulletin.test>",
+            userOrigin: userOrigin(),
+            unsubscribeSecret: SECRET,
+          },
+        });
+      } finally {
+        await worker.close();
+      }
     });
   } finally {
     server.stop();
@@ -114,7 +127,7 @@ function expectOk<T>(
 
 integrationDescribe("digests", () => {
   test("a weekly digest lists followed activity the member can read", async () => {
-    await withMailStack(async ({ database, store, options }) => {
+    await withMailStack(async ({ database, worker, store, options }) => {
       const member = await memberId(database, "member-2");
       const author = await memberId(database, "member-1");
       const forum = await forumId(database, "off-topic");
@@ -123,7 +136,7 @@ integrationDescribe("digests", () => {
       await setNotificationPreference(database.sql, member, "topic.created", "digest", true);
       await follow(database.sql, { memberId: member, kind: "forum", id: forum });
 
-      const newTopic = expectOk(
+      const newTopic = await expectOk(
         await startTopic(database.sql, {
           actorId: author,
           forumId: forum,
@@ -132,11 +145,11 @@ integrationDescribe("digests", () => {
         }),
       );
 
-      const queued = await queueDigests(database.sql, "weekly");
+      const queued = await queueDigests(worker, "weekly");
       expect(queued).toHaveLength(1);
       expect(
         await deliverDigestEmail(
-          database.sql,
+          worker,
           options,
           queued[0] ?? {
             intentId: "0",
@@ -159,7 +172,7 @@ integrationDescribe("digests", () => {
   }, 60_000);
 
   test("a digest is delivered even when the notifications flag is off", async () => {
-    await withMailStack(async ({ database, store, options }) => {
+    await withMailStack(async ({ database, worker, store, options }) => {
       const member = await memberId(database, "member-2");
       const author = await memberId(database, "member-1");
       const forum = await forumId(database, "off-topic");
@@ -182,21 +195,17 @@ integrationDescribe("digests", () => {
         }),
       );
 
-      const queued = await queueDigests(database.sql, "weekly");
+      const queued = await queueDigests(worker, "weekly");
       expect(queued).toHaveLength(1);
       expect(
-        await deliverDigestEmail(
-          database.sql,
-          options,
-          queued[0] ?? { intentId: "0", deliveryId: "0" },
-        ),
+        await deliverDigestEmail(worker, options, queued[0] ?? { intentId: "0", deliveryId: "0" }),
       ).toBe("sent");
       expect(store.list()[0]?.text).toContain("Digest while notifications are off");
     });
   }, 60_000);
 
   test("content that became unreadable after the window is not sent", async () => {
-    await withMailStack(async ({ database, store, options }) => {
+    await withMailStack(async ({ database, worker, store, options }) => {
       const member = await memberId(database, "member-2");
       const author = await memberId(database, "member-1");
       const forum = await forumId(database, "off-topic");
@@ -224,11 +233,11 @@ integrationDescribe("digests", () => {
       `;
       await bumpPermVersion(database.sql);
 
-      const queued = await queueDigests(database.sql, "weekly");
+      const queued = await queueDigests(worker, "weekly");
       expect(queued).toHaveLength(1);
       expect(
         await deliverDigestEmail(
-          database.sql,
+          worker,
           options,
           queued[0] ?? {
             intentId: "0",
@@ -241,7 +250,7 @@ integrationDescribe("digests", () => {
   }, 60_000);
 
   test("digest content follows per-type digest preferences and includes mentions", async () => {
-    await withMailStack(async ({ database, store, options }) => {
+    await withMailStack(async ({ database, worker, store, options }) => {
       const member = await memberId(database, "member-2");
       const author = await memberId(database, "member-1");
       const forum = await forumId(database, "off-topic");
@@ -252,7 +261,7 @@ integrationDescribe("digests", () => {
       await setNotificationPreference(database.sql, member, "topic.created", "digest", false);
       await follow(database.sql, { memberId: member, kind: "forum", id: forum });
 
-      const followed = expectOk(
+      const followed = await expectOk(
         await startTopic(database.sql, {
           actorId: author,
           forumId: forum,
@@ -276,7 +285,7 @@ integrationDescribe("digests", () => {
           bodyMd: "Body.",
         }),
       );
-      const mentionTopic = expectOk(
+      const mentionTopic = await expectOk(
         await startTopic(database.sql, {
           actorId: author,
           forumId: forum,
@@ -292,14 +301,10 @@ integrationDescribe("digests", () => {
         }),
       );
 
-      const queued = await queueDigests(database.sql, "weekly");
+      const queued = await queueDigests(worker, "weekly");
       expect(queued).toHaveLength(1);
       expect(
-        await deliverDigestEmail(
-          database.sql,
-          options,
-          queued[0] ?? { intentId: "0", deliveryId: "0" },
-        ),
+        await deliverDigestEmail(worker, options, queued[0] ?? { intentId: "0", deliveryId: "0" }),
       ).toBe("sent");
 
       const text = store.list()[0]?.text ?? "";
@@ -310,7 +315,7 @@ integrationDescribe("digests", () => {
   }, 60_000);
 
   test("a delivery whose enqueue was lost is recovered with its original window", async () => {
-    await withMailStack(async ({ database, store, options }) => {
+    await withMailStack(async ({ database, worker, store, options }) => {
       const member = await memberId(database, "member-2");
       const author = await memberId(database, "member-1");
       const forum = await forumId(database, "off-topic");
@@ -328,9 +333,9 @@ integrationDescribe("digests", () => {
       );
 
       // The delivery and intent commit, then the process "crashes" before enqueueing.
-      const queued = await queueDigests(database.sql, "weekly");
+      const queued = await queueDigests(worker, "weekly");
       expect(queued).toHaveLength(1);
-      const pending = await pendingDigestDeliveries(database.sql);
+      const pending = await pendingDigestDeliveries(worker);
       expect(pending).toEqual([
         expect.objectContaining({
           deliveryId: queued[0]?.deliveryId,
@@ -339,14 +344,10 @@ integrationDescribe("digests", () => {
       ]);
 
       // A second cron run must not start a new window while the first is still pending.
-      expect(await queueDigests(database.sql, "weekly")).toEqual([]);
+      expect(await queueDigests(worker, "weekly")).toEqual([]);
 
       expect(
-        await deliverDigestEmail(
-          database.sql,
-          options,
-          queued[0] ?? { intentId: "0", deliveryId: "0" },
-        ),
+        await deliverDigestEmail(worker, options, queued[0] ?? { intentId: "0", deliveryId: "0" }),
       ).toBe("sent");
       expect(store.list()[0]?.text).toContain("Recovered digest topic");
 
@@ -359,12 +360,12 @@ integrationDescribe("digests", () => {
       expect(new Date(subscription?.last_sent_at ?? 0).toISOString()).toBe(
         new Date(delivery?.period_end ?? 0).toISOString(),
       );
-      expect(await pendingDigestDeliveries(database.sql)).toEqual([]);
+      expect(await pendingDigestDeliveries(worker)).toEqual([]);
     });
   }, 60_000);
 
   test("soft-deleted replies and held topics stay out of the digest", async () => {
-    await withMailStack(async ({ database, store, options }) => {
+    await withMailStack(async ({ database, worker, store, options }) => {
       const member = await memberId(database, "member-2");
       const author = await memberId(database, "member-1");
       const forum = await forumId(database, "off-topic");
@@ -373,7 +374,7 @@ integrationDescribe("digests", () => {
       await setNotificationPreference(database.sql, member, "topic.reply", "digest", true);
       await follow(database.sql, { memberId: member, kind: "forum", id: forum });
 
-      const followed = expectOk(
+      const followed = await expectOk(
         await startTopic(database.sql, {
           actorId: author,
           forumId: forum,
@@ -386,7 +387,7 @@ integrationDescribe("digests", () => {
       await database.sql`
         UPDATE core.posts SET created_at = now() - interval '10 days' WHERE id = ${followed.postId}
       `;
-      const replyResult = expectOk(
+      const replyResult = await expectOk(
         await reply(database.sql, {
           actorId: author,
           topicId: followed.topicId,
@@ -397,7 +398,7 @@ integrationDescribe("digests", () => {
         UPDATE core.posts SET visibility = 'soft_deleted' WHERE id = ${replyResult.postId}
       `;
 
-      const held = expectOk(
+      const held = await expectOk(
         await startTopic(database.sql, {
           actorId: author,
           forumId: forum,
@@ -409,29 +410,164 @@ integrationDescribe("digests", () => {
         UPDATE core.posts SET visibility = 'unapproved' WHERE id = ${held.postId}
       `;
 
-      const queued = await queueDigests(database.sql, "weekly");
+      const queued = await queueDigests(worker, "weekly");
       expect(queued).toHaveLength(1);
       expect(
-        await deliverDigestEmail(
-          database.sql,
-          options,
-          queued[0] ?? { intentId: "0", deliveryId: "0" },
-        ),
+        await deliverDigestEmail(worker, options, queued[0] ?? { intentId: "0", deliveryId: "0" }),
       ).toBe("skipped");
       expect(store.list()).toEqual([]);
     });
   }, 60_000);
 
+  test("digest items cover every selectable type and honour each channel", async () => {
+    await withMailStack(async ({ database, worker }) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+
+      await setDigestFrequency(database.sql, member, "weekly");
+      const types = [
+        "topic.reply",
+        "topic.created",
+        "post.mention",
+        "post.quote",
+        "member.promoted",
+        "reaction.added",
+      ] as const;
+
+      for (const type of types) {
+        await setNotificationPreference(database.sql, member, type, "digest", true);
+      }
+
+      await follow(database.sql, { memberId: member, kind: "forum", id: forum });
+
+      const followed = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "All types reply",
+          bodyMd: "Body.",
+        }),
+      );
+      await follow(database.sql, { memberId: member, kind: "topic", id: followed.topicId });
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: followed.topicId,
+          bodyMd: "Reply activity.",
+        }),
+      );
+
+      expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "All types new topic",
+          bodyMd: "Body.",
+        }),
+      );
+
+      const mentioned = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "All types mention",
+          bodyMd: "Body.",
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: mentioned.topicId,
+          bodyMd: `Hi @[Regular Member Two](member:${member})`,
+        }),
+      );
+
+      const quotedTopic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "All types quote",
+          bodyMd: "My post to quote.",
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: quotedTopic.topicId,
+          bodyMd: `:::quote{source="post:${quotedTopic.postId}"}\nquoted\n:::`,
+        }),
+      );
+
+      const reactionTopic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: await forumId(database, "site-feedback"),
+          title: "All types reaction",
+          bodyMd: "Body.",
+        }),
+      );
+      await database.sql`
+        INSERT INTO core.notifications (member_id, type, topic_id, count)
+        VALUES
+          (${member}, 'member.promoted', NULL, 1),
+          (${member}, 'reaction.added', ${reactionTopic.topicId}, 1)
+      `;
+
+      const since = new Date(Date.now() - 60 * 60 * 1_000);
+      const kindsFor = async (): Promise<Set<string>> => {
+        const items = await digestItems(worker, member, { since });
+        return new Set(items.map((item) => item.kind));
+      };
+
+      expect(await kindsFor()).toEqual(
+        new Set(["topic", "reply", "mention", "quote", "promotion", "reaction"]),
+      );
+
+      for (const [kind, type] of [
+        ["topic", "topic.created"],
+        ["reply", "topic.reply"],
+        ["mention", "post.mention"],
+        ["quote", "post.quote"],
+        ["promotion", "member.promoted"],
+        ["reaction", "reaction.added"],
+      ] as const) {
+        await setNotificationPreference(database.sql, member, type, "digest", false);
+        expect(await kindsFor()).not.toContain(kind);
+        await setNotificationPreference(database.sql, member, type, "digest", true);
+      }
+    });
+  }, 60_000);
+
+  test("the workers role has the digest privileges it needs", async () => {
+    await withMailStack(async ({ worker }) => {
+      const [privileges] = (await worker`
+        SELECT
+          has_table_privilege('workers', 'core.digest_subscriptions', 'SELECT') AS read,
+          has_column_privilege('workers', 'core.digest_subscriptions', 'last_sent_at', 'UPDATE') AS update_last_sent,
+          has_column_privilege('workers', 'core.digest_subscriptions', 'updated_at', 'UPDATE') AS update_updated_at,
+          has_column_privilege('workers', 'core.digest_subscriptions', 'frequency', 'UPDATE') AS update_frequency
+      `) as Array<Record<string, boolean>>;
+
+      expect(privileges).toEqual({
+        read: true,
+        update_last_sent: true,
+        update_updated_at: true,
+        update_frequency: false,
+      });
+    });
+  }, 30_000);
+
   test("only subscribed members are queued, with the right cadence", async () => {
-    await withMailStack(async ({ database }) => {
+    await withMailStack(async ({ database, worker }) => {
       const member = await memberId(database, "member-2");
       const daily = await memberId(database, "member-fr");
 
       await setDigestFrequency(database.sql, member, "weekly");
       await setDigestFrequency(database.sql, daily, "daily");
 
-      expect(await queueDigests(database.sql, "weekly")).toHaveLength(1);
-      expect(await queueDigests(database.sql, "daily")).toHaveLength(1);
+      expect(await queueDigests(worker, "weekly")).toHaveLength(1);
+      expect(await queueDigests(worker, "daily")).toHaveLength(1);
     });
   }, 30_000);
 

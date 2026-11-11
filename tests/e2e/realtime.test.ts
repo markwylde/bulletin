@@ -129,6 +129,7 @@ integrationDescribe("realtime stream in the browser", () => {
   test("shows the new-replies banner and updates the bell count at 360", async () => {
     const topic = await prepareFollowerTopic();
     const replyText = `Realtime reply ${Date.now()}`;
+    const secondText = `${replyText} two`;
 
     await withPages(
       {
@@ -146,9 +147,17 @@ integrationDescribe("realtime stream in the browser", () => {
             /ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/,
           ],
         },
+        replier2: {
+          url: USER_URL,
+          viewport: "desktop",
+          allowConsoleErrors: [
+            /429.*\/api\/topics\/\d+\/replies/,
+            /ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/,
+          ],
+        },
       },
-      async ({ user, replier }) => {
-        if (user === undefined || replier === undefined) {
+      async ({ user, replier, replier2 }) => {
+        if (user === undefined || replier === undefined || replier2 === undefined) {
           throw new Error("Missing pages");
         }
 
@@ -160,12 +169,19 @@ integrationDescribe("realtime stream in the browser", () => {
         await loginAs(replier, "member-2");
         await waitForSelector(replier, '[data-auth-state="authenticated"]');
         await replyFromPage(replier, topic.id, replyText);
+        await loginAs(replier2, "member-fr");
+        await waitForSelector(replier2, '[data-auth-state="authenticated"]');
+        await replyFromPage(replier2, topic.id, secondText);
 
-        await waitForSelector(user, "[data-new-replies]:not([hidden])", 5_000);
+        await waitForExpression(
+          user,
+          'document.querySelector("[data-new-replies]")?.textContent?.includes("2 new replies") === true',
+          10_000,
+        );
         const banner = await user.evaluate<string>(
           'document.querySelector("[data-new-replies]")?.textContent ?? ""',
         );
-        expect(banner).toContain("1 new reply");
+        expect(banner).toContain("2 new replies");
 
         await waitForSelector(user, '[data-overlay-count="notifications"]:not([hidden])', 15_000);
         const count = Number(
@@ -178,7 +194,7 @@ integrationDescribe("realtime stream in the browser", () => {
         await clickSelector(user, "[data-new-replies]");
         await waitForExpression(
           user,
-          `document.body.innerText.includes(${JSON.stringify(replyText)})`,
+          `document.body.innerText.includes(${JSON.stringify(replyText)}) && document.body.innerText.includes(${JSON.stringify(secondText)})`,
           20_000,
         );
       },

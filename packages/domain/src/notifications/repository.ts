@@ -548,11 +548,11 @@ export async function notificationIdForEvent(
 }
 
 export interface DigestItem {
-  readonly kind: "topic" | "reply" | "mention";
-  readonly topicId: string;
+  readonly kind: "topic" | "reply" | "mention" | "quote" | "promotion" | "reaction";
+  readonly topicId: string | null;
   readonly title: string;
-  readonly slug: string;
-  readonly forumId: string;
+  readonly slug: string | null;
+  readonly forumId: string | null;
   readonly postId: string | null;
   readonly actorName: string | null;
   readonly createdAt: Date;
@@ -568,17 +568,31 @@ interface DigestRow {
   readonly created_at: Date | string;
 }
 
+interface DigestNotificationRow {
+  readonly id: string;
+  readonly type_from_notification: string;
+  readonly created_at: Date | string;
+  readonly topic_id: string | null;
+  readonly title: string | null;
+  readonly slug: string | null;
+  readonly forum_id: string | null;
+  readonly actor_name: string | null;
+}
+
 const DIGEST_TYPE_BY_KIND = {
   topic: "topic.created",
   reply: "topic.reply",
   mention: "post.mention",
+  quote: "post.quote",
+  promotion: "member.promoted",
+  reaction: "reaction.added",
 } as const;
 
 /**
- * New activity since the window in followed topics, followed forums (including descendants) and
- * posts that mention the member, with `can()` applied at build time. Only the types whose digest
- * channel is enabled are included (default off). One entry per topic: a mention wins over a
- * reply, and a reply wins over the topic row.
+ * New activity since the window in followed topics and forums, mentions, quotes of the member's
+ * posts and notification-backed types (promotions and reactions), with `can()` at build time.
+ * Only types whose digest channel is enabled are included (default off). One entry per topic:
+ * a mention wins over a quote, which wins over a reply, which wins over a new-topic row.
  */
 export async function digestItems(
   sql: SQL,
@@ -596,7 +610,7 @@ export async function digestItems(
   const snapshot =
     options.snapshot ?? (await loadPermissionSnapshot(sql, memberId, { tree, sessionId: null }));
   const preferences = await notificationPreferenceMatrix(sql, memberId);
-  const [replies, topics, mentions] = (await Promise.all([
+  const [replies, topics, mentions, quotes, notificationRows] = (await Promise.all([
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
@@ -641,17 +655,53 @@ export async function digestItems(
         AND p.created_at <= ${until}
       ORDER BY t.id, p.created_at DESC
     `,
-  ])) as [DigestRow[], DigestRow[], DigestRow[]];
+    sql`
+      SELECT DISTINCT ON (t.id)
+        t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
+        p.id::text AS post_id, a.display_name AS actor_name, p.created_at
+      FROM core.posts p
+      JOIN core.topics t ON t.id = p.topic_id
+      LEFT JOIN core.members a ON a.id = p.author_id
+      WHERE p.visibility = 'visible'
+        AND p.created_at > ${options.since}
+        AND p.created_at <= ${until}
+        AND EXISTS (
+          SELECT 1 FROM core.posts quoted
+          WHERE quoted.id = ANY(p.quoted_post_ids) AND quoted.author_id = ${memberId}
+        )
+      ORDER BY t.id, p.created_at DESC
+    `,
+    sql`
+      SELECT
+        n.id::text AS id,
+        n.type AS type_from_notification,
+        n.created_at,
+        t.id::text AS topic_id,
+        t.title,
+        t.slug,
+        t.forum_id::text AS forum_id,
+        a.display_name AS actor_name
+      FROM core.notifications n
+      LEFT JOIN core.topics t ON t.id = n.topic_id
+      LEFT JOIN core.members a ON a.id = n.actor_id
+      WHERE n.member_id = ${memberId}
+        AND n.type IN ('member.promoted', 'reaction.added')
+        AND n.created_at > ${options.since}
+        AND n.created_at <= ${until}
+      ORDER BY n.created_at DESC
+    `,
+  ])) as [DigestRow[], DigestRow[], DigestRow[], DigestRow[], DigestNotificationRow[]];
   const byTopic = new Map<string, DigestItem>();
+  const rank = { topic: 1, reaction: 2, reply: 3, quote: 4, mention: 5, promotion: 6 } as const;
 
   for (const [kind, rows] of [
     ["topic", topics],
     ["reply", replies],
     ["mention", mentions],
+    ["quote", quotes],
   ] as const) {
     for (const row of rows) {
       const existing = byTopic.get(row.topic_id);
-      const rank = { topic: 1, reply: 2, mention: 3 } as const;
 
       if (existing !== undefined && rank[existing.kind] >= rank[kind]) {
         continue;
@@ -670,6 +720,32 @@ export async function digestItems(
     }
   }
 
+  for (const row of notificationRows) {
+    if (!isNotificationTypeValue(row.type_from_notification)) {
+      continue;
+    }
+
+    const kind = row.type_from_notification === "member.promoted" ? "promotion" : "reaction";
+    const key =
+      kind === "promotion" ? `promotion:${row.id}` : (row.topic_id ?? `reaction:${row.id}`);
+    const existing = byTopic.get(key);
+
+    if (existing !== undefined && rank[existing.kind] >= rank[kind]) {
+      continue;
+    }
+
+    byTopic.set(key, {
+      kind,
+      topicId: row.topic_id,
+      title: row.title ?? "",
+      slug: row.slug,
+      forumId: row.forum_id,
+      postId: null,
+      actorName: row.actor_name,
+      createdAt: new Date(row.created_at),
+    });
+  }
+
   const readable: DigestItem[] = [];
 
   for (const item of byTopic.values()) {
@@ -677,9 +753,14 @@ export async function digestItems(
       continue;
     }
 
-    if (await can(sql, memberId, "read", { forumId: item.forumId, tree, snapshot })) {
-      readable.push(item);
+    if (
+      item.forumId !== null &&
+      !(await can(sql, memberId, "read", { forumId: item.forumId, tree, snapshot }))
+    ) {
+      continue;
     }
+
+    readable.push(item);
   }
 
   return readable

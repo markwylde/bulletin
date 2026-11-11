@@ -96,7 +96,7 @@ export async function queueDigests(
         const [intent] = (await tx`
           INSERT INTO core.delivery_intents (member_id, kind, ref_id, channel)
           VALUES (${row.member_id}, 'digest', ${delivery.id}, 'email')
-          ON CONFLICT (kind, ref_id, channel) DO NOTHING
+          ON CONFLICT DO NOTHING
           RETURNING id::text AS id
         `) as Array<{ id: string }>;
 

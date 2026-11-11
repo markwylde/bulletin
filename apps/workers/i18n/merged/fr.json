@@ -7,6 +7,7 @@
   "digest.intro.daily": "Nouveauté depuis hier :",
   "digest.intro.weekly": "Nouveauté cette semaine :",
   "digest.item": "{title} : {url}",
+  "digest.promotion": "Vous avez été promu dans un nouveau groupe.",
   "digest.subject.daily": "Votre résumé quotidien",
   "digest.subject.weekly": "Votre résumé hebdomadaire",
   "digest.unsubscribe": "Se désabonner des résumés : {url}",

@@ -78,9 +78,13 @@ const relay = createRelay({ sql, subscribers, queue: boss.queue });
 const enqueueEmail = async (intentId: string): Promise<void> => {
   await boss.boss.send("email", { intentId }, { singletonKey: `email:${intentId}` });
 };
-const enqueueFanout = async (job: { eventId: string; chunk: number }): Promise<void> => {
+const enqueueFanout = async (job: {
+  eventId: string;
+  afterMemberId: string;
+  throughMemberId: string;
+}): Promise<void> => {
   await boss.boss.send(NOTIFICATION_FANOUT_QUEUE, job, {
-    singletonKey: `fanout:${job.eventId}:${job.chunk}`,
+    singletonKey: `fanout:${job.eventId}:${job.throughMemberId}`,
   });
 };
 const workerFlags = createWorkerFlags(sql);

@@ -48,11 +48,14 @@ function showNewReplies(payload: StreamNewRepliesPayload): void {
     return;
   }
 
+  const previous = Number(banner.dataset.count ?? "0");
+  const count = (Number.isFinite(previous) && previous > 0 ? previous : 0) + payload.count;
   const suffix =
-    payload.count === 1
+    count === 1
       ? (banner.getAttribute("data-label-one") ?? "new reply")
       : (banner.getAttribute("data-label-other") ?? "new replies");
-  banner.textContent = `${payload.count} ${suffix}`;
+  banner.textContent = `${count} ${suffix}`;
+  banner.dataset.count = String(count);
   banner.dataset.lastPostId = payload.postId;
   banner.hidden = false;
 

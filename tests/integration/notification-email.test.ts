@@ -201,7 +201,12 @@ async function createIntent(
     throw new Error("Notification was deduplicated");
   }
 
-  const intentId = await createNotificationEmailIntent(database.sql, memberIdValue, notificationId);
+  const intentId = await createNotificationEmailIntent(
+    database.sql,
+    memberIdValue,
+    notificationId,
+    eventId,
+  );
 
   if (intentId === null) {
     throw new Error("No email intent");
@@ -272,6 +277,40 @@ integrationDescribe("notification email", () => {
         "skipped",
       );
       expect(store.list()).toHaveLength(1);
+    });
+  }, 60_000);
+
+  test("each reply is emailed even when the in-app notification coalesces", async () => {
+    await withMailStack(async ({ database, store, options }) => {
+      const fixture = await replyFixture(database);
+      const intents: string[] = [];
+      const handler = createNotificationsEventHandler({
+        sql: database.sql,
+        async enqueueEmail(intentId) {
+          intents.push(intentId);
+        },
+      });
+
+      await handler(await requireEvent(database, fixture.eventId));
+      expect(intents).toHaveLength(1);
+      expect(await deliverNotificationEmail(database.sql, options, intents[0] ?? "")).toBe("sent");
+
+      await expectOk(
+        await reply(database.sql, {
+          actorId: fixture.actor,
+          topicId: fixture.topicId,
+          bodyMd: "A second reply.",
+        }),
+      );
+      const [secondEvent] = (await database.sql`
+        SELECT id FROM core.events WHERE type = 'post.created' ORDER BY id DESC LIMIT 1
+      `) as Array<{ id: bigint | string }>;
+      await handler(await requireEvent(database, BigInt(secondEvent?.id ?? 0)));
+
+      expect(intents).toHaveLength(2);
+      expect(intents[0]).not.toBe(intents[1]);
+      expect(await deliverNotificationEmail(database.sql, options, intents[1] ?? "")).toBe("sent");
+      expect(store.list()).toHaveLength(2);
     });
   }, 60_000);
 

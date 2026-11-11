@@ -150,6 +150,13 @@ export async function deliverDigestEmail(
     const lines = [greeting, "", intro];
 
     for (const item of items) {
+      if (item.topicId === null || item.slug === null) {
+        if (item.kind === "promotion") {
+          lines.push(translate("digest.promotion", {}));
+        }
+        continue;
+      }
+
       const url = `${options.userOrigin}${canonicalUrl(
         "topic",
         item.topicId,
@@ -165,6 +172,12 @@ export async function deliverDigestEmail(
       intro,
     )}</p><ul>${items
       .map((item) => {
+        if (item.topicId === null || item.slug === null) {
+          return item.kind === "promotion"
+            ? `<li>${escapeHtml(translate("digest.promotion", {}))}</li>`
+            : "";
+        }
+
         const url = `${options.userOrigin}${canonicalUrl(
           "topic",
           item.topicId,

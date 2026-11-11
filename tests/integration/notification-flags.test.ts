@@ -216,6 +216,7 @@ integrationDescribe("notification feature flags", () => {
         database.sql,
         starter,
         BigInt(notificationId),
+        stored.id,
       );
 
       if (intentId === null) {

@@ -96,6 +96,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
       !(await can(sql, session.memberId, "read", {
         forumId: scope.forumId,
         tree: await loadForumTree(sql),
+        sessionId: session.id,
       }))
     ) {
       return json({ code: "not_found" }, 404);
@@ -184,6 +185,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
         return can(sql, session.memberId, "read", {
           forumId: current.forumId,
           tree: await loadForumTree(sql),
+          sessionId: session.id,
         });
       };
 

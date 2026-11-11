@@ -326,6 +326,7 @@ integrationDescribe("notification centre", () => {
         database.sql,
         fixture.starter,
         notificationId,
+        await latestPostEvent(database),
       );
       const staffRoom = await forumId(database, "staff-room");
 
@@ -350,6 +351,7 @@ integrationDescribe("notification centre", () => {
         database.sql,
         fixture.starter,
         notificationId,
+        await latestPostEvent(database),
       );
       await database.sql`
         UPDATE core.posts SET visibility = 'soft_deleted' WHERE id = ${fixture.postId}

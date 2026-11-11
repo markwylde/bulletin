@@ -7,6 +7,7 @@
   "digest.intro.daily": "Actividad nueva desde ayer:",
   "digest.intro.weekly": "Actividad nueva esta semana:",
   "digest.item": "{title}: {url}",
+  "digest.promotion": "Te han ascendido a un grupo nuevo.",
   "digest.subject.daily": "Tu resumen diario",
   "digest.subject.weekly": "Tu resumen semanal",
   "digest.unsubscribe": "Cancela la suscripción a los resúmenes: {url}",
