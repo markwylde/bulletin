@@ -145,6 +145,8 @@ describe("loadConfig", () => {
       NODE_ENV: "production",
       DATABASE_URL: DEVELOPMENT_DEFAULTS.DATABASE_URL,
       SESSION_SECRET: "x".repeat(32),
+      BULLETIN_SMTP_URL: "smtp://mail:1025",
+      BULLETIN_MAIL_FROM: "Bulletin <no-reply@example.com>",
     });
 
     expect(error.message).toContain("DATABASE_URL");
@@ -156,6 +158,8 @@ describe("loadConfig", () => {
       NODE_ENV: "production",
       DATABASE_URL: "postgres://bulletin:prod@db:5432/bulletin",
       SESSION_SECRET: DEVELOPMENT_DEFAULTS.SESSION_SECRET,
+      BULLETIN_SMTP_URL: "smtp://mail:1025",
+      BULLETIN_MAIL_FROM: "Bulletin <no-reply@example.com>",
     });
 
     expect(error.issues).toHaveLength(1);
@@ -168,6 +172,8 @@ describe("loadConfig", () => {
 
     expect(error.message).toContain("DATABASE_URL must be set in production");
     expect(error.message).toContain("SESSION_SECRET must be set in production");
+    expect(error.message).toContain("BULLETIN_SMTP_URL must be set in production");
+    expect(error.message).toContain("BULLETIN_MAIL_FROM must be set in production");
   });
 
   test("accepts explicit production secrets", () => {
@@ -175,6 +181,8 @@ describe("loadConfig", () => {
       NODE_ENV: "production",
       DATABASE_URL: "postgres://bulletin:prod@db:5432/bulletin",
       SESSION_SECRET: "y".repeat(32),
+      BULLETIN_SMTP_URL: "smtp://mail:1025",
+      BULLETIN_MAIL_FROM: "Bulletin <no-reply@example.com>",
     });
 
     expect(config.nodeEnv).toBe("production");
@@ -186,6 +194,8 @@ describe("loadConfig", () => {
       NODE_ENV: "production",
       DATABASE_URL: "postgres://bulletin:prod@db:5432/bulletin",
       SESSION_SECRET: "too-short",
+      BULLETIN_SMTP_URL: "smtp://mail:1025",
+      BULLETIN_MAIL_FROM: "Bulletin <no-reply@example.com>",
     });
 
     expect(error.message).toContain("SESSION_SECRET must be at least 32 characters");

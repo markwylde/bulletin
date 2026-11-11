@@ -29,6 +29,8 @@ export interface AppConfig {
   readonly authStaffClientId: string;
   readonly userOrigin: string;
   readonly staffOrigin: string;
+  readonly smtpUrl: string;
+  readonly mailFrom: string;
   readonly bootstrapAdmins: readonly BootstrapAdmin[];
 }
 
@@ -55,6 +57,8 @@ export const DEVELOPMENT_DEFAULTS = {
   BULLETIN_AUTH_STAFF_CLIENT_ID: "bulletin-staff",
   BULLETIN_USER_ORIGIN: `http://bulletin.localhost:${DEFAULT_HTTP_PORT}`,
   BULLETIN_STAFF_ORIGIN: `http://staff.bulletin.localhost:${DEFAULT_HTTP_PORT}`,
+  BULLETIN_SMTP_URL: "smtp://127.0.0.1:1025",
+  BULLETIN_MAIL_FROM: "Bulletin <no-reply@bulletin.localhost>",
 } as const;
 
 const PORT_BOUNDS = { min: 1, max: 65_535 } as const;
@@ -211,6 +215,29 @@ function parseOptionalUrl(env: Env, key: string, fallback: string, issues: strin
   }
 }
 
+function parseSmtpUrl(env: Env, nodeEnv: NodeEnv, issues: string[]): string {
+  const raw = parseProductionValue(
+    env,
+    "BULLETIN_SMTP_URL",
+    DEVELOPMENT_DEFAULTS.BULLETIN_SMTP_URL,
+    nodeEnv,
+    issues,
+  );
+
+  try {
+    const url = new URL(raw);
+
+    if (url.protocol !== "smtp:" || url.hostname === "") {
+      throw new Error("invalid smtp url");
+    }
+
+    return raw;
+  } catch {
+    issues.push("BULLETIN_SMTP_URL must be a smtp:// URL, e.g. smtp://mail:1025");
+    return DEVELOPMENT_DEFAULTS.BULLETIN_SMTP_URL;
+  }
+}
+
 function parseBootstrapAdmins(env: Env, issues: string[]): readonly BootstrapAdmin[] {
   const raw = read(env, "BULLETIN_BOOTSTRAP_ADMINS");
 
@@ -320,6 +347,14 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     `http://staff.bulletin.localhost:${httpPort}`,
     issues,
   );
+  const smtpUrl = parseSmtpUrl(env, nodeEnv, issues);
+  const mailFrom = parseProductionValue(
+    env,
+    "BULLETIN_MAIL_FROM",
+    DEVELOPMENT_DEFAULTS.BULLETIN_MAIL_FROM,
+    nodeEnv,
+    issues,
+  );
   const bootstrapAdmins = parseBootstrapAdmins(env, issues);
 
   if (issues.length > 0) {
@@ -341,6 +376,8 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     authStaffClientId,
     userOrigin,
     staffOrigin,
+    smtpUrl,
+    mailFrom,
     bootstrapAdmins,
   };
 }

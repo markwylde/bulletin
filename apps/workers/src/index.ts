@@ -26,6 +26,8 @@ import { runBaseSeed } from "@bulletin/db/seed";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { createCoreEventHandler } from "./core-events.ts";
+import { createDigestJobs } from "./digest.ts";
+import { createEmailJobs } from "./email.ts";
 import { createNotificationsEventHandler } from "./notifications.ts";
 
 const config = loadConfig();
@@ -68,6 +70,24 @@ const subscribers: EventSubscriber[] = [
   },
 ];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
+const digestJobs = await createDigestJobs({
+  boss: boss.boss,
+  sql,
+  smtpUrl: config.smtpUrl,
+  mailFrom: config.mailFrom,
+  userOrigin: config.userOrigin,
+  unsubscribeSecret: config.sessionSecret,
+  logger,
+});
+const emailJobs = await createEmailJobs({
+  boss: boss.boss,
+  sql,
+  smtpUrl: config.smtpUrl,
+  mailFrom: config.mailFrom,
+  userOrigin: config.userOrigin,
+  unsubscribeSecret: config.sessionSecret,
+  logger,
+});
 const eventWorker = await createEventWorker({
   boss: boss.boss,
   sql,
@@ -77,7 +97,13 @@ const eventWorker = await createEventWorker({
       ...(purger === undefined ? {} : { purger }),
       logger,
     }),
-    notifications: createNotificationsEventHandler({ sql, logger }),
+    notifications: createNotificationsEventHandler({
+      sql,
+      logger,
+      async enqueueEmail(intentId) {
+        await boss.boss.send("email", { intentId }, { singletonKey: `email:${intentId}` });
+      },
+    }),
   },
   logger,
 });
@@ -131,6 +157,8 @@ await startService({
     clearInterval(relayTimer);
     await relayInFlight;
     await listener.close();
+    await digestJobs.stop();
+    await emailJobs.stop();
     await maintenanceJobs.stop();
     await forumJobs.stop();
     await contentJobs.stop();
@@ -143,6 +171,8 @@ await startService({
 }).catch(async (error: unknown) => {
   clearInterval(relayTimer);
   await listener.close();
+  await digestJobs.stop();
+  await emailJobs.stop();
   await maintenanceJobs.stop();
   await forumJobs.stop();
   await contentJobs.stop();

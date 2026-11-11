@@ -31,10 +31,12 @@
     "@biomejs/biome": "2.6.6",
     "@bulletin/cache": "workspace:*",
     "@bulletin/config": "workspace:*",
+    "@bulletin/content": "workspace:*",
     "@bulletin/db": "workspace:*",
     "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
+    "@bulletin/mock-mail": "workspace:*",
     "@bulletin/mock-s3": "workspace:*",
     "@bulletin/storage": "workspace:*",
     "@bulletin/templates": "workspace:*",
@@ -43,7 +45,6 @@
     "@types/bun": "1.4.4",
     "jose": "6.2.16",
     "sharp": "0.35.5",
-    "typescript": "5.9.3",
-    "@bulletin/content": "workspace:*"
+    "typescript": "5.9.3"
   }
 }

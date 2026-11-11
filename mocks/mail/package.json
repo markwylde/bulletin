@@ -4,7 +4,10 @@
   "type": "module",
   "description": "Local SMTP listener and web inbox mock.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./app": "./src/app.ts",
+    "./message": "./src/message.ts",
+    "./smtp": "./src/smtp.ts"
   },
   "scripts": {
     "dev": "bun --watch src/index.ts",

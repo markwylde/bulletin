@@ -2,9 +2,12 @@ import type { Logger } from "@bulletin/config";
 import type { StoredEvent } from "@bulletin/domain/events";
 import {
   createNotification,
+  createNotificationEmailIntent,
   eventRecipients,
   type NotificationRecipient,
   type NotificationRecipientFilter,
+  notificationChannels,
+  notificationIdForEvent,
 } from "@bulletin/domain/notifications";
 import type { SQL } from "bun";
 
@@ -13,6 +16,8 @@ export interface NotificationsHandlerOptions {
   readonly logger?: Logger;
   /** Extension point for later changes (ignore list, blocks): false drops the recipient. */
   readonly filters?: readonly NotificationRecipientFilter[];
+  /** Enqueues one email job after commit; a failure makes the event job retry. */
+  readonly enqueueEmail?: (intentId: string) => Promise<void>;
 }
 
 /**
@@ -42,9 +47,16 @@ export function createNotificationsEventHandler(
       return;
     }
 
+    const emailIntents: string[] = [];
     await options.sql.begin(async (tx) => {
       for (const recipient of recipients) {
-        await createNotification(tx, {
+        const channels = await notificationChannels(tx, recipient.memberId, recipient.type);
+
+        if (!channels.in_app && !channels.email && !channels.digest) {
+          continue;
+        }
+
+        const created = await createNotification(tx, {
           memberId: recipient.memberId,
           type: recipient.type,
           eventId: event.id,
@@ -53,8 +65,26 @@ export function createNotificationsEventHandler(
           forumId: recipient.forumId,
           postId: recipient.postId,
         });
+        const notificationId =
+          created ?? (await notificationIdForEvent(tx, event.id, recipient.memberId));
+
+        if (channels.email && notificationId !== null) {
+          const intent = await createNotificationEmailIntent(
+            tx,
+            recipient.memberId,
+            notificationId,
+          );
+
+          if (intent !== null) {
+            emailIntents.push(intent.toString());
+          }
+        }
       }
     });
+
+    for (const intent of emailIntents) {
+      await options.enqueueEmail?.(intent);
+    }
 
     options.logger?.info("notifications.created", {
       eventId: event.id.toString(),

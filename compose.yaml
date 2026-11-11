@@ -11,6 +11,9 @@ x-app-environment: &app-environment
   BULLETIN_AUTH_ISSUER: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
   BULLETIN_USER_ORIGIN: "http://bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
   BULLETIN_STAFF_ORIGIN: "http://staff.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
+  # Local SMTP is the mail mock; workers only.
+  BULLETIN_SMTP_URL: "smtp://mail:1025"
+  BULLETIN_MAIL_FROM: "Bulletin <no-reply@bulletin.localhost>"
   BULLETIN_FILES_ORIGIN: "http://files.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}"
   # The CDN mock's surrogate-key purge endpoint (ADR 0006). Set on staff-api and workers.
   BULLETIN_CDN_PURGE_URL: "http://cdn:4006/purge"

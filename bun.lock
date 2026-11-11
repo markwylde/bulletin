@@ -13,6 +13,7 @@
         "@bulletin/domain": "workspace:*",
         "@bulletin/flags": "workspace:*",
         "@bulletin/i18n": "workspace:*",
+        "@bulletin/mock-mail": "workspace:*",
         "@bulletin/mock-s3": "workspace:*",
         "@bulletin/storage": "workspace:*",
         "@bulletin/templates": "workspace:*",
@@ -102,8 +103,11 @@
       "dependencies": {
         "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
+        "@bulletin/domain": "workspace:*",
         "@bulletin/flags": "workspace:*",
+        "@bulletin/i18n": "workspace:*",
         "@bulletin/storage": "workspace:*",
+        "pg-boss": "12.38.1",
       },
     },
     "mocks/cdn": {

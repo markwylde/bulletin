@@ -10,7 +10,10 @@
   "dependencies": {
     "@bulletin/config": "workspace:*",
     "@bulletin/db": "workspace:*",
+    "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
-    "@bulletin/storage": "workspace:*"
+    "@bulletin/i18n": "workspace:*",
+    "@bulletin/storage": "workspace:*",
+    "pg-boss": "12.38.1"
   }
 }
