@@ -18,6 +18,14 @@ interface MemberFieldView {
   readonly options: readonly FieldOptionView[];
 }
 
+interface StaffMemberBadgeView {
+  readonly id: string;
+  readonly key: string;
+  readonly label: string;
+  readonly awarded: boolean;
+  readonly featured: boolean;
+}
+
 interface MemberProfileView {
   readonly memberId: string;
   readonly displayName: string;
@@ -142,6 +150,7 @@ export function MemberProfilesPage() {
   const [hideOnline, setHideOnline] = useState(false);
   const [hideFromMemberList, setHideFromMemberList] = useState(false);
   const [values, setValues] = useState<Record<string, string | readonly string[]>>({});
+  const [badgeReason, setBadgeReason] = useState("");
   const query = useQuery({
     queryKey: ["staff", "member-profile", loadedId],
     queryFn: () =>
@@ -149,6 +158,23 @@ export function MemberProfilesPage() {
         `/api/staff/members/profile?memberId=${encodeURIComponent(loadedId ?? "")}`,
       ),
     enabled: loadedId !== null,
+  });
+  const badgeQuery = useQuery({
+    queryKey: ["staff", "member-badges", loadedId],
+    queryFn: () =>
+      apiGet<{ badges: readonly StaffMemberBadgeView[] }>(
+        `/api/staff/members/badges?memberId=${encodeURIComponent(loadedId ?? "")}`,
+      ),
+    enabled: loadedId !== null,
+  });
+  const badgeMutate = useMutation({
+    mutationFn: (body: Record<string, unknown>) => apiPost("/api/staff/members/badges", body),
+    onSuccess: () => {
+      toast.pushToast({ messageKey: "staff.memberProfiles.badgeSaved", tone: "success" });
+      void badgeQuery.refetch();
+    },
+    onError: () =>
+      toast.pushToast({ messageKey: "staff.memberProfiles.badgeError", tone: "error" }),
   });
   const mutate = useMutation({
     mutationFn: (body: Record<string, unknown>) => apiPost("/api/staff/members/profile", body),
@@ -297,6 +323,43 @@ export function MemberProfilesPage() {
                   />
                 </div>
               ))}
+            </div>
+          ) : null}
+
+          {badgeQuery.isSuccess ? (
+            <div className="admin-form">
+              <h3>{t("staff.memberProfiles.badges")}</h3>
+              <label>
+                <span>{t("staff.memberProfiles.badgeReason")}</span>
+                <input
+                  data-badge-reason
+                  value={badgeReason}
+                  onChange={(event) => setBadgeReason(event.target.value)}
+                />
+              </label>
+              <ul className="badge-list">
+                {badgeQuery.data.badges.map((badge) => (
+                  <li key={badge.id} data-member-badge={badge.id}>
+                    <span>{badge.label}</span>
+                    <button
+                      type="button"
+                      data-member-badge-action={badge.awarded ? "revoke" : "award"}
+                      onClick={() =>
+                        badgeMutate.mutate({
+                          memberId: query.data?.memberId ?? "",
+                          badgeId: badge.id,
+                          action: badge.awarded ? "revoke" : "award",
+                          reason: badgeReason,
+                        })
+                      }
+                    >
+                      {badge.awarded
+                        ? t("staff.memberProfiles.revokeBadge")
+                        : t("staff.memberProfiles.awardBadge")}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : null}
 

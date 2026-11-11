@@ -28,10 +28,10 @@
 
 ## 5. Ranks and badges
 
-- [ ] 5.1 Ranks manager and rank display, plus custom titles with group permission and bad-word filter hook; tests
-- [ ] 5.2 Badge definitions, manual award/revoke (logged), featured badges; tests including permission denial
-- [ ] 5.3 Add rank, pips, custom title and featured badges to the `member:{id}:card` fragment, with mutation tags (`member:{id}` for title, badge and post-count changes; `ranks` for rank edits); invalidation tests for each, and a test that post blocks are not re-rendered
-- [ ] 5.4 Badge rule evaluator (event subscriber and nightly sweep, at-most-once), with tests for the auto-award scenario
+- [x] 5.1 Ranks manager and rank display, plus custom titles with group permission and bad-word filter hook; tests
+- [x] 5.2 Badge definitions, manual award/revoke (logged), featured badges; tests including permission denial
+- [x] 5.3 Add rank, pips, custom title and featured badges to the `member:{id}:card` fragment, with mutation tags (`member:{id}` for title, badge and post-count changes; `ranks` for rank edits); invalidation tests for each, and a test that post blocks are not re-rendered
+- [x] 5.4 Badge rule evaluator (event subscriber and nightly sweep, at-most-once), with tests for the auto-award scenario
 
 ## 6. Strings and seed
 

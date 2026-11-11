@@ -35,6 +35,18 @@ export const profileFieldMutation: Mutation<Record<string, never>, unknown> = {
   tags: () => [GLOBAL_CACHE_TAGS.profileFields],
 };
 
+/** A rank edit rebuilds every author card but leaves post blocks cached (task 5.3). */
+export const rankMutation: Mutation<Record<string, never>, unknown> = {
+  name: "member.rank.update",
+  tags: () => [GLOBAL_CACHE_TAGS.ranks],
+};
+
+/** A badge definition, award or featured change rebuilds member cards and profiles. */
+export const badgeMutation: Mutation<{ readonly memberIds?: readonly string[] }, unknown> = {
+  name: "member.badge.update",
+  tags: (input) => [GLOBAL_CACHE_TAGS.badges, ...(input.memberIds ?? []).map(memberTag)],
+};
+
 /** Accepting or removing a friendship changes both members' profile friend lists. */
 export const friendshipMutation: Mutation<
   { readonly memberIds: readonly string[] },

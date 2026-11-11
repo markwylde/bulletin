@@ -15,6 +15,7 @@ import {
 import { syncFlagDefinitions } from "@bulletin/db/flags";
 import {
   createAttachmentJobs,
+  createBadgeJobs,
   createContentJobs,
   createForumJobs,
   createLeaderboardJobs,
@@ -28,6 +29,7 @@ import { runBaseSeed } from "@bulletin/db/seed";
 import { ignoreRecipientFilter } from "@bulletin/domain/relationships";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
+import { createBadgeEventHandler } from "./badges.ts";
 import { createCoreEventHandler } from "./core-events.ts";
 import { createDigestJobs } from "./digest.ts";
 import { createEmailJobs } from "./email.ts";
@@ -82,7 +84,12 @@ const subscribers: EventSubscriber[] = [
       "reaction.added",
       "reputation.given",
       "friend.accepted",
+      "badge.awarded",
     ],
+  },
+  {
+    name: "badges",
+    types: ["post.approved", "topic.created", "reaction.added", "reputation.given"],
   },
   { name: "reputation", types: ["reputation.recount.requested"] },
 ];
@@ -138,6 +145,7 @@ const eventWorker = await createEventWorker({
       enqueueEmail,
       enqueueFanout,
     }),
+    badges: createBadgeEventHandler({ sql, logger }),
   },
   logger,
 });
@@ -150,6 +158,7 @@ const notificationFanout = await createNotificationsFanoutWorker({
   enqueueEmail,
 });
 const leaderboardJobs = await createLeaderboardJobs({ boss: boss.boss, sql, logger });
+const badgeJobs = await createBadgeJobs({ boss: boss.boss, sql, logger });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
 const reputationJobs = await createReputationJobs({ boss: boss.boss, sql, logger });
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
@@ -206,6 +215,7 @@ await startService({
     await emailJobs.stop();
     await maintenanceJobs.stop();
     await leaderboardJobs.stop();
+    await badgeJobs.stop();
     await forumJobs.stop();
     await contentJobs.stop();
     await unfurlJobs.stop();
@@ -223,6 +233,7 @@ await startService({
   await emailJobs.stop();
   await maintenanceJobs.stop();
   await leaderboardJobs.stop();
+  await badgeJobs.stop();
   await forumJobs.stop();
   await contentJobs.stop();
   await unfurlJobs.stop();

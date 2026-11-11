@@ -1,4 +1,5 @@
 export * from "./attachments.ts";
+export * from "./badges.ts";
 export * from "./content.ts";
 export * from "./forums.ts";
 export * from "./leaderboards.ts";

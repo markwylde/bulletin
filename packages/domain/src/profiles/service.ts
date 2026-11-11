@@ -1,13 +1,17 @@
-import { renderContent, renderSnapshot } from "@bulletin/content";
+import { ContentError, renderContent, renderSnapshot, saveContent } from "@bulletin/content";
 import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import { readMemberBadges } from "../badges/repository.ts";
 import { runMutation } from "../mutations/index.ts";
 import { memberProfileMutation, profileFieldMutation } from "../mutations/members.ts";
+import { can } from "../permissions/can.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
 import {
   deleteProfileField,
   type ProfileFieldWrite,
+  replaceFeaturedBadges,
   replaceFieldValues,
+  updateCustomTitle,
   updateHideFriends,
   updateHideSignatures,
   updateMemberSignature,
@@ -304,7 +308,11 @@ export type SaveProfileResult =
         | "signature_too_long"
         | "signature_too_many_lines"
         | "signature_too_many_images"
-        | "signature_too_many_links";
+        | "signature_too_many_links"
+        | "custom_title_not_allowed"
+        | "custom_title_too_long"
+        | "blocked_word"
+        | "too_many_featured";
       readonly fieldId?: string;
       readonly limit?: number;
     };
@@ -320,6 +328,28 @@ export async function readSignatureLimits(sql: SQL, memberId: string): Promise<S
     maxLines: limit("members.signature_max_lines"),
     maxImages: limit("members.signature_max_images"),
     maxLinks: limit("members.signature_max_links"),
+  };
+}
+
+/** The member's custom-title permission and maximum length (task 5.1). */
+export async function readCustomTitleLimits(
+  sql: SQL,
+  memberId: string,
+): Promise<{ readonly enabled: boolean; readonly maxChars: number }> {
+  const enabled = await can(sql, memberId, "custom_title");
+
+  if (!enabled) {
+    return { enabled: false, maxChars: 0 };
+  }
+
+  const settings = await loadMergedGroupSettings(sql, memberId);
+
+  return {
+    enabled: true,
+    maxChars:
+      typeof settings["members.custom_title_max_chars"] === "number"
+        ? (settings["members.custom_title_max_chars"] as number)
+        : 0,
   };
 }
 
@@ -402,6 +432,12 @@ export interface SaveMemberProfileInput {
   readonly hideFriends?: boolean;
   /** Only changed when present (the member's own editor sends it, staff edits need not). */
   readonly signatureMd?: string;
+  /** Only changed when present; null clears the custom title. */
+  readonly customTitle?: string | null;
+  /** The moderation bad-word list, when the caller has one (task 5.1 hook). */
+  readonly blockedWords?: readonly string[];
+  /** At most three awarded badge ids, when the member saves their featured badges. */
+  readonly featuredBadges?: readonly string[];
   /** Raw JSON values keyed by field id; every key must be an editable field. */
   readonly values: Readonly<Record<string, unknown>>;
   /** The fields this actor may edit; staff edits pass every field. */
@@ -460,6 +496,63 @@ export async function saveMemberProfile(
           })
         ).bodyHtml;
   let signatureHtml: string | null = null;
+  let customTitle: string | null | undefined = input.customTitle;
+
+  if (typeof customTitle === "string" && customTitle.trim() !== "") {
+    const titleText = customTitle.trim();
+
+    if (!(await can(sql, input.memberId, "custom_title"))) {
+      return { ok: false, code: "custom_title_not_allowed" };
+    }
+
+    const settings = await loadMergedGroupSettings(sql, input.memberId);
+    const maxChars =
+      typeof settings["members.custom_title_max_chars"] === "number"
+        ? (settings["members.custom_title_max_chars"] as number)
+        : 0;
+
+    if (maxChars <= 0 || titleText.length > maxChars) {
+      return {
+        ok: false,
+        code: "custom_title_too_long",
+        ...(maxChars <= 0 ? {} : { limit: maxChars }),
+      };
+    }
+
+    try {
+      const rendered = await saveContent(titleText, {
+        profile: "profile_field",
+        context: { kind: "forum_post", forumId: "0" },
+        authorId: input.memberId,
+        checks: { blockedWords: input.blockedWords ?? [] },
+      });
+      customTitle = rendered.bodyText.trim() === "" ? null : rendered.bodyText.trim();
+    } catch (error) {
+      if (error instanceof ContentError && error.code === "blocked_word") {
+        return { ok: false, code: "blocked_word" };
+      }
+
+      throw error;
+    }
+  }
+
+  if (typeof customTitle === "string" && customTitle.trim() === "") {
+    customTitle = null;
+  }
+
+  if (input.featuredBadges !== undefined) {
+    const unique = new Set(input.featuredBadges);
+
+    if (unique.size > 3 || unique.size !== input.featuredBadges.length) {
+      return { ok: false, code: "too_many_featured" };
+    }
+
+    const awarded = new Set((await readMemberBadges(sql, input.memberId)).map((badge) => badge.id));
+
+    if ([...unique].some((id) => !awarded.has(id))) {
+      return { ok: false, code: "invalid" };
+    }
+  }
 
   if (input.signatureMd !== undefined) {
     const signature = await validateMemberSignature(sql, input.memberId, input.signatureMd);
@@ -501,6 +594,14 @@ export async function saveMemberProfile(
 
       if (input.hideFriends !== undefined) {
         await updateHideFriends(tx, input.memberId, input.hideFriends);
+      }
+
+      if (customTitle !== undefined) {
+        await updateCustomTitle(tx, input.memberId, customTitle);
+      }
+
+      if (input.featuredBadges !== undefined) {
+        await replaceFeaturedBadges(tx, input.memberId, input.featuredBadges);
       }
 
       return { memberId: input.memberId };

@@ -99,6 +99,15 @@ integrationDescribe("member profile page", () => {
         expect(await withinWidth(view)).toBe(true);
 
         await setInputValue(view, "[data-profile-about]", ABOUT_TEXT);
+
+        if (
+          await view.evaluate<boolean>(
+            'document.querySelector("[data-profile-custom-title]") !== null',
+          )
+        ) {
+          await setInputValue(view, "[data-profile-custom-title]", "E2E Custom Title");
+        }
+
         await waitForSelector(view, "[data-profile-save]:not([disabled])");
         await clickSelector(view, "[data-profile-save]");
         await waitForSelector(view, "[data-profile-saved]:not([hidden])", 20_000);
@@ -106,6 +115,7 @@ integrationDescribe("member profile page", () => {
         await view.navigate(new URL(path, USER_URL).toString());
         await waitForSelector(view, "[data-profile-page]", 20_000);
         await waitForText(view, ABOUT_TEXT, 20_000);
+        await waitForText(view, "E2E Custom Title", 20_000);
         await waitForExpression(
           view,
           'document.querySelector("[data-profile-about]")?.textContent?.includes("E2E profile about section") === true',

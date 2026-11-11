@@ -102,6 +102,8 @@ function notificationText(translate: Translator, entry: NotificationEntry): stri
       return translate("notification.text.member.promoted");
     case "friend.accepted":
       return translate("notification.text.friend.accepted", { actor });
+    case "badge.awarded":
+      return translate("notification.text.badge.awarded");
   }
 }
 

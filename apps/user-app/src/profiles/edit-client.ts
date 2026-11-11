@@ -11,6 +11,9 @@ interface Labels {
   readonly signatureTooManyLines: string;
   readonly signatureTooManyImages: string;
   readonly signatureTooManyLinks: string;
+  readonly customTitleNotAllowed: string;
+  readonly customTitleTooLong: string;
+  readonly tooManyFeatured: string;
 }
 
 const labels = readLabels<Labels>("profile-edit-labels");
@@ -39,6 +42,12 @@ function messageFor(code: string | undefined, limit: unknown): string {
       return withLimit(labels?.signatureTooManyImages, limit);
     case "signature_too_many_links":
       return withLimit(labels?.signatureTooManyLinks, limit);
+    case "custom_title_not_allowed":
+      return labels?.customTitleNotAllowed ?? "";
+    case "custom_title_too_long":
+      return withLimit(labels?.customTitleTooLong, limit);
+    case "too_many_featured":
+      return labels?.tooManyFeatured ?? "";
     default:
       return labels?.saveFailed ?? "";
   }
@@ -99,6 +108,10 @@ async function submit(form: HTMLFormElement): Promise<void> {
   const hideFromList = form.querySelector<HTMLInputElement>("[data-profile-hide-from-list]");
   const hideSignatures = form.querySelector<HTMLInputElement>("[data-profile-hide-signatures]");
   const hideFriends = form.querySelector<HTMLInputElement>("[data-profile-hide-friends]");
+  const customTitle = form.querySelector<HTMLInputElement>("[data-profile-custom-title]");
+  const featuredBadges = [
+    ...form.querySelectorAll<HTMLInputElement>("[data-profile-featured-badge]:checked"),
+  ].map((input) => input.value);
   const values = fieldValues();
 
   if (error !== null) {
@@ -142,6 +155,8 @@ async function submit(form: HTMLFormElement): Promise<void> {
         hideFromMemberList: hideFromList?.checked === true,
         hideSignatures: hideSignatures?.checked === true,
         hideFriends: hideFriends?.checked === true,
+        ...(customTitle === null ? {} : { customTitle: customTitle.value }),
+        ...(form.querySelector("[data-profile-featured-badge]") === null ? {} : { featuredBadges }),
         values,
       }),
     });

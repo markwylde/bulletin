@@ -40,6 +40,8 @@ function isAllowed(file: SourceFile): boolean {
     // download path re-authorises per request (ADR 0019).
     file.path === "packages/domain/src/attachments/store.ts" ||
     file.path === "packages/db/src/jobs/attachments.ts" ||
+    // Badge rules count a member's own content to award a badge; they never serve a viewer.
+    file.path.startsWith("packages/domain/src/badges/") ||
     isPermissionRepository(file)
   );
 }

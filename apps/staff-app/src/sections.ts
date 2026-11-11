@@ -156,6 +156,22 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     labelKey: "staff.nav.memberProfiles",
   },
   {
+    id: "ranks",
+    path: "/ranks",
+    navGroup: "configuration",
+    permission: "acp.ranks",
+    icon: "promotions",
+    labelKey: "staff.nav.ranks",
+  },
+  {
+    id: "badges",
+    path: "/badges",
+    navGroup: "configuration",
+    permission: "acp.badges",
+    icon: "members",
+    labelKey: "staff.nav.badges",
+  },
+  {
     id: "profileFields",
     path: "/members/profile-fields",
     navGroup: "configuration",

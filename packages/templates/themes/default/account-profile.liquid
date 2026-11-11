@@ -54,6 +54,30 @@
       </section>
     {% endif %}
 
+    {% if customTitle.enabled %}
+      <section class="bl-card" data-profile-edit-title>
+        <h2 class="bl-card__title">{% t "profile.customTitle.title" %}</h2>
+        <p class="bl-muted">{% t "profile.customTitle.help" chars: customTitle.maxChars %}</p>
+        <label class="bl-label" for="profile-custom-title">{% t "profile.customTitle.label" %}</label>
+        <input class="bl-input" id="profile-custom-title" type="text" maxlength="{{ customTitle.maxChars }}" value="{{ customTitle.value }}" data-profile-custom-title>
+      </section>
+    {% endif %}
+
+    {% if badges.size > 0 %}
+      <section class="bl-card" data-profile-edit-badges>
+        <h2 class="bl-card__title">{% t "profile.badges.featured.title" %}</h2>
+        <p class="bl-muted">{% t "profile.badges.featured.help" %}</p>
+        <div class="bl-checkboxes">
+          {% for badge in badges %}
+            <label class="bl-checkbox">
+              <input type="checkbox" value="{{ badge.id }}" data-profile-featured-badge{% if badge.featured %} checked{% endif %}>
+              <span>{{ badge.label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
     <section class="bl-card" data-profile-edit-signature>
       <h2 class="bl-card__title">{% t "profile.signature.title" %}</h2>
       {% if signature.enabled %}

@@ -78,6 +78,24 @@ function cardHtml(
       : `<img class="bl-avatar bl-avatar--image" src="${escapeHtml(
           avatarUrl(card.id, card.avatarHash, "sm"),
         )}" alt="" width="40" height="40" loading="lazy" data-member-avatar>`;
+  const title = card.customTitle ?? card.rankTitle;
+  const pips =
+    card.rankImageKey !== null
+      ? `<img class="bl-author-card__rank-image" src="${escapeHtml(card.rankImageKey)}" alt="" width="20" height="20" loading="lazy" data-member-rank-image>`
+      : card.rankPips > 0
+        ? `<span class="bl-author-card__pips" data-member-pips="${card.rankPips}" aria-hidden="true">${"●".repeat(
+            Math.min(card.rankPips, 20),
+          )}</span>`
+        : "";
+  const badges = card.featuredBadges
+    .map((badge) =>
+      badge.imageKey === null
+        ? `<span class="bl-author-card__badge" data-member-badge>${escapeHtml(badge.label)}</span>`
+        : `<img class="bl-author-card__badge" src="${escapeHtml(badge.imageKey)}" alt="${escapeHtml(
+            badge.label,
+          )}" width="16" height="16" loading="lazy" data-member-badge>`,
+    )
+    .join("");
 
   return [
     '<span class="bl-author-card" data-member-card="',
@@ -89,10 +107,13 @@ function cardHtml(
       ? `<span class="bl-author-card__name">${escapeHtml(name)}</span>`
       : `<a class="bl-author-card__name" href="${escapeHtml(profile)}">${escapeHtml(name)}</a>`,
     `<span class="bl-author-card__group">${escapeHtml(group)}</span>`,
+    title === null ? "" : `<span class="bl-author-card__title">${escapeHtml(title)}</span>`,
+    pips,
     `<span class="bl-author-card__posts">${escapeHtml(
       translate("member.postCount", { count: card.postCount }),
     )}</span>`,
     reputationHtml(card, translate, reputation),
+    badges === "" ? "" : `<span class="bl-author-card__badges">${badges}</span>`,
     "</span>",
     "</span>",
   ].join("");
@@ -112,7 +133,7 @@ export async function renderMemberCards(
   reputation: ReputationDisplay | null = null,
 ): Promise<ReadonlyMap<string, string>> {
   const unique = [...new Set(memberIds)];
-  const cards = await loadMemberCards(sql, unique);
+  const cards = await loadMemberCards(sql, unique, locale);
   const rendered = new Map<string, string>();
 
   for (const id of unique) {

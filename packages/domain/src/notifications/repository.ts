@@ -17,6 +17,7 @@ export const NOTIFICATION_TYPES = [
   "reaction.added",
   "reputation.given",
   "friend.accepted",
+  "badge.awarded",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -28,7 +29,8 @@ export type NotificationRecipientSource =
   | "promotion"
   | "reaction"
   | "reputation"
-  | "friend";
+  | "friend"
+  | "badge";
 
 /** These types are about one post, so an unread entry coalesces per post, not per topic. */
 const POST_COALESCED_TYPES = ["reaction.added", "reputation.given"] as const;
@@ -279,6 +281,7 @@ export async function eventRecipients(
     "topic.created": 2,
     "member.promoted": 1,
     "friend.accepted": 1,
+    "badge.awarded": 1,
     "reaction.added": 0,
     "reputation.given": 0,
   };
@@ -473,6 +476,26 @@ export async function eventRecipients(
           type: "friend.accepted",
           source: "friend",
           actorId: accepterId,
+          topicId: null,
+          forumId: null,
+          postId: null,
+        },
+      ];
+    }
+    case "badge.awarded": {
+      const memberId = event.payloadIds.memberId;
+      const badgeId = event.payloadIds.badgeId;
+
+      if (memberId === undefined || badgeId === undefined) {
+        return [];
+      }
+
+      return [
+        {
+          memberId,
+          type: "badge.awarded",
+          source: "badge",
+          actorId: null,
           topicId: null,
           forumId: null,
           postId: null,

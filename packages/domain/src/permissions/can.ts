@@ -22,6 +22,7 @@ export const CAPABILITY_ACTIONS = [
   "give_negative_reputation",
   "receive_reputation",
   "unignorable",
+  "custom_title",
 ] as const;
 
 export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];
@@ -35,6 +36,7 @@ const CAPABILITY_SETTINGS: Readonly<
   // A `restrict-any` opt-out: one group setting it true denies the capability.
   receive_reputation: { key: "posting.cannot_receive_reputation", allows: false },
   unignorable: { key: "members.unignorable", allows: true },
+  custom_title: { key: "members.can_custom_title", allows: true },
 };
 
 export function isCapabilityAction(value: string): value is CapabilityAction {

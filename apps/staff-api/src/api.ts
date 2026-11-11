@@ -19,6 +19,12 @@ import {
   listAnnouncementsAdmin,
   saveAnnouncement,
 } from "./announcements.ts";
+import {
+  listBadgesForStaff,
+  listMemberBadgesForStaff,
+  mutateBadge,
+  mutateMemberBadge,
+} from "./badges.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import { listEmbedProvidersForStaff, mutateEmbedProvider } from "./embeds.ts";
 import { emoticonImageForStaff, listEmoticonsForStaff, mutateEmoticon } from "./emoticons.ts";
@@ -70,6 +76,7 @@ import {
   type PromotionMutation,
   savePromotionRule,
 } from "./promotions.ts";
+import { listRanksForStaff, mutateRank } from "./ranks.ts";
 import { listReactionsForStaff, mutateReaction } from "./reactions.ts";
 import { mutateMemberReputation, readMemberReputation, readRecountProgress } from "./reputation.ts";
 import {
@@ -730,6 +737,61 @@ async function profileFieldsMutate(context: StaffRouteContext): Promise<Response
   return json({ ok: true, id: result.id });
 }
 
+async function ranksList(context: StaffRouteContext): Promise<Response> {
+  return json({ ranks: await listRanksForStaff(context.sql) });
+}
+
+async function ranksMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await mutateRank(context.sql, context.session.memberId, body);
+
+  if (!result.ok) {
+    return json({ code: result.code }, result.code === "not_found" ? 404 : 400);
+  }
+
+  return json({ ok: true, id: result.id });
+}
+
+async function badgesList(context: StaffRouteContext): Promise<Response> {
+  return json({ badges: await listBadgesForStaff(context.sql) });
+}
+
+async function badgesMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await mutateBadge(context.sql, context.session.memberId, body);
+
+  if (!result.ok) {
+    return json({ code: result.code }, result.code === "not_found" ? 404 : 400);
+  }
+
+  return json({ ok: true, id: result.id });
+}
+
+async function memberBadgesGet(context: StaffRouteContext): Promise<Response> {
+  const memberId = context.url.searchParams.get("memberId") ?? "";
+
+  if (!/^\d+$/.test(memberId)) {
+    return json({ code: "invalid" }, 400);
+  }
+
+  if (!(await can(context.sql, context.session.memberId, "members.badges"))) {
+    return forbidden();
+  }
+
+  return json({ badges: await listMemberBadgesForStaff(context.sql, memberId) });
+}
+
+async function memberBadgesMutate(context: StaffRouteContext): Promise<Response> {
+  if (!(await can(context.sql, context.session.memberId, "members.badges"))) {
+    return forbidden();
+  }
+
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await mutateMemberBadge(context.sql, context.session.memberId, body);
+
+  return result.ok ? json({ ok: true }) : json({ code: result.code }, 400);
+}
+
 async function memberProfileGet(context: StaffRouteContext): Promise<Response> {
   const memberId = context.url.searchParams.get("memberId") ?? "";
   const result = await readMemberProfileForStaff(context.sql, context.session.memberId, memberId);
@@ -1236,6 +1298,48 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/profile-fields",
     permission: "acp.profile_fields",
     handler: profileFieldsMutate,
+  },
+  {
+    id: "ranks.list",
+    method: "GET",
+    path: "/api/staff/ranks",
+    permission: "acp.ranks",
+    handler: ranksList,
+  },
+  {
+    id: "ranks.mutate",
+    method: "POST",
+    path: "/api/staff/ranks",
+    permission: "acp.ranks",
+    handler: ranksMutate,
+  },
+  {
+    id: "badges.list",
+    method: "GET",
+    path: "/api/staff/badges",
+    permission: "acp.badges",
+    handler: badgesList,
+  },
+  {
+    id: "badges.mutate",
+    method: "POST",
+    path: "/api/staff/badges",
+    permission: "acp.badges",
+    handler: badgesMutate,
+  },
+  {
+    id: "members.badges.get",
+    method: "GET",
+    path: "/api/staff/members/badges",
+    permission: "acp.members",
+    handler: memberBadgesGet,
+  },
+  {
+    id: "members.badges.update",
+    method: "POST",
+    path: "/api/staff/members/badges",
+    permission: "acp.members",
+    handler: memberBadgesMutate,
   },
   {
     id: "reactions.list",

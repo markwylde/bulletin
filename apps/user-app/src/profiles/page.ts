@@ -72,6 +72,10 @@ export interface ProfileView {
   readonly initialsHtml: string;
   readonly groupTitle: string | null;
   readonly groupColour: string | null;
+  readonly customTitle: string | null;
+  readonly rankTitle: string | null;
+  readonly rankPips: number;
+  readonly rankImageKey: string | null;
   readonly joinedLabel: string;
   readonly postCountLabel: string;
   readonly reputationLabel: string;
@@ -240,6 +244,15 @@ export async function buildProfilePage(input: ProfilePageInput): Promise<Profile
         initialsHtml: initialsSvg(profile.id, name),
         groupTitle: profile.groupTitle,
         groupColour: profile.groupColour,
+        customTitle: profile.customTitle,
+        rankTitle:
+          profile.rankTitleLabels === null
+            ? null
+            : profile.rankTitleLabels[input.locale]?.trim() ||
+              profile.rankTitleLabels.en?.trim() ||
+              null,
+        rankPips: profile.rankPips,
+        rankImageKey: profile.rankImageKey,
         joinedLabel: formatter.format(profile.joinedAt),
         postCountLabel: numberFormatter(input.locale).format(profile.postCount),
         reputationLabel: numberFormatter(input.locale).format(profile.reputation),

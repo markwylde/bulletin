@@ -61,6 +61,10 @@ export interface ProfileRecord {
   readonly hideFromMemberList: boolean;
   readonly hideSignatures: boolean;
   readonly hideFriends: boolean;
+  readonly customTitle: string | null;
+  readonly rankTitleLabels: Readonly<Record<string, string>> | null;
+  readonly rankPips: number;
+  readonly rankImageKey: string | null;
   readonly signatureMd: string;
   readonly signatureHtml: string;
   readonly groupTitle: string | null;
@@ -81,6 +85,7 @@ export interface MemberBadge {
   readonly descriptionLabels: Readonly<Partial<Record<Locale, string>>>;
   readonly imageKey: string | null;
   readonly position: number;
+  readonly featured: boolean;
 }
 
 export interface RecentProfilePost {

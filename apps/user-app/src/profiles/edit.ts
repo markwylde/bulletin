@@ -1,8 +1,10 @@
+import { readMemberBadges } from "@bulletin/domain/badges";
 import { editableProfileFieldIds, profileFieldVisibilityClass } from "@bulletin/domain/permissions";
 import {
   localizedText,
   type ProfileField,
   type ProfileFieldValue,
+  readCustomTitleLimits,
   readEditableProfile,
   readProfileFields,
   readSignatureLimits,
@@ -36,6 +38,16 @@ export interface ProfileEditPageData {
     readonly hideFromMemberList: boolean;
     readonly hideSignatures: boolean;
     readonly hideFriends: boolean;
+    readonly customTitle: {
+      readonly value: string;
+      readonly enabled: boolean;
+      readonly maxChars: number;
+    };
+    readonly badges: readonly {
+      readonly id: string;
+      readonly label: string;
+      readonly featured: boolean;
+    }[];
     readonly signature: {
       readonly value: string;
       readonly enabled: boolean;
@@ -108,9 +120,11 @@ export async function buildProfileEditPage(input: {
     profileFieldVisibilityClass(input.sql, input.memberId),
     editableProfileFieldIds(input.sql, input.memberId),
   ]);
-  const [fields, signatureLimits] = await Promise.all([
+  const [fields, signatureLimits, titleLimits, badges] = await Promise.all([
     readProfileFields(input.sql, fieldClass.ids),
     readSignatureLimits(input.sql, input.memberId),
+    readCustomTitleLimits(input.sql, input.memberId),
+    readMemberBadges(input.sql, input.memberId),
   ]);
   const title = input.translate("profile.edit.title");
 
@@ -126,6 +140,16 @@ export async function buildProfileEditPage(input: {
       hideFromMemberList: editable.profile.hideFromMemberList,
       hideSignatures: editable.profile.hideSignatures,
       hideFriends: editable.profile.hideFriends,
+      customTitle: {
+        value: editable.profile.customTitle ?? "",
+        enabled: titleLimits.enabled && titleLimits.maxChars > 0,
+        maxChars: titleLimits.maxChars,
+      },
+      badges: badges.map((badge) => ({
+        id: badge.id,
+        label: localizedText(badge.labels, input.locale),
+        featured: badge.featured,
+      })),
       signature: {
         value: editable.profile.signatureMd,
         enabled: signatureLimits.maxChars > 0,

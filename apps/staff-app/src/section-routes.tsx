@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { AnnouncementsPage } from "./announcements/AnnouncementsPage.tsx";
+import { BadgesPage } from "./badges/BadgesPage.tsx";
 import { DashboardPage } from "./dashboard/DashboardPage.tsx";
 import { EmoticonsPage } from "./emoticons/EmoticonsPage.tsx";
 import { DeadLettersPage } from "./events/DeadLettersPage.tsx";
@@ -16,6 +17,7 @@ import { ProfileFieldsPage } from "./members/ProfileFieldsPage.tsx";
 import { ModeratorsPage } from "./moderators/ModeratorsPage.tsx";
 import { MasksPage } from "./permissions/MasksPage.tsx";
 import { PromotionsPage } from "./promotions/PromotionsPage.tsx";
+import { RanksPage } from "./ranks/RanksPage.tsx";
 import { ReactionsPage } from "./reactions/ReactionsPage.tsx";
 import type { StaffSection } from "./sections.ts";
 import { BoardSettingsPage } from "./settings/BoardSettingsPage.tsx";
@@ -37,6 +39,8 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   memberReputation: MemberReputationPage,
   memberProfiles: MemberProfilesPage,
   profileFields: ProfileFieldsPage,
+  ranks: RanksPage,
+  badges: BadgesPage,
   moderators: ModeratorsPage,
   promotions: PromotionsPage,
   reactions: ReactionsPage,

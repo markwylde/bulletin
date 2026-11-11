@@ -1,3 +1,4 @@
+import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { can } from "../../permissions/can.ts";
 import { loadPermissionSnapshot, type PermissionSnapshot } from "../../permissions/snapshot.ts";
@@ -92,6 +93,11 @@ export interface MemberCardRecord {
   readonly joinedAt: Date;
   readonly avatarHash: string | null;
   readonly reputation: number;
+  readonly customTitle: string | null;
+  readonly rankTitle: string | null;
+  readonly rankPips: number;
+  readonly rankImageKey: string | null;
+  readonly featuredBadges: readonly { readonly label: string; readonly imageKey: string | null }[];
 }
 
 export interface QuoteSourceRecord {
@@ -721,6 +727,7 @@ export async function loadQuoteSources(
 export async function loadMemberCards(
   sql: SQL,
   memberIds: readonly string[],
+  locale: Locale,
 ): Promise<ReadonlyMap<string, MemberCardRecord>> {
   if (memberIds.length === 0) {
     return new Map();
@@ -729,10 +736,22 @@ export async function loadMemberCards(
   const rows = (await sql`
     SELECT
       m.id, m.display_name, m.post_count, m.joined_at, m.avatar_hash, m.reputation,
-      g.title AS group_title
+      m.custom_title,
+      g.title AS group_title,
+      rank.title_labels->>${locale} AS rank_title,
+      COALESCE(rank.title_labels->>${locale}, rank.title_labels->>'en') AS rank_title_local,
+      rank.pips AS rank_pips,
+      rank.image_key AS rank_image_key
     FROM core.members m
     LEFT JOIN core.member_groups mg ON mg.member_id = m.id AND mg.is_primary
     LEFT JOIN core.groups g ON g.id = mg.group_id
+    LEFT JOIN LATERAL (
+      SELECT title_labels, pips, image_key
+      FROM core.ranks
+      WHERE min_posts <= m.post_count
+      ORDER BY min_posts DESC
+      LIMIT 1
+    ) rank ON true
     WHERE m.id = ANY(${`{${memberIds.join(",")}}`}::bigint[])
   `) as Array<{
     id: string;
@@ -742,7 +761,30 @@ export async function loadMemberCards(
     group_title: string | null;
     avatar_hash: string | null;
     reputation: number;
+    custom_title: string | null;
+    rank_title_local: string | null;
+    rank_pips: number | null;
+    rank_image_key: string | null;
   }>;
+  const featured = (await sql`
+    SELECT
+      mb.member_id::text AS member_id,
+      COALESCE(b.labels->>${locale}, b.labels->>'en', '') AS label,
+      b.image_key
+    FROM core.member_badges mb
+    JOIN core.badges b ON b.id = mb.badge_id
+    WHERE mb.member_id = ANY(${`{${memberIds.join(",")}}`}::bigint[])
+      AND mb.featured
+      AND mb.revoked_at IS NULL
+    ORDER BY b.position, b.id
+  `) as Array<{ member_id: string; label: string; image_key: string | null }>;
+  const badgesByMember = new Map<string, Array<{ label: string; imageKey: string | null }>>();
+
+  for (const row of featured) {
+    const list = badgesByMember.get(row.member_id) ?? [];
+    list.push({ label: row.label, imageKey: row.image_key });
+    badgesByMember.set(row.member_id, list);
+  }
 
   return new Map(
     rows.map((row) => [
@@ -755,6 +797,14 @@ export async function loadMemberCards(
         joinedAt: row.joined_at,
         avatarHash: row.avatar_hash,
         reputation: row.reputation,
+        customTitle: row.custom_title,
+        rankTitle:
+          row.rank_title_local === null || row.rank_title_local === ""
+            ? null
+            : row.rank_title_local,
+        rankPips: row.rank_pips ?? 0,
+        rankImageKey: row.rank_image_key,
+        featuredBadges: badgesByMember.get(row.id) ?? [],
       },
     ]),
   );

@@ -30,6 +30,10 @@ interface ProfileRow {
   readonly hide_from_member_list: boolean;
   readonly hide_signatures: boolean;
   readonly hide_friends: boolean;
+  readonly custom_title: string | null;
+  readonly rank_title_labels: Readonly<Record<string, string>> | null;
+  readonly rank_pips: number | null;
+  readonly rank_image_key: string | null;
   readonly signature_md: string;
   readonly signature_html: string;
   readonly group_title: string | null;
@@ -51,6 +55,10 @@ function profileRecord(row: ProfileRow): ProfileRecord {
     hideFromMemberList: row.hide_from_member_list,
     hideSignatures: row.hide_signatures,
     hideFriends: row.hide_friends,
+    customTitle: row.custom_title,
+    rankTitleLabels: row.rank_title_labels,
+    rankPips: row.rank_pips ?? 0,
+    rankImageKey: row.rank_image_key,
     signatureMd: row.signature_md,
     signatureHtml: row.signature_html,
     groupTitle: row.group_title,
@@ -74,13 +82,24 @@ export async function readProfile(sql: SQL, memberId: string): Promise<ProfileRe
       m.hide_from_member_list,
       m.hide_signatures,
       m.hide_friends,
+      m.custom_title,
       m.signature_md,
       m.signature_html,
+      rank.title_labels AS rank_title_labels,
+      rank.pips AS rank_pips,
+      rank.image_key AS rank_image_key,
       g.title AS group_title,
       g.name_colour AS group_colour
     FROM core.members m
     LEFT JOIN core.member_groups mg ON mg.member_id = m.id AND mg.is_primary
     LEFT JOIN core.groups g ON g.id = mg.group_id
+    LEFT JOIN LATERAL (
+      SELECT title_labels, pips, image_key
+      FROM core.ranks
+      WHERE min_posts <= m.post_count
+      ORDER BY min_posts DESC
+      LIMIT 1
+    ) rank ON true
     WHERE m.id = ${memberId}
   `) as ProfileRow[];
 
@@ -160,7 +179,8 @@ export async function listMemberBadges(
       b.labels,
       b.description_labels,
       b.image_key,
-      b.position
+      b.position,
+      mb.featured
     FROM core.member_badges mb
     JOIN core.badges b ON b.id = mb.badge_id
     WHERE mb.member_id = ${memberId}
@@ -173,6 +193,7 @@ export async function listMemberBadges(
     description_labels: Readonly<Partial<Record<string, string>>>;
     image_key: string | null;
     position: number;
+    featured: boolean;
   }>;
 
   return rows.map((row) => ({
@@ -182,6 +203,7 @@ export async function listMemberBadges(
     descriptionLabels: row.description_labels,
     imageKey: row.image_key,
     position: row.position,
+    featured: row.featured,
   }));
 }
 
@@ -500,4 +522,32 @@ export async function updateHideSignatures(
 /** Stores the member's "hide my friend list" privacy preference. */
 export async function updateHideFriends(tx: SQL, memberId: string, hide: boolean): Promise<void> {
   await tx`UPDATE core.members SET hide_friends = ${hide} WHERE id = ${memberId}`;
+}
+
+/** Stores the member's custom title, or clears it with null. */
+export async function updateCustomTitle(
+  tx: SQL,
+  memberId: string,
+  title: string | null,
+): Promise<void> {
+  await tx`UPDATE core.members SET custom_title = ${title} WHERE id = ${memberId}`;
+}
+
+/** Marks exactly the selected awarded badges as featured (the caller validates the count). */
+export async function replaceFeaturedBadges(
+  tx: SQL,
+  memberId: string,
+  badgeIds: readonly string[],
+): Promise<void> {
+  await tx`UPDATE core.member_badges SET featured = false WHERE member_id = ${memberId}`;
+
+  if (badgeIds.length > 0) {
+    await tx`
+      UPDATE core.member_badges
+      SET featured = true
+      WHERE member_id = ${memberId}
+        AND revoked_at IS NULL
+        AND badge_id = ANY(${`{${badgeIds.join(",")}}`}::bigint[])
+    `;
+  }
 }

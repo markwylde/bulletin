@@ -38,6 +38,11 @@ export async function profileSaveResponse(
     ...(typeof body.hideSignatures === "boolean" ? { hideSignatures: body.hideSignatures } : {}),
     ...(typeof body.hideFriends === "boolean" ? { hideFriends: body.hideFriends } : {}),
     ...(typeof body.signatureMd === "string" ? { signatureMd: body.signatureMd } : {}),
+    ...(typeof body.customTitle === "string" ? { customTitle: body.customTitle } : {}),
+    ...(Array.isArray(body.featuredBadges) &&
+    body.featuredBadges.every((id) => typeof id === "string" && /^\d+$/.test(id))
+      ? { featuredBadges: body.featuredBadges as string[] }
+      : {}),
     values: (body.values ?? {}) as Record<string, unknown>,
     fields,
   });
@@ -58,8 +63,12 @@ export async function profileSaveResponse(
     case "signature_too_many_lines":
     case "signature_too_many_images":
     case "signature_too_many_links":
+    case "custom_title_too_long":
+    case "blocked_word":
+    case "too_many_featured":
       return json({ code: result.code, ...details }, 400);
     case "signature_disabled":
+    case "custom_title_not_allowed":
       return json({ code: result.code }, 403);
     case "not_editable":
     case "unknown_field":

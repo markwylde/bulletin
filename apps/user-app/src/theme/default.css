@@ -911,6 +911,31 @@ fieldset.bl-editor__modes {
   font-size: 0.8125rem;
 }
 
+.bl-author-card__title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.bl-author-card__pips {
+  color: var(--bl-accent);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+}
+
+.bl-author-card__rank-image,
+.bl-author-card__badge {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.bl-author-card__badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
 .bl-post__main {
   display: grid;
   gap: var(--bl-space-small);

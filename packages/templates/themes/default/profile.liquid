@@ -16,6 +16,16 @@
         {% if profile.groupTitle %}
           <p class="bl-profile__group" data-profile-group{% if profile.groupColour %} style="color: {{ profile.groupColour }}"{% endif %}>{{ profile.groupTitle }}</p>
         {% endif %}
+        {% if profile.customTitle %}
+          <p class="bl-profile__title" data-profile-custom-title>{{ profile.customTitle }}</p>
+        {% elsif profile.rankTitle %}
+          <p class="bl-profile__title" data-profile-rank-title>{{ profile.rankTitle }}</p>
+        {% endif %}
+        {% if profile.rankImageKey %}
+          <p data-profile-rank-image><img src="{{ profile.rankImageKey }}" alt="" width="24" height="24" loading="lazy"></p>
+        {% elsif profile.rankPips > 0 %}
+          <p class="bl-profile__pips" data-profile-rank-pips="{{ profile.rankPips }}" aria-hidden="true">{% for i in (1..profile.rankPips) %}●{% endfor %}</p>
+        {% endif %}
         <div class="bl-actions" data-member-actions data-member-id="{{ profile.id }}" hidden>
           <button type="button" class="bl-button bl-button--small" data-friend-request hidden>{% t "profile.friends.add" %}</button>
           <button type="button" class="bl-button bl-button--small" data-friend-pending hidden disabled>{% t "profile.friends.pending" %}</button>
