@@ -4,8 +4,10 @@ import { buildNotificationsPage } from "../../account/notifications.ts";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { notificationsContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
+import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
+import { renderThemedNotFound } from "../../theme/not-found.ts";
 import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account/notifications")}`;
@@ -18,13 +20,18 @@ if (session === null) {
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
-const page = await buildNotificationsPage({
-  sql,
-  memberId: session.memberId,
-  sessionId: session.sessionId,
-  locale,
-  translate,
-});
+const flags = await loadViewerFlags(sql, session);
+const enabled = flags.values.notifications === true;
+const page = enabled ? await buildNotificationsPage({
+    sql,
+    memberId: session.memberId,
+    sessionId: session.sessionId,
+    locale,
+    translate,
+  }) : null;
+const notFound = enabled
+  ? null
+  : await renderThemedNotFound({ sql, locale, translate, route: notificationsContract });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 
 const rendered = await renderCachedPage({
@@ -40,18 +47,26 @@ const rendered = await renderCachedPage({
       pluginsGeneration: PLUGIN_GENERATION,
       locale,
       colourScheme: "system",
-      renderFlagsHash: "",
+      renderFlagsHash: flags.hash,
     }),
     data: undefined,
   }),
   render: async () => {
+    if (!enabled || page === null) {
+      if (notFound === null) {
+        throw new Error("missing not-found page");
+      }
+
+      return { html: notFound.html, errors: notFound.errors };
+    }
+
     const themed = await renderThemedPage({
       sql,
       boardName,
       locale,
       translate,
       template: "account-notifications",
-      viewModel: { title: page.title, ...page.viewModel },
+      viewModel: { title: page.title, ...page.viewModel, flags: flags.values },
       breadcrumbs: page.breadcrumbs,
       route: notificationsContract,
     });
@@ -60,11 +75,15 @@ const rendered = await renderCachedPage({
   },
 });
 
+if (!enabled) {
+  Astro.response.status = 404;
+}
+
 Astro.response.headers.set("cache-control", "private, no-store");
 ---
 
 <ThemeLayout
-  title={`${page.title} · ${boardName}`}
+  title={`${enabled && page !== null ? page.title : (notFound?.title ?? "")} · ${boardName}`}
   locale={locale}
   body={rendered.html}
   authState="authenticated"

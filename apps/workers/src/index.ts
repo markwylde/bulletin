@@ -28,6 +28,7 @@ import { createStorage } from "@bulletin/storage";
 import { createCoreEventHandler } from "./core-events.ts";
 import { createDigestJobs } from "./digest.ts";
 import { createEmailJobs } from "./email.ts";
+import { createWorkerFlags } from "./flags.ts";
 import { createNotificationsEventHandler } from "./notifications.ts";
 
 const config = loadConfig();
@@ -70,6 +71,7 @@ const subscribers: EventSubscriber[] = [
   },
 ];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
+const workerFlags = createWorkerFlags(sql);
 const digestJobs = await createDigestJobs({
   boss: boss.boss,
   sql,
@@ -78,6 +80,7 @@ const digestJobs = await createDigestJobs({
   userOrigin: config.userOrigin,
   unsubscribeSecret: config.sessionSecret,
   logger,
+  flags: workerFlags,
 });
 const emailJobs = await createEmailJobs({
   boss: boss.boss,
@@ -87,6 +90,7 @@ const emailJobs = await createEmailJobs({
   userOrigin: config.userOrigin,
   unsubscribeSecret: config.sessionSecret,
   logger,
+  flags: workerFlags,
 });
 const eventWorker = await createEventWorker({
   boss: boss.boss,
@@ -100,6 +104,7 @@ const eventWorker = await createEventWorker({
     notifications: createNotificationsEventHandler({
       sql,
       logger,
+      flags: workerFlags,
       async enqueueEmail(intentId) {
         await boss.boss.send("email", { intentId }, { singletonKey: `email:${intentId}` });
       },

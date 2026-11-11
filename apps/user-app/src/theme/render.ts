@@ -1,6 +1,7 @@
 import { queueSystemAudit } from "@bulletin/domain/audit";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import { embedProviderOrigins, listEmbedProviders } from "@bulletin/domain/content";
+import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { BP_COOKIE_NAME, type ColorScheme, parseBpCookie } from "@bulletin/i18n";
 import {
@@ -91,16 +92,21 @@ export interface PageRegionsInput {
   readonly translate: Translator;
   readonly breadcrumbs: readonly BreadcrumbItem[];
   readonly year?: number;
+  /** The page view model; flags are shared with the header region. */
+  readonly viewModel?: object;
 }
 
 /** The header, breadcrumb, empty-state and footer regions every themed page renders. */
 export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
+  const flags = (input.viewModel as { readonly flags?: unknown } | undefined)?.flags ?? {};
+
   return [
     {
       name: "header",
       // Never membership-dependent: a member and a guest with the same bits share this HTML.
       viewModel: {
         boardName: input.boardName,
+        flags,
         language: languageSwitcherView(input.locale, input.translate),
         localeSuggestion: localeSuggestionView(input.locale, input.translate),
       },
@@ -244,6 +250,19 @@ function report(violations: readonly TemplateViolation[], errors: string[]): voi
  * Renders one page through the default theme (ADR 0008). Theme violations and missing
  * required islands are reported to the caller and logged; the page still renders.
  */
+const RENDER_FLAG_DEFAULTS: Readonly<Record<string, boolean>> = Object.fromEntries(
+  CODE_FLAG_DEFINITIONS.map((definition) => [definition.key, false]),
+);
+
+/** Templates always see every render flag the theme may test (Liquid strict variables). */
+function withFlagDefaults(viewModel: object): object {
+  const provided = (viewModel as { readonly flags?: unknown }).flags;
+  const flags =
+    typeof provided === "object" && provided !== null ? (provided as Record<string, unknown>) : {};
+
+  return { ...viewModel, flags: { ...RENDER_FLAG_DEFAULTS, ...flags } };
+}
+
 export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPage> {
   const theme = input.theme ?? (await loadTheme(input.sql, THEME_NAME));
 
@@ -275,15 +294,16 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
     await listEmbedProviders(input.sql).catch(() => []),
   );
   let page: RenderedThemePage;
+  const viewModel = withFlagDefaults(input.viewModel);
 
   try {
     page = await renderThemePage({
       engine,
       compiled,
       name: input.template,
-      viewModel: input.viewModel,
+      viewModel,
       runtime,
-      regions: input.regions ?? pageRegions(input),
+      regions: input.regions ?? pageRegions({ ...input, viewModel }),
       trustedFrameOrigins,
     });
   } catch (error) {

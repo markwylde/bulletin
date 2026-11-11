@@ -49,7 +49,11 @@ export interface QueuedDigest {
 export async function queueDigests(
   sql: SQL,
   frequency: "daily" | "weekly",
-  options: { readonly now?: Date } = {},
+  options: {
+    readonly now?: Date;
+    /** False when the `digests` flag is off for the member. */
+    readonly isEnabled?: (memberId: string) => Promise<boolean>;
+  } = {},
 ): Promise<readonly QueuedDigest[]> {
   const now = options.now ?? new Date();
   const window = digestWindowMs(frequency);
@@ -62,6 +66,10 @@ export async function queueDigests(
   const queued: QueuedDigest[] = [];
 
   for (const row of rows) {
+    if (options.isEnabled !== undefined && !(await options.isEnabled(row.member_id))) {
+      continue;
+    }
+
     const periodStart =
       row.last_sent_at === null ? new Date(now.getTime() - window) : new Date(row.last_sent_at);
 

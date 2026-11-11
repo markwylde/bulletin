@@ -90,7 +90,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
         ...(index.ttlMs === null ? {} : { ttlMs: index.ttlMs }),
       };
     },
-    render: async ({ theme, boardName, boardDescription, index }) => {
+    render: async ({ theme, boardName, boardDescription, index, flags }) => {
       const page = await renderThemedPage({
         sql: input.sql,
         boardName,
@@ -101,6 +101,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
           boardName,
           boardDescription,
           ...index.viewModel,
+          flags: { ...index.viewModel.flags, ...flags.values },
         },
         breadcrumbs: [],
         route: homeContract,

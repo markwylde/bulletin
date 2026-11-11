@@ -142,7 +142,7 @@ export async function createTopicResponse(
   session: Session,
   forumId: string,
   request: Request,
-  options: { readonly pollsEnabled?: boolean } = {},
+  options: { readonly pollsEnabled?: boolean; readonly followsEnabled?: boolean } = {},
 ): Promise<Response> {
   const body = await bodyRecord(request);
 
@@ -176,6 +176,7 @@ export async function createTopicResponse(
       bodyMd: typeof body.bodyMd === "string" ? body.bodyMd : "",
       ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
       ...(poll === null || poll === undefined ? {} : { poll }),
+      ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
     });
 
     if (!created.ok) {
@@ -210,6 +211,7 @@ export async function replyResponse(
   session: Session,
   topicId: string,
   request: Request,
+  options: { readonly followsEnabled?: boolean } = {},
 ): Promise<Response> {
   const body = await bodyRecord(request);
 
@@ -231,6 +233,7 @@ export async function replyResponse(
       topicId,
       sessionId: session.id ?? session.sessionId ?? null,
       bodyMd,
+      ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
     });
 
     if (!created.ok) {

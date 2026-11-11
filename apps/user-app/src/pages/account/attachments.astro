@@ -4,6 +4,7 @@ import { createServerT } from "@bulletin/i18n";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { attachmentsContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
+import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
 import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
@@ -18,6 +19,7 @@ if (session === null) {
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
+const flags = await loadViewerFlags(sql, session);
 const page = await buildAttachmentsPage({
   sql,
   memberId: session.memberId,
@@ -50,7 +52,7 @@ const rendered = await renderCachedPage({
       locale,
       translate,
       template: "account-attachments",
-      viewModel: { title: page.title, ...page.viewModel },
+      viewModel: { title: page.title, ...page.viewModel, flags: flags.values },
       breadcrumbs: page.breadcrumbs,
       route: attachmentsContract,
     });

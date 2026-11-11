@@ -11,6 +11,7 @@ import {
   notificationIdForEvent,
 } from "@bulletin/domain/notifications";
 import type { SQL } from "bun";
+import type { WorkerFlags } from "./flags.ts";
 
 export interface NotificationsHandlerOptions {
   readonly sql: SQL;
@@ -19,6 +20,7 @@ export interface NotificationsHandlerOptions {
   readonly filters?: readonly NotificationRecipientFilter[];
   /** Enqueues one email job after commit; a failure makes the event job retry. */
   readonly enqueueEmail?: (intentId: string) => Promise<void>;
+  readonly flags?: WorkerFlags;
 }
 
 /**
@@ -44,17 +46,34 @@ export function createNotificationsEventHandler(
       recipients = kept;
     }
 
-    if (recipients.length === 0) {
+    const eligible: NotificationRecipient[] = [];
+
+    for (const recipient of recipients) {
+      if (options.flags !== undefined) {
+        if (!(await options.flags.enabled("notifications", recipient.memberId))) {
+          continue;
+        }
+
+        if (
+          recipient.source === "follow" &&
+          !(await options.flags.enabled("follows", recipient.memberId))
+        ) {
+          continue;
+        }
+      }
+
+      if (await memberIsActive(options.sql, recipient.memberId)) {
+        eligible.push(recipient);
+      }
+    }
+
+    if (eligible.length === 0) {
       return;
     }
 
     const emailIntents: string[] = [];
     await options.sql.begin(async (tx) => {
-      for (const recipient of recipients) {
-        if (!(await memberIsActive(tx, recipient.memberId))) {
-          continue;
-        }
-
+      for (const recipient of eligible) {
         const channels = await notificationChannels(tx, recipient.memberId, recipient.type);
 
         if (!channels.in_app && !channels.email && !channels.digest) {
@@ -93,7 +112,7 @@ export function createNotificationsEventHandler(
 
     options.logger?.info("notifications.created", {
       eventId: event.id.toString(),
-      count: recipients.length,
+      count: eligible.length,
     });
   };
 }

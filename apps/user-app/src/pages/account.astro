@@ -58,7 +58,13 @@ const rendered = await renderCachedPage({
       locale,
       translate,
       template: "account",
-      viewModel: account.viewModel,
+      viewModel: {
+        ...account.viewModel,
+        flags: {
+          ...(account.viewModel as { readonly flags?: Record<string, boolean> }).flags,
+          ...flags.values,
+        },
+      },
       breadcrumbs: account.breadcrumbs,
       route: accountContract,
     });

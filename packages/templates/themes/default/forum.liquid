@@ -12,11 +12,13 @@
       <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ forumId }}">—</span>
     </p>
     <button class="bl-button bl-button--quiet bl-button--small" type="button" data-mark-forum-read="{{ forumId }}" data-overlay-member-only hidden>{% t "read.markForum" %}</button>
+    {% if flags.follows %}
     <span class="bl-follow" data-overlay-member-only hidden data-follow-context="forum:{{ forumId }}">
       <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-action="follow">{% t "follow.followForum" %}</button>
       <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-action="unfollow" hidden>{% t "follow.unfollowForum" %}</button>
       <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
     </span>
+    {% endif %}
   </header>
 
   {% if isModerator %}

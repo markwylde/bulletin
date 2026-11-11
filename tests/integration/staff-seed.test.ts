@@ -106,10 +106,14 @@ integrationDescribe("flags seed", () => {
         "attachments",
         "avatar_upload",
         "compactTopicList",
+        "digests",
+        "follows",
         "mentions",
         "newEditor",
+        "notifications",
         "polls",
         "quickReply",
+        "realtime",
         "unfurls",
       ]);
 

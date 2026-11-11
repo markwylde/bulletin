@@ -10,6 +10,7 @@ import { createServerT, isLocale, type Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { type EmailOptions, WORKER_CATALOGS } from "./email.ts";
+import type { WorkerFlags } from "./flags.ts";
 
 export const DIGEST_DAILY_QUEUE = "digest.daily";
 export const DIGEST_WEEKLY_QUEUE = "digest.weekly";
@@ -90,6 +91,10 @@ export async function deliverDigestEmail(
     `) as Array<DigestRow & { delivered_at: Date | null }>;
 
     if (row === undefined || row.delivered_at !== null) {
+      return "skipped";
+    }
+
+    if (options.flags !== undefined && !(await options.flags.enabled("digests", row.member_id))) {
       return "skipped";
     }
 
@@ -185,6 +190,7 @@ export async function deliverDigestEmail(
 export interface DigestJobsOptions extends EmailOptions {
   readonly boss: PgBoss;
   readonly sql: SQL;
+  readonly flags?: WorkerFlags;
 }
 
 export interface DigestJobs {
@@ -202,7 +208,14 @@ export async function createDigestJobs(options: DigestJobsOptions): Promise<Dige
     [DIGEST_WEEKLY_QUEUE, "weekly"],
   ] as const) {
     await options.boss.work(queue, async () => {
-      const queued = await queueDigests(options.sql, frequency);
+      const queued = await queueDigests(options.sql, frequency, {
+        ...(options.flags === undefined
+          ? {}
+          : {
+              isEnabled: async (memberId: string) =>
+                options.flags === undefined ? true : options.flags.enabled("digests", memberId),
+            }),
+      });
       options.logger?.info("digest.queued", { frequency, members: queued.length });
 
       for (const digest of queued) {

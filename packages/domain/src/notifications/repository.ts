@@ -18,9 +18,13 @@ export const NOTIFICATION_TYPES = [
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
+export type NotificationRecipientSource = "follow" | "mention" | "quote" | "promotion";
+
 export interface NotificationRecipient {
   readonly memberId: string;
   readonly type: NotificationType;
+  /** Follow-derived recipients are hidden when the `follows` flag is off. */
+  readonly source: NotificationRecipientSource;
   readonly actorId: string | null;
   readonly topicId: string | null;
   readonly forumId: string | null;
@@ -253,25 +257,25 @@ export async function eventRecipients(
       } as const;
 
       if (post.position > 1 && starter !== null && starter !== post.authorId) {
-        add({ ...base, memberId: starter, type: "topic.reply" });
+        add({ ...base, memberId: starter, type: "topic.reply", source: "follow" });
       }
 
       if (post.position > 1) {
         for (const follower of await topicFollowers(sql, post.topicId)) {
-          add({ ...base, memberId: follower, type: "topic.reply" });
+          add({ ...base, memberId: follower, type: "topic.reply", source: "follow" });
         }
 
         for (const follower of await memberFollowers(sql, post.authorId)) {
-          add({ ...base, memberId: follower, type: "topic.reply" });
+          add({ ...base, memberId: follower, type: "topic.reply", source: "follow" });
         }
       }
 
       for (const memberId of await mentionedMembers(sql, postId)) {
-        add({ ...base, memberId, type: "post.mention" });
+        add({ ...base, memberId, type: "post.mention", source: "mention" });
       }
 
       for (const memberId of await quotedPostAuthors(sql, postId)) {
-        add({ ...base, memberId, type: "post.quote" });
+        add({ ...base, memberId, type: "post.quote", source: "quote" });
       }
 
       candidates.delete(post.authorId);
@@ -304,11 +308,11 @@ export async function eventRecipients(
       } as const;
 
       for (const follower of await forumFollowers(sql, forumId)) {
-        add({ ...base, memberId: follower, type: "topic.created" });
+        add({ ...base, memberId: follower, type: "topic.created", source: "follow" });
       }
 
       for (const follower of await memberFollowers(sql, authorId)) {
-        add({ ...base, memberId: follower, type: "topic.created" });
+        add({ ...base, memberId: follower, type: "topic.created", source: "follow" });
       }
 
       candidates.delete(authorId);
@@ -342,6 +346,7 @@ export async function eventRecipients(
             {
               memberId,
               type: "member.promoted",
+              source: "promotion",
               actorId: null,
               topicId: null,
               forumId: null,

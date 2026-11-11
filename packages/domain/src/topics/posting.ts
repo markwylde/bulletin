@@ -61,6 +61,8 @@ export interface StartTopicInput {
   readonly bodyMd: string;
   readonly prefixId?: string | null;
   readonly poll?: PollInput;
+  /** False when the `follows` flag is off for the actor. */
+  readonly autoFollow?: boolean;
 }
 
 export interface ReplyInput {
@@ -68,6 +70,8 @@ export interface ReplyInput {
   readonly topicId: string;
   readonly sessionId?: string | null;
   readonly bodyMd: string;
+  /** False when the `follows` flag is off for the actor. */
+  readonly autoFollow?: boolean;
 }
 
 export interface EditPostInput {
@@ -287,7 +291,9 @@ export async function startTopic(
           },
         });
         // Starting a topic follows it when the member left auto-follow on (follows spec).
-        await autoFollowTopic(tx, input.actorId, topicId);
+        if (input.autoFollow !== false) {
+          await autoFollowTopic(tx, input.actorId, topicId);
+        }
 
         return {
           topicId,
@@ -451,7 +457,9 @@ export async function reply(
           },
         });
         // Replying follows the topic unless the member turned auto-follow off.
-        await autoFollowTopic(tx, input.actorId, current.id);
+        if (input.autoFollow !== false) {
+          await autoFollowTopic(tx, input.actorId, current.id);
+        }
 
         return {
           topicId: current.id,

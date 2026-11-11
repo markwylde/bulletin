@@ -105,6 +105,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
 
   const renderOutcome = async (data: DemoData) => {
     const flags = {
+      ...data.flags.values,
       compactTopicList: data.flags.values.compactTopicList === true,
       mentions: data.flags.values.mentions === true,
       unfurls: data.flags.values.unfurls === true,

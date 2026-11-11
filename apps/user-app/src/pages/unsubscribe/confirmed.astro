@@ -4,6 +4,7 @@ import { createServerT } from "@bulletin/i18n";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { unsubscribeConfirmedContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
+import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { boardNameFrom, PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
@@ -14,6 +15,7 @@ const sql = readSql();
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const session = Astro.locals.session ?? null;
+const flags = await loadViewerFlags(sql, session);
 const page = buildUnsubscribePage({
   token: null,
   secret: process.env.SESSION_SECRET ?? DEVELOPMENT_DEFAULTS.SESSION_SECRET,
@@ -46,7 +48,7 @@ const rendered = await renderCachedPage({
       locale,
       translate,
       template: "unsubscribe",
-      viewModel: { ...page },
+      viewModel: { ...page, flags: flags.values },
       breadcrumbs: [],
       route: unsubscribeConfirmedContract,
     });

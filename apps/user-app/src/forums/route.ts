@@ -84,6 +84,7 @@ async function renderErrorPage(
   ]);
   const boardName = boardNameFrom(settings.boardName, input.translate);
   const title = input.translate("theme.error.title");
+  const flags = await loadViewerFlags(input.sql, input.session ?? null);
   const page = await renderThemedPage({
     sql: input.sql,
     boardName,
@@ -93,6 +94,7 @@ async function renderErrorPage(
     viewModel: {
       code,
       message: input.translate(`theme.error.${code === "not_found" ? "notFound" : "forbidden"}`),
+      flags: flags.values,
     },
     breadcrumbs: [],
     route: forumContract,
@@ -287,12 +289,16 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
         template: data.error === null ? forumContract.templates.page : "error",
         viewModel:
           data.error === null
-            ? (data.page?.viewModel ?? {})
+            ? {
+                ...(data.page?.viewModel ?? {}),
+                flags: { ...(data.page?.viewModel.flags ?? {}), ...data.flags.values },
+              }
             : {
                 code: data.error.code,
                 message: input.translate(
                   `theme.error.${data.error.code === "not_found" ? "notFound" : "forbidden"}`,
                 ),
+                flags: data.flags.values,
               },
         breadcrumbs: data.error === null ? (data.page?.breadcrumbs ?? []) : [],
         route: forumContract,

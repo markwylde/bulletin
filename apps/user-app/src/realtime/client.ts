@@ -131,7 +131,10 @@ function reloadLoggedOut(): void {
 
 let activeStream: EventSource | null = null;
 
-if (document.documentElement.dataset.visitor === "member") {
+if (
+  document.documentElement.dataset.visitor === "member" &&
+  document.querySelector("[data-realtime]") !== null
+) {
   const source = new EventSource(streamUrl());
   activeStream = source;
 

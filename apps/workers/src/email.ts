@@ -21,6 +21,7 @@ import type { PgBoss } from "pg-boss";
 import en from "../i18n/merged/en.json";
 import es from "../i18n/merged/es.json";
 import fr from "../i18n/merged/fr.json";
+import type { WorkerFlags } from "./flags.ts";
 
 export const EMAIL_QUEUE = "email";
 
@@ -35,6 +36,7 @@ export interface EmailOptions {
   readonly userOrigin: string;
   readonly unsubscribeSecret: string;
   readonly logger?: Logger;
+  readonly flags?: WorkerFlags;
 }
 
 export interface EmailJob {
@@ -175,6 +177,13 @@ export async function deliverNotificationEmail(
     const row = await notificationEmailContext(tx, intentId);
 
     if (row === null) {
+      return "skipped";
+    }
+
+    if (
+      options.flags !== undefined &&
+      !(await options.flags.enabled("notifications", row.memberId))
+    ) {
       return "skipped";
     }
 

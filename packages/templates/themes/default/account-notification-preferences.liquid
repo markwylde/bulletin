@@ -4,6 +4,7 @@
   <h1 class="bl-page__title">{{ title }}</h1>
   <p class="bl-muted">{% t "notification.preferences.intro" %}</p>
 
+  {% if flags.digests %}
   <label class="control">
     <span>{% t "notification.preferences.digestFrequency" %}</span>
     <select data-digest-frequency>
@@ -12,6 +13,7 @@
       {% endfor %}
     </select>
   </label>
+  {% endif %}
 
   <div class="matrix-scroll">
     <table class="matrix-table" data-notification-preferences>

@@ -112,6 +112,46 @@ export const avatarUploadFlag = defineFlag({
   clientVisible: true,
 });
 
+/** In-app notifications and the notification centre (change `events-notifications`). */
+export const notificationsFlag = defineFlag({
+  key: "notifications",
+  description: "In-app notifications, the bell and the notification centre.",
+  owner: "events",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** Topic, forum and member follows (change `events-notifications`). */
+export const followsFlag = defineFlag({
+  key: "follows",
+  description: "Following topics, forums and members.",
+  owner: "events",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** Daily and weekly email digests (change `events-notifications`). */
+export const digestsFlag = defineFlag({
+  key: "digests",
+  description: "Daily and weekly email digests.",
+  owner: "events",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** The SSE stream, live counts and the new-replies banner (change `events-notifications`). */
+export const realtimeFlag = defineFlag({
+  key: "realtime",
+  description: "Live counts, new-reply banners and stream session handling.",
+  owner: "events",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
@@ -120,4 +160,8 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   pollsFlag,
   attachmentsFlag,
   avatarUploadFlag,
+  notificationsFlag,
+  followsFlag,
+  digestsFlag,
+  realtimeFlag,
 ]);

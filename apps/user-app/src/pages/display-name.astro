@@ -4,6 +4,7 @@ import { createServerT } from "@bulletin/i18n";
 import { USER_CATALOGS } from "../catalogs.ts";
 import { displayNameContract } from "../contracts.ts";
 import { readSql } from "../db.ts";
+import { loadViewerFlags } from "../flags.ts";
 import { buildDisplayNamePage, displayNameLabels } from "../display-name/page.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
@@ -28,6 +29,7 @@ const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 const page = buildDisplayNamePage({ returnTo, currentName: session.displayName, translate });
 const sql = readSql();
+const flags = await loadViewerFlags(sql, session);
 // A personal, no-store page: the shared pipeline runs but retains nothing (ADR 0006).
 const rendered = await renderCachedPage({
   tags: [],
@@ -53,7 +55,7 @@ const rendered = await renderCachedPage({
       locale,
       translate,
       template: "display-name",
-      viewModel: page.viewModel,
+      viewModel: { ...page.viewModel, flags: flags.values },
       breadcrumbs: page.breadcrumbs,
       route: displayNameContract,
     });

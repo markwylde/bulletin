@@ -422,12 +422,16 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
         template: data.error === null ? topicContract.templates.page : "error",
         viewModel:
           data.error === null
-            ? (data.page?.viewModel ?? {})
+            ? {
+                ...(data.page?.viewModel ?? {}),
+                flags: { ...(data.page?.viewModel.flags ?? {}), ...data.flags.values },
+              }
             : {
                 code: data.error.status === 404 ? "not_found" : "forbidden",
                 message: input.translate(
                   `theme.error.${data.error.status === 404 ? "notFound" : "forbidden"}`,
                 ),
+                flags: data.flags.values,
               },
         breadcrumbs: data.error === null ? (data.page?.breadcrumbs ?? []) : [],
         route: topicContract,

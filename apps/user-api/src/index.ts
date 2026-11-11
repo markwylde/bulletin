@@ -100,7 +100,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return streamResponse({ sql, session, request, hub: streamHub });
+        return flags.guard("realtime", session.memberId)(request, () =>
+          streamResponse({ sql, session, request, hub: streamHub }),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -214,7 +216,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return notificationDigestResponse(sql, session.memberId, request);
+        return flags.guard("digests", session.memberId)(request, () =>
+          notificationDigestResponse(sql, session.memberId, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -226,7 +230,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return notificationPreferencesResponse(sql, session.memberId, request);
+        return flags.guard("notifications", session.memberId)(request, () =>
+          notificationPreferencesResponse(sql, session.memberId, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -238,7 +244,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return notificationReadResponse(sql, session.memberId, request);
+        return flags.guard("notifications", session.memberId)(request, () =>
+          notificationReadResponse(sql, session.memberId, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -250,7 +258,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return followResponse(sql, session, request);
+        return flags.guard("follows", session.memberId)(request, () =>
+          followResponse(sql, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -262,7 +272,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return followSettingsResponse(sql, session, request);
+        return flags.guard("follows", session.memberId)(request, () =>
+          followSettingsResponse(sql, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -322,6 +334,7 @@ await startService({
 
         return createTopicResponse(sql, session, createTopicMatch[1] ?? "", request, {
           pollsEnabled: await flags.enabled("polls", session.memberId),
+          followsEnabled: await flags.enabled("follows", session.memberId),
         });
       });
 
@@ -336,7 +349,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return replyResponse(sql, session, replyMatch[1] ?? "", request);
+        return replyResponse(sql, session, replyMatch[1] ?? "", request, {
+          followsEnabled: await flags.enabled("follows", session.memberId),
+        });
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

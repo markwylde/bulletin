@@ -3,8 +3,9 @@
   {{ breadcrumbs }}
   <h1 class="bl-page__title">{% t "account.title" %}</h1>
   <p class="bl-muted">
-    <a href="/account/notifications" data-account-notifications>{% t "notifications.title" %}</a> ·
-    <a href="/account/follows" data-account-follows>{% t "account.follows.title" %}</a>
+    {% if flags.notifications %}<a href="/account/notifications" data-account-notifications>{% t "notifications.title" %}</a>{% endif %}
+    {% if flags.notifications and flags.follows %} · {% endif %}
+    {% if flags.follows %}<a href="/account/follows" data-account-follows>{% t "account.follows.title" %}</a>{% endif %}
   </p>
 
   <section class="bl-card" data-account-profile>
