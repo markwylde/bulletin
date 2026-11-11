@@ -4,6 +4,8 @@ import {
   leaveConversation,
   markConversationRead,
   readConversationForParticipant,
+  readConversationMessagesAfter,
+  readParticipation,
   removeConversationParticipant,
   replyToConversation,
   type StartConversationFailure,
@@ -192,6 +194,28 @@ export async function leaveConversationResponse(
   });
 
   return outcome.ok ? json({ ok: true }) : participantFailure(outcome);
+}
+
+/** `GET /api/conversations/<id>/messages?after=` for the live reply append (task 3.2). */
+export async function conversationMessagesResponse(
+  sql: SQL,
+  session: Session,
+  conversationId: string,
+  url: URL,
+): Promise<Response> {
+  if ((await readParticipation(sql, conversationId, session.memberId)) === null) {
+    return json({ code: "not_found" }, 404);
+  }
+
+  const after = url.searchParams.get("after") ?? "0";
+
+  if (!/^\d+$/.test(after)) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  return json({
+    messages: await readConversationMessagesAfter(sql, conversationId, session.memberId, after),
+  });
 }
 
 /** `POST /api/conversations/<id>/archive` with `{archived: boolean}` (task 2.2). */

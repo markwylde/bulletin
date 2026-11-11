@@ -1,4 +1,5 @@
 import {
+  canReadConversationAttachment,
   isRasterAttachmentType,
   readAttachmentById,
   readDownloadableAttachment,
@@ -85,6 +86,7 @@ export async function attachmentDownloadResponse(
         contentType: own.verifiedType,
         filename: own.filename,
         forumIds: [],
+        conversationIds: [],
       };
       allowed = true;
     }
@@ -92,6 +94,10 @@ export async function attachmentDownloadResponse(
 
   if (attachment === null) {
     return json({ code: "not_found" }, 404);
+  }
+
+  if (!allowed && input.session !== null) {
+    allowed = await canReadConversationAttachment(input.sql, attachment.id, input.session.memberId);
   }
 
   if (!allowed) {

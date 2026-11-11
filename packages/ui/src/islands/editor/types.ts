@@ -48,6 +48,8 @@ export interface EditorProps {
   readonly initialMarkdown: string;
   /** Upload target; empty when the viewer may not upload here. */
   readonly forumId: string;
+  /** Conversation upload context; mutually exclusive with a forum target. */
+  readonly conversationId?: string | undefined;
   readonly canUpload: boolean;
   readonly emoticons: readonly EditorEmoticon[];
   readonly labels: EditorLabels;

@@ -18,6 +18,7 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  NOTIFICATION_TYPES,
   notificationChannels,
   notificationEmailContext,
   notificationPreferenceMatrix,
@@ -677,7 +678,7 @@ integrationDescribe("notification centre", () => {
         translate,
       });
 
-      expect(page.viewModel.types).toHaveLength(9);
+      expect(page.viewModel.types).toHaveLength(NOTIFICATION_TYPES.length);
       expect(page.viewModel.types.every((type) => type.channels.length === 3)).toBe(true);
       expect(page.viewModel.digestOptions.map((option) => option.value)).toEqual([
         "off",

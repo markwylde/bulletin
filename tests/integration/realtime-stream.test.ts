@@ -10,6 +10,11 @@ import {
   SeedRegistry,
 } from "@bulletin/db/seed";
 import type { SessionRecord } from "@bulletin/domain/auth";
+import {
+  leaveConversation,
+  replyToConversation,
+  startConversation,
+} from "@bulletin/domain/conversations";
 import { emit } from "@bulletin/domain/events";
 import { createNotification } from "@bulletin/domain/notifications";
 import { reply, startTopic } from "@bulletin/domain/topics";
@@ -680,6 +685,94 @@ integrationDescribe("realtime stream", () => {
       } finally {
         await response.body?.cancel().catch(() => undefined);
       }
+    });
+  }, 30_000);
+
+  test("streams a live conversation reply only to current participants", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const outsider = await memberId(database, "member-es");
+      const started = await startConversation(database.sql, {
+        actorId: starter,
+        title: "Live conversation",
+        bodyMd: "First message.",
+        recipientIds: [recipient],
+      });
+
+      if (!started.ok) {
+        throw new Error("Could not start the conversation");
+      }
+
+      const [{ id: firstMessage }] = (await database.sql`
+        SELECT id::text AS id FROM core.conversation_messages
+        WHERE conversation_id = ${started.result.conversationId}
+        ORDER BY id LIMIT 1
+      `) as Array<{ id: string }>;
+
+      const { record } = await createSession(database, starter);
+      const { response, reader } = await openStream(
+        database,
+        record,
+        `?conversation=${started.result.conversationId}&message=${firstMessage}`,
+        { reconcileMs: 100 },
+      );
+
+      try {
+        await reader.event("notifications");
+        const reply = await replyToConversation(database.sql, {
+          actorId: recipient,
+          conversationId: started.result.conversationId,
+          bodyMd: "Live reply.",
+        });
+        expect(reply.ok).toBe(true);
+
+        const event = await reader.event("conversation_replies", 5_000);
+        expect(event?.data).toBeDefined();
+        const payload = JSON.parse(event?.data ?? "{}") as {
+          readonly conversationId: string;
+          readonly messageId: string;
+          readonly count: number;
+        };
+        expect(payload.conversationId).toBe(started.result.conversationId);
+        expect(payload.count).toBeGreaterThan(0);
+
+        // Once the viewer leaves, the same stream must stop delivering messages.
+        await leaveConversation(database.sql, {
+          actorId: starter,
+          conversationId: started.result.conversationId,
+        });
+        const afterLeaving = await replyToConversation(database.sql, {
+          actorId: recipient,
+          conversationId: started.result.conversationId,
+          bodyMd: "Hidden after leaving.",
+        });
+        expect(afterLeaving.ok).toBe(true);
+
+        let leaked = false;
+
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          const next = await reader.next(250);
+
+          if (next?.event === "conversation_replies") {
+            leaked = true;
+          }
+        }
+
+        expect(leaked).toBe(false);
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+
+      // A non-participant cannot open the conversation stream at all.
+      const outsiderSession = await createSession(database, outsider);
+      const denied = await openStream(
+        database,
+        outsiderSession.record,
+        `?conversation=${started.result.conversationId}`,
+      );
+      expect(denied.response.status).toBe(404);
+      await denied.response.body?.cancel().catch(() => undefined);
     });
   }, 30_000);
 

@@ -1,3 +1,4 @@
+import { readConversationMessageAttachments, readUploadLimits } from "@bulletin/domain/attachments";
 import {
   type ConversationFolder,
   type ConversationSummary,
@@ -12,6 +13,7 @@ import { type SafeHtml, safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { buildEditorView, type EditorView } from "../editor.ts";
 import type { BreadcrumbItem } from "../theme/render.ts";
+import { renderPostAttachments } from "../topics/attachments.ts";
 
 export interface InboxPageInput {
   readonly sql: SQL;
@@ -71,6 +73,7 @@ export interface MessageView {
   readonly authorName: string;
   readonly authorHref: string | null;
   readonly body: SafeHtml;
+  readonly files: SafeHtml | null;
   readonly time: string;
   readonly iso: string;
 }
@@ -235,6 +238,8 @@ export async function buildConversationPage(input: {
   readonly locale: Locale;
   readonly translate: Translator;
   readonly conversationId: string;
+  /** False when the `attachments` flag is off: placeholders and uploads disappear. */
+  readonly attachmentsEnabled?: boolean;
 }): Promise<ConversationPageData | null> {
   const detail = await readConversationForParticipant(
     input.sql,
@@ -247,18 +252,46 @@ export async function buildConversationPage(input: {
   }
 
   const policy = await readPmPolicy(input.sql, input.memberId);
+  const attachmentsEnabled = input.attachmentsEnabled !== false;
+  const [attachmentMap, limits] = await Promise.all([
+    readConversationMessageAttachments(
+      input.sql,
+      detail.messages.map((message) => message.id),
+    ),
+    attachmentsEnabled ? readUploadLimits(input.sql, input.memberId) : Promise.resolve(null),
+  ]);
+  const canUpload =
+    policy.canUse &&
+    limits !== null &&
+    limits.quotaBytes > 0 &&
+    limits.perFileBytes > 0 &&
+    limits.allowedTypes.length > 0;
   const date = dateFormatter(input.locale);
-  const messages: MessageView[] = detail.messages.map((message) => ({
-    id: message.id,
-    authorName: message.authorName ?? input.translate("member.deletedName"),
-    authorHref:
-      message.authorName === null
-        ? null
-        : canonicalUrl("profile", message.authorId, message.authorName),
-    body: safeHtml(message.bodyHtml),
-    time: date.format(message.createdAt),
-    iso: message.createdAt.toISOString(),
-  }));
+  const messages: MessageView[] = detail.messages.map((message) => {
+    const rendered = renderPostAttachments({
+      postId: message.id,
+      ownerKind: "message",
+      html: message.bodyHtml,
+      attachments: attachmentMap.get(message.id) ?? [],
+      locale: input.locale,
+      translate: input.translate,
+      canRemove: false,
+      enabled: attachmentsEnabled,
+    });
+
+    return {
+      id: message.id,
+      authorName: message.authorName ?? input.translate("member.deletedName"),
+      authorHref:
+        message.authorName === null
+          ? null
+          : canonicalUrl("profile", message.authorId, message.authorName),
+      body: safeHtml(rendered.bodyHtml),
+      files: rendered.files,
+      time: date.format(message.createdAt),
+      iso: message.createdAt.toISOString(),
+    };
+  });
   const participants: DetailParticipantView[] = detail.participants.map((participant) => ({
     id: participant.id,
     name: participant.displayName ?? input.translate("member.deletedName"),
@@ -268,10 +301,11 @@ export async function buildConversationPage(input: {
     ? await buildEditorView(input.sql, input.translate, {
         contextKey: `conversation:reply:${detail.id}`,
         mentions: true,
-        attachments: false,
+        attachments: attachmentsEnabled,
         name: "bodyMd",
         forumId: "",
-        canUpload: false,
+        conversationId: detail.id,
+        canUpload,
       })
     : null;
 

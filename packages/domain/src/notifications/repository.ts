@@ -18,6 +18,7 @@ export const NOTIFICATION_TYPES = [
   "reputation.given",
   "friend.accepted",
   "badge.awarded",
+  "conversation.message",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -30,7 +31,8 @@ export type NotificationRecipientSource =
   | "reaction"
   | "reputation"
   | "friend"
-  | "badge";
+  | "badge"
+  | "conversation";
 
 /** These types are about one post, so an unread entry coalesces per post, not per topic. */
 const POST_COALESCED_TYPES = ["reaction.added", "reputation.given"] as const;
@@ -50,6 +52,7 @@ export interface NotificationRecipient {
   readonly topicId: string | null;
   readonly forumId: string | null;
   readonly postId: string | null;
+  readonly conversationId?: string | null;
 }
 
 /** Later changes (ignore list, member blocks) drop recipients through this extension point. */
@@ -70,6 +73,7 @@ export interface NotificationWrite {
   readonly topicId?: string | null;
   readonly forumId?: string | null;
   readonly postId?: string | null;
+  readonly conversationId?: string | null;
 }
 
 /**
@@ -97,8 +101,33 @@ export async function createNotification(
     throw new Error(`A ${input.type} notification needs a post`);
   }
 
-  const rows = (await (isPostCoalesced(input.type)
+  const conversationId = input.conversationId ?? null;
+
+  if (input.type === "conversation.message" && conversationId === null) {
+    throw new Error("A conversation.message notification needs a conversation");
+  }
+
+  const rows = (await (conversationId !== null
     ? sql`
+        INSERT INTO core.notifications (
+          member_id, type, event_id, actor_id, conversation_id, count
+        ) VALUES (
+          ${input.memberId}, ${input.type}, ${input.eventId}, ${input.actorId ?? null},
+          ${conversationId}, 1
+        )
+        ON CONFLICT (member_id, type, conversation_id)
+        WHERE read_at IS NULL
+          AND conversation_id IS NOT NULL
+          AND type = 'conversation.message'
+        DO UPDATE SET
+          count = core.notifications.count + 1,
+          event_id = EXCLUDED.event_id,
+          actor_id = EXCLUDED.actor_id,
+          updated_at = now()
+        RETURNING id
+      `
+    : isPostCoalesced(input.type)
+      ? sql`
         INSERT INTO core.notifications (
           member_id, type, event_id, actor_id, topic_id, forum_id, post_id, count
         ) VALUES (
@@ -117,8 +146,8 @@ export async function createNotification(
           updated_at = now()
         RETURNING id
       `
-    : input.topicId === null || input.topicId === undefined
-      ? sql`
+      : input.topicId === null || input.topicId === undefined
+        ? sql`
         INSERT INTO core.notifications (
           member_id, type, event_id, actor_id, topic_id, forum_id, post_id
         ) VALUES (
@@ -127,7 +156,7 @@ export async function createNotification(
         )
         RETURNING id
       `
-      : sql`
+        : sql`
         INSERT INTO core.notifications (
           member_id, type, event_id, actor_id, topic_id, forum_id, post_id, count
         ) VALUES (
@@ -275,6 +304,7 @@ export async function eventRecipients(
 ): Promise<readonly NotificationRecipient[]> {
   const candidates = new Map<string, NotificationRecipient>();
   const rank: Record<NotificationType, number> = {
+    "conversation.message": 6,
     "post.mention": 5,
     "post.quote": 4,
     "topic.reply": 3,
@@ -301,6 +331,34 @@ export async function eventRecipients(
   };
 
   switch (event.type) {
+    case "pm.sent": {
+      const conversationId = event.payloadIds.conversationId;
+      const senderId = event.payloadIds.senderId;
+
+      if (conversationId === undefined || senderId === undefined) {
+        return [];
+      }
+
+      const rows = (await sql`
+        SELECT p.member_id::text AS member_id
+        FROM core.conversation_participants p
+        WHERE p.conversation_id = ${conversationId}
+          AND p.state = 'active'
+          AND p.member_id <> ${senderId}
+        ORDER BY p.member_id
+      `) as Array<{ member_id: string }>;
+
+      return rows.map((row) => ({
+        memberId: row.member_id,
+        type: "conversation.message" as const,
+        source: "conversation" as const,
+        actorId: senderId.toString(),
+        topicId: null,
+        forumId: null,
+        postId: null,
+        conversationId: conversationId.toString(),
+      }));
+    }
     case "post.created": {
       const postId = event.payloadIds.postId;
 
@@ -543,6 +601,8 @@ export interface NotificationEntry {
   readonly topicTitle: string | null;
   readonly topicSlug: string | null;
   readonly postId: string | null;
+  readonly conversationId: string | null;
+  readonly conversationTitle: string | null;
   readonly count: number;
   readonly read: boolean;
   readonly createdAt: Date;
@@ -559,6 +619,8 @@ interface NotificationListRow {
   readonly topic_slug: string | null;
   readonly forum_id: string | null;
   readonly post_id: string | null;
+  readonly conversation_id: string | null;
+  readonly conversation_title: string | null;
   readonly count: number;
   readonly read_at: Date | string | null;
   readonly created_at: Date | string;
@@ -605,6 +667,8 @@ export async function listNotifications(
         t.slug AS topic_slug,
         t.forum_id::text AS forum_id,
         n.post_id::text AS post_id,
+        n.conversation_id::text AS conversation_id,
+        c.title AS conversation_title,
         n.count,
         n.read_at,
         n.created_at,
@@ -613,9 +677,20 @@ export async function listNotifications(
       LEFT JOIN core.members a ON a.id = n.actor_id
       LEFT JOIN core.topics t ON t.id = n.topic_id
       LEFT JOIN core.posts p ON p.id = n.post_id
+      LEFT JOIN core.conversations c ON c.id = n.conversation_id
       WHERE n.member_id = ${memberId}
         AND (n.post_id IS NULL OR p.visibility = 'visible')
         AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+        AND (
+          n.conversation_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM core.conversation_participants cp
+            WHERE cp.conversation_id = n.conversation_id
+              AND cp.member_id = n.member_id
+              AND cp.state = 'active'
+          )
+        )
         AND coalesce((
           SELECT p.enabled FROM core.notification_preferences p
           WHERE p.member_id = n.member_id AND p.type = n.type AND p.channel = 'in_app'
@@ -659,6 +734,8 @@ export async function listNotifications(
         topicTitle: row.topic_title,
         topicSlug: row.topic_slug,
         postId: row.post_id,
+        conversationId: row.conversation_id,
+        conversationTitle: row.conversation_title,
         count: row.count,
         read: row.read_at !== null,
         createdAt: new Date(row.created_at),
@@ -692,6 +769,16 @@ export async function unreadNotificationCount(
       AND n.read_at IS NULL
       AND (n.post_id IS NULL OR p.visibility = 'visible')
       AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+      AND (
+        n.conversation_id IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM core.conversation_participants cp
+          WHERE cp.conversation_id = n.conversation_id
+            AND cp.member_id = n.member_id
+            AND cp.state = 'active'
+        )
+      )
       AND coalesce((
         SELECT pref.enabled FROM core.notification_preferences pref
         WHERE pref.member_id = n.member_id AND pref.type = n.type AND pref.channel = 'in_app'
@@ -1042,6 +1129,8 @@ export interface NotificationEmailContext {
   readonly topicTitle: string | null;
   readonly topicSlug: string | null;
   readonly postId: string | null;
+  readonly conversationId: string | null;
+  readonly conversationTitle: string | null;
 }
 
 /**
@@ -1149,6 +1238,8 @@ export async function notificationEmailContext(
         topicTitle: post.title,
         topicSlug: post.slug,
         postId: post.post_id,
+        conversationId: null,
+        conversationTitle: null,
       };
     }
   }
@@ -1161,15 +1252,28 @@ export async function notificationEmailContext(
       n.topic_id::text AS topic_id,
       t.title AS topic_title,
       t.slug AS topic_slug,
-      n.post_id::text AS post_id
+      n.post_id::text AS post_id,
+      n.conversation_id::text AS conversation_id,
+      c.title AS conversation_title
     FROM core.notifications n
     JOIN core.delivery_intents i ON i.id = ${intentId} AND i.ref_id = n.id
     LEFT JOIN core.members a ON a.id = n.actor_id
     LEFT JOIN core.topics t ON t.id = n.topic_id
     LEFT JOIN core.posts p ON p.id = n.post_id
+    LEFT JOIN core.conversations c ON c.id = n.conversation_id
     WHERE n.member_id = ${base.member_id}
       AND (n.post_id IS NULL OR p.visibility = 'visible')
       AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+      AND (
+        n.conversation_id IS NULL
+        OR EXISTS (
+          SELECT 1
+          FROM core.conversation_participants cp
+          WHERE cp.conversation_id = n.conversation_id
+            AND cp.member_id = n.member_id
+            AND cp.state = 'active'
+        )
+      )
   `) as Array<{
     actor_name: string | null;
     forum_id: string | null;
@@ -1177,6 +1281,8 @@ export async function notificationEmailContext(
     topic_title: string | null;
     topic_slug: string | null;
     post_id: string | null;
+    conversation_id: string | null;
+    conversation_title: string | null;
   }>;
 
   const row = rows[0];
@@ -1210,6 +1316,8 @@ export async function notificationEmailContext(
     topicTitle: row.topic_title,
     topicSlug: row.topic_slug,
     postId: row.post_id,
+    conversationId: row.conversation_id,
+    conversationTitle: row.conversation_title,
   };
 }
 

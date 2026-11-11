@@ -112,6 +112,7 @@ function EditorContent({
   name,
   initialMarkdown,
   forumId,
+  conversationId,
   canUpload,
   emoticons,
   labels,
@@ -653,7 +654,11 @@ function EditorContent({
   }
 
   async function uploadFiles(files: readonly File[]): Promise<void> {
-    if (!canAttach || csrfToken === null || forumId === "") {
+    if (
+      !canAttach ||
+      csrfToken === null ||
+      (forumId === "" && (conversationId === undefined || conversationId === ""))
+    ) {
       return;
     }
 
@@ -672,7 +677,9 @@ function EditorContent({
             "x-bulletin-csrf": csrfToken,
           },
           body: JSON.stringify({
-            forumId,
+            ...(conversationId === undefined || conversationId === ""
+              ? { forumId }
+              : { conversationId }),
             filename: file.name,
             contentType: file.type,
             sizeBytes: file.size,

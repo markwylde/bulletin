@@ -1,15 +1,23 @@
-import {
-  isRasterAttachmentType,
-  type PostAttachmentRecord,
-  SVG_ATTACHMENT_TYPE,
-} from "@bulletin/domain/attachments";
+import { isRasterAttachmentType, SVG_ATTACHMENT_TYPE } from "@bulletin/domain/attachments";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
 
+export interface RenderableAttachment {
+  readonly id: string;
+  readonly filename: string;
+  readonly sizeBytes: number;
+  readonly contentType: string;
+  readonly downloadCount: number;
+  readonly inline: boolean;
+  readonly position: number;
+}
+
 export interface PostAttachmentRenderInput {
   readonly postId: string;
+  /** Conversation messages use the same renderer with their own list attribute. */
+  readonly ownerKind?: "post" | "message";
   readonly html: string;
-  readonly attachments: readonly PostAttachmentRecord[];
+  readonly attachments: readonly RenderableAttachment[];
   readonly locale: Locale;
   readonly translate: Translator;
   /** Moderators with `edit` get a remove control on every attachment. */
@@ -148,12 +156,13 @@ export function renderPostAttachments(input: PostAttachmentRenderInput): PostAtt
     ].join("");
   });
 
+  const listAttribute =
+    input.ownerKind === "message" ? "data-message-attachments" : "data-post-attachments";
+
   return {
     bodyHtml,
     files: safeHtml(
-      `<ul class="bl-attachment-list" data-post-attachments="${input.postId}">${items.join(
-        "",
-      )}</ul>`,
+      `<ul class="bl-attachment-list" ${listAttribute}="${input.postId}">${items.join("")}</ul>`,
     ),
   };
 }

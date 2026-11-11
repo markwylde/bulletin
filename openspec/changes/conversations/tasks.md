@@ -14,8 +14,8 @@
 
 ## 3. Integrations
 
-- [ ] 3.1 Attachments in conversations (participant-based upload/download checks), with permission-denial tests
-- [ ] 3.2 Notifications and SSE live replies for conversations, with an E2E live-reply test
+- [x] 3.1 Attachments in conversations (participant-based upload/download checks), with permission-denial tests
+- [x] 3.2 Notifications and SSE live replies for conversations, with an E2E live-reply test
 
 ## 4. Strings and seed
 

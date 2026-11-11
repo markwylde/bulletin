@@ -75,6 +75,8 @@ function subjectFor(translate: Translator, type: NotificationType, topic: string
       return translate("email.subject.friend.accepted");
     case "badge.awarded":
       return translate("email.subject.badge.awarded");
+    case "conversation.message":
+      return translate("email.subject.conversation.message", { topic });
   }
 }
 
@@ -103,6 +105,8 @@ function bodyFor(
       return translate("email.body.friend.accepted", { actor });
     case "badge.awarded":
       return translate("email.body.badge.awarded", { actor });
+    case "conversation.message":
+      return translate("email.body.conversation.message", { actor, topic });
   }
 }
 
@@ -119,20 +123,22 @@ export function buildNotificationEmail(input: {
   const translate = createServerT(locale, { shipped: WORKER_CATALOGS });
   const type: NotificationType = input.row.type;
   const actor = input.row.actorName ?? translate("email.fallbackActor", {});
-  const topic = input.row.topicTitle ?? "";
+  const topic = input.row.conversationTitle ?? input.row.topicTitle ?? "";
   const greeting = translate("email.greeting", {
     name: input.row.recipientName ?? translate("email.fallbackName", {}),
   });
   const summary = bodyFor(translate, type, actor, topic);
   const openUrl =
-    input.row.topicId !== null && input.row.topicSlug !== null
-      ? `${input.options.userOrigin}${canonicalUrl(
-          "topic",
-          input.row.topicId,
-          input.row.topicSlug,
-          input.row.postId === null ? {} : { postId: input.row.postId },
-        )}`
-      : null;
+    input.row.conversationId !== null
+      ? `${input.options.userOrigin}/conversations/${input.row.conversationId}`
+      : input.row.topicId !== null && input.row.topicSlug !== null
+        ? `${input.options.userOrigin}${canonicalUrl(
+            "topic",
+            input.row.topicId,
+            input.row.topicSlug,
+            input.row.postId === null ? {} : { postId: input.row.postId },
+          )}`
+        : null;
   const token = createUnsubscribeToken(input.options.unsubscribeSecret, {
     memberId: input.row.memberId,
     type,

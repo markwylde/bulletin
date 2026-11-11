@@ -1,5 +1,10 @@
 import type { SessionRecord } from "@bulletin/domain/auth";
 import {
+  maxConversationMessageId,
+  readParticipation,
+  visibleConversationMessageIdsAfter,
+} from "@bulletin/domain/conversations";
+import {
   encodeStreamCursor,
   parseStreamCursor,
   STREAM_CONTROL_EVENTS,
@@ -66,7 +71,10 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
   const replayWindowMs = options.replayWindowMs ?? DEFAULT_REPLAY_WINDOW_MS;
   const topicId = idParam(url.searchParams.get("topic"));
   const initialPostId = idParam(url.searchParams.get("post"));
+  const conversationId = idParam(url.searchParams.get("conversation"));
+  const initialMessageId = idParam(url.searchParams.get("message"));
   let scope: TopicScope | null = null;
+  let conversationScope: string | null = null;
 
   const sessionState = async (): Promise<"ok" | "revoked" | "reauth"> => {
     const [row] = (await sql`
@@ -103,11 +111,30 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
     }
   }
 
+  if (conversationId !== null) {
+    if (
+      topicId !== null ||
+      (await readParticipation(sql, conversationId, session.memberId)) === null
+    ) {
+      return json({ code: "not_found" }, 404);
+    }
+
+    conversationScope = conversationId;
+  }
+
   const restored = parseStreamCursor(options.request.headers.get("last-event-id"));
   let cursor: StreamCursor = restored ?? {
     notificationId: 0n,
     postId: initialPostId === null ? 0n : BigInt(initialPostId),
+    ...(conversationScope !== null && initialMessageId !== null
+      ? { messageId: BigInt(initialMessageId) }
+      : {}),
   };
+
+  if (conversationScope !== null && restored === null && initialMessageId === null) {
+    // No cursor means "start now": existing history is already on the page.
+    cursor = { ...cursor, messageId: await maxConversationMessageId(sql, conversationScope) };
+  }
   const encoder = new TextEncoder();
   let closed = false;
   let reading = false;
@@ -227,6 +254,41 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
         });
       };
 
+      const readConversationReplies = async (): Promise<void> => {
+        if (conversationScope === null) {
+          return;
+        }
+
+        if ((await readParticipation(sql, conversationScope, session.memberId)) === null) {
+          return;
+        }
+
+        const rows = await visibleConversationMessageIdsAfter(
+          sql,
+          conversationScope,
+          session.memberId,
+          cursor.messageId ?? 0n,
+          replayLimit + 1,
+        );
+
+        if (rows.length === 0) {
+          return;
+        }
+
+        // Re-check participation after the read: removal must not leak a pending message.
+        if ((await readParticipation(sql, conversationScope, session.memberId)) === null) {
+          return;
+        }
+
+        const latest = rows[rows.length - 1] ?? "0";
+        cursor = { ...cursor, messageId: BigInt(latest) };
+        send(STREAM_EVENT_NAMES.conversationReplies, {
+          conversationId: conversationScope,
+          count: rows.length,
+          messageId: latest,
+        });
+      };
+
       const gapTooLarge = async (from: StreamCursor): Promise<boolean> => {
         const stale = async (missed: number, oldest: Date | string | null): Promise<boolean> =>
           missed > replayLimit ||
@@ -262,6 +324,10 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
         // between the page render and this connection (or a dropped NOTIFY) must still banner.
         if (scope !== null && (restored !== null || initialPostId !== null)) {
           await readReplies();
+        }
+
+        if (conversationScope !== null && (restored !== null || initialMessageId !== null)) {
+          await readConversationReplies();
         }
       };
 
@@ -301,6 +367,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
               pending = false;
               await readNotifications();
               await readReplies();
+              await readConversationReplies();
             } while (pending && !closed);
           } catch {
             // The next wake-up or the revalidation retries a transient read error.
@@ -316,6 +383,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
         unsubscribers.push(
           options.hub.onMember(session.memberId, schedule),
           options.hub.onTopic(scope?.id ?? "", schedule),
+          options.hub.onConversation(conversationScope ?? "", schedule),
           options.hub.onSessionRevoked((payload) => {
             if (payload === session.id || payload === session.memberId) {
               void checkSession().catch(close);
@@ -333,6 +401,11 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
             schedule();
           }
         });
+        const conversationActivity = await sql.listen("conversation_activity", (payload) => {
+          if (conversationScope !== null && payload === conversationScope) {
+            schedule();
+          }
+        });
         const sessionRevoked = await sql.listen("session_revoked", (payload) => {
           if (payload === session.id || payload === session.memberId) {
             void checkSession().catch(close);
@@ -341,6 +414,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
         unsubscribers.push(
           () => void notifyMember.unlisten(),
           () => void topicActivity.unlisten(),
+          () => void conversationActivity.unlisten(),
           () => void sessionRevoked.unlisten(),
         );
       }

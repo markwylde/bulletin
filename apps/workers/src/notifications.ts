@@ -135,6 +135,7 @@ export async function processNotificationRecipients(
         topicId: recipient.topicId,
         forumId: recipient.forumId,
         postId: recipient.postId,
+        conversationId: recipient.conversationId ?? null,
       });
       const notificationId =
         created ?? (await notificationIdForEvent(tx, event.id, recipient.memberId));

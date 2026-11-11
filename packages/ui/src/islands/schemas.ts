@@ -77,6 +77,7 @@ export const editorSchema = v.strictObject({
   contextKey: v.pipe(v.string(), v.regex(/^[a-z0-9][a-z0-9:._-]{0,119}$/)),
   initialMarkdown: v.pipe(v.string(), v.maxLength(100_000)),
   forumId: v.optional(v.pipe(v.string(), v.regex(/^\d*$/)), ""),
+  conversationId: v.optional(v.pipe(v.string(), v.regex(/^\d*$/)), ""),
   canUpload: v.optional(v.boolean(), false),
   emoticons: v.array(editorEmoticonSchema),
   labels: editorLabelsSchema,

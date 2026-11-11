@@ -13,6 +13,25 @@ describe("upload request rules", () => {
     expect(parseUploadRequest(VALID)).toEqual({ ok: true, value: VALID });
   });
 
+  test("accepts one conversation context and rejects missing or doubled contexts", () => {
+    const conversation = {
+      conversationId: "9",
+      filename: "notes.txt",
+      contentType: "text/plain",
+      sizeBytes: 10,
+    } as const;
+
+    expect(parseUploadRequest(conversation)).toEqual({ ok: true, value: conversation });
+    expect(parseUploadRequest({ ...conversation, forumId: "12" })).toEqual({
+      ok: false,
+      code: "invalid_request",
+    });
+    expect(parseUploadRequest({ ...conversation, conversationId: undefined })).toEqual({
+      ok: false,
+      code: "invalid_request",
+    });
+  });
+
   test("rejects disallowed types before any quota work", () => {
     expect(parseUploadRequest({ ...VALID, contentType: "application/x-msdownload" })).toEqual({
       ok: false,

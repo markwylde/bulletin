@@ -104,6 +104,18 @@ function notificationText(translate: Translator, entry: NotificationEntry): stri
       return translate("notification.text.friend.accepted", { actor });
     case "badge.awarded":
       return translate("notification.text.badge.awarded");
+    case "conversation.message": {
+      const conversation = entry.conversationTitle ?? "";
+      return entry.count > 1
+        ? translate("notification.text.conversation.messageMany", {
+            count: entry.count,
+            conversation,
+          })
+        : translate("notification.text.conversation.message", {
+            actor,
+            conversation,
+          });
+    }
   }
 }
 
@@ -154,14 +166,16 @@ export async function buildNotificationsPage(
   for (const entry of entries) {
     const key = sectionKey(entry.updatedAt, dayStart, weekStart);
     const href =
-      entry.topicId !== null && entry.topicSlug !== null
-        ? canonicalUrl(
-            "topic",
-            entry.topicId,
-            entry.topicSlug,
-            entry.postId === null ? {} : { postId: entry.postId },
-          )
-        : null;
+      entry.conversationId !== null
+        ? `/conversations/${entry.conversationId}`
+        : entry.topicId !== null && entry.topicSlug !== null
+          ? canonicalUrl(
+              "topic",
+              entry.topicId,
+              entry.topicSlug,
+              entry.postId === null ? {} : { postId: entry.postId },
+            )
+          : null;
 
     sections.get(key)?.push({
       id: entry.id,

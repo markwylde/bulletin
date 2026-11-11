@@ -11,6 +11,7 @@ export type StreamControlEvent = (typeof STREAM_CONTROL_EVENTS)[number];
 export const STREAM_EVENT_NAMES = {
   notifications: "notifications",
   newReplies: "new_replies",
+  conversationReplies: "conversation_replies",
 } as const;
 
 export type StreamEventName = (typeof STREAM_EVENT_NAMES)[keyof typeof STREAM_EVENT_NAMES];
@@ -21,13 +22,18 @@ export const STREAM_REAUTH_GRACE_MS = 2 * 60 * 60 * 1_000;
 export interface StreamCursor {
   readonly notificationId: bigint | null;
   readonly postId: bigint | null;
+  /** Present only on a conversation stream. */
+  readonly messageId?: bigint | null;
 }
 
-const CURSOR = /^n:(\d+)\|t:(\d+)$/;
+const CURSOR = /^n:(\d+)\|t:(\d+)(?:\|m:(\d+))?$/;
 
-/** `n:<notificationId>|t:<postId>`, the composite cursor on every stream event. */
+/** `n:<notificationId>|t:<postId>[|m:<messageId>]`, the composite stream cursor. */
 export function encodeStreamCursor(cursor: StreamCursor): string {
-  return `n:${cursor.notificationId ?? 0n}|t:${cursor.postId ?? 0n}`;
+  const base = `n:${cursor.notificationId ?? 0n}|t:${cursor.postId ?? 0n}`;
+  return cursor.messageId === undefined || cursor.messageId === null
+    ? base
+    : `${base}|m:${cursor.messageId}`;
 }
 
 export function parseStreamCursor(value: string | null | undefined): StreamCursor | null {
@@ -42,7 +48,11 @@ export function parseStreamCursor(value: string | null | undefined): StreamCurso
   }
 
   try {
-    return { notificationId: BigInt(match[1] ?? "0"), postId: BigInt(match[2] ?? "0") };
+    return {
+      notificationId: BigInt(match[1] ?? "0"),
+      postId: BigInt(match[2] ?? "0"),
+      ...(match[3] === undefined ? {} : { messageId: BigInt(match[3]) }),
+    };
   } catch {
     return null;
   }
@@ -57,4 +67,10 @@ export interface StreamNewRepliesPayload {
   readonly topicId: string;
   readonly count: number;
   readonly postId: string;
+}
+
+export interface StreamConversationRepliesPayload {
+  readonly conversationId: string;
+  readonly count: number;
+  readonly messageId: string;
 }

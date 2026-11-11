@@ -198,6 +198,8 @@ export interface DownloadableAttachment {
   readonly filename: string;
   /** Forums whose visible posts reference the attachment; permission is checked on each. */
   readonly forumIds: readonly string[];
+  /** Conversations whose messages reference the attachment; participation is checked. */
+  readonly conversationIds: readonly string[];
 }
 /**
  * A published attachment plus the forums it appears in. Unreferenced, hidden or rejected
@@ -235,7 +237,14 @@ export async function readDownloadableAttachment(
     WHERE pa.attachment_id = ${id}
   `) as Array<{ forum_id: string }>;
 
-  if (forums.length === 0) {
+  const conversations = (await sql`
+    SELECT DISTINCT m.conversation_id::text AS conversation_id
+    FROM core.conversation_message_attachments cma
+    JOIN core.conversation_messages m ON m.id = cma.message_id
+    WHERE cma.attachment_id = ${id}
+  `) as Array<{ conversation_id: string }>;
+
+  if (forums.length === 0 && conversations.length === 0) {
     return null;
   }
 
@@ -245,7 +254,29 @@ export async function readDownloadableAttachment(
     contentType: row.verified_type,
     filename: row.filename,
     forumIds: forums.map((forum) => forum.forum_id),
+    conversationIds: conversations.map((conversation) => conversation.conversation_id),
   };
+}
+
+/** True when the member is an active participant in a conversation referencing the file. */
+export async function canReadConversationAttachment(
+  sql: SQL,
+  attachmentId: string,
+  memberId: string,
+): Promise<boolean> {
+  const rows = (await sql`
+    SELECT 1
+    FROM core.conversation_message_attachments cma
+    JOIN core.conversation_messages m ON m.id = cma.message_id
+    JOIN core.conversation_participants p
+      ON p.conversation_id = m.conversation_id
+     AND p.member_id = ${memberId}
+     AND p.state = 'active'
+    WHERE cma.attachment_id = ${attachmentId}
+    LIMIT 1
+  `) as unknown[];
+
+  return rows.length > 0;
 }
 
 export interface RecordSnapshotInput {
@@ -503,6 +534,10 @@ export async function claimExpiredAttachments(
             AND NOT EXISTS (
               SELECT 1 FROM core.post_attachments pa WHERE pa.attachment_id = a.id
             )
+            AND NOT EXISTS (
+              SELECT 1 FROM core.conversation_message_attachments cma
+              WHERE cma.attachment_id = a.id
+            )
           )
         )
       ORDER BY a.expires_at NULLS LAST, a.id
@@ -521,6 +556,10 @@ export async function claimExpiredAttachments(
       WHERE a.id = ANY(${array}::bigint[])
         AND NOT EXISTS (
           SELECT 1 FROM core.post_attachments pa WHERE pa.attachment_id = a.id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM core.conversation_message_attachments cma
+          WHERE cma.attachment_id = a.id
         )
       RETURNING a.*
     `) as AttachmentRow[];
@@ -792,6 +831,168 @@ export async function syncPostAttachments(
   return position;
 }
 
+export interface MessageAttachmentRecord {
+  readonly id: string;
+  readonly messageId: string;
+  readonly filename: string;
+  readonly sizeBytes: number;
+  readonly contentType: string;
+  readonly downloadCount: number;
+  readonly inline: boolean;
+  readonly position: number;
+}
+
+interface MessageAttachmentRow {
+  readonly id: string;
+  readonly message_id: string;
+  readonly filename: string;
+  readonly size_bytes: string;
+  readonly verified_type: string;
+  readonly download_count: string;
+  readonly inline: boolean;
+  readonly position: number;
+}
+
+/** Published attachments linked to each conversation message, in body order. */
+export async function readConversationMessageAttachments(
+  sql: SQL,
+  messageIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly MessageAttachmentRecord[]>> {
+  const unique = [...new Set(messageIds)];
+  const result = new Map<string, MessageAttachmentRecord[]>();
+
+  if (unique.length === 0) {
+    return result;
+  }
+
+  const rows = (await sql`
+    SELECT
+      a.id::text AS id,
+      cma.message_id::text AS message_id,
+      a.filename,
+      a.size_bytes::text AS size_bytes,
+      a.verified_type,
+      a.download_count::text AS download_count,
+      cma.inline,
+      cma.position
+    FROM core.conversation_message_attachments cma
+    JOIN core.attachments a ON a.id = cma.attachment_id
+    WHERE cma.message_id = ANY(${`{${unique.join(",")}}`}::bigint[])
+      AND a.state = 'ready'
+      AND a.deleted_at IS NULL
+      AND a.verified_type IS NOT NULL
+      AND a.size_bytes IS NOT NULL
+    ORDER BY cma.message_id, cma.position, a.id
+  `) as MessageAttachmentRow[];
+
+  for (const row of rows) {
+    const list = result.get(row.message_id) ?? [];
+    list.push({
+      id: row.id,
+      messageId: row.message_id,
+      filename: row.filename,
+      sizeBytes: Number(row.size_bytes),
+      contentType: row.verified_type,
+      downloadCount: Number(row.download_count),
+      inline: row.inline,
+      position: row.position,
+    });
+    result.set(row.message_id, list);
+  }
+
+  return result;
+}
+
+export interface SyncConversationMessageAttachmentsInput {
+  readonly messageId: string;
+  readonly conversationId: string;
+  readonly authorId: string;
+  readonly bodyHtml: string;
+}
+
+/**
+ * Links the author's own ready uploads to one conversation message. Participation and message
+ * ownership are rechecked inside the transaction; a save without the upload context links
+ * nothing, and removing a reference restarts its orphan clock.
+ */
+export async function syncConversationMessageAttachments(
+  tx: SQL,
+  input: SyncConversationMessageAttachmentsInput,
+): Promise<number> {
+  const participant = (await tx`
+    SELECT 1
+    FROM core.conversation_messages m
+    JOIN core.conversation_participants p
+      ON p.conversation_id = m.conversation_id
+     AND p.member_id = ${input.authorId}
+     AND p.state = 'active'
+    WHERE m.id = ${input.messageId}
+      AND m.conversation_id = ${input.conversationId}
+    LIMIT 1
+  `) as unknown[];
+
+  if (participant.length === 0) {
+    return 0;
+  }
+
+  const placeholders = attachmentPlaceholders(input.bodyHtml);
+  const ids = [...placeholders.keys()];
+  const previous = (await tx`
+    DELETE FROM core.conversation_message_attachments
+    WHERE message_id = ${input.messageId}
+    RETURNING attachment_id::text AS attachment_id
+  `) as Array<{ attachment_id: string }>;
+  const removed = previous.map((row) => row.attachment_id);
+
+  if (ids.length === 0) {
+    if (removed.length > 0) {
+      await restartOrphanClock(tx, removed);
+    }
+
+    return 0;
+  }
+
+  const removedArray = `{${removed.join(",") || "0"}}`;
+  const owned = (await tx`
+    SELECT id::text AS id
+    FROM core.attachments
+    WHERE id = ANY(${`{${ids.join(",")}}`}::bigint[])
+      AND state = 'ready'
+      AND deleted_at IS NULL
+      AND (member_id = ${input.authorId} OR id = ANY(${removedArray}::bigint[]))
+  `) as Array<{ id: string }>;
+  const ownedIds = new Set(owned.map((row) => row.id));
+  let position = 0;
+
+  for (const [id, inline] of placeholders) {
+    if (!ownedIds.has(id)) {
+      continue;
+    }
+
+    await tx`
+      INSERT INTO core.conversation_message_attachments (message_id, attachment_id, position, inline)
+      VALUES (${input.messageId}, ${id}, ${position}, ${inline})
+      ON CONFLICT (message_id, attachment_id) DO UPDATE
+        SET position = EXCLUDED.position, inline = EXCLUDED.inline
+    `;
+    await tx`
+      UPDATE core.attachments
+      SET expires_at = NULL, updated_at = now()
+      WHERE id = ${id}
+    `;
+    position += 1;
+  }
+
+  const linked = new Set([...ownedIds]);
+  const stillRemoved = removed.filter((id) => !linked.has(id));
+
+  if (stillRemoved.length > 0) {
+    await restartOrphanClock(tx, stillRemoved);
+  }
+
+  return position;
+}
+
 export async function restartOrphanClock(tx: SQL, ids: readonly string[]): Promise<void> {
   if (ids.length === 0) {
     return;
@@ -895,15 +1096,25 @@ export async function recordAttachmentDownload(
   }
 
   const references = await readAttachmentReferences(sql, attachment.id);
+  const conversationAttachments = (await sql`
+    SELECT 1
+    FROM core.conversation_message_attachments cma
+    WHERE cma.attachment_id = ${attachment.id}
+    LIMIT 1
+  `) as unknown[];
 
-  if (references.length === 0) {
+  if (references.length === 0 && conversationAttachments.length === 0) {
     return { ok: false, code: "not_found" };
   }
 
   const tree = await loadForumTree(sql);
-  let allowed = false;
+  let allowed = await canReadConversationAttachment(sql, attachment.id, input.actorId);
 
   for (const reference of references) {
+    if (allowed) {
+      break;
+    }
+
     const scope = { forumId: reference.forumId, tree, sessionId: input.sessionId ?? null };
     const readable = await can(sql, input.actorId, "read", scope);
 
@@ -1049,6 +1260,9 @@ export async function softDeleteAttachment(
   `;
   await tx`
     DELETE FROM core.post_attachments WHERE attachment_id = ${attachmentId}
+  `;
+  await tx`
+    DELETE FROM core.conversation_message_attachments WHERE attachment_id = ${attachmentId}
   `;
   await refreshMemberStorage(tx, [memberId]);
 }

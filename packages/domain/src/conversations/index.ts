@@ -1,5 +1,6 @@
 import { saveContent } from "@bulletin/content";
 import type { SQL } from "bun";
+import { syncConversationMessageAttachments } from "../attachments/index.ts";
 import { loadContentRenderDependencies } from "../content/rendering.ts";
 import { emit } from "../events/outbox.ts";
 import { conversationStartMutation } from "../mutations/conversations.ts";
@@ -184,6 +185,13 @@ export async function startConversation(
         bodyHtml: rendered.bodyHtml,
         bodyText: rendered.bodyText,
         lang,
+      });
+
+      await syncConversationMessageAttachments(tx, {
+        messageId: message.id,
+        conversationId: conversation.id,
+        authorId: input.actorId,
+        bodyHtml: rendered.bodyHtml,
       });
 
       await recordConversationReply(tx, {

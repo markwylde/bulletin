@@ -9,6 +9,7 @@ import {
   reserveUpload,
   sha256Hex,
 } from "@bulletin/domain/attachments";
+import { readParticipation } from "@bulletin/domain/conversations";
 import {
   can,
   loadForumTree,
@@ -85,15 +86,24 @@ export async function attachmentRequestResponse(
     return json({ code: parsed.code }, parsed.code === "type_not_allowed" ? 415 : 400);
   }
 
-  const { forumId, filename, contentType, sizeBytes } = parsed.value;
-  const permissions = await permissionSnapshot(sql, session);
-  const allowed = await can(sql, session.memberId, "upload", {
-    forumId,
-    tree: permissions.tree,
-    snapshot: permissions.snapshot,
-  });
+  const { forumId, conversationId, filename, contentType, sizeBytes } = parsed.value;
 
-  if (!allowed) {
+  if (forumId !== undefined) {
+    const permissions = await permissionSnapshot(sql, session);
+    const allowed = await can(sql, session.memberId, "upload", {
+      forumId,
+      tree: permissions.tree,
+      snapshot: permissions.snapshot,
+    });
+
+    if (!allowed) {
+      return json({ code: "forbidden" }, 403);
+    }
+  } else if (
+    conversationId === undefined ||
+    (await readParticipation(sql, conversationId, session.memberId)) === null
+  ) {
+    // The conversation upload context checks current participation, not forum `upload`.
     return json({ code: "forbidden" }, 403);
   }
 

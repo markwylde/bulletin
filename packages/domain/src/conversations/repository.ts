@@ -490,6 +490,91 @@ export async function recordConversationReply(
       AND member_id = ${input.authorId}
       AND state = 'active'
   `;
+  // Wake open conversation streams; the durable rows are read on wake-up (ADR 0011).
+  await sql`SELECT pg_notify('conversation_activity', ${input.conversationId})`;
+}
+
+export async function maxConversationMessageId(sql: SQL, conversationId: string): Promise<bigint> {
+  const [row] = (await sql`
+    SELECT coalesce(max(id), 0)::text AS id
+    FROM core.conversation_messages
+    WHERE conversation_id = ${conversationId}
+  `) as Array<{ id: string }>;
+
+  return BigInt(row?.id ?? "0");
+}
+
+/** Message ids after the client's cursor, restricted to an active participant. */
+export async function visibleConversationMessageIdsAfter(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+  afterId: bigint,
+  limit: number,
+): Promise<readonly string[]> {
+  const rows = (await sql`
+    SELECT msg.id::text AS id
+    FROM core.conversation_messages msg
+    JOIN core.conversation_participants p
+      ON p.conversation_id = msg.conversation_id
+     AND p.member_id = ${memberId}
+     AND p.state = 'active'
+    WHERE msg.conversation_id = ${conversationId}
+      AND msg.id > ${afterId}
+    ORDER BY msg.id
+    LIMIT ${limit}
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}
+
+/** Full new-message payload for the open conversation after the client's cursor. */
+export async function readConversationMessagesAfter(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+  afterId: string,
+): Promise<readonly ConversationMessage[]> {
+  if (
+    !CONVERSATION_ID.test(conversationId) ||
+    !MEMBER_ID.test(memberId) ||
+    !/^\d+$/.test(afterId)
+  ) {
+    return [];
+  }
+
+  const rows = (await sql`
+    SELECT
+      msg.id::text AS id,
+      msg.author_id::text AS author_id,
+      m.display_name AS author_name,
+      msg.body_html,
+      msg.created_at
+    FROM core.conversation_messages msg
+    JOIN core.conversation_participants p
+      ON p.conversation_id = msg.conversation_id
+     AND p.member_id = ${memberId}
+     AND p.state = 'active'
+    LEFT JOIN core.members m ON m.id = msg.author_id
+    WHERE msg.conversation_id = ${conversationId}
+      AND msg.id > ${afterId}
+    ORDER BY msg.id
+    LIMIT 100
+  `) as Array<{
+    id: string;
+    author_id: string;
+    author_name: string | null;
+    body_html: string;
+    created_at: Date;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    authorId: row.author_id,
+    authorName: row.author_name,
+    bodyHtml: row.body_html,
+    createdAt: new Date(row.created_at),
+  }));
 }
 
 /** Marks every current message read; the page renders the whole history. */

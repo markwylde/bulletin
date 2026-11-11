@@ -72,7 +72,9 @@ export function normaliseFilename(raw: string): string | null {
 }
 
 export interface UploadRequestInput {
-  readonly forumId: string;
+  /** Exactly one context: a forum post or a conversation message. */
+  readonly forumId?: string;
+  readonly conversationId?: string;
   readonly filename: string;
   readonly contentType: AttachmentContentType;
   readonly sizeBytes: number;
@@ -93,13 +95,15 @@ export function parseUploadRequest(value: unknown): UploadRequestParseResult {
   }
 
   const forumId = value.forumId;
+  const conversationId = value.conversationId;
+  const validForum = typeof forumId === "string" && /^\d+$/.test(forumId);
+  const validConversation = typeof conversationId === "string" && /^\d+$/.test(conversationId);
   const filename = typeof value.filename === "string" ? normaliseFilename(value.filename) : null;
   const contentType = value.contentType;
   const sizeBytes = value.sizeBytes;
 
   if (
-    typeof forumId !== "string" ||
-    !/^\d+$/.test(forumId) ||
+    validForum === validConversation ||
     filename === null ||
     typeof contentType !== "string" ||
     typeof sizeBytes !== "number" ||
@@ -115,7 +119,14 @@ export function parseUploadRequest(value: unknown): UploadRequestParseResult {
 
   return {
     ok: true,
-    value: { forumId, filename, contentType, sizeBytes },
+    value: {
+      ...(validForum
+        ? { forumId: forumId as string }
+        : { conversationId: conversationId as string }),
+      filename,
+      contentType,
+      sizeBytes,
+    },
   };
 }
 

@@ -11,6 +11,8 @@ export interface StreamHub {
   onMember(memberId: string, callback: () => void): Unsubscribe;
   /** Calls back when a post was created in this topic. */
   onTopic(topicId: string, callback: () => void): Unsubscribe;
+  /** Calls back when a message was created in this conversation. */
+  onConversation(conversationId: string, callback: () => void): Unsubscribe;
   /** Calls back with the revoked session's member id or session id. */
   onSessionRevoked(callback: (payload: string) => void): Unsubscribe;
   close(): Promise<void>;
@@ -33,6 +35,7 @@ function listen<T>(map: Map<string, Set<T>>, key: string, callback: T): Unsubscr
 export async function createStreamHub(sql: SQL): Promise<StreamHub> {
   const members = new Map<string, Set<() => void>>();
   const topics = new Map<string, Set<() => void>>();
+  const conversations = new Map<string, Set<() => void>>();
   const sessionRevoked = new Set<(payload: string) => void>();
 
   const memberSubscription = await sql.listen("notify_member", (payload) => {
@@ -42,6 +45,11 @@ export async function createStreamHub(sql: SQL): Promise<StreamHub> {
   });
   const topicSubscription = await sql.listen("topic_activity", (payload) => {
     for (const callback of topics.get(payload) ?? []) {
+      callback();
+    }
+  });
+  const conversationSubscription = await sql.listen("conversation_activity", (payload) => {
+    for (const callback of conversations.get(payload) ?? []) {
       callback();
     }
   });
@@ -58,6 +66,9 @@ export async function createStreamHub(sql: SQL): Promise<StreamHub> {
     onTopic(topicId, callback) {
       return listen(topics, topicId, callback);
     },
+    onConversation(conversationId, callback) {
+      return listen(conversations, conversationId, callback);
+    },
     onSessionRevoked(callback) {
       sessionRevoked.add(callback);
       return () => {
@@ -67,9 +78,11 @@ export async function createStreamHub(sql: SQL): Promise<StreamHub> {
     async close() {
       members.clear();
       topics.clear();
+      conversations.clear();
       sessionRevoked.clear();
       await memberSubscription.unlisten();
       await topicSubscription.unlisten();
+      await conversationSubscription.unlisten();
       await sessionSubscription.unlisten();
     },
   };

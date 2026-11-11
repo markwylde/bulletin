@@ -27,6 +27,7 @@
           <time class="bl-muted" datetime="{{ message.iso }}">{{ message.time }}</time>
         </header>
         <div class="bl-message__body">{{ message.body }}</div>
+        {% if message.files %}{{ message.files }}{% endif %}
       </li>
     {% endfor %}
   </ol>

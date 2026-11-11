@@ -32,6 +32,7 @@ const page =
         locale,
         translate,
         conversationId,
+        attachmentsEnabled: flags.values.attachments === true,
       });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 

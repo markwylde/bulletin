@@ -24,6 +24,7 @@ import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import {
   archiveConversationResponse,
+  conversationMessagesResponse,
   conversationResponse,
   createConversationResponse,
   leaveConversationResponse,
@@ -482,6 +483,25 @@ await startService({
         }
 
         return conversationResponse(sql, session, conversationMatch[1] ?? "");
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const conversationMessagesMatch = /^\/api\/conversations\/(\d+)\/messages$/.exec(pathname);
+
+    if (request.method === "GET" && conversationMessagesMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return conversationMessagesResponse(
+          sql,
+          session,
+          conversationMessagesMatch[1] ?? "",
+          new URL(request.url),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

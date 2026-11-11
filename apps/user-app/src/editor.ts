@@ -7,6 +7,7 @@ export interface EditorView {
   readonly contextKey: string;
   readonly initialMarkdown: string;
   readonly forumId: string;
+  readonly conversationId?: string;
   readonly canUpload: boolean;
   readonly emoticons: readonly {
     readonly code: string;
@@ -28,6 +29,7 @@ export async function buildEditorView(
     readonly attachments: boolean;
     readonly name?: string;
     readonly forumId: string;
+    readonly conversationId?: string;
     readonly canUpload: boolean;
   },
 ): Promise<EditorView> {
@@ -38,6 +40,7 @@ export async function buildEditorView(
     contextKey: input.contextKey,
     initialMarkdown: input.initialMarkdown ?? "",
     forumId: input.forumId,
+    ...(input.conversationId === undefined ? {} : { conversationId: input.conversationId }),
     canUpload: input.canUpload,
     emoticons: sets.flatMap((set) =>
       set.emoticons.map((emoticon) => ({

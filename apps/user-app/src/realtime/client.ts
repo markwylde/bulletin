@@ -2,10 +2,12 @@ import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
 import {
   STREAM_CONTROL_EVENTS,
   STREAM_EVENT_NAMES,
+  type StreamConversationRepliesPayload,
   type StreamNewRepliesPayload,
   type StreamNotificationPayload,
 } from "@bulletin/domain/events/stream";
 import { clearReauthDrafts } from "@bulletin/ui/islands/editor/drafts";
+import { clientCsrfToken } from "../csrf.ts";
 
 const ID = /^[1-9]\d{0,18}$/;
 
@@ -22,14 +24,29 @@ function lastRenderedPostId(): string | null {
   return last !== null && ID.test(last) ? last : null;
 }
 
+function lastConversationMessageId(): string | null {
+  const messages = [...document.querySelectorAll<HTMLElement>("[data-conversation-message]")];
+  const last = messages[messages.length - 1]?.getAttribute("data-conversation-message") ?? null;
+  return last !== null && ID.test(last) ? last : null;
+}
+
 function streamUrl(): string {
+  const conversationPage = document.querySelector<HTMLElement>("[data-conversation-page]");
+  const conversationId = conversationPage?.getAttribute("data-conversation-id") ?? null;
   const topicPage = document.querySelector<HTMLElement>("[data-topic-page]");
   const topicId = topicPage?.getAttribute("data-topic-id") ?? null;
   // The banner only makes sense on the last page: a later page has its own "next" link.
   const onLastPage = document.querySelector("[data-page-next]") === null;
   const params = new URLSearchParams();
 
-  if (topicId !== null && ID.test(topicId) && onLastPage) {
+  if (conversationId !== null && ID.test(conversationId)) {
+    params.set("conversation", conversationId);
+    const messageId = lastConversationMessageId();
+
+    if (messageId !== null) {
+      params.set("message", messageId);
+    }
+  } else if (topicId !== null && ID.test(topicId) && onLastPage) {
     params.set("topic", topicId);
     const postId = lastRenderedPostId();
 
@@ -82,6 +99,89 @@ function showNewReplies(payload: StreamNewRepliesPayload): void {
       window.location.reload();
     });
   }
+}
+
+interface LiveConversationMessage {
+  readonly id: string;
+  readonly authorId: string;
+  readonly authorName: string | null;
+  readonly bodyHtml: string;
+  readonly createdAt: string;
+}
+
+function appendConversationMessage(list: HTMLElement, message: LiveConversationMessage): void {
+  const item = document.createElement("li");
+  item.className = "bl-message";
+  item.dataset.conversationMessage = message.id;
+
+  const header = document.createElement("header");
+  header.className = "bl-message__header";
+  const author = document.createElement("a");
+  author.href = `/profile/${message.authorId}`;
+  author.dataset.conversationAuthor = "true";
+  author.textContent = message.authorName ?? "";
+  const time = document.createElement("time");
+  time.className = "bl-muted";
+  time.dateTime = message.createdAt;
+  time.textContent = new Intl.DateTimeFormat(document.documentElement.lang || undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(message.createdAt));
+  header.append(author, time);
+
+  const body = document.createElement("div");
+  body.className = "bl-message__body";
+  // The server sanitised this HTML in the content pipeline (ADR 0007).
+  body.innerHTML = message.bodyHtml;
+  item.append(header, body);
+  list.append(item);
+}
+
+async function appendConversationReplies(payload: StreamConversationRepliesPayload): Promise<void> {
+  const page = document.querySelector<HTMLElement>("[data-conversation-page]");
+  const conversationId = page?.getAttribute("data-conversation-id") ?? "";
+
+  if (page === null || conversationId !== payload.conversationId) {
+    return;
+  }
+
+  const list = page.querySelector<HTMLElement>("[data-conversation-messages]");
+  const last = lastConversationMessageId() ?? "0";
+
+  if (list === null) {
+    return;
+  }
+
+  const response = await fetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages?after=${encodeURIComponent(last)}`,
+    { headers: { accept: "application/json" } },
+  );
+
+  if (!response.ok) {
+    return;
+  }
+
+  const body = (await response.json()) as { messages?: readonly LiveConversationMessage[] };
+
+  for (const message of body.messages ?? []) {
+    if (
+      !ID.test(message.id) ||
+      document.querySelector(`[data-conversation-message="${message.id}"]`) !== null
+    ) {
+      continue;
+    }
+
+    appendConversationMessage(list, message);
+  }
+
+  const csrf = await clientCsrfToken();
+  await fetch(`/api/conversations/${encodeURIComponent(conversationId)}/read`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      ...(csrf === null ? {} : { "x-bulletin-csrf": csrf }),
+    },
+  }).catch(() => undefined);
 }
 
 async function refreshCounts(): Promise<void> {
@@ -167,6 +267,16 @@ if (
   source.addEventListener(STREAM_EVENT_NAMES.newReplies, (event) => {
     try {
       showNewReplies(JSON.parse((event as MessageEvent<string>).data) as StreamNewRepliesPayload);
+    } catch {
+      // Ignore malformed payloads.
+    }
+  });
+
+  source.addEventListener(STREAM_EVENT_NAMES.conversationReplies, (event) => {
+    try {
+      void appendConversationReplies(
+        JSON.parse((event as MessageEvent<string>).data) as StreamConversationRepliesPayload,
+      );
     } catch {
       // Ignore malformed payloads.
     }
