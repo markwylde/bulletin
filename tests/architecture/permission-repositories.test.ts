@@ -33,6 +33,9 @@ function isAllowed(file: SourceFile): boolean {
     file.path.startsWith("apps/staff-api/src/") ||
     // The re-render worker only materialises stored HTML; it never serves a viewer.
     file.path === "packages/db/src/jobs/content.ts" ||
+    // The attachment state machine updates lifecycle state by ID; it never reads content for
+    // a viewer, and every download still goes through the permission repository (ADR 0019).
+    file.path === "packages/storage/src/attachments.ts" ||
     isPermissionRepository(file)
   );
 }

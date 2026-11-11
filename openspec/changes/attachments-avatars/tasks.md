@@ -2,7 +2,7 @@
 
 ## 1. Storage core
 
-- [ ] 1.1 Implement `packages/storage` (Bun.S3Client wrapper, presign, server-side copy, key conventions) with contract tests against the S3 mock
+- [x] 1.1 Implement `packages/storage` (Bun.S3Client wrapper, presign, server-side copy, key conventions) with contract tests against the S3 mock
 - [ ] 1.2 Migrations for attachments (state machine), post_attachments, member_storage and avatar fields; integration tests for state transitions
 
 ## 2. Upload pipeline
