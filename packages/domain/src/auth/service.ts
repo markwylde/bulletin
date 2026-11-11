@@ -480,20 +480,38 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           : Promise.resolve(null),
       ]);
       void visits;
-      const [unreadIds, unreadForums, firstUnreadRows] = await Promise.all([
+      const [unreadIds, unreadForums] = await Promise.all([
         unreadTopicIds(options.sql, {
           memberId: session.memberId,
           topicIds: readableTopics,
         }),
         unreadForumIds(options.sql, { memberId: session.memberId, forumIds: readableForums }),
-        readableTopics.length === 0
-          ? Promise.resolve([])
-          : firstUnreadForTopics(options.sql, {
-              memberId: session.memberId,
-              topicIds: readableTopics,
-              perPage: settings.postsPerPage,
-            }),
       ]);
+      const firstUnreadRows = (
+        await Promise.all(
+          readableTopics.map(async (topicId) => {
+            const forumId = topicForums.get(topicId);
+
+            if (forumId === undefined) {
+              return [];
+            }
+
+            return firstUnreadForTopics(options.sql, {
+              memberId: session.memberId,
+              topicIds: [topicId],
+              perPage: settings.postsPerPage,
+              seeUnapproved: await can(options.sql, session.memberId, "see_unapproved", {
+                ...scope,
+                forumId,
+              }),
+              seeDeleted: await can(options.sql, session.memberId, "see_deleted", {
+                ...scope,
+                forumId,
+              }),
+            });
+          }),
+        )
+      ).flat();
       const editWindow = Number(snapshot.settings["posting.edit_window_minutes"] ?? 0);
       const canDeleteOwn = snapshot.settings["posting.can_delete_own"] === true;
       const editablePosts: Array<Record<string, unknown>> = [];
@@ -545,7 +563,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         unreadForums,
         firstUnread: firstUnreadRows.map((row) => ({
           topicId: row.topicId,
-          url: `${canonicalUrl("topic", row.topicId, row.topicSlug, { page: row.page })}#post-${row.postId}`,
+          // The permalink re-resolves the viewer's page after their own visibility ordering.
+          url: canonicalUrl("topic", row.topicId, row.topicSlug, { postId: row.postId }),
         })),
         dismissedAnnouncements,
         // Counts arrive with `events-notifications`; the overlay shape is fixed now.

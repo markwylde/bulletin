@@ -1,4 +1,4 @@
-import { forumTag, postSnapshotsTag, postTag, topicTag } from "@bulletin/cache";
+import { forumTag, GLOBAL_CACHE_TAGS, postSnapshotsTag, postTag, topicTag } from "@bulletin/cache";
 import { ensureCurrentRendering, resolveQuotePlaceholders } from "@bulletin/content";
 import { listEmbedProviders, loadQuoteSnapshot } from "@bulletin/domain/content";
 import { listVisibleForums } from "@bulletin/domain/forums";
@@ -13,6 +13,7 @@ import { readPollForTopic } from "@bulletin/domain/polls";
 import {
   countTopicPosts,
   loadQuoteSources,
+  readTopicPostById,
   readTopicPostPage,
   readTopicPrefix,
   type TopicPostRow,
@@ -100,6 +101,8 @@ export interface TopicPageData {
   readonly quoteTopicIds: readonly string[];
   readonly quotePostIds: readonly string[];
   readonly postTags: ReadonlyMap<string, readonly string[]>;
+  readonly allPostTags: readonly string[];
+  readonly loadPost: (postId: string) => Promise<TopicPagePost | null>;
 }
 
 function formatDate(locale: Locale, value: Date): string {
@@ -247,7 +250,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     }),
   );
   const sourceIds = [...new Set(rendered.flatMap((entry) => quoteSourceIds(entry.html)))];
-  const sources = await loadQuoteSources(input.sql, sourceIds);
+  const sources = new Map(await loadQuoteSources(input.sql, sourceIds));
   const resolver = {
     async loadSnapshot(snapshotId: string) {
       return loadQuoteSnapshot(input.sql, snapshotId);
@@ -311,6 +314,79 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
       }),
     ),
   );
+  const buildPostView = (post: TopicPostRow, bodyHtml: string): TopicPagePost => ({
+    id: post.id,
+    position: post.position,
+    href: canonicalUrl("topic", input.topic.id, input.topic.slug, { postId: post.id }),
+    authorCard:
+      post.authorId === null
+        ? safeHtml(
+            `<span class="bl-author-card bl-author-card--deleted">${escapeHtml(
+              input.translate("member.deletedName"),
+            )}</span>`,
+          )
+        : safeHtml(`<bl-member-card data-member="${post.authorId}"></bl-member-card>`),
+    body: safeHtml(bodyHtml),
+    deleted: post.visibility === "soft_deleted",
+    unapproved: post.visibility === "unapproved",
+    createdAt: formatDate(input.locale, post.createdAt),
+    editedMarker: editedMarker(input, post),
+    ...postActions({
+      post,
+      viewerId,
+      canEditMod,
+      canSoftDelete,
+      canRestore,
+      canHardDelete,
+      canViewHistory,
+      publicEditHistory: input.publicEditHistory === true,
+      editWindow,
+      canDeleteOwn,
+    }),
+  });
+  const postViews = posts.rows.map((post, index) =>
+    buildPostView(post, bodies[index] ?? post.bodyHtml),
+  );
+  const loadPost = async (postId: string): Promise<TopicPagePost | null> => {
+    const fresh = await readTopicPostById(input.sql, {
+      topicId: input.topic.id,
+      postId,
+      seeUnapproved,
+      seeDeleted,
+    });
+
+    if (fresh === null) {
+      return null;
+    }
+
+    const current = await ensureCurrentRendering(
+      {
+        bodyHtml: fresh.bodyHtml,
+        bodyText: fresh.bodyText,
+        renderVersion: fresh.renderVersion,
+        sanitiserVersion: fresh.sanitiserVersion,
+      },
+      { profile: "post", embedProviders, mentions: mentionsEnabled },
+    );
+    const missing = quoteSourceIds(current.bodyHtml).filter((id) => !sources.has(id));
+
+    if (missing.length > 0) {
+      const extra = await loadQuoteSources(input.sql, missing);
+
+      for (const [id, source] of extra) {
+        sources.set(id, source);
+      }
+    }
+
+    const bodyHtml = await resolveQuotePlaceholders(current.bodyHtml, {
+      resolver,
+      viewerId: principalMemberId(input.principal),
+      translate: input.translate,
+    });
+
+    return buildPostView(fresh, bodyHtml);
+  };
+
   const visibleForums = await listVisibleForums(input.sql, view);
   const visibleById = new Map(visibleForums.map((forum) => [forum.id, forum]));
   const ancestorIds = tree.ancestors(input.topic.forumId).map((node) => node.id);
@@ -348,6 +424,12 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
   }
   const memberIds = posts.rows.flatMap((post) => (post.authorId === null ? [] : [post.authorId]));
   const poll = pollsEnabled ? await readPollForTopic(input.sql, input.topic.id) : null;
+  const allPostTags = [
+    GLOBAL_CACHE_TAGS.board,
+    ...quoteTopicIds.map(topicTag),
+    ...quotePostIds.map(postSnapshotsTag),
+    ...[...sources.values()].map((source) => forumTag(source.forumId)),
+  ];
 
   return {
     breadcrumbs,
@@ -358,6 +440,8 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     memberIds,
     pollId: poll?.id ?? null,
     postTags,
+    allPostTags: [...new Set(allPostTags)],
+    loadPost,
     quoteTopicIds: quoteTopicIds,
     quotePostIds,
     viewModel: {
@@ -373,36 +457,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
       locked: input.topic.locked,
       isModerator,
       replyCount: input.translate("index.topicReplies", { count: input.topic.replyCount }),
-      posts: posts.rows.map((post, index) => ({
-        id: post.id,
-        position: post.position,
-        href: canonicalUrl("topic", input.topic.id, input.topic.slug, { postId: post.id }),
-        authorCard:
-          post.authorId === null
-            ? safeHtml(
-                `<span class="bl-author-card bl-author-card--deleted">${escapeHtml(
-                  input.translate("member.deletedName"),
-                )}</span>`,
-              )
-            : safeHtml(`<bl-member-card data-member="${post.authorId}"></bl-member-card>`),
-        body: safeHtml(bodies[index] ?? post.bodyHtml),
-        deleted: post.visibility === "soft_deleted",
-        unapproved: post.visibility === "unapproved",
-        createdAt: formatDate(input.locale, post.createdAt),
-        editedMarker: editedMarker(input, post),
-        ...postActions({
-          post,
-          viewerId,
-          canEditMod,
-          canSoftDelete,
-          canRestore,
-          canHardDelete,
-          canViewHistory,
-          publicEditHistory: input.publicEditHistory === true,
-          editWindow,
-          canDeleteOwn,
-        }),
-      })),
+      posts: postViews,
       pagination: {
         page,
         pageCount,
@@ -453,7 +508,6 @@ function postActions(input: {
   | "canHardDelete"
   | "canViewHistory"
 > {
-  const isAuthor = input.post.authorId !== null && input.post.authorId === input.viewerId;
   const visible = input.post.visibility === "visible";
   void input.editWindow;
   void input.canDeleteOwn;
@@ -463,7 +517,8 @@ function postActions(input: {
   return {
     canEdit: input.canEditMod,
     editBody: input.canEditMod ? input.post.bodyMd : null,
-    canRedact: input.canEditMod && !isAuthor,
+    // Redaction is ownership-dependent; the private overlay supplies it per viewer.
+    canRedact: false,
     canDelete: visible && input.canSoftDelete,
     canRestore: !visible && input.canRestore,
     canHardDelete: input.canHardDelete && input.post.position !== 1,

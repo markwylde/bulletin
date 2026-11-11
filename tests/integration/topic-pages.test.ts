@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { createRenderCache, createTagVersions } from "@bulletin/cache";
+import {
+  bumpCacheTags,
+  createRenderCache,
+  createTagVersions,
+  GLOBAL_CACHE_TAGS,
+} from "@bulletin/cache";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -266,6 +271,51 @@ integrationDescribe("forum topic list and topic view", () => {
         const filteredHtml = filtered.kind === "page" ? filtered.html : "";
         expect(filteredHtml).toContain("Bug report about the editor");
         expect(filteredHtml).not.toContain("Question about the editor");
+
+        expectOk(
+          await startTopic(database.sql, {
+            actorId: member.memberId,
+            forumId: help,
+            title: "Second bug report",
+            bodyMd: "Another bug body.",
+            prefixId: bugPrefix,
+          }),
+        );
+        await versions.refresh();
+        const filteredPages = await renderForumRoute({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session: null,
+          ref: `${help}-help-questions`,
+          prefix: "bug",
+          pluginsGeneration: 1,
+          colourScheme: "system",
+          cache,
+          tagVersions: versions,
+        });
+        const filteredPagesHtml = filteredPages.kind === "page" ? filteredPages.html : "";
+        const nextHref = /href="([^"]+)" rel="next" data-page-next/.exec(filteredPagesHtml)?.[1];
+        expect(nextHref).toBeDefined();
+        expect(nextHref).toContain("prefix=bug");
+        expect(nextHref).toContain("page=2");
+
+        const filteredPageTwo = await renderForumRoute({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session: null,
+          ref: `${help}-help-questions`,
+          prefix: "bug",
+          page: 2,
+          pluginsGeneration: 1,
+          colourScheme: "system",
+          cache,
+          tagVersions: versions,
+        });
+        const filteredPageTwoHtml = filteredPageTwo.kind === "page" ? filteredPageTwo.html : "";
+        expect(filteredPageTwoHtml).toContain("Bug report about the editor");
+        expect(filteredPageTwoHtml).not.toContain("Question about the editor");
 
         const denied = await renderForumRoute({
           sql: database.sql,
@@ -578,6 +628,178 @@ integrationDescribe("forum topic list and topic view", () => {
     });
   }, 45_000);
 
+  test("moderators with the same visibility share identical edit-form HTML", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "super-mod");
+      const otherModerator = await memberSession(database, "admin");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Shared moderator form",
+          bodyMd: "Body.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const render = (session: UserAppSessionContext) =>
+          topicCache(database, session, `${topic.topicId}-shared-moderator-form`, cache, versions);
+
+        const authorPage = await render(author);
+        const otherPage = await render(otherModerator);
+        const authorHtml = authorPage.kind === "page" ? authorPage.html : "";
+        const otherHtml = otherPage.kind === "page" ? otherPage.html : "";
+
+        expect(authorHtml).toContain("data-post-edit");
+        expect(authorHtml).not.toContain('name="redact"');
+        expect(otherHtml).toBe(authorHtml);
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 45_000);
+
+  test("a redaction committed while the page renders never caches the old body", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+      const moderator = await memberSession(database, "super-mod");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Interleaved redaction",
+          bodyMd: "Original secret body.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const base = createRenderCache({ tags: versions });
+        let calls = 0;
+        const cache = {
+          ...base,
+          getOrRender: async (request: Parameters<typeof base.getOrRender>[0]) => {
+            calls += 1;
+
+            // The page has prepared (and holds the old post); redact before the block
+            // snapshot is taken, which is exactly the interleaving that used to cache it.
+            if (calls === 2) {
+              expectOk(
+                await editPost(database.sql, {
+                  actorId: moderator.memberId,
+                  postId: topic.postId,
+                  bodyMd: "Redacted body.",
+                  redact: true,
+                }),
+              );
+            }
+
+            return base.getOrRender(request);
+          },
+        };
+        const first = await topicCache(
+          database,
+          null,
+          `${topic.topicId}-interleaved-redaction`,
+          cache,
+          versions,
+        );
+        const firstHtml = first.kind === "page" ? first.html : "";
+        expect(firstHtml).toContain("Redacted body.");
+        expect(firstHtml).not.toContain("Original secret body.");
+
+        await versions.refresh();
+        const second = await topicCache(
+          database,
+          null,
+          `${topic.topicId}-interleaved-redaction`,
+          cache,
+          versions,
+        );
+        const secondHtml = second.kind === "page" ? second.html : "";
+        expect(secondHtml).toContain("Redacted body.");
+        expect(secondHtml).not.toContain("Original secret body.");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 45_000);
+
+  test("public-history toggles rebuild post blocks in both directions", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+      const viewer = await memberSession(database, "member-2");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "History cache topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const base = createRenderCache({ tags: versions });
+        const calls: Array<{ readonly key: string; readonly status: string }> = [];
+        const counted = {
+          ...base,
+          getOrRender: async (request: Parameters<typeof base.getOrRender>[0]) => {
+            const result = await base.getOrRender(request);
+            calls.push({ key: result.key, status: result.status });
+            return result;
+          },
+        };
+        const render = () =>
+          topicCache(database, viewer, `${topic.topicId}-history-cache-topic`, counted, versions);
+
+        await render();
+        expect(
+          calls.find((call) => call.key.startsWith(`post-block:${topic.postId}:`))?.status,
+        ).toBe("miss");
+
+        calls.length = 0;
+        await database.sql`UPDATE core.board_settings SET public_edit_history = true WHERE id = 1`;
+        await bumpCacheTags(database.sql, [GLOBAL_CACHE_TAGS.board]);
+        await versions.refresh();
+        const on = await render();
+        expect(
+          calls.find((call) => call.key.startsWith(`post-block:${topic.postId}:`))?.status,
+        ).toBe("miss");
+        expect(on.kind === "page" ? on.html : "").toContain('data-post-history="');
+
+        calls.length = 0;
+        await database.sql`UPDATE core.board_settings SET public_edit_history = false WHERE id = 1`;
+        await bumpCacheTags(database.sql, [GLOBAL_CACHE_TAGS.board]);
+        await versions.refresh();
+        const off = await render();
+        expect(
+          calls.find((call) => call.key.startsWith(`post-block:${topic.postId}:`))?.status,
+        ).toBe("miss");
+        expect(off.kind === "page" ? off.html : "").not.toContain('data-post-history="');
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 45_000);
+
   test("unapproved quote sources never leak into shared variants", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");
@@ -702,14 +924,17 @@ The rest is public.`,
 
         const moderatorPage = await render(moderator);
         const moderatorHtml = moderatorPage.kind === "page" ? moderatorPage.html : "";
-        expect(moderatorHtml).toContain('name="redact" checked');
-        expect(moderatorHtml).toContain("data-post-history");
+        expect(moderatorHtml).toContain(`data-post-edit="${topic.postId}"`);
+        expect(moderatorHtml).not.toContain('name="redact"');
+        expect(moderatorHtml).toContain('data-post-history="');
         expect(moderatorHtml).toContain("data-topic-action");
 
         await database.sql`UPDATE core.board_settings SET public_edit_history = true WHERE id = 1`;
+        await bumpCacheTags(database.sql, [GLOBAL_CACHE_TAGS.board]);
+        await versions.refresh();
         const publicPage = await render(other);
         const publicHtml = publicPage.kind === "page" ? publicPage.html : "";
-        expect(publicHtml).toContain("data-post-history");
+        expect(publicHtml).toContain('data-post-history="');
         expect(publicHtml).not.toContain('name="redact"');
       } finally {
         await versions.close();

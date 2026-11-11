@@ -639,6 +639,22 @@ function privatePostControls(post: EditablePost): void {
     }
   }
 
+  if (post.canRedact) {
+    const form = article.querySelector<HTMLFormElement>("[data-edit-form]");
+
+    if (form !== null && form.querySelector("input[name=redact]") === null) {
+      const redactLabel = document.createElement("label");
+      redactLabel.className = "bl-check";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.name = "redact";
+      checkbox.checked = true;
+      redactLabel.append(checkbox, ` ${labels.labelRedact ?? ""}`);
+      const submit = form.querySelector("[data-edit-submit]");
+      form.insertBefore(redactLabel, submit);
+    }
+  }
+
   if (post.canDelete && article.querySelector('[data-post-action="soft"]') === null) {
     const actions = article.querySelector(".bl-post__meta");
 

@@ -171,6 +171,7 @@ export async function createTopicResponse(
     const created = await startTopic(locked, {
       actorId: session.memberId,
       forumId,
+      sessionId: session.id ?? session.sessionId ?? null,
       title: typeof body.title === "string" ? body.title : "",
       bodyMd: typeof body.bodyMd === "string" ? body.bodyMd : "",
       ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
@@ -384,12 +385,22 @@ export async function postDeleteResponse(
   }
 
   if (action === "restore") {
+    const before = await readPostContext(sql, postId);
     const result = await restore(sql, {
       actorId: session.memberId,
       postId,
       sessionId: session.id ?? session.sessionId ?? null,
     });
-    return result.ok ? json({ ok: true }) : failure(result.code);
+
+    if (!result.ok) {
+      return failure(result.code);
+    }
+
+    if (before?.visibility === "unapproved" && before.authorId !== null) {
+      await evaluatePromotion(sql, before.authorId).catch(() => undefined);
+    }
+
+    return json({ ok: true });
   }
 
   if (action === "hard") {

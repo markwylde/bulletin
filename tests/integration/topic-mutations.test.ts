@@ -137,6 +137,20 @@ integrationDescribe("topic and post mutations", () => {
     await withSeededDb(async (database) => {
       const general = await forumId(database, "general-discussion");
       const author = await memberId(database, "member-1");
+      const [session] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${author}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (session === undefined) {
+        throw new Error("Could not create a session");
+      }
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${session.id}, 'forum_password', ${general})
+      `;
       const beforeForum = await forumCounters(database, general);
       const beforeMember = await memberPostCount(database, author);
       const [prefix] = (await database.sql`
@@ -151,6 +165,7 @@ integrationDescribe("topic and post mutations", () => {
         await startTopic(database.sql, {
           actorId: author,
           forumId: general,
+          sessionId: session.id,
           title: "  How do I quote a post?  ",
           bodyMd: "Use **multi-quote**.",
           ...(prefix === undefined ? {} : { prefixId: prefix.id }),

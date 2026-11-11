@@ -95,16 +95,15 @@ export async function softDelete(
   const isAuthor = post.authorId !== null && post.authorId === input.actorId;
   const allowed =
     readable &&
-    (isAuthor
-      ? await memberMayDeleteOwnPosts(sql, input.actorId)
-      : await actorCanModerate(
-          sql,
-          input.actorId,
-          "soft_delete",
-          post.forumId,
-          tree,
-          input.sessionId ?? null,
-        ));
+    ((isAuthor && (await memberMayDeleteOwnPosts(sql, input.actorId))) ||
+      (await actorCanModerate(
+        sql,
+        input.actorId,
+        "soft_delete",
+        post.forumId,
+        tree,
+        input.sessionId ?? null,
+      )));
 
   if (!allowed) {
     return { ok: false, code: "forbidden" };
@@ -145,16 +144,15 @@ export async function softDelete(
         );
         const allowed =
           readable &&
-          (currentIsAuthor
-            ? await memberMayDeleteOwnPosts(tx, input.actorId)
-            : await actorCanModerate(
-                tx,
-                input.actorId,
-                "soft_delete",
-                current.forumId,
-                freshTree,
-                input.sessionId ?? null,
-              ));
+          ((currentIsAuthor && (await memberMayDeleteOwnPosts(tx, input.actorId))) ||
+            (await actorCanModerate(
+              tx,
+              input.actorId,
+              "soft_delete",
+              current.forumId,
+              freshTree,
+              input.sessionId ?? null,
+            )));
 
         if (!allowed) {
           reject("forbidden");

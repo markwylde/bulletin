@@ -314,10 +314,21 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     });
   }
 
-  const pageHref = (page: number): string =>
-    page <= 1
-      ? canonicalUrl("forum", input.forum.id, input.forum.slug)
-      : `${canonicalUrl("forum", input.forum.id, input.forum.slug)}?page=${page}`;
+  const pageHref = (page: number): string => {
+    const base = canonicalUrl("forum", input.forum.id, input.forum.slug);
+    const params = new URLSearchParams();
+
+    if (activePrefix !== null) {
+      params.set("prefix", activePrefix);
+    }
+
+    if (page > 1) {
+      params.set("page", String(page));
+    }
+
+    const query = params.toString();
+    return query === "" ? base : `${base}?${query}`;
+  };
   const formatDate = (value: Date): string =>
     new Intl.DateTimeFormat(input.locale, { dateStyle: "medium", timeStyle: "short" }).format(
       value,

@@ -206,6 +206,66 @@ integrationDescribe("read tracking", () => {
     });
   }, 30_000);
 
+  test("moderator first unread follows the visibility ordering that includes deleted posts", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "super-mod");
+      const author = await memberSession(database, "member-1");
+      const offTopic = await forumId(database, "off-topic");
+      const topic = await createQuestionTopic(
+        database,
+        author.memberId,
+        offTopic,
+        "Moderator paging topic",
+        13,
+      );
+      const markerPost = topic.postIds[5];
+      const unreadPost = topic.postIds[6];
+
+      if (markerPost === undefined || unreadPost === undefined) {
+        throw new Error("Missing post");
+      }
+
+      await database.sql`
+        UPDATE core.posts SET visibility = 'soft_deleted'
+        WHERE topic_id = ${topic.topicId} AND position BETWEEN 2 AND 5
+      `;
+      const [post] = (await database.sql`
+        SELECT created_at FROM core.posts WHERE id = ${markerPost}
+      `) as Array<{ created_at: Date }>;
+
+      if (post === undefined) {
+        throw new Error("Missing timestamp");
+      }
+
+      await recordVisit(database.sql, {
+        viewerKey: memberViewerKey(member.memberId),
+        ctx: `topic:${topic.topicId}`,
+        memberId: member.memberId,
+        lastReadAt: post.created_at,
+        lastReadPostId: markerPost,
+      });
+
+      const ordinary = await firstUnreadForTopics(database.sql, {
+        memberId: member.memberId,
+        topicIds: [topic.topicId],
+        perPage: 2,
+      });
+      const moderator = await firstUnreadForTopics(database.sql, {
+        memberId: member.memberId,
+        topicIds: [topic.topicId],
+        perPage: 2,
+        seeDeleted: true,
+      });
+
+      expect(ordinary).toEqual([
+        expect.objectContaining({ topicId: topic.topicId, postId: unreadPost, page: 2 }),
+      ]);
+      expect(moderator).toEqual([
+        expect.objectContaining({ topicId: topic.topicId, postId: unreadPost, page: 4 }),
+      ]);
+    });
+  }, 30_000);
+
   test("marking the board read clears every forum and topic and sets one member row", async () => {
     await withSeededDb(async (database) => {
       const member = await memberSession(database, "member-2");

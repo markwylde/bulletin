@@ -4,12 +4,15 @@ import type { Locale, Translator } from "@bulletin/i18n";
 import { type LoadedTheme, themeContentKey } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { renderThemedPage } from "../theme/render.ts";
+import type { TopicPagePost } from "./page.ts";
 
 export interface PostBlockInput {
   readonly sql: SQL;
   readonly cache: RenderCache;
   readonly theme: LoadedTheme | null;
-  readonly post: object & { readonly id: string };
+  readonly post: TopicPagePost;
+  /** Reloads the current block model inside `prepare`, after tag versions are captured. */
+  readonly loadPost: (postId: string) => Promise<TopicPagePost | null>;
   readonly visibilityKey: string;
   readonly locale: Locale;
   readonly translate: Translator;
@@ -29,9 +32,14 @@ export async function renderPostBlock(input: PostBlockInput): Promise<string> {
       }:${input.theme === null ? "" : themeContentKey(input.theme)}:${input.locale}:${
         input.colourScheme
       }:${input.pluginsGeneration}:${input.flagsHash}`,
-      data: input.post,
+      data: await input.loadPost(input.post.id),
     }),
     render: async (post) => {
+      // The post may have been deleted or hidden after the page prepared.
+      if (post === null) {
+        return "";
+      }
+
       const page = await renderThemedPage({
         sql: input.sql,
         boardName: "",

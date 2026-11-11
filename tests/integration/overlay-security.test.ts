@@ -13,6 +13,7 @@ import {
 } from "@bulletin/db/seed";
 import { createAuthService, hashToken, sessionCookieName } from "@bulletin/domain/auth";
 import { markBoardRead, reply, startTopic } from "@bulletin/domain/topics";
+import { memberViewerKey, recordVisit } from "@bulletin/domain/visits";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { authIssuer, userOrigin } from "@bulletin/test-utils/urls";
 import { SQL } from "bun";
@@ -180,6 +181,69 @@ integrationDescribe("overlay security and unread state", () => {
           publicTopic.result.postId,
         ]);
         expect(payload.editablePosts[0]).toMatchObject({ bodyMd: "Public body." });
+      } finally {
+        await auth.close();
+      }
+    });
+  }, 30_000);
+
+  test("first unread uses a post permalink so moderators land on the right page", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const offTopic = await forumId(database, "off-topic");
+      const topic = await startTopic(database.sql, {
+        actorId: author,
+        forumId: offTopic,
+        title: "Overlay permalink topic",
+        bodyMd: "First body.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      const second = await reply(database.sql, {
+        actorId: author,
+        topicId: topic.result.topicId,
+        bodyMd: "Second body.",
+      });
+
+      if (!second.ok) {
+        throw new Error("Could not reply");
+      }
+
+      const [firstPost] = (await database.sql`
+        SELECT created_at FROM core.posts WHERE id = ${topic.result.postId}
+      `) as Array<{ created_at: Date }>;
+
+      if (firstPost === undefined) {
+        throw new Error("Missing first post");
+      }
+
+      await recordVisit(database.sql, {
+        viewerKey: memberViewerKey(member),
+        ctx: `topic:${topic.result.topicId}`,
+        memberId: member,
+        lastReadAt: firstPost.created_at,
+        lastReadPostId: topic.result.postId,
+      });
+
+      const auth = await overlayAuth(database);
+      const cookie = await sessionCookie(database, member);
+
+      try {
+        const response = await overlay(auth.auth, cookie, {
+          ctx: `forum:${offTopic}`,
+          topics: [topic.result.topicId],
+          forums: [offTopic],
+        });
+        expect(response.status).toBe(200);
+        const payload = (await response.json()) as {
+          firstUnread: Array<{ topicId: string; url: string }>;
+        };
+        const entry = payload.firstUnread.find((row) => row.topicId === topic.result.topicId);
+        expect(entry?.url).toMatch(new RegExp(`/topic/\\d+[^/]*/post/${second.result.postId}$`));
       } finally {
         await auth.close();
       }

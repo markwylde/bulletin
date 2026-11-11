@@ -409,6 +409,37 @@ export async function countTopicPosts(
   return count?.count ?? 0;
 }
 
+export async function readTopicPostById(
+  sql: SQL,
+  input: {
+    readonly topicId: string;
+    readonly postId: string;
+    readonly seeUnapproved: boolean;
+    readonly seeDeleted: boolean;
+  },
+): Promise<TopicPostRow | null> {
+  const rows = (await sql`
+    SELECT
+      p.id, p.author_id, author.display_name AS author_name, p.body_md, p.body_html, p.body_text,
+      p.render_version, p.sanitiser_version, p.visibility, p.position,
+      p.quoted_forum_ids::text[] AS quoted_forum_ids, p.created_at, p.edited_at,
+      p.edited_by, editor.display_name AS edited_by_name
+    FROM core.posts p
+    LEFT JOIN core.members author ON author.id = p.author_id
+    LEFT JOIN core.members editor ON editor.id = p.edited_by
+    WHERE p.topic_id = ${input.topicId}
+      AND p.id = ${input.postId}
+      AND (
+        p.visibility = 'visible'
+        OR (${input.seeUnapproved} AND p.visibility = 'unapproved')
+        OR (${input.seeDeleted} AND p.visibility = 'soft_deleted')
+      )
+  `) as TopicPostRowSql[];
+  const row = rows[0];
+
+  return row === undefined ? null : toTopicPost(row);
+}
+
 export async function readTopicPostPage(
   sql: SQL,
   input: {
@@ -953,6 +984,8 @@ export async function firstUnreadForTopics(
     readonly memberId: string;
     readonly topicIds: readonly string[];
     readonly perPage: number;
+    readonly seeUnapproved?: boolean;
+    readonly seeDeleted?: boolean;
   },
 ): Promise<readonly FirstUnreadPost[]> {
   if (input.topicIds.length === 0) {
@@ -988,7 +1021,11 @@ export async function firstUnreadForTopics(
         row_number() OVER (PARTITION BY p.topic_id ORDER BY p.position) AS rank
       FROM core.posts p
       JOIN marked ON marked.topic_id = p.topic_id
-      WHERE p.visibility = 'visible'
+      WHERE (
+          p.visibility = 'visible'
+          OR (${input.seeUnapproved ?? false} AND p.visibility = 'unapproved')
+          OR (${input.seeDeleted ?? false} AND p.visibility = 'soft_deleted')
+        )
         AND (
           marked.marker = 'epoch'::timestamptz
           OR date_trunc('milliseconds', p.created_at) > marked.marker
@@ -1009,7 +1046,11 @@ export async function firstUnreadForTopics(
         SELECT count(*)::int
         FROM core.posts p2
         WHERE p2.topic_id = ranked.topic_id
-          AND p2.visibility = 'visible'
+          AND (
+            p2.visibility = 'visible'
+            OR (${input.seeUnapproved ?? false} AND p2.visibility = 'unapproved')
+            OR (${input.seeDeleted ?? false} AND p2.visibility = 'soft_deleted')
+          )
           AND p2.position < ranked.position
       ) AS before
     FROM ranked

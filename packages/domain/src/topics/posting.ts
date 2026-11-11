@@ -53,6 +53,7 @@ export interface PostWriteOptions {
 export interface StartTopicInput {
   readonly actorId: string;
   readonly forumId: string;
+  readonly sessionId?: string | null;
   readonly title: string;
   readonly bodyMd: string;
   readonly prefixId?: string | null;
@@ -95,6 +96,7 @@ async function savePostContent(
     readonly authorId: string;
     readonly forumId: string;
     readonly tree: ForumTree;
+    readonly sessionId: string | null;
     readonly options: PostWriteOptions;
   },
 ): Promise<RenderResult> {
@@ -107,7 +109,7 @@ async function savePostContent(
     emoticons: dependencies.emoticons,
     ...(input.options.mentions === false ? {} : { mentions: dependencies.mentions }),
     embeds: dependencies.embeds,
-    quotes: createPostQuotePipeline(tx, input.tree),
+    quotes: createPostQuotePipeline(tx, input.tree, input.sessionId),
     ...(input.options.replaceWords === undefined
       ? {}
       : { replaceWords: input.options.replaceWords }),
@@ -142,7 +144,24 @@ export async function startTopic(
 
   const tree = await loadForumTree(sql);
 
-  if (!(await actorCanForumAction(sql, input.actorId, "start", forum.id, tree))) {
+  if (
+    !(await actorCanForumAction(
+      sql,
+      input.actorId,
+      "read",
+      forum.id,
+      tree,
+      input.sessionId ?? null,
+    )) ||
+    !(await actorCanForumAction(
+      sql,
+      input.actorId,
+      "start",
+      forum.id,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -168,11 +187,35 @@ export async function startTopic(
       mutation: topicStartMutation,
       input: { forumId: forum.id, authorId: input.actorId },
       apply: async (tx) => {
+        const freshTree = await loadForumTree(tx);
+
+        if (
+          !(await actorCanForumAction(
+            tx,
+            input.actorId,
+            "read",
+            forum.id,
+            freshTree,
+            input.sessionId ?? null,
+          )) ||
+          !(await actorCanForumAction(
+            tx,
+            input.actorId,
+            "start",
+            forum.id,
+            freshTree,
+            input.sessionId ?? null,
+          ))
+        ) {
+          reject("forbidden");
+        }
+
         const rendered = await savePostContent(tx, {
           bodyMd,
           authorId: input.actorId,
           forumId: forum.id,
           tree,
+          sessionId: input.sessionId ?? null,
           options,
         });
         const topicId = await insertTopic(tx, {
@@ -246,7 +289,24 @@ export async function reply(
 
   const tree = await loadForumTree(sql);
 
-  if (!(await actorCanForumAction(sql, input.actorId, "reply", topic.forumId, tree))) {
+  if (
+    !(await actorCanForumAction(
+      sql,
+      input.actorId,
+      "read",
+      topic.forumId,
+      tree,
+      input.sessionId ?? null,
+    )) ||
+    !(await actorCanForumAction(
+      sql,
+      input.actorId,
+      "reply",
+      topic.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
     return { ok: false, code: "forbidden" };
   }
 
@@ -266,6 +326,14 @@ export async function reply(
         const freshTree = await loadForumTree(tx);
 
         if (
+          !(await actorCanForumAction(
+            tx,
+            input.actorId,
+            "read",
+            current.forumId,
+            freshTree,
+            input.sessionId ?? null,
+          )) ||
           !(await actorCanForumAction(
             tx,
             input.actorId,
@@ -296,6 +364,7 @@ export async function reply(
           authorId: input.actorId,
           forumId: current.forumId,
           tree,
+          sessionId: input.sessionId ?? null,
           options,
         });
         const post = await insertPost(tx, {
@@ -450,6 +519,7 @@ export async function editPost(
           authorId: input.actorId,
           forumId: current.forumId,
           tree,
+          sessionId: input.sessionId ?? null,
           options,
         });
 

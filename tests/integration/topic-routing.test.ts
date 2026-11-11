@@ -267,6 +267,65 @@ integrationDescribe("topic routing, stubs, view counts and permalinks", () => {
     });
   }, 30_000);
 
+  test("hidden topics are unreachable directly without visibility", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const member = await memberSession(database, "member-1");
+      const moderator = await memberSession(database, "super-mod");
+      const hidden = expectOk(
+        await startTopic(database.sql, {
+          actorId: member.memberId,
+          forumId: offTopic,
+          title: "Hidden topic title",
+          bodyMd: "Hidden body.",
+        }),
+      );
+
+      const [hiddenRow] = (await database.sql`
+        SELECT slug FROM core.topics WHERE id = ${hidden.topicId}
+      `) as Array<{ slug: string }>;
+      await database.sql`
+        UPDATE core.posts SET visibility = 'unapproved' WHERE topic_id = ${hidden.topicId}
+      `;
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const render = (session: UserAppSessionContext | null) =>
+          renderTopicRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session,
+            ref: `${hidden.topicId}-${hiddenRow?.slug ?? ""}`,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+
+        const guest = await render(null);
+        expect(guest.kind).toBe("page");
+        expect(guest.kind === "page" ? guest.status : 0).toBe(404);
+
+        const ordinary = await render(member);
+        expect(ordinary.kind).toBe("page");
+        expect(ordinary.kind === "page" ? ordinary.status : 0).toBe(404);
+        expect(ordinary.kind === "page" ? ordinary.html : "").not.toContain("Hidden topic title");
+
+        const visibleToModerator = await render(moderator);
+        expect(visibleToModerator.kind).toBe("page");
+        expect(visibleToModerator.kind === "page" ? visibleToModerator.status : 0).toBe(200);
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
   test("counts a guest view once per bucket and flushes without bumping the content tag", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");

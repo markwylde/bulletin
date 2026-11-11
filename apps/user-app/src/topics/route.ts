@@ -177,8 +177,29 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
         sessionId,
         snapshot,
       }));
+    const targetVisible =
+      targetTopic !== null &&
+      (await countTopicPosts(input.sql, {
+        topicId: targetTopic.id,
+        seeUnapproved:
+          targetTopic !== null &&
+          (await can(input.sql, principal, "see_unapproved", {
+            forumId: targetTopic.forumId,
+            tree,
+            sessionId,
+            snapshot,
+          })),
+        seeDeleted:
+          targetTopic !== null &&
+          (await can(input.sql, principal, "see_deleted", {
+            forumId: targetTopic.forumId,
+            tree,
+            sessionId,
+            snapshot,
+          })),
+      })) > 0;
 
-    if (!sourceReadable || !targetReadable || target === null) {
+    if (!sourceReadable || !targetReadable || !targetVisible || target === null) {
       return renderErrorPage(input, 404);
     }
 
@@ -212,12 +233,6 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     return renderErrorPage(input, 403);
   }
 
-  const slug = resolveResourceUrl(parsed, topic.slug);
-
-  if (slug.status === 301 && slug.location !== null) {
-    return { kind: "redirect", status: 301, location: slug.location, reason: "slug" };
-  }
-
   const seeUnapproved = await can(input.sql, principal, "see_unapproved", {
     forumId: forum.id,
     tree,
@@ -230,6 +245,23 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     sessionId,
     snapshot,
   });
+
+  if (
+    (await countTopicPosts(input.sql, {
+      topicId: topic.id,
+      seeUnapproved,
+      seeDeleted,
+    })) === 0
+  ) {
+    return renderErrorPage(input, 404);
+  }
+
+  const slug = resolveResourceUrl(parsed, topic.slug);
+
+  if (slug.status === 301 && slug.location !== null) {
+    return { kind: "redirect", status: 301, location: slug.location, reason: "slug" };
+  }
+
   const settings = await readBoardSettings(input.sql);
   const perPage = settings.postsPerPage;
 
@@ -413,41 +445,41 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
   let html = rendered.html;
   let fragmentState: readonly string[] = [];
 
-  if (latest.page !== null) {
+  const pageData = latest.page;
+
+  if (pageData !== null) {
     const postBlocks = new Map<string, string>();
     await Promise.all(
-      latest.page.viewModel.posts.map(async (post) => {
+      pageData.viewModel.posts.map(async (post) => {
         const html = await renderPostBlock({
           sql: input.sql,
           cache: input.cache,
           theme: latest?.theme ?? null,
           post,
+          loadPost: pageData.loadPost,
           visibilityKey: latest?.page?.visibilityKey ?? "",
           locale: input.locale,
           translate: input.translate,
           pluginsGeneration: input.pluginsGeneration,
           colourScheme: input.colourScheme,
           flagsHash: latest?.flags.hash ?? "",
-          tags: latest?.page?.postTags.get(post.id) ?? [],
+          tags: [
+            ...(latest?.page?.postTags.get(post.id) ?? []),
+            ...(latest?.page?.allPostTags ?? []),
+          ],
         });
         postBlocks.set(post.id, html);
       }),
     );
     const [views, cards, poll] = await Promise.all([
       renderTopicViewsFragment(input.sql, input.cache, topic.id, input.locale, input.translate),
-      renderMemberCards(
-        input.sql,
-        input.cache,
-        latest.page.memberIds,
-        input.locale,
-        input.translate,
-      ),
-      latest.page.pollId === null
+      renderMemberCards(input.sql, input.cache, pageData.memberIds, input.locale, input.translate),
+      pageData.pollId === null
         ? Promise.resolve(null)
         : renderPollFragment(
             input.sql,
             input.cache,
-            latest.page.pollId,
+            pageData.pollId,
             input.locale,
             input.translate,
           ),
@@ -468,7 +500,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       views,
       poll ?? "",
       ...postBlocks.values(),
-      ...latest.page.memberIds.map((id) => cards.get(id) ?? ""),
+      ...pageData.memberIds.map((id) => cards.get(id) ?? ""),
     ];
   }
 

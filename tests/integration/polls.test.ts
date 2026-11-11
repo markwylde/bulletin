@@ -597,24 +597,6 @@ integrationDescribe("polls", () => {
     await withSeededDb(async (database) => {
       const member = await memberSession(database, "member-1");
       const general = await forumId(database, "general-discussion");
-      const created = await startTopic(database.sql, {
-        actorId: member.memberId,
-        forumId: general,
-        title: "Password poll",
-        bodyMd: "Body.",
-        poll: poll({ resultsVisibleBeforeVoting: true }),
-      });
-
-      if (!created.ok) {
-        throw new Error(`Could not create the password poll: ${created.code}`);
-      }
-
-      const stored = await readPollForTopic(database.sql, created.result.topicId);
-
-      if (stored === null) {
-        throw new Error("Missing password poll");
-      }
-
       const [session] = (await database.sql`
         INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
         VALUES (${member.memberId}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
@@ -629,6 +611,24 @@ integrationDescribe("polls", () => {
         INSERT INTO core.session_grants (session_id, kind, resource_id)
         VALUES (${session.id}, 'forum_password', ${general})
       `;
+      const created = await startTopic(database.sql, {
+        actorId: member.memberId,
+        forumId: general,
+        sessionId: session.id,
+        title: "Password poll",
+        bodyMd: "Body.",
+        poll: poll({ resultsVisibleBeforeVoting: true }),
+      });
+
+      if (!created.ok) {
+        throw new Error(`Could not create the password poll: ${created.code}`);
+      }
+
+      const stored = await readPollForTopic(database.sql, created.result.topicId);
+
+      if (stored === null) {
+        throw new Error("Missing password poll");
+      }
 
       expect(
         await pollResults(database.sql, {

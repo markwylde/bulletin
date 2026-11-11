@@ -346,12 +346,25 @@ export async function completeNewTopic(
     UPDATE core.forums
     SET topic_count = topic_count + 1,
         post_count = post_count + 1,
-        last_topic_id = ${input.topicId},
+        updated_at = now()
+    WHERE id = ${input.forumId}
+  `;
+  await tx`
+    UPDATE core.forums
+    SET last_topic_id = ${input.topicId},
         last_post_id = ${input.postId},
         last_post_member_id = ${input.authorId},
         last_post_at = ${input.createdAt},
         updated_at = now()
     WHERE id = ${input.forumId}
+      AND (
+        last_post_at IS NULL
+        OR last_post_at < ${input.createdAt}
+        OR (
+          last_post_at = ${input.createdAt}
+          AND (last_post_id IS NULL OR last_post_id < ${input.postId})
+        )
+      )
   `;
   await tx`
     UPDATE core.members SET post_count = post_count + 1 WHERE id = ${input.authorId}
@@ -371,20 +384,46 @@ export async function recordReply(
   await tx`
     UPDATE core.topics
     SET reply_count = reply_count + 1,
-        last_post_id = ${input.postId},
-        last_post_at = ${input.createdAt},
         updated_at = now()
     WHERE id = ${input.topicId}
   `;
   await tx`
+    UPDATE core.topics
+    SET last_post_id = ${input.postId},
+        last_post_at = ${input.createdAt},
+        updated_at = now()
+    WHERE id = ${input.topicId}
+      AND (
+        last_post_at IS NULL
+        OR last_post_at < ${input.createdAt}
+        OR (
+          last_post_at = ${input.createdAt}
+          AND (last_post_id IS NULL OR last_post_id < ${input.postId})
+        )
+      )
+  `;
+  await tx`
     UPDATE core.forums
     SET post_count = post_count + 1,
-        last_topic_id = ${input.topicId},
+        updated_at = now()
+    WHERE id = ${input.forumId}
+  `;
+  await tx`
+    UPDATE core.forums
+    SET last_topic_id = ${input.topicId},
         last_post_id = ${input.postId},
         last_post_member_id = ${input.authorId},
         last_post_at = ${input.createdAt},
         updated_at = now()
     WHERE id = ${input.forumId}
+      AND (
+        last_post_at IS NULL
+        OR last_post_at < ${input.createdAt}
+        OR (
+          last_post_at = ${input.createdAt}
+          AND (last_post_id IS NULL OR last_post_id < ${input.postId})
+        )
+      )
   `;
   await tx`
     UPDATE core.members SET post_count = post_count + 1 WHERE id = ${input.authorId}
@@ -643,7 +682,11 @@ export async function insertMovedStub(
  * The write-side quote resolver (ADR 0007). Read access is checked with `can()` at save
  * time, and the source forum is stored so reads can declare its `read` bit in their deps.
  */
-export function createPostQuotePipeline(sql: SQL, tree: ForumTree): QuotePipeline {
+export function createPostQuotePipeline(
+  sql: SQL,
+  tree: ForumTree,
+  sessionId: string | null = null,
+): QuotePipeline {
   return {
     resolver: {
       async canRead(ref: QuoteSourceRef, authorId: string): Promise<boolean> {
@@ -673,12 +716,13 @@ export function createPostQuotePipeline(sql: SQL, tree: ForumTree): QuotePipelin
           !(await can(sql, authorId, "see_unapproved", {
             forumId: source.forum_id,
             tree,
+            sessionId,
           }))
         ) {
           return false;
         }
 
-        return can(sql, authorId, "read", { forumId: source.forum_id, tree });
+        return can(sql, authorId, "read", { forumId: source.forum_id, tree, sessionId });
       },
       async load(ref: QuoteSourceRef): Promise<QuoteSource | null> {
         if (ref.kind !== "post") {
