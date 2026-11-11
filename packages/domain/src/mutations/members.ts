@@ -23,7 +23,12 @@ export const memberProfileMutation: Mutation<
   { readonly memberId: string }
 > = {
   name: "member.profile.update",
-  tags: (_input, result) => [memberTag(result.memberId)],
+  // Privacy options change the member list and who's online, not just the profile page.
+  tags: (_input, result) => [
+    memberTag(result.memberId),
+    GLOBAL_CACHE_TAGS.directory,
+    GLOBAL_CACHE_TAGS.online,
+  ],
 };
 
 /**

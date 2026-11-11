@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readTagVersion } from "@bulletin/cache";
+import { createRenderCache, createTagVersions, readTagVersion } from "@bulletin/cache";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -14,6 +14,7 @@ import {
 } from "@bulletin/db/seed";
 import {
   awardBadge,
+  deleteBadge,
   evaluateAllBadgeRules,
   evaluateBadgeRulesForEvent,
   evaluateBadgeRulesForMember,
@@ -27,12 +28,15 @@ import { loadMemberCards } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { safeHtml } from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import {
   authorizeStaffRoute,
   STAFF_ROUTES,
   type StaffRoute,
 } from "../../apps/staff-api/src/api.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { renderProfileRoute } from "../../apps/user-app/src/profiles/route.ts";
+import { renderMemberCards } from "../../apps/user-app/src/topics/fragments.ts";
 import { renderPostBlock } from "../../apps/user-app/src/topics/post-block.ts";
 import { createNotificationsEventHandler } from "../../apps/workers/src/notifications.ts";
 
@@ -466,6 +470,167 @@ integrationDescribe("ranks and badges", () => {
       ]);
 
       expect((await call(database, member, listBadges)).status).toBe(403);
+    });
+  }, 30_000);
+
+  test("badge awards and notifications run under the workers role", async () => {
+    await withDb(async (database) => {
+      const member = await memberId(database, "member-2");
+      const badgeId = await saveBadge(database.sql, {
+        id: null,
+        key: "worker_badge",
+        labels: { en: "Worker badge", es: "Insignia", fr: "Badge" },
+        descriptionLabels: { en: "Worker", es: "Trabajador", fr: "Travailleur" },
+        imageKey: null,
+        position: 0,
+        rule: { type: "post_count", threshold: 1, forumId: null },
+      });
+      const workerUrl = new URL(database.url);
+      workerUrl.username = "workers";
+      workerUrl.password = "";
+      const worker = new SQL(workerUrl.toString());
+
+      try {
+        expect(await evaluateBadgeRulesForMember(worker, member)).toBe(1);
+        expect((await readMemberBadges(worker, member)).map((badge) => badge.id)).toContain(
+          badgeId,
+        );
+
+        const [eventRow] = (await worker`
+          SELECT id FROM core.events WHERE type = 'badge.awarded' ORDER BY id DESC LIMIT 1
+        `) as Array<{ id: string }>;
+        const event = await loadEvent(worker, BigInt(eventRow?.id ?? "0"));
+
+        if (event === null) {
+          throw new Error("The badge event is missing");
+        }
+
+        await createNotificationsEventHandler({ sql: worker })(event);
+        const [notification] = (await worker`
+          SELECT type FROM core.notifications WHERE member_id = ${member}
+        `) as Array<{ type: string }>;
+        expect(notification?.type).toBe("badge.awarded");
+      } finally {
+        await worker.close();
+      }
+    });
+  }, 30_000);
+
+  test("a card's badge flag and badge definitions both change its cached HTML", async () => {
+    await withDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const badgeId = await saveBadge(database.sql, {
+        id: null,
+        key: "card_badge",
+        labels: { en: "Card badge", es: "Insignia", fr: "Badge" },
+        descriptionLabels: { en: "Card", es: "Tarjeta", fr: "Carte" },
+        imageKey: null,
+        position: 0,
+        rule: null,
+      });
+      await awardBadge(database.sql, {
+        memberId: member,
+        badgeId,
+        actorId: null,
+        reason: null,
+      });
+      await database.sql`UPDATE core.member_badges SET featured = true WHERE member_id = ${member}`;
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const render = (badgesEnabled: boolean) =>
+          renderMemberCards(
+            database.sql,
+            cache,
+            [member],
+            "en",
+            translate,
+            true,
+            null,
+            badgesEnabled,
+          );
+        const off = await render(false);
+        const on = await render(true);
+        expect(off.get(member)).not.toContain("Card badge");
+        expect(on.get(member)).toContain("Card badge");
+        expect(off.get(member)).not.toBe(on.get(member));
+
+        await saveBadge(database.sql, {
+          id: badgeId,
+          key: "card_badge",
+          labels: { en: "Renamed badge", es: "Insignia", fr: "Badge" },
+          descriptionLabels: { en: "Card", es: "Tarjeta", fr: "Carte" },
+          imageKey: null,
+          position: 0,
+          rule: null,
+        });
+        await versions.refresh();
+        expect((await render(true)).get(member)).toContain("Renamed badge");
+
+        await deleteBadge(database.sql, badgeId);
+        await versions.refresh();
+        expect((await render(true)).get(member)).not.toContain("Renamed badge");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("a rank edit invalidates a warmed profile", async () => {
+    await withDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const rankId = await saveRank(database.sql, {
+        id: null,
+        minPosts: 0,
+        titleLabels: { en: "Rookie", es: "Novato", fr: "Débutant" },
+        pips: 1,
+        imageKey: null,
+      });
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const render = () =>
+          renderProfileRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: null,
+            ref: `${member}-regular-member-one`,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+        const first = await render();
+        expect(first.kind).toBe("page");
+        expect(first.html).toContain("Rookie");
+
+        await saveRank(database.sql, {
+          id: rankId,
+          minPosts: 0,
+          titleLabels: { en: "Veteran", es: "Veterano", fr: "Vétéran" },
+          pips: 2,
+          imageKey: null,
+        });
+        await versions.refresh();
+
+        const second = await render();
+        expect(second.kind).toBe("page");
+        expect(second.cache).toBe("miss");
+        expect(second.html).toContain("Veteran");
+      } finally {
+        await versions.close();
+      }
     });
   }, 30_000);
 });

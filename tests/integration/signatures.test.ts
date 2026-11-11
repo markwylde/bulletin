@@ -269,4 +269,47 @@ integrationDescribe("signatures", () => {
       );
     });
   }, 30_000);
+
+  test("counts reference links, reference images and bare GFM URLs", async () => {
+    await withDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      await setSignatureLimits(database, { chars: 1_000, lines: 20, images: 1, links: 2 });
+
+      const response = async (signatureMd: string) =>
+        profileSaveResponse(
+          database.sql,
+          session(member),
+          request({
+            about: "",
+            hideOnline: false,
+            hideFromMemberList: false,
+            hideSignatures: false,
+            signatureMd,
+            values: {},
+          }),
+        );
+
+      const referenceLinks = await response(
+        "[one][1] [two][2] [three][3]\n\n[1]: https://example.com/1\n[2]: https://example.com/2\n[3]: https://example.com/3",
+      );
+      expect(referenceLinks.status).toBe(400);
+      expect(((await referenceLinks.json()) as { code: string }).code).toBe(
+        "signature_too_many_links",
+      );
+
+      const referenceImages = await response(
+        "![one][1] ![two][2]\n\n[1]: https://example.com/1.png\n[2]: https://example.com/2.png",
+      );
+      expect(referenceImages.status).toBe(400);
+      expect(((await referenceImages.json()) as { code: string }).code).toBe(
+        "signature_too_many_images",
+      );
+
+      const bareUrls = await response(
+        "https://example.com/1 https://example.com/2 https://example.com/3",
+      );
+      expect(bareUrls.status).toBe(400);
+      expect(((await bareUrls.json()) as { code: string }).code).toBe("signature_too_many_links");
+    });
+  }, 30_000);
 });

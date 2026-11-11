@@ -265,4 +265,84 @@ integrationDescribe("profile editing", () => {
       expect(read.ok && read.profile.about).toContain("Staff-edited **about**");
     });
   });
+
+  test("saves preserve restricted field values and a fields-off save deletes nothing", async () => {
+    await withDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const editable = await createField(database, {
+        type: "short_text",
+        label: "Editable field",
+        visibleTo: ["members"],
+        editableBy: ["members"],
+      });
+      const restricted = await createField(database, {
+        type: "short_text",
+        label: "Restricted field",
+        visibleTo: ["moderators"],
+        editableBy: ["moderators"],
+      });
+
+      await database.sql`
+        INSERT INTO core.member_field_values (member_id, field_id, value)
+        VALUES (${member}, ${restricted}, '"Staff only"'::jsonb)
+      `;
+
+      const saved = await profileSaveResponse(
+        database.sql,
+        session(member),
+        request({
+          about: "",
+          hideOnline: false,
+          hideFromMemberList: false,
+          hideSignatures: false,
+          hideFriends: false,
+          signatureMd: "",
+          values: { [editable]: "Member value" },
+        }),
+      );
+      expect(saved.status).toBe(200);
+
+      const afterMemberSave = (await database.sql`
+        SELECT field_id::text AS field_id, value
+        FROM core.member_field_values
+        WHERE member_id = ${member}
+        ORDER BY field_id
+      `) as Array<{ field_id: string; value: string }>;
+      expect(afterMemberSave).toEqual(
+        expect.arrayContaining([
+          { field_id: editable, value: "Member value" },
+          { field_id: restricted, value: "Staff only" },
+        ]),
+      );
+
+      const off = await profileSaveResponse(
+        database.sql,
+        session(member),
+        request({
+          about: "",
+          hideOnline: false,
+          hideFromMemberList: false,
+          hideSignatures: false,
+          hideFriends: false,
+          signatureMd: "",
+          values: {},
+        }),
+        {
+          customFields: false,
+          signatures: false,
+          customTitles: false,
+          badges: false,
+        },
+      );
+      expect(off.status).toBe(200);
+
+      const afterOffSave = (await database.sql`
+        SELECT field_id::text AS field_id, value
+        FROM core.member_field_values
+        WHERE member_id = ${member}
+        ORDER BY field_id
+      `) as Array<{ field_id: string; value: string }>;
+      expect(afterOffSave).toEqual(afterMemberSave);
+    });
+  });
 });

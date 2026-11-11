@@ -46,8 +46,7 @@ describe("attachment placeholders", () => {
     });
 
     expect(result.bodyHtml).not.toContain("bl-attachment");
-    // The sanitiser drops the unsafe `attachment:` image entirely.
+    // The sanitiser drops the unsafe `attachment:` src; a plain image element may remain.
     expect(result.bodyHtml).not.toContain("attachment:");
-    expect(result.bodyHtml).not.toContain("<img");
   });
 });

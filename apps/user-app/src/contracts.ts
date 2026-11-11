@@ -53,7 +53,12 @@ export const homeContract = defineContract({
   route: "/",
   templates: { page: "home", regions: ["header", "footer"] },
   deps: [],
-  tags: [GLOBAL_CACHE_TAGS.board, GLOBAL_CACHE_TAGS.announcements, GLOBAL_CACHE_TAGS.leaderboards],
+  tags: [
+    GLOBAL_CACHE_TAGS.board,
+    GLOBAL_CACHE_TAGS.announcements,
+    GLOBAL_CACHE_TAGS.leaderboards,
+    GLOBAL_CACHE_TAGS.online,
+  ],
   // Guests see the same board shell; the member session arrives through the overlay/API.
   cdnCacheable: true,
   requiredIslands: ["LanguageSwitcher"],
@@ -176,6 +181,7 @@ export const profileContract = defineContract<ProfileViewModel>({
     `member:${model.memberId}`,
     GLOBAL_CACHE_TAGS.profileFields,
     GLOBAL_CACHE_TAGS.badges,
+    GLOBAL_CACHE_TAGS.ranks,
     GLOBAL_CACHE_TAGS.board,
   ],
   cdnCacheable: true,
@@ -260,7 +266,7 @@ export const onlineContract = defineContract({
   route: "/members/online",
   templates: { page: "online", regions: ["header", "breadcrumbs", "empty", "footer"] },
   deps: [],
-  tags: [GLOBAL_CACHE_TAGS.board],
+  tags: [GLOBAL_CACHE_TAGS.board, GLOBAL_CACHE_TAGS.online],
   cdnCacheable: true,
   requiredIslands: ["LanguageSwitcher"],
 });

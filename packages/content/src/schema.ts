@@ -70,8 +70,9 @@ const POST_TAGS = [
 const PROFILE_TAGS: Record<ContentProfile, readonly string[]> = {
   post: POST_TAGS,
   rules: POST_TAGS,
-  // Signatures have their headings downgraded in the mdast step; tables are removed.
-  signature: MARKDOWN_TAGS,
+  // Signatures have their headings downgraded in the mdast step; tables are removed, but
+  // images are allowed and limited by the group's image setting.
+  signature: [...MARKDOWN_TAGS, "img"],
   // Profile fields are single lines of formatting, nothing structural.
   profile_field: ["a", "br", "code", "del", "em", "s", "span", "strong"],
   // The profile's about section is long-form Markdown like a post, without embeds.

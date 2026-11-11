@@ -43,6 +43,7 @@ describe("cache tags", () => {
       profileFields: "profile_fields",
       directory: "member_directory",
       leaderboards: "leaderboards",
+      online: "online",
       reactions: "reactions",
       board: "board",
     });

@@ -450,17 +450,28 @@ export async function replaceFieldValues(
   tx: SQL,
   memberId: string,
   values: ReadonlyMap<string, ProfileFieldValue>,
+  editableFieldIds: readonly string[],
 ): Promise<void> {
+  if (editableFieldIds.length === 0) {
+    return;
+  }
+
   const ids = [...values.keys()];
+  const editable = `{${editableFieldIds.join(",")}}`;
 
   if (ids.length === 0) {
-    await tx`DELETE FROM core.member_field_values WHERE member_id = ${memberId}`;
+    await tx`
+      DELETE FROM core.member_field_values
+      WHERE member_id = ${memberId}
+        AND field_id = ANY(${editable}::bigint[])
+    `;
     return;
   }
 
   await tx`
     DELETE FROM core.member_field_values
     WHERE member_id = ${memberId}
+      AND field_id = ANY(${editable}::bigint[])
       AND NOT (field_id = ANY(${`{${ids.join(",")}}`}::bigint[]))
   `;
 

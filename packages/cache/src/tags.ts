@@ -25,6 +25,8 @@ export const GLOBAL_CACHE_TAGS = {
   directory: "member_directory",
   /** Materialised leaderboard entries; the hourly job bumps it in the same transaction. */
   leaderboards: "leaderboards",
+  /** Who's online and the board summary: privacy changes invalidate it immediately. */
+  online: "online",
   /** The staff-managed reaction set: every reaction bar rebuilds when it changes. */
   reactions: "reactions",
   /** Board name, description, locale and offline state: the shared home shell. */

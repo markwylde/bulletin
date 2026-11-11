@@ -104,6 +104,7 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
             from: input.params.get("joinedFrom") ?? "",
             to: input.params.get("joinedTo") ?? "",
             sort: input.params.get("sort") ?? "name",
+            direction: input.params.get("direction") === "desc" ? "desc" : "asc",
             page: input.params.get("page") ?? "1",
           },
           visibilityKey: `directory|allowed:${allowed ? 1 : 0}|hidden:${canViewHidden ? 1 : 0}`,

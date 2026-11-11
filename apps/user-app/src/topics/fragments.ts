@@ -152,11 +152,14 @@ export async function renderMemberCards(
       tags: [
         memberTag(id),
         GLOBAL_CACHE_TAGS.ranks,
+        GLOBAL_CACHE_TAGS.badges,
         GLOBAL_CACHE_TAGS.flags,
         GLOBAL_CACHE_TAGS.board,
       ],
       prepare: async () => ({
-        key: `member-card:${id}:${locale}:avatar=${avatarEnabled ? "on" : "off"}:rep=${
+        key: `member-card:${id}:${locale}:avatar=${avatarEnabled ? "on" : "off"}:badges=${
+          badgesEnabled ? "on" : "off"
+        }:rep=${
           reputation === null || !reputation.display ? "off" : JSON.stringify(reputation.scale)
         }`,
         data: card,

@@ -353,19 +353,12 @@ export async function readCustomTitleLimits(
   };
 }
 
-function countImages(markdown: string): number {
-  const markdownImages = markdown.match(/!\[[^\]]*\]\([^)]*\)/g)?.length ?? 0;
-  const htmlImages = markdown.match(/<img\b[^>]*>/gi)?.length ?? 0;
-
-  return markdownImages + htmlImages;
+function countRenderedImages(html: string): number {
+  return html.match(/<img\b/gi)?.length ?? 0;
 }
 
-function countLinks(markdown: string): number {
-  const markdownLinks = markdown.match(/(?<!!)\[[^\]]*\]\([^)]*\)/g)?.length ?? 0;
-  const htmlLinks = markdown.match(/<a\b[^>]*>/gi)?.length ?? 0;
-  const autolinks = markdown.match(/<(?:https?|mailto):[^>\s]+>/gi)?.length ?? 0;
-
-  return markdownLinks + htmlLinks + autolinks;
+function countRenderedLinks(html: string): number {
+  return html.match(/<a\b/gi)?.length ?? 0;
 }
 
 interface SignatureValidation {
@@ -405,19 +398,19 @@ export async function validateMemberSignature(
     return { ok: false, code: "signature_too_many_lines", limit: limits.maxLines };
   }
 
-  if (countImages(bodyMd) > limits.maxImages) {
-    return { ok: false, code: "signature_too_many_images", limit: limits.maxImages };
-  }
-
-  if (countLinks(bodyMd) > limits.maxLinks) {
-    return { ok: false, code: "signature_too_many_links", limit: limits.maxLinks };
-  }
-
   const rendered = await renderContent(bodyMd, {
     profile: "signature",
     context: { kind: "forum_post", forumId: "0" },
     authorId: memberId,
   });
+
+  if (countRenderedImages(rendered.bodyHtml) > limits.maxImages) {
+    return { ok: false, code: "signature_too_many_images", limit: limits.maxImages };
+  }
+
+  if (countRenderedLinks(rendered.bodyHtml) > limits.maxLinks) {
+    return { ok: false, code: "signature_too_many_links", limit: limits.maxLinks };
+  }
 
   return { ok: true, bodyHtml: rendered.bodyHtml };
 }
@@ -579,7 +572,12 @@ export async function saveMemberProfile(
         hideOnline: input.hideOnline,
         hideFromMemberList: input.hideFromMemberList,
       });
-      await replaceFieldValues(tx, input.memberId, normalized);
+      await replaceFieldValues(
+        tx,
+        input.memberId,
+        normalized,
+        input.fields.map((field) => field.id),
+      );
 
       if (input.signatureMd !== undefined && signatureHtml !== null) {
         await updateMemberSignature(tx, input.memberId, {

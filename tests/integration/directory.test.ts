@@ -28,6 +28,7 @@ import {
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
 import { readOnlineOverview, updateOnlineRecord } from "@bulletin/domain/presence";
+import { saveMemberProfile } from "@bulletin/domain/profiles";
 import { recordVisit } from "@bulletin/domain/visits";
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
@@ -759,6 +760,122 @@ integrationDescribe("member directory", () => {
           tagVersions: versions,
         });
         expect(await htmlOf(online)).toContain("data-online-page");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("privacy changes invalidate warmed directory and online caches", async () => {
+    await withDb(async (database) => {
+      const memberTwo = await memberId(database, "member-2");
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const renderList = () =>
+          renderMemberListRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: null,
+            params: new URLSearchParams(),
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+        const before = await renderList();
+        expect(before.cache).toBe("miss");
+        expect(before.html).toContain("Regular Member Two");
+
+        expect(
+          await saveMemberProfile(database.sql, {
+            memberId: memberTwo,
+            aboutMd: "",
+            hideOnline: false,
+            hideFromMemberList: true,
+            values: {},
+            fields: [],
+          }),
+        ).toEqual({ ok: true });
+        await versions.refresh();
+
+        const after = await renderList();
+        expect(after.cache).toBe("miss");
+        expect(after.html).not.toContain("Regular Member Two");
+
+        await database.sql`
+          INSERT INTO core.presence (viewer_key, location, last_seen)
+          VALUES (${`member:${memberTwo}`}, 'board', now())
+          ON CONFLICT (viewer_key) DO UPDATE SET last_seen = now()
+        `;
+        const renderOnline = () =>
+          renderOnlineRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: null,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+        const onlineBefore = await renderOnline();
+        expect(onlineBefore.html).toContain("Regular Member Two");
+
+        expect(
+          await saveMemberProfile(database.sql, {
+            memberId: memberTwo,
+            aboutMd: "",
+            hideOnline: true,
+            hideFromMemberList: true,
+            values: {},
+            fields: [],
+          }),
+        ).toEqual({ ok: true });
+        await versions.refresh();
+
+        const onlineAfter = await renderOnline();
+        expect(onlineAfter.cache).toBe("miss");
+        expect(onlineAfter.html).not.toContain("Regular Member Two");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("ascending and descending sorts get distinct cache variants", async () => {
+    await withDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const render = (direction: "asc" | "desc") =>
+          renderMemberListRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: null,
+            params: new URLSearchParams({ sort: "name", direction }),
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+        const ascending = await render("asc");
+        const descending = await render("desc");
+
+        expect(ascending.variant).not.toBe(descending.variant);
+        expect(ascending.html).not.toBe(descending.html);
       } finally {
         await versions.close();
       }
