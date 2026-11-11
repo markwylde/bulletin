@@ -22,6 +22,7 @@ import {
 import { avatarRemoveRoute, avatarUploadRoute } from "./avatars.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
+import { conversationResponse, createConversationResponse } from "./conversations.ts";
 import { draftsRoute } from "./drafts.ts";
 import { emoticonImageResponse, listEmoticonsResponse } from "./emoticons.ts";
 import { createUserApiFlags } from "./flag-guard.ts";
@@ -447,6 +448,32 @@ await startService({
         return flags.guard("reputation", session.memberId)(request, () =>
           reputationGiveResponse(sql, session, reputationMatch[1] ?? "", request),
         );
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/conversations") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return createConversationResponse(sql, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const conversationMatch = /^\/api\/conversations\/(\d+)$/.exec(pathname);
+
+    if (request.method === "GET" && conversationMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return conversationResponse(sql, session, conversationMatch[1] ?? "");
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

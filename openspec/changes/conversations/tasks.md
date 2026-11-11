@@ -2,8 +2,8 @@
 
 ## 1. Model and access
 
-- [ ] 1.1 Migrations for conversations, participants and messages; a participant-only repository; integration tests for the non-participant and admin-without-report 404 scenarios
-- [ ] 1.2 Start-conversation mutation (group permission, recipient limit, ignore check, restricted senders, daily limit, quota) emitting `pm.sent`; tests for each rejection scenario
+- [x] 1.1 Migrations for conversations, participants and messages; a participant-only repository; integration tests for the non-participant and admin-without-report 404 scenarios
+- [x] 1.2 Start-conversation mutation (group permission, recipient limit, ignore check, restricted senders, daily limit, quota) emitting `pm.sent`; tests for each rejection scenario
 
 ## 2. Conversation features
 

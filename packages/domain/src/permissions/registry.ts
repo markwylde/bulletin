@@ -514,6 +514,16 @@ const VALUE_SETTING_DEFINITIONS = [
     labelKey: "staff.groups.setting.pmRecipients",
   },
   {
+    // Daily new-conversation limit; 0 means unlimited, like the PM quota.
+    key: "posting.pm_daily_starts",
+    kind: "setting",
+    type: "int",
+    merge: "max",
+    defaultValue: 20,
+    section: "posting",
+    labelKey: "staff.groups.setting.pmDailyStarts",
+  },
+  {
     key: "members.display_name_changes",
     kind: "setting",
     type: "int",

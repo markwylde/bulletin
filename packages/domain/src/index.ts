@@ -2,6 +2,7 @@ export * from "./attachments/index.ts";
 export * from "./audit/index.ts";
 export * from "./board/index.ts";
 export * from "./content/index.ts";
+export * from "./conversations/index.ts";
 export * from "./member/index.ts";
 export * from "./mutations/index.ts";
 export * from "./permissions/index.ts";

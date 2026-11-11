@@ -23,6 +23,7 @@ export const CAPABILITY_ACTIONS = [
   "receive_reputation",
   "unignorable",
   "custom_title",
+  "use_pm",
 ] as const;
 
 export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];
@@ -37,6 +38,8 @@ const CAPABILITY_SETTINGS: Readonly<
   receive_reputation: { key: "posting.cannot_receive_reputation", allows: false },
   unignorable: { key: "members.unignorable", allows: true },
   custom_title: { key: "members.can_custom_title", allows: true },
+  // A `restrict-any` opt-out: one group setting it true denies private messages.
+  use_pm: { key: "restrictions.cannot_pm", allows: false },
 };
 
 export function isCapabilityAction(value: string): value is CapabilityAction {

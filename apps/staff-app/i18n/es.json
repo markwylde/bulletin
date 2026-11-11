@@ -366,6 +366,7 @@
   "staff.groups.setting.floodControlSeconds": "Control de saturación (segundos)",
   "staff.groups.setting.linkLimit": "Límite de enlaces",
   "staff.groups.setting.nameColour": "Color del nombre",
+  "staff.groups.setting.pmDailyStarts": "Nuevos mensajes privados por día",
   "staff.groups.setting.pmQuota": "Cuota de mensajes privados",
   "staff.groups.setting.pmRecipients": "Destinatarios de mensajes privados",
   "staff.groups.setting.postsRequireApproval": "Los mensajes requieren aprobación",

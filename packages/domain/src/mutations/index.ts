@@ -32,6 +32,7 @@ export * from "./attachments.ts";
  * rolls back the invalidation and a commit is followed by the NOTIFY (ADR 0006).
  */
 export * from "./board.ts";
+export * from "./conversations.ts";
 export * from "./emoticons.ts";
 export * from "./forums.ts";
 export * from "./members.ts";
