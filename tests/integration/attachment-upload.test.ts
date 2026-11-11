@@ -13,11 +13,13 @@ import {
   SeedRegistry,
 } from "@bulletin/db/seed";
 import { readAttachmentById, sha256Hex } from "@bulletin/domain/attachments";
+import { processAttachmentBytes } from "@bulletin/domain/attachments/processing";
 import { createS3Handler } from "@bulletin/mock-s3/app";
 import { createMemoryStore } from "@bulletin/mock-s3/memory";
 import { createStorage, type StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
+import sharp from "sharp";
 import {
   attachmentFinaliseResponse,
   attachmentRequestResponse,
@@ -187,6 +189,34 @@ async function finalise(harness: Harness, member: string, id: string): Promise<R
 
 function textBytes(text: string): Uint8Array {
   return new TextEncoder().encode(text);
+}
+
+/**
+ * A noisy photo saved as a heavily compressed JPEG: the pipeline's WebP re-encode is several
+ * times larger than the snapshot, which is the shape of the quota-bypass finding.
+ */
+async function expandingJpeg(): Promise<Uint8Array> {
+  const width = 1200;
+  const height = 800;
+  const raw = new Uint8Array(width * height * 3);
+  let state = 42;
+
+  for (let pixel = 0; pixel < width * height; pixel += 1) {
+    const x = pixel % width;
+    const y = Math.floor(pixel / width);
+    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+    const noise = ((state >>> 24) - 128) * 0.7;
+    const wave = 128 + 100 * Math.sin(x / 37) * Math.cos(y / 53);
+    raw[pixel * 3] = Math.max(0, Math.min(255, wave + noise));
+    raw[pixel * 3 + 1] = Math.max(0, Math.min(255, 255 - wave + noise));
+    raw[pixel * 3 + 2] = Math.max(0, Math.min(255, ((x + y) % 256) + noise * 0.6));
+  }
+
+  return new Uint8Array(
+    await sharp(raw, { raw: { width, height, channels: 3 } })
+      .jpeg({ quality: 20 })
+      .toBuffer(),
+  );
 }
 
 integrationDescribe("attachment upload request", () => {
@@ -482,6 +512,56 @@ integrationDescribe("attachment finalise and processing", () => {
       expect(record?.rejectionCode).toBe("malware_detected");
     });
   });
+
+  test("rejects an image that grows past the remaining quota when processed", async () => {
+    await withHarness("attach_quota_expansion", async (harness) => {
+      const quotaMb = 10;
+      const quota = quotaMb * 1024 * 1024;
+      await setUploadLimits(harness.database, { quotaMb, perFileKb: 10_240 });
+      const member = await memberId(harness.database, "member-1");
+      const bytes = await expandingJpeg();
+      const processed = await processAttachmentBytes(bytes, "image/jpeg");
+      // The re-encode is what breaks the limit, not what the client uploaded.
+      expect((processed.bytes ?? bytes).byteLength).toBeGreaterThan(bytes.byteLength);
+
+      const upload = await uploadBytes(harness, member, bytes, "image/jpeg");
+      expect((await finalise(harness, member, upload.id)).status).toBe(200);
+
+      // One byte of quota left: the snapshot fits, the processed image's growth does not.
+      await harness.database.sql`
+        UPDATE core.member_storage SET used_bytes = ${quota - 1} WHERE member_id = ${member}
+      `;
+
+      const result = await processAttachment(harness.database.sql, harness.storage, upload.id);
+      expect(result.kind).toBe("rejected");
+
+      const record = await readAttachmentById(harness.database.sql, upload.id);
+      expect(record?.state).toBe("rejected");
+      expect(record?.rejectionCode).toBe("quota_exceeded");
+      expect(record?.storageKey).toBeNull();
+      expect(await harness.storage.list("att/")).toHaveLength(0);
+      expect(await harness.storage.exists(record?.snapshotKey ?? "")).toBe(false);
+
+      const storageRows = (await harness.database.sql`
+        SELECT used_bytes::text AS used_bytes, reserved_bytes::text AS reserved_bytes
+        FROM core.member_storage WHERE member_id = ${member}
+      `) as Array<{ used_bytes: string; reserved_bytes: string }>;
+      expect(storageRows[0]).toEqual({
+        used_bytes: String(quota - 1 - bytes.byteLength),
+        reserved_bytes: "0",
+      });
+
+      // A file that does not grow still fits in the same one remaining byte.
+      const plain = await uploadBytes(harness, member, textBytes("tiny"), "text/plain");
+      expect((await finalise(harness, member, plain.id)).status).toBe(200);
+      await harness.database.sql`
+        UPDATE core.member_storage SET used_bytes = ${quota - 1} WHERE member_id = ${member}
+      `;
+      expect((await processAttachment(harness.database.sql, harness.storage, plain.id)).kind).toBe(
+        "ready",
+      );
+    });
+  }, 30_000);
 });
 
 integrationDescribe("attachment cleanup", () => {

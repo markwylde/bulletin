@@ -4,6 +4,35 @@ import { memberAvatarMutation } from "../mutations/members.ts";
 import { can } from "../permissions/can.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
 
+const AVATAR_OBJECT_LOCK = "bulletin.avatar_objects";
+
+/**
+ * Serialises every avatar object write and its publication with the deletion worker for one
+ * member. Without it a retried deletion can read "hash no longer current", a re-upload of that
+ * same hash then writes and publishes its three objects, and the worker deletes them. The lock
+ * is a session advisory lock on a reserved connection (ADR 0003: Postgres is the only
+ * stateful dependency), held across the object I/O and the member row update.
+ */
+export async function withAvatarObjectLock<T>(
+  sql: SQL,
+  memberId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const reserved = await sql.reserve();
+  const key = `${AVATAR_OBJECT_LOCK}:${memberId}`;
+
+  try {
+    await reserved`SELECT pg_advisory_lock(hashtext(${key}))`;
+    return await run();
+  } finally {
+    try {
+      await reserved`SELECT pg_advisory_unlock(hashtext(${key}))`;
+    } finally {
+      await reserved.release();
+    }
+  }
+}
+
 export interface AvatarPolicy {
   /** Upload bytes allowed by the group setting; 0 means avatars are disabled. */
   readonly maxBytes: number;

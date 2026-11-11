@@ -340,6 +340,89 @@ integrationDescribe("avatars", () => {
     });
   }, 30_000);
 
+  test("a retried deletion cannot remove a newly restored avatar", async () => {
+    await withHarness("avatar_deletion_race", async ({ database, storage }) => {
+      const member = await memberId(database, "member-1");
+      const restored = base64(await imageBytes());
+      await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(restored),
+      );
+      const hash = (await readMemberAvatar(database.sql, member))?.hash ?? "";
+
+      // A replacement avatar queues the previous hash's objects for deletion.
+      await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(base64(await imageBytes(80, "#996633"))),
+      );
+      const queued = (await database.sql`
+        SELECT count(*)::int AS count FROM core.avatar_deletions
+        WHERE member_id = ${member} AND avatar_hash = ${hash}
+      `) as Array<{ count: number }>;
+      expect(queued[0]?.count).toBe(1);
+
+      let releaseDeletion = (): void => undefined;
+      const deletionGate = new Promise<void>((resolve) => {
+        releaseDeletion = resolve;
+      });
+      let signalDeletion = (): void => undefined;
+      const deletionStarted = new Promise<void>((resolve) => {
+        signalDeletion = resolve;
+      });
+      let gated = false;
+      const slow = {
+        ...storage,
+        async delete(key: string) {
+          if (!gated && key.startsWith(`av/${member}/${hash}-`)) {
+            gated = true;
+            signalDeletion();
+            await deletionGate;
+          }
+
+          await storage.delete(key);
+        },
+      } as StorageClient;
+
+      // Pause the worker between its hash check and the object deletion.
+      const worker = processAvatarDeletions(database.sql, slow);
+      await deletionStarted;
+
+      // Re-upload the very bytes whose objects the worker is deleting.
+      let settled = false;
+      const restore = avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(restored),
+      ).then((response) => {
+        settled = true;
+        return response;
+      });
+
+      // The upload is serialised behind the worker's lock: it must not publish between the
+      // worker's hash check and its object deletion, however long the deletion takes.
+      for (let attempt = 0; attempt < 100 && !settled; attempt += 1) {
+        await Bun.sleep(20);
+      }
+      expect(settled).toBe(false);
+
+      releaseDeletion();
+      const [deletion, response] = await Promise.all([worker, restore]);
+
+      expect(deletion.deleted).toBe(1);
+      expect(response.status).toBe(200);
+      expect((await readMemberAvatar(database.sql, member))?.hash).toBe(hash);
+
+      for (const variant of ["lg", "md", "sm"]) {
+        expect(await storage.exists(`av/${member}/${hash}-${variant}.webp`)).toBe(true);
+      }
+    });
+  }, 30_000);
+
   test("enforces the merged group dimension limits", async () => {
     await withHarness("avatar_dimensions", async ({ database, storage }) => {
       const member = await memberId(database, "member-1");

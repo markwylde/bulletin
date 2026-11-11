@@ -8,6 +8,7 @@ import {
   readAvatarPolicy,
   readMemberAvatar,
   setMemberAvatar,
+  withAvatarObjectLock,
 } from "@bulletin/domain/member";
 import { type AvatarVariant, avatarKey, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
@@ -119,30 +120,38 @@ export async function avatarUploadResponse(
     return json({ code: "avatar_invalid" }, 400);
   }
 
-  const previous = await readMemberAvatar(sql, session.memberId);
+  const stored = await withAvatarObjectLock(sql, session.memberId, async () => {
+    const current = await readMemberAvatar(sql, session.memberId);
 
-  for (const variant of AVATAR_VARIANTS) {
-    await storage.put(
-      avatarKey(session.memberId, processed.hash, variant),
-      processed.sizes[variant],
-      {
-        contentType: "image/webp",
-      },
-    );
-  }
+    for (const variant of AVATAR_VARIANTS) {
+      await storage.put(
+        avatarKey(session.memberId, processed.hash, variant),
+        processed.sizes[variant],
+        {
+          contentType: "image/webp",
+        },
+      );
+    }
 
-  const stored = await setMemberAvatar(sql, session.memberId, processed.hash);
+    const outcome = await setMemberAvatar(sql, session.memberId, processed.hash);
+
+    if (outcome !== "ok") {
+      await deleteAvatarObjects(storage, session.memberId, processed.hash);
+
+      return outcome;
+    }
+
+    if (current?.hash !== undefined && current.hash !== processed.hash) {
+      await deleteAvatarObjects(storage, session.memberId, current.hash);
+    }
+
+    return outcome;
+  });
 
   if (stored !== "ok") {
-    await deleteAvatarObjects(storage, session.memberId, processed.hash);
-
     return stored === "blocked"
       ? json({ code: "avatar_blocked" }, 403)
       : json({ code: "not_found" }, 404);
-  }
-
-  if (previous?.hash !== undefined && previous.hash !== processed.hash) {
-    await deleteAvatarObjects(storage, session.memberId, previous.hash);
   }
 
   return json({ avatarUrl: avatarUrl(session.memberId, processed.hash) });
@@ -154,14 +163,22 @@ export async function avatarRemoveResponse(
   storage: StorageClient,
   session: Session,
 ): Promise<Response> {
-  const previous = await readMemberAvatar(sql, session.memberId);
+  const removed = await withAvatarObjectLock(sql, session.memberId, async () => {
+    const current = await readMemberAvatar(sql, session.memberId);
 
-  if (previous === null) {
+    if (current === null) {
+      return false;
+    }
+
+    await clearMemberAvatar(sql, session.memberId);
+    await deleteAvatarObjects(storage, session.memberId, current.hash);
+
+    return true;
+  });
+
+  if (!removed) {
     return json({ code: "not_found" }, 404);
   }
-
-  await clearMemberAvatar(sql, session.memberId);
-  await deleteAvatarObjects(storage, session.memberId, previous.hash);
 
   return json({ ok: true });
 }

@@ -22,6 +22,7 @@ import {
   listAvatarDeletions,
   markAvatarDeletionFailed,
   readMemberAvatar,
+  withAvatarObjectLock,
 } from "@bulletin/domain/member";
 import {
   type AttachmentRecord,
@@ -198,15 +199,42 @@ export async function processAttachment(
     });
   }
 
-  const ready = await publishAttachment(sql, record, {
+  const published = await publishAttachment(sql, record, {
     storageKey: finalKey,
     sizeBytes: publishedBytes.byteLength,
     sha256: sha256Hex(publishedBytes),
     verifiedType: processed.contentType,
+    quotaBytes: limits.quotaBytes,
   });
 
-  if (ready === null) {
+  if (published.kind === "skipped") {
     return { kind: "skipped" };
+  }
+
+  if (published.kind === "quota_exceeded") {
+    // Processing grew the file past what the member may store: drop what this run wrote.
+    for (const key of [finalKey, thumbnailKeyFor(finalKey)]) {
+      await storage.delete(key).catch((error: unknown) => {
+        options.logger?.warn("attachment.published_cleanup_failed", {
+          attachmentId: record.id,
+          key,
+          error,
+        });
+      });
+    }
+
+    await storage.delete(record.snapshotKey).catch((error: unknown) => {
+      options.logger?.warn("attachment.snapshot_cleanup_failed", {
+        attachmentId: record.id,
+        error,
+      });
+    });
+    options.logger?.info("attachment.rejected", {
+      attachmentId: record.id,
+      code: published.attachment.rejectionCode,
+    });
+
+    return { kind: "rejected", attachment: published.attachment };
   }
 
   await storage.delete(record.snapshotKey).catch((error: unknown) => {
@@ -221,7 +249,7 @@ export async function processAttachment(
     sizeBytes: publishedBytes.byteLength,
   });
 
-  return { kind: "ready", attachment: ready };
+  return { kind: "ready", attachment: published.attachment };
 }
 
 export interface AvatarDeletionResult {
@@ -229,7 +257,11 @@ export interface AvatarDeletionResult {
   readonly failed: number;
 }
 
-/** Retries persisted avatar-object deletions; old URLs are already blocked by the hash check. */
+/**
+ * Retries persisted avatar-object deletions; old URLs are already blocked by the hash check.
+ * The check and the object deletion run under the member's avatar object lock so a concurrent
+ * re-upload of the same hash cannot be published and then have its objects deleted.
+ */
 export async function processAvatarDeletions(
   sql: SQL,
   storage: StorageClient,
@@ -240,21 +272,27 @@ export async function processAvatarDeletions(
   let failed = 0;
 
   for (const row of pending) {
-    const current = await readMemberAvatar(sql, row.memberId);
-
-    if (current?.hash === row.avatarHash) {
-      await finishAvatarDeletion(sql, row.memberId, row.avatarHash);
-      continue;
-    }
-
     try {
-      await Promise.all(
-        AVATAR_VARIANTS.map((variant) =>
-          storage.delete(avatarKey(row.memberId, row.avatarHash, variant)),
-        ),
-      );
-      await finishAvatarDeletion(sql, row.memberId, row.avatarHash);
-      deleted += 1;
+      const current = await withAvatarObjectLock(sql, row.memberId, async () => {
+        const avatar = await readMemberAvatar(sql, row.memberId);
+
+        if (avatar?.hash === row.avatarHash) {
+          await finishAvatarDeletion(sql, row.memberId, row.avatarHash);
+          return "kept" as const;
+        }
+
+        await Promise.all(
+          AVATAR_VARIANTS.map((variant) =>
+            storage.delete(avatarKey(row.memberId, row.avatarHash, variant)),
+          ),
+        );
+        await finishAvatarDeletion(sql, row.memberId, row.avatarHash);
+        return "deleted" as const;
+      });
+
+      if (current === "deleted") {
+        deleted += 1;
+      }
     } catch (error) {
       failed += 1;
       await markAvatarDeletionFailed(sql, row.memberId, row.avatarHash).catch(() => undefined);

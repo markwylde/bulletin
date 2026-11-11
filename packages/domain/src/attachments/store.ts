@@ -296,15 +296,74 @@ export interface PublishInput {
   readonly sizeBytes: number;
   readonly sha256: string;
   readonly verifiedType: string;
+  /** The member's effective quota; the growth over the snapshot is charged to it. */
+  readonly quotaBytes: number;
 }
 
-/** processing -> ready plus the real-size quota adjustment, in one transaction. */
+export type PublishResult =
+  | { readonly kind: "ready"; readonly attachment: AttachmentRecord }
+  | { readonly kind: "quota_exceeded"; readonly attachment: AttachmentRecord }
+  | { readonly kind: "skipped" };
+
+/**
+ * processing -> ready plus the real-size quota adjustment, in one transaction.
+ *
+ * Processing can make a file bigger (a PNG that re-encodes to a larger WebP), so publication
+ * charges the growth against the member's remaining quota and rejects the upload when it does
+ * not fit (ADR 0019). The reservation row is locked, so no concurrent upload can spend the
+ * bytes between the check and the move from the snapshot size to the published size.
+ */
 export async function publishAttachment(
   sql: SQL,
   record: AttachmentRecord,
   input: PublishInput,
-): Promise<AttachmentRecord | null> {
+): Promise<PublishResult> {
   return sql.begin(async (tx) => {
+    await tx`
+      INSERT INTO core.member_storage (member_id)
+      VALUES (${record.memberId})
+      ON CONFLICT (member_id) DO NOTHING
+    `;
+
+    const rows = (await tx`
+      SELECT used_bytes::text AS used_bytes, reserved_bytes::text AS reserved_bytes
+      FROM core.member_storage
+      WHERE member_id = ${record.memberId}
+      FOR UPDATE
+    `) as StorageRow[];
+    const row = rows[0];
+
+    if (row === undefined) {
+      throw new Error("member_storage row disappeared while locked");
+    }
+
+    const increase = input.sizeBytes - (record.sizeBytes ?? 0);
+    const remainingBytes = Math.max(
+      input.quotaBytes - Number(row.used_bytes) - Number(row.reserved_bytes),
+      0,
+    );
+
+    if (increase > remainingBytes) {
+      const rejected = await transitionAttachment(tx, {
+        id: record.id,
+        from: "processing",
+        to: "rejected",
+        rejectionCode: "quota_exceeded",
+      });
+
+      if (rejected === null) {
+        return { kind: "skipped" };
+      }
+
+      await tx`
+        UPDATE core.member_storage
+        SET used_bytes = GREATEST(used_bytes - ${record.sizeBytes ?? 0}, 0), updated_at = now()
+        WHERE member_id = ${record.memberId}
+      `;
+
+      return { kind: "quota_exceeded", attachment: rejected };
+    }
+
     const updated = await transitionAttachment(tx, {
       id: record.id,
       from: "processing",
@@ -316,18 +375,18 @@ export async function publishAttachment(
     });
 
     if (updated === null) {
-      return null;
+      return { kind: "skipped" };
     }
 
-    const delta = input.sizeBytes - (record.sizeBytes ?? 0);
+    if (increase !== 0) {
+      await tx`
+        UPDATE core.member_storage
+        SET used_bytes = GREATEST(used_bytes + ${increase}, 0), updated_at = now()
+        WHERE member_id = ${record.memberId}
+      `;
+    }
 
-    await tx`
-      UPDATE core.member_storage
-      SET used_bytes = GREATEST(used_bytes + ${delta}, 0), updated_at = now()
-      WHERE member_id = ${record.memberId}
-    `;
-
-    return updated;
+    return { kind: "ready", attachment: updated };
   });
 }
 

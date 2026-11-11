@@ -1,4 +1,8 @@
-import { removeAvatarForStaff, type StaffAvatarRemoval } from "@bulletin/domain/member";
+import {
+  removeAvatarForStaff,
+  type StaffAvatarRemoval,
+  withAvatarObjectLock,
+} from "@bulletin/domain/member";
 import { type AvatarVariant, avatarKey, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
@@ -33,13 +37,20 @@ export async function removeMemberAvatarForStaff(
   storage: StorageClient | undefined,
   input: StaffAvatarRemovalInput,
 ): Promise<StaffAvatarRemoval> {
-  const outcome = await removeAvatarForStaff(sql, input);
+  const outcome = await withAvatarObjectLock(sql, input.memberId, async () => {
+    const removed = await removeAvatarForStaff(sql, input);
+
+    if (removed.ok) {
+      await deleteAvatarObjects(storage, input.memberId, removed.previousHash);
+    }
+
+    return removed;
+  });
 
   if (!outcome.ok) {
     return outcome;
   }
 
-  await deleteAvatarObjects(storage, input.memberId, outcome.previousHash);
   await writeAdminLog(sql, {
     actorMemberId: input.actorId,
     action: "member.avatar.remove",
