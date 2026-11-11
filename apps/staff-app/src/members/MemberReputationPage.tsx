@@ -8,7 +8,7 @@ interface ReputationEntryView {
   readonly id: string;
   readonly postId: string;
   readonly topicId: string;
-  readonly topicTitle: string;
+  readonly topicTitle: string | null;
   readonly giverId: string | null;
   readonly giverName: string | null;
   readonly receiverId: string;
@@ -28,6 +28,17 @@ interface MutationResponse {
   readonly total?: number;
 }
 
+interface RecountRunView {
+  readonly id: string;
+  readonly status: "running" | "done";
+  readonly reason: string;
+  readonly totalMembers: number;
+  readonly processedMembers: number;
+  readonly changedMembers: number;
+  readonly startedAt: string;
+  readonly finishedAt: string | null;
+}
+
 export function MemberReputationPage() {
   const t = useT();
   const locale = useLocale();
@@ -43,6 +54,11 @@ export function MemberReputationPage() {
         `/api/staff/members/reputation?memberId=${encodeURIComponent(loadedId ?? "")}`,
       ),
     enabled: loadedId !== null,
+  });
+  const recounts = useQuery({
+    queryKey: ["staff", "reputation-recounts"],
+    queryFn: () => apiGet<{ runs: readonly RecountRunView[] }>("/api/staff/reputation/recounts"),
+    refetchInterval: 5_000,
   });
   const mutate = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -67,6 +83,50 @@ export function MemberReputationPage() {
         <h1>{t("staff.reputation.title")}</h1>
         <p>{t("staff.reputation.intro")}</p>
       </header>
+
+      <section className="admin-panel" aria-labelledby="reputation-recounts-title">
+        <h2 id="reputation-recounts-title">{t("staff.reputation.recounts.title")}</h2>
+        {recounts.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
+        {recounts.isError ? (
+          <div className="widget-error" role="alert">
+            <p>{t("staff.reputation.recounts.error")}</p>
+            <button type="button" onClick={() => void recounts.refetch()}>
+              {t("staff.widget.retry")}
+            </button>
+          </div>
+        ) : null}
+        {recounts.isSuccess ? (
+          recounts.data.runs.length === 0 ? (
+            <p className="widget-muted">{t("staff.reputation.recounts.empty")}</p>
+          ) : (
+            <ul className="bl-recount-list" data-recount-list>
+              {recounts.data.runs.map((run) => (
+                <li key={run.id} data-recount-run={run.id}>
+                  <strong>
+                    {run.status === "running"
+                      ? t("staff.reputation.recounts.running")
+                      : t("staff.reputation.recounts.done")}
+                  </strong>{" "}
+                  <span className="widget-muted">
+                    {t("staff.reputation.recounts.progress", {
+                      processed: run.processedMembers,
+                      total: run.totalMembers,
+                    })}
+                  </span>{" "}
+                  <span className="widget-muted">
+                    {t("staff.reputation.recounts.changed", { count: run.changedMembers })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
+        <div className="admin-form">
+          <button type="button" onClick={() => void recounts.refetch()}>
+            {t("staff.reputation.recounts.refresh")}
+          </button>
+        </div>
+      </section>
 
       <section className="admin-panel" aria-labelledby="reputation-lookup-title">
         <h2 id="reputation-lookup-title">{t("staff.reputation.lookup.title")}</h2>
@@ -146,7 +206,9 @@ export function MemberReputationPage() {
                       <td data-label={t("staff.reputation.giver")}>
                         {entry.giverName ?? t("staff.reputation.unknownGiver")}
                       </td>
-                      <td data-label={t("staff.reputation.topic")}>{entry.topicTitle}</td>
+                      <td data-label={t("staff.reputation.topic")}>
+                        {entry.topicTitle ?? t("staff.reputation.hiddenTopic")}
+                      </td>
                       <td data-label={t("staff.reputation.when")}>
                         {new Date(entry.createdAt).toLocaleString(locale)}
                       </td>

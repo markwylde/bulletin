@@ -69,7 +69,7 @@ import {
   savePromotionRule,
 } from "./promotions.ts";
 import { listReactionsForStaff, mutateReaction } from "./reactions.ts";
-import { mutateMemberReputation, readMemberReputation } from "./reputation.ts";
+import { mutateMemberReputation, readMemberReputation, readRecountProgress } from "./reputation.ts";
 import {
   listActiveOverrides,
   revertOverride,
@@ -704,6 +704,12 @@ async function memberReputationGet(context: StaffRouteContext): Promise<Response
   return json(result.view);
 }
 
+async function reputationRecountsGet(context: StaffRouteContext): Promise<Response> {
+  const result = await readRecountProgress(context.sql, context.session.memberId);
+
+  return result.ok ? json({ runs: result.runs }) : forbidden();
+}
+
 async function memberReputationMutate(context: StaffRouteContext): Promise<Response> {
   const body: unknown = await context.request.json().catch(() => null);
   const memberId = isRecord(body) && typeof body.memberId === "string" ? body.memberId : "";
@@ -1142,6 +1148,13 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/members/reputation",
     permission: "acp.members",
     handler: memberReputationGet,
+  },
+  {
+    id: "reputation.recounts",
+    method: "GET",
+    path: "/api/staff/reputation/recounts",
+    permission: "acp.members",
+    handler: reputationRecountsGet,
   },
   {
     id: "members.reputation.update",

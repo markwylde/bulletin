@@ -368,7 +368,8 @@ integrationDescribe("notification email", () => {
           ? (message?.subject ?? "")
           : Buffer.from(encoded, "base64").toString("utf8");
       expect(subject).toContain("New reputation");
-      expect(message?.text).toContain("gave you reputation");
+      expect(message?.text).toContain("You received reputation");
+      expect(message?.text).not.toContain("Regular Member One");
       expect(message?.text).not.toContain("The first post");
     });
   }, 60_000);

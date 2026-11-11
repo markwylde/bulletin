@@ -1,8 +1,10 @@
 import { evaluatePromotion } from "@bulletin/db/jobs";
-import { can } from "@bulletin/domain/permissions";
+import { can, loadForumTree } from "@bulletin/domain/permissions";
 import {
+  listRecountRuns,
   listReputationEntries,
   memberReputation,
+  type ReputationEntryRecord,
   readEntry,
   recountMemberReputation,
   removeReputationEntry,
@@ -14,10 +16,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export interface MemberReputationEntry extends Omit<ReputationEntryRecord, "topicTitle"> {
+  readonly topicTitle: string | null;
+}
+
 export interface MemberReputationView {
   readonly memberId: string;
   readonly total: number;
-  readonly entries: Awaited<ReturnType<typeof listReputationEntries>>;
+  readonly entries: readonly MemberReputationEntry[];
+}
+
+/** Recent board recounts for the staff progress panel, newest first. */
+export async function readRecountProgress(
+  sql: SQL,
+  actorId: string,
+): Promise<
+  | {
+      readonly ok: true;
+      readonly runs: Awaited<ReturnType<typeof listRecountRuns>>;
+    }
+  | { readonly ok: false; readonly code: "forbidden" }
+> {
+  if (!(await can(sql, actorId, "members.reputation"))) {
+    return { ok: false, code: "forbidden" };
+  }
+
+  return { ok: true, runs: await listRecountRuns(sql, 10) };
 }
 
 export type MemberReputationRead =
@@ -50,12 +74,28 @@ export async function readMemberReputation(
     return { ok: false, code: "not_found" };
   }
 
+  const tree = await loadForumTree(sql);
+  const forumAccess = new Map<string, boolean>();
+  const entries: MemberReputationEntry[] = [];
+
+  for (const entry of await listReputationEntries(sql, memberId)) {
+    let readable = forumAccess.get(entry.forumId);
+
+    if (readable === undefined) {
+      readable = await can(sql, actorId, "read", { forumId: entry.forumId, tree });
+      forumAccess.set(entry.forumId, readable);
+    }
+
+    // `members.reputation` never grants forum access, so unreadable titles are redacted.
+    entries.push(readable ? entry : { ...entry, topicTitle: null });
+  }
+
   return {
     ok: true,
     view: {
       memberId,
       total: await memberReputation(sql, memberId),
-      entries: await listReputationEntries(sql, memberId),
+      entries,
     },
   };
 }

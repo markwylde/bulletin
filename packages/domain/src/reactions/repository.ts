@@ -1,7 +1,6 @@
 import type { SQL } from "bun";
 import { can } from "../permissions/can.ts";
 import type { ViewerPrincipal } from "../permissions/principal.ts";
-import { loadMergedGroupSettings } from "../permissions/store.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
 
 /** One staff-defined reaction (design: `reactions(id, icon, label_key, weight, …)`). */
@@ -250,13 +249,10 @@ export async function canReactInForum(
   forumId: string,
   sessionId: string | null = null,
 ): Promise<boolean> {
-  const [tree, settings] = await Promise.all([
-    loadForumTree(sql),
-    loadMergedGroupSettings(sql, principal),
-  ]);
+  const tree = await loadForumTree(sql);
 
   return (
-    settings["posting.can_react"] === true &&
+    (await can(sql, principal, "react")) &&
     (await can(sql, principal, "read", { forumId, tree, sessionId }))
   );
 }

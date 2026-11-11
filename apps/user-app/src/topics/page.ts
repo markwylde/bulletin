@@ -473,13 +473,13 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     memberIds,
     canReact:
       principalMemberId(input.principal) !== null &&
-      input.snapshot.settings["posting.can_react"] === true,
+      (await can(input.sql, input.principal, "react")),
     canGiveReputation:
       principalMemberId(input.principal) !== null &&
-      input.snapshot.settings["posting.can_give_reputation"] === true,
+      (await can(input.sql, input.principal, "give_reputation")),
     canGiveNegativeReputation:
       principalMemberId(input.principal) !== null &&
-      input.snapshot.settings["posting.can_give_negative_reputation"] === true,
+      (await can(input.sql, input.principal, "give_negative_reputation")),
     pollId: poll?.id ?? null,
     postTags,
     allPostTags: [...new Set(allPostTags)],

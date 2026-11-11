@@ -152,7 +152,7 @@
   "notification.text.post.quoteMany": "{count, plural, one {# citation} other {# citations}} dans {topic}",
   "notification.text.reaction.added": "{actor} a réagi à votre message",
   "notification.text.reaction.addedMany": "{count, plural, one {# réaction} other {# réactions}} à votre message",
-  "notification.text.reputation.given": "{actor} vous a donné de la réputation",
+  "notification.text.reputation.given": "Vous avez reçu de la réputation",
   "notification.text.reputation.givenMany": "{count, plural, one {# point de réputation} other {# points de réputation}} reçus",
   "notification.text.topic.created": "{actor} a créé {topic}",
   "notification.text.topic.reply": "{actor} a répondu dans {topic}",

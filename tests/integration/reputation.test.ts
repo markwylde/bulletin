@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import {
   createRenderCache,
   createTagVersions,
+  memberTag,
   type RenderCache,
   type RenderStatus,
+  readTagVersion,
 } from "@bulletin/cache";
 import { runReputationRecount } from "@bulletin/db/jobs";
 import {
@@ -20,16 +22,19 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import { readBoardSettings } from "@bulletin/domain/board";
+import { can } from "@bulletin/domain/permissions";
 import { listReactions, saveReaction, setReaction } from "@bulletin/domain/reactions";
 import {
   DEFAULT_REPUTATION_LABEL_SCALE,
   giveReputation,
+  listRecountRuns,
   readReputationTarget,
   readViewerVotes,
 } from "@bulletin/domain/reputation";
 import { startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import { saveBoardSettings } from "../../apps/staff-api/src/board-settings.ts";
 import { reputationGiveResponse } from "../../apps/user-api/src/reputation.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
@@ -598,6 +603,184 @@ integrationDescribe("reputation", () => {
       ).toBe(1);
     });
   }, 60_000);
+
+  test("editing a reaction weight requests a recount and refreshes the card", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberSession(database, "admin");
+      const giver = await memberSession(database, "member-1");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Weight change");
+      const like = (await listReactions(database.sql)).find((reaction) => reaction.key === "like");
+
+      if (like === undefined) {
+        throw new Error("Missing the like reaction");
+      }
+
+      await setReactionsLink(database, true);
+      await saveReaction(database.sql, {
+        id: like.id,
+        key: like.key,
+        icon: like.icon,
+        labelKey: "reaction.label.like",
+        weight: 1,
+        position: like.position,
+        enabled: true,
+      });
+      await setReaction(database.sql, {
+        actorId: giver.memberId,
+        postId: topic.postId,
+        reactionId: like.id,
+      });
+      expect(await reputationOf(database, author.memberId)).toBe(1);
+
+      const cardVersion = await readTagVersion(database.sql, memberTag(author.memberId));
+      const saved = await saveReaction(
+        database.sql,
+        {
+          id: like.id,
+          key: like.key,
+          icon: like.icon,
+          labelKey: "reaction.label.like",
+          weight: -1,
+          position: like.position,
+          enabled: true,
+        },
+        { requestedById: admin.memberId },
+      );
+      expect(saved.ok).toBe(true);
+
+      const events = (await database.sql`
+        SELECT payload_ids FROM core.events WHERE type = 'reputation.recount.requested'
+      `) as Array<{ payload_ids: unknown }>;
+      expect(events).toHaveLength(1);
+      const payload =
+        typeof events[0]?.payload_ids === "string"
+          ? (JSON.parse(events[0].payload_ids) as Record<string, string>)
+          : (events[0]?.payload_ids as Record<string, string>);
+      expect(payload).toEqual({ requestedById: admin.memberId });
+
+      await runReputationRecount(database.sql, { reason: "weight-change" });
+
+      expect(await entryFor(database, topic.postId, giver.memberId)).toEqual({
+        points: -1,
+        source: "reaction",
+      });
+      expect(await reputationOf(database, author.memberId)).toBe(-1);
+      expect(await readTagVersion(database.sql, memberTag(author.memberId))).not.toBe(cardVersion);
+    });
+  }, 60_000);
+
+  test("a recount waits for an in-flight vote and includes it", async () => {
+    await withSeededDb(async (database) => {
+      const giver = await memberSession(database, "member-1");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Concurrent recount");
+      const other = new SQL(database.url);
+
+      let signalStarted: () => void = () => undefined;
+      let releaseVote: () => void = () => undefined;
+      const started = new Promise<void>((resolve) => {
+        signalStarted = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        releaseVote = resolve;
+      });
+
+      try {
+        const vote = other.begin(async (tx) => {
+          await tx`
+            INSERT INTO core.reputation_entries (post_id, giver_id, receiver_id, points, source)
+            VALUES (${topic.postId}, ${giver.memberId}, ${author.memberId}, 1, 'vote')
+          `;
+          await tx`
+            UPDATE core.members SET reputation = reputation + 1 WHERE id = ${author.memberId}
+          `;
+          signalStarted();
+          await gate;
+        });
+
+        await started;
+        const recount = runReputationRecount(database.sql, { reason: "concurrent" });
+        await Bun.sleep(150);
+        releaseVote();
+        await vote;
+        const result = await recount;
+
+        expect(result.done).toBe(true);
+        expect(await reputationOf(database, author.memberId)).toBe(1);
+      } finally {
+        await other.close();
+      }
+    });
+  }, 60_000);
+
+  test("a recount resumes from its cursor, reports progress and is idempotent", async () => {
+    await withSeededDb(async (database) => {
+      const giver = await memberSession(database, "member-1");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Resumable recount");
+      await giveReputation(database.sql, {
+        actorId: giver.memberId,
+        postId: topic.postId,
+        points: 1,
+      });
+
+      const first = await runReputationRecount(database.sql, {
+        reason: "retry-test",
+        batchSize: 1,
+        maxBatches: 1,
+      });
+      expect(first.done).toBe(false);
+      expect(first.processed).toBe(1);
+      expect(first.total).toBeGreaterThan(1);
+
+      const running = (await listRecountRuns(database.sql, 5)).find(
+        (run) => run.status === "running",
+      );
+      expect(running).toMatchObject({ processedMembers: 1, rebuiltAt: expect.any(Date) });
+
+      const second = await runReputationRecount(database.sql, { reason: "retry-test" });
+      expect(second.done).toBe(true);
+      expect(second.processed).toBe(second.total);
+
+      const finished = (await listRecountRuns(database.sql, 5)).find(
+        (run) => run.id === second.runId,
+      );
+      expect(finished).toMatchObject({
+        status: "done",
+        processedMembers: second.total,
+        changedMembers: expect.any(Number),
+      });
+      expect(await reputationOf(database, author.memberId)).toBe(1);
+
+      // A fresh recount after completion is a new run and leaves correct totals untouched.
+      const third = await runReputationRecount(database.sql, { reason: "retry-test" });
+      expect(third.runId).not.toBe(second.runId);
+      expect(third.done).toBe(true);
+      expect(await reputationOf(database, author.memberId)).toBe(1);
+    });
+  }, 60_000);
+
+  test("reaction and reputation capabilities resolve through can()", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+
+      expect(await can(database.sql, member.memberId, "react")).toBe(true);
+      expect(await can(database.sql, member.memberId, "give_reputation")).toBe(true);
+      expect(await can(database.sql, member.memberId, "give_negative_reputation")).toBe(false);
+      expect(await can(database.sql, member.memberId, "receive_reputation")).toBe(true);
+
+      await setGroupSetting(database, "members", "posting.can_react", false);
+      await setGroupSetting(database, "members", "posting.can_give_reputation", false);
+      await setGroupSetting(database, "members", "posting.can_give_negative_reputation", true);
+      await setGroupSetting(database, "members", "posting.cannot_receive_reputation", true);
+
+      expect(await can(database.sql, member.memberId, "react")).toBe(false);
+      expect(await can(database.sql, member.memberId, "give_reputation")).toBe(false);
+      expect(await can(database.sql, member.memberId, "give_negative_reputation")).toBe(true);
+      expect(await can(database.sql, member.memberId, "receive_reputation")).toBe(false);
+    });
+  }, 45_000);
 
   test("the viewer vote state and the target are read for the overlay and API", async () => {
     await withSeededDb(async (database) => {

@@ -312,6 +312,46 @@ integrationDescribe("reactions", () => {
     });
   }, 45_000);
 
+  test("who-reacted never reveals held or deleted posts to ordinary viewers", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const moderator = await memberSession(database, "super-mod");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Held reactions");
+      const like = await reactionId(database, "like");
+      const url = new URL(
+        `http://localhost/api/posts/${topic.postId}/reactions?reactionId=${like}`,
+      );
+
+      await database.sql`
+        INSERT INTO core.post_reactions (post_id, member_id, reaction_id)
+        VALUES (${topic.postId}, ${member.memberId}, ${like})
+      `;
+
+      await database.sql`
+        UPDATE core.posts SET visibility = 'unapproved' WHERE id = ${topic.postId}
+      `;
+      expect((await reactionMembersResponse(database.sql, null, topic.postId, url)).status).toBe(
+        404,
+      );
+      expect((await reactionMembersResponse(database.sql, member, topic.postId, url)).status).toBe(
+        404,
+      );
+      expect(
+        (await reactionMembersResponse(database.sql, moderator, topic.postId, url)).status,
+      ).toBe(200);
+
+      await database.sql`
+        UPDATE core.posts SET visibility = 'soft_deleted' WHERE id = ${topic.postId}
+      `;
+      expect((await reactionMembersResponse(database.sql, member, topic.postId, url)).status).toBe(
+        404,
+      );
+      expect(
+        (await reactionMembersResponse(database.sql, moderator, topic.postId, url)).status,
+      ).toBe(200);
+    });
+  }, 45_000);
+
   test("disabling a reaction hides the choice but keeps existing totals", async () => {
     await withSeededDb(async (database) => {
       const member = await memberSession(database, "member-1");

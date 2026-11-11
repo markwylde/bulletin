@@ -8,14 +8,37 @@ import {
 import { isGuestPrincipal, type ViewerPrincipal } from "./principal.ts";
 import { isPermissionKey, type PermissionKey } from "./registry.ts";
 import { capabilityAnswer, loadPermissionSnapshot, type PermissionSnapshot } from "./snapshot.ts";
-import { loadMemberGroups } from "./store.ts";
+import { loadMemberGroups, loadMergedGroupSettings } from "./store.ts";
 import type { ForumTree } from "./tree.ts";
 
 /**
  * A permission key, forum action or moderator power, plus the forum scope the forum-level
  * checks need. A view that already holds a compiled snapshot passes it to keep checks O(1).
  */
-export type PermissionAction = PermissionKey | ModeratorPower | ForumAction;
+export const CAPABILITY_ACTIONS = [
+  "react",
+  "give_reputation",
+  "give_negative_reputation",
+  "receive_reputation",
+] as const;
+
+export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];
+
+const CAPABILITY_SETTINGS: Readonly<
+  Record<CapabilityAction, { readonly key: string; readonly allows: boolean }>
+> = {
+  react: { key: "posting.can_react", allows: true },
+  give_reputation: { key: "posting.can_give_reputation", allows: true },
+  give_negative_reputation: { key: "posting.can_give_negative_reputation", allows: true },
+  // A `restrict-any` opt-out: one group setting it true denies the capability.
+  receive_reputation: { key: "posting.cannot_receive_reputation", allows: false },
+};
+
+export function isCapabilityAction(value: string): value is CapabilityAction {
+  return (CAPABILITY_ACTIONS as readonly string[]).includes(value);
+}
+
+export type PermissionAction = PermissionKey | ModeratorPower | ForumAction | CapabilityAction;
 
 export interface PermissionScope {
   readonly forumId: string;
@@ -138,6 +161,14 @@ export async function can(
   }
 
   const forumScope = scope as PermissionScope | undefined;
+
+  if (isCapabilityAction(action)) {
+    const settings = await loadMergedGroupSettings(sql, principal);
+    const capability = CAPABILITY_SETTINGS[action];
+    const enabled = settings[capability.key] === true;
+
+    return capability.allows ? enabled : !enabled;
+  }
 
   if (isModeratorPower(action)) {
     if (forumScope === undefined) {

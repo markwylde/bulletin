@@ -97,18 +97,27 @@ export async function reactionMembersResponse(
 
   const target = await readReactionTarget(sql, postId);
 
-  if (target === null || target.visibility === "soft_deleted") {
+  if (target === null) {
     return json({ code: "not_found" }, 404);
   }
 
+  const principal = session?.memberId ?? GUEST_PRINCIPAL;
   const tree = await loadForumTree(sql);
-  const readable = await can(sql, session?.memberId ?? GUEST_PRINCIPAL, "read", {
+  const scope = {
     forumId: target.forumId,
     tree,
     sessionId: session?.id ?? session?.sessionId ?? null,
-  });
+  };
+  const readable = await can(sql, principal, "read", scope);
 
-  if (!readable) {
+  // A held or deleted post stays invisible to viewers without the matching moderator bit,
+  // even when they know the post id (ADR 0005).
+  const visible =
+    target.visibility === "visible" ||
+    (target.visibility === "unapproved" && (await can(sql, principal, "see_unapproved", scope))) ||
+    (target.visibility === "soft_deleted" && (await can(sql, principal, "see_deleted", scope)));
+
+  if (!readable || !visible) {
     return json({ code: "not_found" }, 404);
   }
 

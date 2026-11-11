@@ -51,7 +51,7 @@ export async function mutateReaction(
         return { ok: false, code: "invalid" };
       }
 
-      const result = await saveReaction(sql, input);
+      const result = await saveReaction(sql, input, { requestedById: actorMemberId });
 
       if (result.ok) {
         await writeAdminLog(sql, {

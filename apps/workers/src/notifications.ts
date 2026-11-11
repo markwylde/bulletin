@@ -117,6 +117,7 @@ export async function processNotificationRecipients(
         type: recipient.type,
         eventId: event.id,
         actorId: recipient.actorId,
+        contributorId: recipient.contributorId ?? recipient.actorId,
         topicId: recipient.topicId,
         forumId: recipient.forumId,
         postId: recipient.postId,

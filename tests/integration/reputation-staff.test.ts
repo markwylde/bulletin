@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { runReputationRecount } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -158,6 +159,41 @@ integrationDescribe("staff reputation tools", () => {
       expect(view.entries).toHaveLength(1);
       expect(view.entries[0]).toMatchObject({ points: 1, source: "vote" });
 
+      // ACP section access without `members.reputation` cannot remove or recount.
+      const entryId = view.entries[0]?.id ?? "";
+      expect(
+        (
+          await call(
+            database,
+            giver,
+            mutate,
+            {},
+            {
+              action: "remove",
+              memberId: author,
+              entryId,
+            },
+          )
+        ).status,
+      ).toBe(403);
+      expect(
+        (await call(database, giver, mutate, {}, { action: "recount", memberId: author })).status,
+      ).toBe(403);
+      expect(
+        (
+          await database.sql`
+          SELECT 1 FROM core.reputation_entries WHERE id = ${entryId}
+        `
+        ).length,
+      ).toBe(1);
+      expect(
+        (
+          await database.sql`
+          SELECT 1 FROM core.admin_log WHERE action LIKE 'member.reputation.%'
+        `
+        ).length,
+      ).toBe(0);
+
       const removed = await call(
         database,
         admin,
@@ -188,6 +224,19 @@ integrationDescribe("staff reputation tools", () => {
       expect(recounted.status).toBe(200);
       expect((await recounted.json()) as unknown).toMatchObject({ ok: true, total: 0 });
 
+      await runReputationRecount(database.sql, { reason: "staff-progress" });
+      const progress = await call(database, admin, route("reputation.recounts"));
+      expect(progress.status).toBe(200);
+      const progressBody = (await progress.json()) as {
+        runs: Array<{ status: string; processedMembers: number; totalMembers: number }>;
+      };
+      expect(progressBody.runs).toHaveLength(1);
+      expect(progressBody.runs[0]).toMatchObject({
+        status: "done",
+        processedMembers: progressBody.runs[0]?.totalMembers,
+      });
+      expect((await call(database, giver, route("reputation.recounts"))).status).toBe(403);
+
       const log = (await database.sql`
         SELECT action FROM core.admin_log
         WHERE target_type = 'member' AND target_id = ${author}
@@ -200,6 +249,136 @@ integrationDescribe("staff reputation tools", () => {
 
       // A member without ACP access cannot reach the route at all.
       expect((await call(database, author, list, { memberId: author })).status).toBe(403);
+    });
+  }, 60_000);
+
+  test("redacts topic titles the staff viewer cannot read", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const giver = await memberId(database, "super-mod");
+      const viewer = await memberId(database, "member-1");
+      const topic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: await forumId(database, "staff-room"),
+        title: "Private reputation topic",
+        bodyMd: "Staff-only body.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not start the topic");
+      }
+
+      await giveReputation(database.sql, {
+        actorId: giver,
+        postId: topic.result.postId,
+        points: 1,
+      });
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT g.id, p.permission, to_jsonb(true)
+        FROM core.groups g
+        CROSS JOIN (VALUES ('acp.access'), ('acp.members'), ('members.reputation')) AS p (permission)
+        WHERE g.key = 'members'
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+      `;
+
+      const list = route("members.reputation.get");
+      const redacted = await call(database, viewer, list, { memberId: admin });
+      expect(redacted.status).toBe(200);
+      const redactedView = (await redacted.json()) as {
+        entries: Array<{ topicTitle: string | null; points: number }>;
+      };
+      expect(redactedView.entries).toHaveLength(1);
+      expect(redactedView.entries[0]?.topicTitle).toBeNull();
+      expect(redactedView.entries[0]?.points).toBe(1);
+
+      const visible = await call(database, admin, list, { memberId: admin });
+      const visibleView = (await visible.json()) as {
+        entries: Array<{ topicTitle: string | null }>;
+      };
+      expect(visibleView.entries[0]?.topicTitle).toBe("Private reputation topic");
+    });
+  }, 60_000);
+
+  test("staff remove five negative votes and the total rises by five", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const author = await memberId(database, "member-2");
+      const givers = await Promise.all(
+        ["member-1", "member-fr", "member-es", "admin", "super-mod"].map((sub) =>
+          memberId(database, sub),
+        ),
+      );
+      const topic = await startTopic(database.sql, {
+        actorId: author,
+        forumId: await forumId(database, "off-topic"),
+        title: "Vote-ring target",
+        bodyMd: "A post with abusive votes.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not start the topic");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'posting.can_give_negative_reputation', to_jsonb(true)
+        FROM core.groups WHERE key = 'members'
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+      `;
+
+      for (const giver of givers) {
+        const given = await giveReputation(database.sql, {
+          actorId: giver,
+          postId: topic.result.postId,
+          points: -1,
+        });
+        expect(given.ok).toBe(true);
+      }
+
+      const [before] = (await database.sql`
+        SELECT reputation FROM core.members WHERE id = ${author}
+      `) as Array<{ reputation: number }>;
+      expect(before?.reputation).toBe(-5);
+
+      const entries = (await database.sql`
+        SELECT id::text AS id FROM core.reputation_entries
+        WHERE receiver_id = ${author}
+        ORDER BY id
+      `) as Array<{ id: string }>;
+      expect(entries).toHaveLength(5);
+
+      const mutate = route("members.reputation.update");
+
+      for (const [index, entry] of entries.entries()) {
+        const removed = await call(
+          database,
+          admin,
+          mutate,
+          {},
+          {
+            action: "remove",
+            memberId: author,
+            entryId: entry.id,
+          },
+        );
+        expect(removed.status).toBe(200);
+        expect((await removed.json()) as unknown).toMatchObject({ ok: true, total: -4 + index });
+      }
+
+      const [after] = (await database.sql`
+        SELECT reputation FROM core.members WHERE id = ${author}
+      `) as Array<{ reputation: number }>;
+      expect(after?.reputation).toBe(0);
+      expect(
+        (
+          await database.sql`
+          SELECT count(*)::int AS count FROM core.admin_log
+          WHERE action = 'member.reputation.remove' AND target_id = ${author}
+        `
+        )[0],
+      ).toMatchObject({ count: 5 });
     });
   }, 60_000);
 });

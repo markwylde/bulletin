@@ -876,6 +876,99 @@ integrationDescribe("notifications subscriber", () => {
     });
   }, 45_000);
 
+  test("reaction changes by one member count once, and re-adding keeps the count", async () => {
+    await withSeededDb("notifications_reaction_changes", async (database) => {
+      const general = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-2");
+      const member = await memberId(database, "member-1");
+      const other = await memberId(database, "member-fr");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: general,
+          title: "Reaction change notifications",
+          bodyMd: "Change your reaction.",
+        }),
+      );
+      const reactions = await listReactions(database.sql);
+      const like = reactions.find((reaction) => reaction.key === "like");
+      const thanks = reactions.find((reaction) => reaction.key === "thanks");
+      const love = reactions.find((reaction) => reaction.key === "love");
+
+      if (like === undefined || thanks === undefined || love === undefined) {
+        throw new Error("Missing seeded reactions");
+      }
+
+      const handler = createNotificationsEventHandler({ sql: database.sql });
+      // Redelivering every event is safe: notification_events dedupes each event id.
+      const deliverNewEvents = async (): Promise<void> => {
+        const rows = (await database.sql`
+          SELECT id FROM core.events WHERE type = 'reaction.added' ORDER BY id
+        `) as Array<{ id: bigint | string }>;
+
+        for (const row of rows) {
+          const event = await loadEvent(database.sql, BigInt(row.id));
+
+          if (event !== null) {
+            await handler(event);
+          }
+        }
+      };
+
+      await setReaction(database.sql, {
+        actorId: member,
+        postId: topic.postId,
+        reactionId: like.id,
+      });
+      await deliverNewEvents();
+      await setReaction(database.sql, {
+        actorId: member,
+        postId: topic.postId,
+        reactionId: thanks.id,
+      });
+      await deliverNewEvents();
+      await setReaction(database.sql, {
+        actorId: member,
+        postId: topic.postId,
+        reactionId: love.id,
+      });
+      await deliverNewEvents();
+
+      let rows = await notifications(database);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ count: 1, actor_id: member, post_id: topic.postId });
+
+      // Removing a reaction emits nothing; re-adding the same member still counts once.
+      await setReaction(database.sql, {
+        actorId: member,
+        postId: topic.postId,
+        reactionId: null,
+      });
+      await setReaction(database.sql, {
+        actorId: member,
+        postId: topic.postId,
+        reactionId: like.id,
+      });
+      await deliverNewEvents();
+
+      rows = await notifications(database);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.count).toBe(1);
+
+      // A second member makes it two people.
+      await setReaction(database.sql, {
+        actorId: other,
+        postId: topic.postId,
+        reactionId: thanks.id,
+      });
+      await deliverNewEvents();
+
+      rows = await notifications(database);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ count: 2, actor_id: other });
+    });
+  }, 45_000);
+
   test("reputation notifications coalesce per post", async () => {
     await withSeededDb("notifications_reputation", async (database) => {
       const general = await forumId(database, "off-topic");
@@ -925,7 +1018,7 @@ integrationDescribe("notifications subscriber", () => {
         {
           member_id: author,
           type: "reputation.given",
-          actor_id: other,
+          actor_id: null,
           topic_id: topic.topicId,
           forum_id: general,
           post_id: topic.postId,

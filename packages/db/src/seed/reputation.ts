@@ -1,4 +1,4 @@
-import { recomputeAllReputations, upsertReactionEntries } from "@bulletin/domain/reputation";
+import { rebuildReactionEntries, recomputeAllReputations } from "@bulletin/domain/reputation";
 import type { SeedModule } from "./framework.ts";
 
 /** Enough posts to make every forum's first pages show reaction and reputation activity. */
@@ -118,7 +118,7 @@ export const reputationSeedModule: SeedModule = {
     }
 
     // Reaction weights are part of the seed; derive their entries, then sum every total.
-    await upsertReactionEntries(sql);
+    await rebuildReactionEntries(sql);
     await recomputeAllReputations(sql);
 
     await sql`

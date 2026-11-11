@@ -18,6 +18,7 @@ export interface ReputationEntryRecord {
   readonly postId: string;
   readonly topicId: string;
   readonly topicTitle: string;
+  readonly forumId: string;
   readonly giverId: string | null;
   readonly giverName: string | null;
   readonly receiverId: string;
@@ -52,6 +53,7 @@ interface EntryRow {
   readonly post_id: string;
   readonly topic_id: string;
   readonly topic_title: string;
+  readonly forum_id: string;
   readonly giver_id: string | null;
   readonly giver_name: string | null;
   readonly receiver_id: string;
@@ -66,6 +68,7 @@ function entry(row: EntryRow): ReputationEntryRecord {
     postId: row.post_id,
     topicId: row.topic_id,
     topicTitle: row.topic_title,
+    forumId: row.forum_id,
     giverId: row.giver_id,
     giverName: row.giver_name,
     receiverId: row.receiver_id,
@@ -173,26 +176,54 @@ export async function lockReputationPost(tx: SQL, postId: string): Promise<void>
   await tx`SELECT id FROM core.posts WHERE id = ${postId} FOR UPDATE`;
 }
 
-/** Drops reaction entries whose reaction vanished, lost its weight or no longer counts. */
-export async function deleteStaleReactionEntries(tx: SQL): Promise<void> {
+/** The authors of reacted posts: the only members a reaction entry can credit. */
+export async function listReactionReceivers(tx: SQL): Promise<readonly string[]> {
+  const rows = (await tx`
+    SELECT DISTINCT p.author_id::text AS id
+    FROM core.post_reactions pr
+    JOIN core.reactions r ON r.id = pr.reaction_id
+    JOIN core.posts p ON p.id = pr.post_id
+    WHERE r.weight <> 0
+      AND p.author_id IS NOT NULL
+      AND p.author_id <> pr.member_id
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}
+
+/** Drops reaction entries whose reaction vanished, lost its weight or targets an opt-out. */
+export async function deleteStaleReactionEntries(
+  tx: SQL,
+  allowedReceiverIds: readonly string[],
+): Promise<void> {
+  const allowed = `{${allowedReceiverIds.join(",")}}`;
+
   await tx`
     DELETE FROM core.reputation_entries e
     WHERE e.source = 'reaction'
-      AND NOT EXISTS (
-        SELECT 1
-        FROM core.post_reactions pr
-        JOIN core.reactions r ON r.id = pr.reaction_id
-        JOIN core.posts p ON p.id = pr.post_id
-        WHERE pr.post_id = e.post_id
-          AND pr.member_id = e.giver_id
-          AND r.weight <> 0
-          AND p.author_id = e.receiver_id
+      AND (
+        NOT (e.receiver_id = ANY(${allowed}::bigint[]))
+        OR NOT EXISTS (
+          SELECT 1
+          FROM core.post_reactions pr
+          JOIN core.reactions r ON r.id = pr.reaction_id
+          JOIN core.posts p ON p.id = pr.post_id
+          WHERE pr.post_id = e.post_id
+            AND pr.member_id = e.giver_id
+            AND r.weight <> 0
+            AND p.author_id = e.receiver_id
+        )
       )
   `;
 }
 
-/** Rebuilds reaction entries from the current reactions, skipping opted-out receivers. */
-export async function upsertReactionEntries(tx: SQL): Promise<void> {
+/** Rebuilds reaction entries for the receivers that may still receive reputation. */
+export async function upsertReactionEntries(
+  tx: SQL,
+  allowedReceiverIds: readonly string[],
+): Promise<void> {
+  const allowed = `{${allowedReceiverIds.join(",")}}`;
+
   await tx`
     INSERT INTO core.reputation_entries (post_id, giver_id, receiver_id, points, source)
     SELECT pr.post_id, pr.member_id, p.author_id, r.weight, 'reaction'
@@ -202,14 +233,7 @@ export async function upsertReactionEntries(tx: SQL): Promise<void> {
     WHERE r.weight <> 0
       AND p.author_id IS NOT NULL
       AND p.author_id <> pr.member_id
-      AND NOT EXISTS (
-        SELECT 1
-        FROM core.member_groups mg
-        JOIN core.group_settings gs ON gs.group_id = mg.group_id
-        WHERE mg.member_id = p.author_id
-          AND gs.key = 'posting.cannot_receive_reputation'
-          AND gs.value = 'true'::jsonb
-      )
+      AND p.author_id = ANY(${allowed}::bigint[])
     ON CONFLICT (post_id, giver_id, source) DO UPDATE
       SET points = EXCLUDED.points, receiver_id = EXCLUDED.receiver_id
   `;
@@ -292,6 +316,7 @@ export async function listReputationEntries(
       e.post_id::text AS post_id,
       p.topic_id::text AS topic_id,
       t.title AS topic_title,
+      t.forum_id::text AS forum_id,
       e.giver_id::text AS giver_id,
       g.display_name AS giver_name,
       e.receiver_id::text AS receiver_id,
@@ -317,6 +342,7 @@ export async function readEntry(sql: SQL, entryId: string): Promise<ReputationEn
       e.post_id::text AS post_id,
       p.topic_id::text AS topic_id,
       t.title AS topic_title,
+      t.forum_id::text AS forum_id,
       e.giver_id::text AS giver_id,
       g.display_name AS giver_name,
       e.receiver_id::text AS receiver_id,
@@ -350,59 +376,273 @@ export async function addToReputation(tx: SQL, memberId: string, delta: number):
 }
 
 /** Recomputes a member's total from the entries; the recount path for staff and jobs. */
+/** One member's total, recomputed after locking the row (the caller's transaction). */
 export async function recomputeReputation(
   tx: SQL,
   memberId: string,
 ): Promise<{ readonly previous: number; readonly total: number } | null> {
-  const [before] = (await tx`
-    SELECT reputation FROM core.members WHERE id = ${memberId} FOR UPDATE
-  `) as Array<{ reputation: number }>;
+  const changed = await recomputeMemberBatch(tx, [memberId]);
 
-  if (before === undefined) {
-    return null;
+  if (changed.length > 0) {
+    const [entry] = changed;
+    return entry === undefined ? null : { previous: entry.previous, total: entry.total };
   }
 
   const [row] = (await tx`
+    SELECT reputation FROM core.members WHERE id = ${memberId}
+  `) as Array<{ reputation: number }>;
+
+  return row === undefined ? null : { previous: row.reputation, total: row.reputation };
+}
+
+export interface MemberTotalChange {
+  readonly memberId: string;
+  readonly previous: number;
+  readonly total: number;
+}
+
+/**
+ * Recomputes a batch of totals after locking every row first. The lock statement waits for an
+ * in-flight vote and the following UPDATE takes a fresh snapshot, so a committed vote can never
+ * be missed (ADR 0006 consistency for materialisations).
+ */
+export async function recomputeMemberBatch(
+  tx: SQL,
+  memberIds: readonly string[],
+): Promise<readonly MemberTotalChange[]> {
+  if (memberIds.length === 0) {
+    return [];
+  }
+
+  const ids = `{${memberIds.join(",")}}`;
+  const before = (await tx`
+    SELECT id::text AS id, reputation AS previous
+    FROM core.members
+    WHERE id = ANY(${ids}::bigint[])
+    ORDER BY core.members.id
+    FOR UPDATE
+  `) as Array<{ id: string; previous: number }>;
+  const previousById = new Map(before.map((row) => [row.id, row.previous]));
+  const updated = (await tx`
     UPDATE core.members m
     SET reputation = COALESCE(
       (SELECT sum(e.points)::int FROM core.reputation_entries e WHERE e.receiver_id = m.id),
       0
     )
-    WHERE m.id = ${memberId}
-    RETURNING m.reputation
-  `) as Array<{ reputation: number }>;
+    WHERE m.id = ANY(${ids}::bigint[])
+    RETURNING m.id::text AS id, m.reputation AS total
+  `) as Array<{ id: string; total: number }>;
 
-  return { previous: before.reputation, total: row?.reputation ?? before.reputation };
+  return updated
+    .map((row) => ({
+      memberId: row.id,
+      previous: previousById.get(row.id) ?? 0,
+      total: row.total,
+    }))
+    .filter((row) => row.previous !== row.total)
+    .sort((left, right) => (BigInt(left.memberId) < BigInt(right.memberId) ? -1 : 1));
 }
 
-/** Recomputes every member's total; used after a board-wide reaction-link change. */
-export async function recomputeAllReputations(
+/** Member ids after the cursor, in id order, for a resumable recount batch. */
+export async function nextMemberBatch(
   tx: SQL,
-): Promise<
-  readonly { readonly memberId: string; readonly previous: number; readonly total: number }[]
-> {
+  cursorMemberId: string,
+  limit: number,
+): Promise<readonly string[]> {
   const rows = (await tx`
-    WITH before AS (
-      SELECT id, reputation AS previous FROM core.members
-    ),
-    updated AS (
-      UPDATE core.members m
-      SET reputation = COALESCE(
-        (SELECT sum(e.points)::int FROM core.reputation_entries e WHERE e.receiver_id = m.id),
-        0
-      )
-      RETURNING m.id, m.reputation AS total
-    )
-    SELECT u.id::text AS member_id, b.previous, u.total
-    FROM updated u
-    JOIN before b ON b.id = u.id
-    WHERE u.total <> b.previous
-    ORDER BY u.id
-  `) as Array<{ member_id: string; previous: number; total: number }>;
+    SELECT id::text AS id
+    FROM core.members
+    WHERE id > ${cursorMemberId}::bigint
+    ORDER BY core.members.id
+    LIMIT ${limit}
+  `) as Array<{ id: string }>;
 
-  return rows.map((row) => ({
-    memberId: row.member_id,
-    previous: row.previous,
-    total: row.total,
-  }));
+  return rows.map((row) => row.id);
+}
+
+/** Recomputes every member's total in id-ordered batches, locking each batch before its sum. */
+export async function recomputeAllReputations(tx: SQL): Promise<readonly MemberTotalChange[]> {
+  const changed: MemberTotalChange[] = [];
+  let cursor = "0";
+
+  for (;;) {
+    const ids = await nextMemberBatch(tx, cursor, 250);
+
+    if (ids.length === 0) {
+      break;
+    }
+
+    changed.push(...(await recomputeMemberBatch(tx, ids)));
+    cursor = ids[ids.length - 1] ?? cursor;
+  }
+
+  return changed;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Board recounts: resumable runs with progress for the staff app (design risk: big boards)
+// ---------------------------------------------------------------------------------------------
+
+const RECOUNT_CLAIM_LOCK = "bulletin.reputation.recount";
+const REBUILD_LOCK = "bulletin.reputation.rebuild";
+
+/**
+ * Coordinates the reaction-entry rebuild with reaction writers: the rebuild takes it
+ * exclusively, and a reaction mutation takes it shared, so no write straddles the rebuild.
+ */
+export async function lockReputationRebuild(tx: SQL, mode: "shared" | "exclusive"): Promise<void> {
+  if (mode === "exclusive") {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${REBUILD_LOCK})::bigint)`;
+    return;
+  }
+
+  await tx`SELECT pg_advisory_xact_lock_shared(hashtext(${REBUILD_LOCK})::bigint)`;
+}
+
+export interface ReputationRecountRun {
+  readonly id: string;
+  readonly status: "running" | "done";
+  readonly reason: string;
+  readonly totalMembers: number;
+  readonly processedMembers: number;
+  readonly changedMembers: number;
+  readonly cursorMemberId: string;
+  readonly rebuiltAt: Date | null;
+  readonly startedAt: Date;
+  readonly updatedAt: Date;
+  readonly finishedAt: Date | null;
+}
+
+interface RecountRow {
+  readonly id: string;
+  readonly status: "running" | "done";
+  readonly reason: string;
+  readonly total_members: number;
+  readonly processed_members: number;
+  readonly changed_members: number;
+  readonly cursor_member_id: string;
+  readonly rebuilt_at: Date | null;
+  readonly started_at: Date;
+  readonly updated_at: Date;
+  readonly finished_at: Date | null;
+}
+
+function recountRun(row: RecountRow): ReputationRecountRun {
+  return {
+    id: row.id,
+    status: row.status,
+    reason: row.reason,
+    totalMembers: row.total_members,
+    processedMembers: row.processed_members,
+    changedMembers: row.changed_members,
+    cursorMemberId: row.cursor_member_id,
+    rebuiltAt: row.rebuilt_at,
+    startedAt: row.started_at,
+    updatedAt: row.updated_at,
+    finishedAt: row.finished_at,
+  };
+}
+
+/** The active run, created on first use; both calls inside one board-recount job coalesce. */
+export async function ensureRecountRun(tx: SQL, reason: string): Promise<ReputationRecountRun> {
+  await tx`SELECT pg_advisory_xact_lock(hashtext(${RECOUNT_CLAIM_LOCK})::bigint)`;
+
+  const [existing] = (await tx`
+    SELECT
+      id::text AS id, status, reason, total_members, processed_members, changed_members,
+      cursor_member_id::text AS cursor_member_id, rebuilt_at, started_at, updated_at, finished_at
+    FROM core.reputation_recounts
+    WHERE status = 'running'
+    ORDER BY core.reputation_recounts.id
+    LIMIT 1
+  `) as RecountRow[];
+
+  if (existing !== undefined) {
+    return recountRun(existing);
+  }
+
+  const [count] = (await tx`
+    SELECT count(*)::int AS total FROM core.members
+  `) as Array<{ total: number }>;
+
+  const [created] = (await tx`
+    INSERT INTO core.reputation_recounts (reason, total_members)
+    VALUES (${reason}, ${count?.total ?? 0})
+    RETURNING
+      id::text AS id, status, reason, total_members, processed_members, changed_members,
+      cursor_member_id::text AS cursor_member_id, rebuilt_at, started_at, updated_at, finished_at
+  `) as RecountRow[];
+
+  if (created === undefined) {
+    throw new Error("Could not create the reputation recount run");
+  }
+
+  return recountRun(created);
+}
+
+export async function readRecountRun(
+  sql: SQL,
+  runId: string,
+): Promise<ReputationRecountRun | null> {
+  const [row] = (await sql`
+    SELECT
+      id::text AS id, status, reason, total_members, processed_members, changed_members,
+      cursor_member_id::text AS cursor_member_id, rebuilt_at, started_at, updated_at, finished_at
+    FROM core.reputation_recounts
+    WHERE id = ${runId}
+  `) as RecountRow[];
+
+  return row === undefined ? null : recountRun(row);
+}
+
+export async function markRecountRebuilt(sql: SQL, runId: string): Promise<void> {
+  await sql`
+    UPDATE core.reputation_recounts
+    SET rebuilt_at = now(), updated_at = now()
+    WHERE id = ${runId}
+  `;
+}
+
+export async function updateRecountProgress(
+  sql: SQL,
+  runId: string,
+  progress: {
+    readonly cursorMemberId: string;
+    readonly processed: number;
+    readonly changed: number;
+  },
+): Promise<void> {
+  await sql`
+    UPDATE core.reputation_recounts
+    SET cursor_member_id = ${progress.cursorMemberId},
+        processed_members = processed_members + ${progress.processed},
+        changed_members = changed_members + ${progress.changed},
+        updated_at = now()
+    WHERE id = ${runId}
+  `;
+}
+
+export async function finishRecountRun(sql: SQL, runId: string): Promise<void> {
+  await sql`
+    UPDATE core.reputation_recounts
+    SET status = 'done', finished_at = now(), updated_at = now()
+    WHERE id = ${runId}
+  `;
+}
+
+/** Recent recounts for the staff progress panel, newest first. */
+export async function listRecountRuns(
+  sql: SQL,
+  limit = 10,
+): Promise<readonly ReputationRecountRun[]> {
+  const rows = (await sql`
+    SELECT
+      id::text AS id, status, reason, total_members, processed_members, changed_members,
+      cursor_member_id::text AS cursor_member_id, rebuilt_at, started_at, updated_at, finished_at
+    FROM core.reputation_recounts
+    ORDER BY core.reputation_recounts.id DESC
+    LIMIT ${limit}
+  `) as RecountRow[];
+
+  return rows.map(recountRun);
 }

@@ -40,6 +40,8 @@ export interface NotificationRecipient {
   /** Follow-derived recipients are hidden when the `follows` flag is off. */
   readonly source: NotificationRecipientSource;
   readonly actorId: string | null;
+  /** Counts towards the distinct-contributor total even when the actor stays anonymous. */
+  readonly contributorId?: string | null;
   readonly topicId: string | null;
   readonly forumId: string | null;
   readonly postId: string | null;
@@ -59,6 +61,7 @@ export interface NotificationWrite {
   readonly type: NotificationType;
   readonly eventId: bigint;
   readonly actorId?: string | null;
+  readonly contributorId?: string | null;
   readonly topicId?: string | null;
   readonly forumId?: string | null;
   readonly postId?: string | null;
@@ -146,6 +149,29 @@ export async function createNotification(
   }
 
   const id = BigInt(row.id);
+
+  if (isPostCoalesced(input.type)) {
+    const contributor = input.contributorId ?? input.actorId ?? null;
+
+    if (contributor !== null) {
+      await sql`
+        INSERT INTO core.notification_actors (notification_id, actor_id)
+        VALUES (${id}, ${contributor})
+        ON CONFLICT DO NOTHING
+      `;
+    }
+
+    // One notification counts people, not events: a member switching reactions stays one.
+    await sql`
+      UPDATE core.notifications n
+      SET count = GREATEST(
+        1,
+        (SELECT count(*)::int FROM core.notification_actors a WHERE a.notification_id = n.id)
+      )
+      WHERE n.id = ${id}
+    `;
+  }
+
   await sql`
     UPDATE core.notification_events
     SET notification_id = ${id}
@@ -415,12 +441,14 @@ export async function eventRecipients(
         return [];
       }
 
+      // Givers are visible to staff only (ADR 0012): the recipient never learns who gave.
       return [
         {
           memberId: receiverId,
           type: "reputation.given",
           source: "reputation",
-          actorId: giverId,
+          actorId: null,
+          contributorId: giverId,
           topicId: post.topicId,
           forumId: post.forumId,
           postId,

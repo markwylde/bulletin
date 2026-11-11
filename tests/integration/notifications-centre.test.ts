@@ -662,6 +662,8 @@ integrationDescribe("notification centre", () => {
 
       expect(entries).toHaveLength(1);
       expect(entries[0]?.text).toContain("2 reputation points received");
+      // The giver stays anonymous in member-facing text (ADR 0012).
+      expect(entries[0]?.text).not.toContain("Regular Member One");
       expect(entries[0]?.href).toContain(`/post/${fixture.postId}`);
     });
   }, 30_000);

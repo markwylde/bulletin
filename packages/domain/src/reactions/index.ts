@@ -307,7 +307,11 @@ function errorCode(error: unknown): string | null {
       : null;
 }
 
-export async function saveReaction(sql: SQL, input: ReactionInput): Promise<ReactionAdminOutcome> {
+export async function saveReaction(
+  sql: SQL,
+  input: ReactionInput,
+  options: { readonly requestedById?: string } = {},
+): Promise<ReactionAdminOutcome> {
   try {
     const result = await runMutation({
       sql,
@@ -315,6 +319,14 @@ export async function saveReaction(sql: SQL, input: ReactionInput): Promise<Reac
       input: { action: input.id === undefined ? "create" : "update" },
       apply: async (tx) => {
         if (input.id !== undefined) {
+          const [before] = (await tx`
+            SELECT weight FROM core.reactions WHERE id = ${input.id} FOR UPDATE
+          `) as Array<{ weight: number }>;
+
+          if (before === undefined) {
+            reject("not_found");
+          }
+
           const [updated] = (await tx`
             UPDATE core.reactions
             SET key = ${input.key},
@@ -330,6 +342,16 @@ export async function saveReaction(sql: SQL, input: ReactionInput): Promise<Reac
 
           if (updated === undefined) {
             reject("not_found");
+          }
+
+          // Existing reactions keep their old contribution until the recount rebuilds entries.
+          if (before.weight !== input.weight && options.requestedById !== undefined) {
+            await emit(tx, {
+              type: "reputation.recount.requested",
+              aggregateId: 1n,
+              aggregateVersion: 1n,
+              payloadIds: { requestedById: BigInt(options.requestedById) },
+            });
           }
 
           return { reactionId: updated.id };

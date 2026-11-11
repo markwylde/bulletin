@@ -8,8 +8,8 @@ import {
   addToReputation,
   canReadPost,
   canReceiveReputation,
-  deleteReactionEntries,
   deleteStaleReactionEntries,
+  listReactionReceivers,
   lockMember,
   lockReputationPost,
   memberPostCount,
@@ -19,7 +19,6 @@ import {
   readReputationRules,
   readReputationTarget,
   readVoteEntry,
-  recomputeAllReputations,
   recomputeReputation,
   upsertReactionEntries,
 } from "./repository.ts";
@@ -360,30 +359,17 @@ export async function recountMemberReputation(
   });
 }
 
-/** Rebuilds every reaction-sourced entry when the board setting changes, then recounts all. */
-export async function rebuildReactionReputation(
-  sql: SQL,
-  options: { readonly enabled: boolean },
-): Promise<readonly RecountResult[]> {
-  return sql.begin(async (tx) => {
-    if (!options.enabled) {
-      await deleteReactionEntries(tx);
-    } else {
-      await deleteStaleReactionEntries(tx);
-      await upsertReactionEntries(tx);
+/** Rebuilds reaction entries, routing each receiver's opt-out through `can()` (ADR 0005). */
+export async function rebuildReactionEntries(tx: SQL): Promise<void> {
+  const receivers = await listReactionReceivers(tx);
+  const allowed: string[] = [];
+
+  for (const receiverId of receivers) {
+    if (await can(tx, receiverId, "receive_reputation")) {
+      allowed.push(receiverId);
     }
+  }
 
-    const changed = await recomputeAllReputations(tx);
-
-    for (const entry of changed) {
-      await bumpCacheTags(tx, [memberTag(entry.memberId)]);
-    }
-
-    return changed.map((entry) => ({
-      memberId: entry.memberId,
-      previous: entry.previous,
-      total: entry.total,
-      changed: true,
-    }));
-  });
+  await deleteStaleReactionEntries(tx, allowed);
+  await upsertReactionEntries(tx, allowed);
 }

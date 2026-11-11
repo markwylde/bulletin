@@ -11,7 +11,7 @@
   "email.body.post.mention": "{actor} vous a mentionné dans « {topic} ».",
   "email.body.post.quote": "{actor} a cité votre message dans « {topic} ».",
   "email.body.reaction.added": "{actor} a réagi à votre message.",
-  "email.body.reputation.given": "{actor} vous a donné de la réputation.",
+  "email.body.reputation.given": "Vous avez reçu de la réputation.",
   "email.body.topic.created": "{actor} a créé « {topic} ».",
   "email.body.topic.reply": "{actor} a répondu dans « {topic} ».",
   "email.fallbackActor": "Quelqu’un",
