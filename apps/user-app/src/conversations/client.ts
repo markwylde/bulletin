@@ -411,8 +411,15 @@ document.addEventListener("click", (event) => {
   }
 });
 
-const page = document.querySelector<HTMLElement>("[data-conversation-page]");
+const conversationPage = document.querySelector<HTMLElement>("[data-conversation-page]");
 
-if (page !== null) {
-  markRead(page);
+if (conversationPage !== null) {
+  conversationPage.dataset.conversationReady = "true";
+  markRead(conversationPage);
+}
+
+const inboxPage = document.querySelector<HTMLElement>("[data-conversations-page]");
+
+if (inboxPage !== null) {
+  inboxPage.dataset.conversationsReady = "true";
 }
