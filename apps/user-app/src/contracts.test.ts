@@ -11,6 +11,8 @@ import {
   forumContract,
   homeContract,
   loginContract,
+  notificationPreferencesContract,
+  notificationsContract,
   ROUTE_CONTRACTS,
   topicContract,
 } from "./contracts.ts";
@@ -35,6 +37,8 @@ describe("route contracts", () => {
         topicContract.route,
         displayNameContract.route,
         accountContract.route,
+        notificationPreferencesContract.route,
+        notificationsContract.route,
         followsContract.route,
         attachmentsContract.route,
       ].sort(),

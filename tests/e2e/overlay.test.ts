@@ -11,7 +11,11 @@ const DEMO_URL = new URL("/_demo/2", USER_URL).toString();
 
 interface OverlayResult {
   readonly status: number;
-  readonly body: { readonly csrfToken?: string; readonly unread?: readonly string[] };
+  readonly body: {
+    readonly csrfToken?: string;
+    readonly unread?: readonly string[];
+    readonly counts?: { readonly notifications?: number };
+  };
   readonly etag: string | null;
 }
 
@@ -52,18 +56,19 @@ integrationDescribe("personal overlay", () => {
       expect(html).toContain('data-overlay-context="topic:201"');
 
       // Overlay counts are applied by the shell: zero counts stay hidden.
+      const overlay = await view.evaluate<OverlayResult>(overlayRequest());
+
       expect(
         await view.evaluate<boolean>(
           "document.querySelector('[data-overlay-counts]')?.hidden === false",
         ),
       ).toBe(true);
+      const expectedHidden = (overlay.body.counts?.notifications ?? 0) <= 0;
       expect(
         await view.evaluate<boolean>(
-          "document.querySelector('[data-overlay-count=\"notifications\"]')?.hidden === true",
+          `document.querySelector('[data-overlay-count="notifications"]')?.hidden === ${expectedHidden}`,
         ),
       ).toBe(true);
-
-      const overlay = await view.evaluate<OverlayResult>(overlayRequest());
 
       expect(overlay.status).toBe(200);
       // The applier stores the server-issued CSRF token for later member writes.

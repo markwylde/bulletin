@@ -146,6 +146,30 @@ export const accountContract = defineContract<AccountViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+export const notificationPreferencesContract = defineContract<AccountViewModel>({
+  route: "/account/notifications/preferences",
+  templates: {
+    page: "account-notification-preferences",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+export const notificationsContract = defineContract<AccountViewModel>({
+  route: "/account/notifications",
+  templates: {
+    page: "account-notifications",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const followsContract = defineContract<AccountViewModel>({
   route: "/account/follows",
   templates: { page: "account-follows", regions: ["header", "breadcrumbs", "empty", "footer"] },
@@ -176,6 +200,8 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [topicContract.route]: topicContract,
   [displayNameContract.route]: displayNameContract,
   [accountContract.route]: accountContract,
+  [notificationPreferencesContract.route]: notificationPreferencesContract,
+  [notificationsContract.route]: notificationsContract,
   [followsContract.route]: followsContract,
   [attachmentsContract.route]: attachmentsContract,
 };

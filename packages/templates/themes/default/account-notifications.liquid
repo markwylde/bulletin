@@ -1,0 +1,36 @@
+{{ header }}
+<main id="main" class="bl-main" data-notifications-page>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{{ title }}</h1>
+  <p class="bl-muted">{% t "notifications.intro" %}</p>
+
+  <div class="bl-notifications-actions">
+    <a class="bl-muted" href="/account/notifications/preferences" data-notification-preferences-link>{% t "notification.preferences.open" %}</a>
+    <button class="bl-button bl-button--quiet bl-button--small" type="button" data-notifications-read-all{% if readAllDisabled %} disabled{% endif %}>{% t "notifications.markAll" %}</button>
+    <p class="bl-muted" data-notifications-read-status hidden>{% t "notifications.allRead" %}</p>
+    <p class="bl-error-text" data-notifications-error hidden>{% t "notifications.readFailed" %}</p>
+  </div>
+
+  {% if hasNotifications %}
+    {% for section in sections %}
+      <section class="bl-card" data-notification-section="{{ section.key }}">
+        <h2 class="bl-card__title">{{ section.label }}</h2>
+        <ul class="bl-notification-list">
+          {% for entry in section.entries %}
+            <li class="bl-notification{% if entry.unread %} is-unread{% endif %}" data-notification-row="{{ entry.id }}" data-unread="{{ entry.unreadAttr }}">
+              {% if entry.href %}
+                <a class="bl-notification__text" href="{{ entry.href }}" data-notification-link="{{ entry.id }}">{{ entry.text }}</a>
+              {% else %}
+                <span class="bl-notification__text">{{ entry.text }}</span>
+              {% endif %}
+              <time class="bl-muted" datetime="{{ entry.iso }}" data-notification-time>{{ entry.time }}</time>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endfor %}
+  {% else %}
+    {{ emptyState }}
+  {% endif %}
+</main>
+{{ footer }}

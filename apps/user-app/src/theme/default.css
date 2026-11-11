@@ -1154,3 +1154,59 @@ fieldset.bl-editor__modes {
   flex: 1 1 12rem;
   overflow-wrap: anywhere;
 }
+
+.bl-header__bell {
+  min-height: var(--bl-touch);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-inline: var(--bl-space-small);
+  color: var(--bl-text);
+  text-decoration: none;
+}
+
+.bl-header__bell svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: currentColor;
+}
+
+.bl-notifications-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bl-space-small);
+  margin-bottom: var(--bl-space);
+}
+
+.bl-notification-list {
+  display: grid;
+  gap: var(--bl-space-small);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bl-notification {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--bl-space-small);
+  padding: var(--bl-space-small);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius, 6px);
+}
+
+.bl-notification.is-unread {
+  border-inline-start: 4px solid var(--bl-accent);
+  background: var(--bl-surface-raised, transparent);
+}
+
+.bl-notification__text {
+  flex: 1 1 14rem;
+  overflow-wrap: anywhere;
+}
+
+.bl-notification.is-unread .bl-notification__text {
+  font-weight: 600;
+}

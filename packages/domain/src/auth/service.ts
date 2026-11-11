@@ -11,6 +11,7 @@ import {
   saveMemberLocale,
   updateDisplayName,
 } from "../member/store.ts";
+import { unreadNotificationCount } from "../notifications/repository.ts";
 import {
   acpPermissionsFor,
   DEFAULT_STAFF_SCHEME,
@@ -578,8 +579,14 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           url: canonicalUrl("topic", row.topicId, row.topicSlug, { postId: row.postId }),
         })),
         dismissedAnnouncements,
-        // Counts arrive with `events-notifications`; the overlay shape is fixed now.
-        counts: { notifications: 0, conversations: 0 },
+        counts: {
+          notifications: await unreadNotificationCount(options.sql, session.memberId, {
+            tree,
+            snapshot,
+          }),
+          // Conversations arrive with the `conversations` change.
+          conversations: 0,
+        },
         polls: poll === null ? [] : [poll],
         editablePosts,
         ...(draft === null ? {} : { draft }),

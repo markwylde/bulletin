@@ -28,6 +28,11 @@ import { createUserApiFlags } from "./flag-guard.ts";
 import { followResponse, followSettingsResponse } from "./follows.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 import { memberSuggestResponse } from "./members.ts";
+import {
+  notificationDigestResponse,
+  notificationPreferencesResponse,
+  notificationReadResponse,
+} from "./notifications.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
 import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
@@ -163,6 +168,42 @@ await startService({
         }
 
         return markBoardReadResponse(sql, session.memberId);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/notifications/digest") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return notificationDigestResponse(sql, session.memberId, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/notifications/preferences") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return notificationPreferencesResponse(sql, session.memberId, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/notifications/read") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return notificationReadResponse(sql, session.memberId, request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

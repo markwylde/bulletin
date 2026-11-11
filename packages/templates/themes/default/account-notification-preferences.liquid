@@ -1,0 +1,51 @@
+{{ header }}
+<main id="main" class="bl-main" data-notification-preferences-page>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{{ title }}</h1>
+  <p class="bl-muted">{% t "notification.preferences.intro" %}</p>
+
+  <label class="control">
+    <span>{% t "notification.preferences.digestFrequency" %}</span>
+    <select data-digest-frequency>
+      {% for option in digestOptions %}
+        <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+
+  <div class="matrix-scroll">
+    <table class="matrix-table" data-notification-preferences>
+      <thead>
+        <tr>
+          <th scope="col">{% t "notification.preferences.type" %}</th>
+          {% for channel in types[0].channels %}
+            <th scope="col">{{ channel.label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for type in types %}
+          <tr data-preference-type="{{ type.type }}">
+            <th scope="row">{{ type.label }}</th>
+            {% for channel in type.channels %}
+              <td>
+                <input
+                  type="checkbox"
+                  data-notification-preference
+                  data-preference-type="{{ type.type }}"
+                  data-preference-channel="{{ channel.channel }}"
+                  aria-label="{{ type.label }}: {{ channel.label }}"
+                  {% if channel.enabled %}checked{% endif %}
+                />
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="bl-muted" data-notification-preference-status hidden>{% t "notification.preferences.saved" %}</p>
+  <p class="bl-error-text" data-notification-preference-error hidden>{% t "notification.preferences.saveFailed" %}</p>
+</main>
+{{ footer }}

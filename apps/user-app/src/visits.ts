@@ -228,7 +228,10 @@ for (const element of document.querySelectorAll<HTMLElement>("[data-overlay-memb
   element.hidden = visitor !== "member";
 }
 
-const ctx = overlayContext();
+// Personal pages (account, notifications) have no content context, but the member still needs
+// the overlay for the header counts; "board" is the supported context for those pages.
+const ctx =
+  overlayContext() ?? (document.documentElement.dataset.visitor === "member" ? "board" : null);
 
 if (ctx !== null) {
   if (document.documentElement.dataset.visitor === "member") {

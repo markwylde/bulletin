@@ -2,7 +2,10 @@
 <main id="main" class="bl-main" data-account-page>
   {{ breadcrumbs }}
   <h1 class="bl-page__title">{% t "account.title" %}</h1>
-  <p class="bl-muted"><a href="/account/follows" data-account-follows>{% t "account.follows.title" %}</a></p>
+  <p class="bl-muted">
+    <a href="/account/notifications" data-account-notifications>{% t "notifications.title" %}</a> ·
+    <a href="/account/follows" data-account-follows>{% t "account.follows.title" %}</a>
+  </p>
 
   <section class="bl-card" data-account-profile>
     <h2 class="bl-card__title">{% t "account.displayName.title" %}</h2>
