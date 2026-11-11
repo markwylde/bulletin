@@ -81,6 +81,30 @@ export interface NewConversationMessage {
 const MEMBER_ID = /^[1-9]\d{0,18}$/;
 const CONVERSATION_ID = /^[1-9]\d{0,18}$/;
 
+export type SearchConfig = "english" | "spanish" | "french" | "simple";
+
+/** ADR 0017: content is indexed with a real language config, with `simple` as the fallback. */
+export function textSearchConfig(locale: string | null | undefined): SearchConfig {
+  switch (locale) {
+    case "es":
+      return "spanish";
+    case "fr":
+      return "french";
+    case "en":
+      return "english";
+    default:
+      return "simple";
+  }
+}
+
+export async function readMemberSearchConfig(sql: SQL, memberId: string): Promise<SearchConfig> {
+  const [row] = (await sql`
+    SELECT locale FROM core.members WHERE id = ${memberId}
+  `) as Array<{ locale: string | null }>;
+
+  return textSearchConfig(row?.locale);
+}
+
 function numberSetting(
   settings: Readonly<Record<string, GroupSettingValue>>,
   key: string,
@@ -174,11 +198,11 @@ export async function readStartUsage(sql: SQL, memberId: string): Promise<StartU
 
 export async function insertConversation(
   sql: SQL,
-  input: { readonly title: string; readonly starterId: string },
+  input: { readonly title: string; readonly starterId: string; readonly lang: SearchConfig },
 ): Promise<NewConversation> {
   const [row] = (await sql`
-    INSERT INTO core.conversations (title, starter_id)
-    VALUES (${input.title}, ${input.starterId})
+    INSERT INTO core.conversations (title, starter_id, lang)
+    VALUES (${input.title}, ${input.starterId}, ${input.lang}::regconfig)
     RETURNING id::text AS id, created_at
   `) as Array<{ id: string; created_at: Date }>;
 
@@ -207,18 +231,20 @@ export async function insertConversationMessage(
     readonly bodyMd: string;
     readonly bodyHtml: string;
     readonly bodyText: string;
+    readonly lang: SearchConfig;
   },
 ): Promise<NewConversationMessage> {
   const [row] = (await sql`
     INSERT INTO core.conversation_messages (
-      conversation_id, author_id, body_md, body_html, body_text
+      conversation_id, author_id, body_md, body_html, body_text, lang
     )
     VALUES (
       ${input.conversationId},
       ${input.authorId},
       ${input.bodyMd},
       ${input.bodyHtml},
-      ${input.bodyText}
+      ${input.bodyText},
+      ${input.lang}::regconfig
     )
     RETURNING id::text AS id, created_at
   `) as Array<{ id: string; created_at: Date }>;
@@ -757,12 +783,15 @@ export async function searchConversations(
   sql: SQL,
   memberId: string,
   query: string,
+  locale: string | null = "en",
 ): Promise<readonly ConversationSummary[]> {
   const term = query.trim().slice(0, SEARCH_MAX_LENGTH);
 
   if (!MEMBER_ID.test(memberId) || term === "") {
     return [];
   }
+
+  const config = textSearchConfig(locale);
 
   const rows = (await sql`
     SELECT
@@ -798,12 +827,16 @@ export async function searchConversations(
       ON p.conversation_id = c.id
      AND p.member_id = ${memberId}
      AND p.state = 'active'
-    WHERE c.title_search_vector @@ websearch_to_tsquery('simple', ${term})
+    WHERE c.title_search_vector @@ websearch_to_tsquery(${config}::regconfig, ${term})
+       OR c.title_search_vector @@ websearch_to_tsquery('simple', ${term})
        OR EXISTS (
          SELECT 1
          FROM core.conversation_messages msg
          WHERE msg.conversation_id = c.id
-           AND msg.search_vector @@ websearch_to_tsquery('simple', ${term})
+           AND (
+             msg.search_vector @@ websearch_to_tsquery(${config}::regconfig, ${term})
+             OR msg.search_vector @@ websearch_to_tsquery('simple', ${term})
+           )
        )
     ORDER BY c.last_message_at DESC, c.id DESC
   `) as SummaryRow[];

@@ -183,7 +183,9 @@ export async function buildInboxPage(input: InboxPageInput): Promise<InboxPageDa
     count: lists[key].length,
   }));
   const conversations = (
-    searching ? await searchConversations(input.sql, input.memberId, query) : lists[input.folder]
+    searching
+      ? await searchConversations(input.sql, input.memberId, query, input.locale)
+      : lists[input.folder]
   ).map((summary) => rowView(summary, input.locale, input.translate));
   const editor =
     policy.canUse && input.folder !== "archive"

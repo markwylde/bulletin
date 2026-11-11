@@ -11,6 +11,7 @@ import {
   lockMemberForStart,
   memberCanUsePms,
   memberIsReachable,
+  readMemberSearchConfig,
   readPmPolicy,
   readStartUsage,
   recipientIgnores,
@@ -156,9 +157,11 @@ export async function startConversation(
         };
       }
 
+      const lang = await readMemberSearchConfig(tx, input.actorId);
       const conversation = await insertConversation(tx, {
         title,
         starterId: input.actorId,
+        lang,
       });
       const dependencies = await loadContentRenderDependencies(tx);
       const rendered = await saveContent(input.bodyMd, {
@@ -180,6 +183,7 @@ export async function startConversation(
         bodyMd: rendered.bodyMd,
         bodyHtml: rendered.bodyHtml,
         bodyText: rendered.bodyText,
+        lang,
       });
 
       await recordConversationReply(tx, {

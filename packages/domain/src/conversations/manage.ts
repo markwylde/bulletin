@@ -18,6 +18,7 @@ import {
   markParticipantRemoved,
   memberCanUsePms,
   memberIsReachable,
+  readMemberSearchConfig,
   readParticipantState,
   readParticipation,
   readPmPolicy,
@@ -104,7 +105,10 @@ export async function replyToConversation(
         return { ok: false, code: "pm_disabled" };
       }
 
-      const dependencies = await loadContentRenderDependencies(tx);
+      const [dependencies, lang] = await Promise.all([
+        loadContentRenderDependencies(tx),
+        readMemberSearchConfig(tx, input.actorId),
+      ]);
       const rendered = await saveContent(bodyMd, {
         profile: "post",
         context: { kind: "conversation_message", conversationId: input.conversationId },
@@ -120,6 +124,7 @@ export async function replyToConversation(
         bodyMd: rendered.bodyMd,
         bodyHtml: rendered.bodyHtml,
         bodyText: rendered.bodyText,
+        lang,
       });
 
       await recordConversationReply(tx, {
