@@ -405,11 +405,11 @@ export async function reorderReaction(
       input: { action: `reorder-${direction}` },
       apply: async (tx) => {
         const rows = (await tx`
-          SELECT id::text AS id, position
+          SELECT id::text AS id
           FROM core.reactions
           ORDER BY position, id
           FOR UPDATE
-        `) as Array<{ id: string; position: number }>;
+        `) as Array<{ id: string }>;
         const index = rows.findIndex((row) => row.id === reactionId);
         const neighbourIndex = direction === "up" ? index - 1 : index + 1;
 
@@ -429,13 +429,19 @@ export async function reorderReaction(
           return { reactionId };
         }
 
-        await tx`
-          UPDATE core.reactions
-          SET position = CASE WHEN id = ${current.id} THEN ${neighbour.position}
-                              ELSE ${current.position} END,
-              updated_at = now()
-          WHERE id IN (${current.id}, ${neighbour.id})
-        `;
+        // Rewrite the whole order with distinct positions. Swapping equal position values
+        // would be a no-op when staff left several reactions at the form's default 0.
+        const reordered = [...rows];
+        reordered[index] = neighbour;
+        reordered[neighbourIndex] = current;
+
+        for (const [position, row] of reordered.entries()) {
+          await tx`
+            UPDATE core.reactions
+            SET position = ${position}, updated_at = now()
+            WHERE id = ${row.id}
+          `;
+        }
 
         return { reactionId };
       },

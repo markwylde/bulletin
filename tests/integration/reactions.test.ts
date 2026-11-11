@@ -612,6 +612,32 @@ integrationDescribe("reactions", () => {
         ok: true,
         reactionId: sparkle,
       });
+
+      // Staff can leave several reactions at the form's default position 0; reordering must
+      // still move them by normalising the whole order.
+      const tiedA = await saveReaction(database.sql, {
+        key: "tied_a",
+        icon: "🅰️",
+        labelKey: "reaction.label.love",
+        weight: 0,
+        position: 0,
+        enabled: true,
+      });
+      const tiedB = await saveReaction(database.sql, {
+        key: "tied_b",
+        icon: "🅱️",
+        labelKey: "reaction.label.love",
+        weight: 0,
+        position: 0,
+        enabled: true,
+      });
+      expect(tiedA.ok && tiedB.ok).toBe(true);
+      const tiedOrder = (await listReactions(database.sql)).map((reaction) => reaction.key);
+      expect(tiedOrder.indexOf("tied_a")).toBeLessThan(tiedOrder.indexOf("tied_b"));
+
+      await reorderReaction(database.sql, await reactionId(database, "tied_b"), "up");
+      const reordered = (await listReactions(database.sql)).map((reaction) => reaction.key);
+      expect(reordered.indexOf("tied_b")).toBeLessThan(reordered.indexOf("tied_a"));
     });
   }, 45_000);
 });

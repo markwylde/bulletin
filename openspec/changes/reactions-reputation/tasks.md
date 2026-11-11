@@ -10,7 +10,7 @@
 
 - [x] 2.1 Migrations for reputation_entries and members.reputation; give/receive rules (group permissions, min posts, daily limit, negatives, once per post), with tests for each scenario
 - [x] 2.2 Reaction-to-reputation link with setting toggle and recount job, with integration tests
-- [x] 2.3 Reputation display (profile, label scale, board toggle) in default theme templates, and the reputation label on the `member:{id}:card` fragment; tests including that a reputation change rebuilds the card but not post blocks
+- [x] 2.3 Reputation display (label scale, board toggle) next to posts via the default theme's author card and the reputation label on the `member:{id}:card` fragment; the profile-page display is deferred to `member-profiles`; tests including that a reputation change rebuilds the card but not post blocks
 - [x] 2.4 Staff removal and recount (logged), with tests including permission denial
 - [x] 2.5 Register the `reputation` promotion criterion and evaluate promotion when reputation changes; integration test
 

@@ -21,31 +21,7 @@ const STAFF_URL = staffBaseUrl();
 const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 const VIEWPORTS: readonly ViewportName[] = ["mobile360", "desktop"];
 
-/** Topic permalinks from the off-topic list (up to three pages). */
-async function topicHrefs(view: Bun.WebView): Promise<readonly string[]> {
-  const hrefs: string[] = [];
-
-  for (let page = 0; page < 5; page += 1) {
-    await waitForSelector(view, "[data-topic-list]", 20_000);
-    const found = await view.evaluate<string[]>(
-      `[...document.querySelectorAll('[data-topic-list] [data-topic-link]')]
-        .map((element) => element.getAttribute('href') ?? '')
-        .filter((href) => href.startsWith('/topic/'))`,
-    );
-    hrefs.push(...found);
-    const next = await view.evaluate<string | null>(
-      'document.querySelector("[data-page-next]")?.getAttribute("href") ?? null',
-    );
-
-    if (next === null) {
-      break;
-    }
-
-    await view.navigate(new URL(next, USER_URL).toString());
-  }
-
-  return [...new Set(hrefs)];
-}
+const TOPIC_TITLE = "Show us your desk setup";
 
 /** Finds a seeded topic by title across the off-topic pages. */
 async function findTopicHrefByTitle(view: Bun.WebView, title: string): Promise<string> {
@@ -80,86 +56,119 @@ async function findTopicHrefByTitle(view: Bun.WebView, title: string): Promise<s
   throw new Error(`Missing the topic ${title}`);
 }
 
-/**
- * Gives +1 to the first post this member can rate. Candidates that hydrate away (already
- * rated or the member's own post) are skipped, so repeated local runs stay deterministic.
- */
-async function giveReputationOnSomePost(view: Bun.WebView): Promise<{
-  readonly url: string;
+interface FirstPost {
   readonly postId: string;
-  readonly before: number;
-} | null> {
-  await view.navigate(FORUM_URL);
-  const hrefs = await topicHrefs(view);
+  readonly authorId: string;
+}
 
-  for (const href of hrefs.slice(0, 30)) {
-    const url = new URL(href, USER_URL).toString();
-    await view.navigate(url);
-    await waitForSelector(view, "[data-topic-page]", 20_000);
-    await waitForExpression(
-      view,
-      'document.documentElement.dataset.overlayApplied === "true"',
-      20_000,
-    ).catch(() => undefined);
+async function firstPost(view: Bun.WebView): Promise<FirstPost> {
+  return view.evaluate<FirstPost>(`(() => {
+    const post = document.querySelector('[data-post]');
+    const card = post?.querySelector('[data-member-card]');
+    return {
+      postId: post?.getAttribute('data-post') ?? '',
+      authorId: card?.getAttribute('data-member-card') ?? '',
+    };
+  })()`);
+}
 
-    const candidates = await view.evaluate<string[]>(`[...document.querySelectorAll('[data-post]')]
-      .filter((element) => element.querySelector('[data-reputation-vote="1"]'))
-      .map((element) => element.getAttribute('data-post') ?? '')
-      .filter((id) => id !== '')`);
+async function memberIdOf(view: Bun.WebView): Promise<string> {
+  return view.evaluate<string>(
+    'fetch("/api/auth/session").then((response) => response.json()).then((body) => typeof body.memberId === "string" ? body.memberId : "")',
+  );
+}
 
-    for (const postId of candidates.slice(0, 3)) {
-      // Islands hydrate when they scroll near the viewport; the overlay then removes the
-      // control on own posts and on posts already rated.
-      await view.evaluate(
-        `document.querySelector('[data-post="${postId}"]')?.scrollIntoView({ block: "center" })`,
-      );
-      await waitForExpression(
-        view,
-        `(() => {
-          const island = document.querySelector('[data-post="${postId}"] bl-island[data-name="PostReputation"]');
-          return island?.getAttribute('data-hydrated') === 'true' ||
-            document.querySelector('[data-post="${postId}"] [data-reputation-vote="1"]') === null;
-        })()`,
-        3_000,
-      ).catch(() => undefined);
-      await Bun.sleep(100);
-
-      const clickable = await view.evaluate<boolean>(
-        `document.querySelector('[data-post="${postId}"] [data-reputation-vote="1"]:not([disabled])') !== null`,
-      );
-
-      if (!clickable) {
-        continue;
-      }
-
-      const before = await view.evaluate<number>(`Number(
-        document.querySelector('[data-post="${postId}"] [data-reputation-count]')?.textContent ?? "0"
-      )`);
-
-      await clickSelector(
-        view,
-        `[data-post="${postId}"] [data-reputation-vote="1"]:not([disabled])`,
-      );
-      const given = await waitForSelector(
-        view,
-        `[data-post="${postId}"] [data-reputation-given="1"]`,
-        10_000,
-      )
-        .then(() => true)
-        .catch(() => false);
-
-      if (given) {
-        return { url, postId, before };
-      }
+/** The seeded board has a small daily allowance; E2E runs must not exhaust it. */
+async function raiseDailyLimit(view: Bun.WebView): Promise<void> {
+  const csrf = await view.evaluate<string | null>(
+    'fetch("/api/auth/session").then((response) => response.json()).then((body) => body.csrfToken)',
+  );
+  const listed = await view.evaluate<string>(
+    'fetch("/api/staff/groups").then((response) => response.text())',
+  );
+  const groups = (
+    JSON.parse(listed) as {
+      groups: Array<{ readonly id: string; readonly key: string }>;
     }
+  ).groups;
+  const members = groups.find((group) => group.key === "members");
+
+  if (members === undefined) {
+    throw new Error("Missing the Members group");
   }
 
-  return null;
+  const saved = await view.evaluate<string>(
+    `fetch("/api/staff/groups", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-bulletin-csrf": ${JSON.stringify(csrf ?? "")},
+      },
+      body: JSON.stringify(${JSON.stringify({
+        action: "setting",
+        groupId: members.id,
+        key: "posting.reputation_daily_limit",
+        value: 1000,
+      })}),
+    }).then(async (response) => response.status + ":" + (await response.text()))`,
+  );
+  expect(saved.startsWith("200:")).toBe(true);
+}
+
+/** Staff remove an existing vote so the give test starts from a known state. */
+async function clearVote(
+  view: Bun.WebView,
+  authorId: string,
+  postId: string,
+  giverId: string,
+): Promise<void> {
+  const csrf = await view.evaluate<string | null>(
+    'fetch("/api/auth/session").then((response) => response.json()).then((body) => body.csrfToken)',
+  );
+  const listed = await view.evaluate<string>(
+    `fetch("/api/staff/members/reputation?memberId=${authorId}").then((response) => response.text())`,
+  );
+  const entries =
+    (
+      JSON.parse(listed) as {
+        entries?: Array<{
+          readonly id: string;
+          readonly postId: string;
+          readonly giverId: string | null;
+          readonly source: string;
+        }>;
+      }
+    ).entries ?? [];
+  const entry = entries.find(
+    (candidate) =>
+      candidate.postId === postId && candidate.giverId === giverId && candidate.source === "vote",
+  );
+
+  if (entry === undefined) {
+    return;
+  }
+
+  const removed = await view.evaluate<string>(
+    `fetch("/api/staff/members/reputation", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-bulletin-csrf": ${JSON.stringify(csrf ?? "")},
+      },
+      body: JSON.stringify(${JSON.stringify({ action: "remove", memberId: authorId, entryId: entry.id })}),
+    }).then(async (response) => response.status + ":" + (await response.text()))`,
+  );
+  expect(removed.startsWith("200:")).toBe(true);
 }
 
 integrationDescribe("reputation", () => {
   for (const viewport of VIEWPORTS) {
     test(`gives reputation from a post and restores it from the overlay at ${viewport}`, async () => {
+      let memberId = "";
+      let authorId = "";
+      let postId = "";
+      let topicUrl = "";
+
       await withPage(
         {
           url: USER_URL,
@@ -168,22 +177,82 @@ integrationDescribe("reputation", () => {
         },
         async (view) => {
           await loginAs(view, "member-1");
-          const target = await giveReputationOnSomePost(view);
+          memberId = await memberIdOf(view);
+          expect(memberId).toMatch(/^\d+$/);
+          const href = await findTopicHrefByTitle(view, TOPIC_TITLE);
+          topicUrl = new URL(href, USER_URL).toString();
+          await view.navigate(topicUrl);
+          await waitForSelector(view, "[data-topic-page]", 20_000);
+          await waitForExpression(
+            view,
+            'document.documentElement.dataset.overlayApplied === "true"',
+            20_000,
+          );
+          const first = await firstPost(view);
+          expect(first.postId).toMatch(/^\d+$/);
+          expect(first.authorId).toMatch(/^\d+$/);
+          postId = first.postId;
+          authorId = first.authorId;
+        },
+      );
 
-          if (target === null) {
-            throw new Error("No ratable post found in the seeded topics");
-          }
+      // The staff clear any earlier vote from this member so every run starts unrated.
+      await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "admin");
+        await view.navigate(new URL("/", STAFF_URL).toString());
+        await raiseDailyLimit(view);
+        await clearVote(view, authorId, postId, memberId);
+      });
 
-          const { postId, before } = target;
+      await withPage(
+        {
+          url: USER_URL,
+          viewport,
+          allowConsoleErrors: [/ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/],
+        },
+        async (view) => {
+          await loginAs(view, "member-1");
+          await view.navigate(topicUrl);
+          await view.evaluate(
+            `document.querySelector('[data-post="${postId}"]')?.scrollIntoView({ block: "center" })`,
+          );
+          await waitForExpression(
+            view,
+            'document.documentElement.dataset.overlayApplied === "true"',
+            20_000,
+          );
+          await waitForSelector(
+            view,
+            `[data-post="${postId}"] bl-island[data-name="PostReputation"][data-hydrated="true"]`,
+            20_000,
+          );
+          await waitForSelector(
+            view,
+            `[data-post="${postId}"] [data-reputation-vote="1"]:not([disabled])`,
+            20_000,
+          );
+
+          const before = await view.evaluate<number>(`Number(
+            document.querySelector('[data-post="${postId}"] [data-reputation-count]')?.textContent ?? "0"
+          )`);
+
+          await clickSelector(
+            view,
+            `[data-post="${postId}"] [data-reputation-vote="1"]:not([disabled])`,
+          );
+          await waitForSelector(
+            view,
+            `[data-post="${postId}"] [data-reputation-given="1"]`,
+            20_000,
+          );
           expect(
             await view.evaluate<number>(`Number(
               document.querySelector('[data-post="${postId}"] [data-reputation-count]')?.textContent ?? "0"
             )`),
           ).toBe(before + 1);
 
-          // A reload restores the member's own vote from the private overlay. The island
-          // hydrates when scrolled near, so bring the post back into view first.
-          await view.navigate(target.url);
+          // A reload restores the member's own vote from the private overlay.
+          await view.navigate(topicUrl);
           await view.evaluate(
             `document.querySelector('[data-post="${postId}"]')?.scrollIntoView({ block: "center" })`,
           );

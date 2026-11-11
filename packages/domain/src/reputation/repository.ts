@@ -682,9 +682,15 @@ export async function markRecountRebuilt(
   runId: string,
   configHash: string,
 ): Promise<void> {
+  // A new configuration invalidates every earlier total, including members already processed.
   await sql`
     UPDATE core.reputation_recounts
-    SET rebuilt_at = now(), config_hash = ${configHash}, updated_at = now()
+    SET rebuilt_at = now(),
+        config_hash = ${configHash},
+        cursor_member_id = 0,
+        processed_members = 0,
+        changed_members = 0,
+        updated_at = now()
     WHERE id = ${runId}
   `;
 }

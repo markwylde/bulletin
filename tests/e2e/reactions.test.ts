@@ -254,3 +254,192 @@ integrationDescribe("staff reaction set", () => {
     });
   }, 180_000);
 });
+
+integrationDescribe("disabled reaction removal", () => {
+  test("a member can take back a reaction staff disabled after it was given", async () => {
+    const suffix = String(Date.now());
+    const key = `e2e_disabled_${suffix}`;
+    const icon = "🔻";
+    let reactionId = "";
+    let postId = "";
+    let topicUrl = "";
+
+    const staffCall = async (
+      view: Bun.WebView,
+      body: Record<string, unknown>,
+    ): Promise<{ readonly status: number; readonly text: string }> => {
+      const token = await view.evaluate<string | null>(
+        'fetch("/api/auth/session").then((response) => response.json()).then((body) => body.csrfToken)',
+      );
+
+      return view.evaluate<{ readonly status: number; readonly text: string }>(
+        `fetch("/api/staff/reactions", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-bulletin-csrf": ${JSON.stringify(token ?? "")},
+          },
+          body: JSON.stringify(${JSON.stringify(body)}),
+        }).then(async (response) => ({ status: response.status, text: await response.text() }))`,
+      );
+    };
+
+    try {
+      // Staff create a reaction unique to this run.
+      await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "admin");
+        await view.navigate(new URL("/", STAFF_URL).toString());
+        const created = await staffCall(view, {
+          action: "save",
+          reaction: {
+            key,
+            icon,
+            labelKey: "reaction.label.like",
+            weight: 0,
+            position: 99,
+            enabled: true,
+          },
+        });
+        expect(created.status).toBe(200);
+        reactionId = (JSON.parse(created.text) as { id?: string }).id ?? "";
+        expect(reactionId).toMatch(/^\d+$/);
+      });
+
+      // A member gives it on the seeded topic.
+      await withPage(
+        {
+          url: USER_URL,
+          viewport: "mobile360",
+          allowConsoleErrors: [/ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/],
+        },
+        async (view) => {
+          await loginAs(view, "member-1");
+          await view.navigate(FORUM_URL);
+          const href = await findTopicHref(view);
+          topicUrl = new URL(href, USER_URL).toString();
+          await view.navigate(topicUrl);
+          await waitForSelector(view, "[data-topic-page]", 20_000);
+          await waitForExpression(
+            view,
+            'document.documentElement.dataset.overlayApplied === "true"',
+            20_000,
+          );
+          await clearReaction(view);
+
+          const found = await view.evaluate<string | null>(`(() => {
+            const post = [...document.querySelectorAll('[data-post]')].find((element) =>
+              [...element.querySelectorAll('[data-reaction-pick]')].some(
+                (button) => button.querySelector('.bl-reaction__icon')?.textContent === ${JSON.stringify(icon)}
+              )
+            );
+            return post?.getAttribute('data-post') ?? null;
+          })()`);
+
+          if (found === null) {
+            throw new Error("The custom reaction did not reach the post bar");
+          }
+
+          postId = found;
+          await view.evaluate(
+            `document.querySelector('[data-post="${postId}"]')?.scrollIntoView({ block: "center" })`,
+          );
+          await waitForSelector(
+            view,
+            `[data-post="${postId}"] bl-island[data-name="Reactions"][data-hydrated="true"]`,
+            20_000,
+          );
+          await waitForSelector(
+            view,
+            `[data-post="${postId}"] [data-reaction-pick="${reactionId}"]:not([disabled])`,
+            20_000,
+          );
+          await clickSelector(
+            view,
+            `[data-post="${postId}"] [data-reaction-pick="${reactionId}"]:not([disabled])`,
+          );
+          await waitForExpression(
+            view,
+            `document.querySelector('[data-post="${postId}"] [data-reaction-pick="${reactionId}"]')?.getAttribute('data-selected') === 'true'`,
+            20_000,
+          );
+        },
+      );
+
+      // Staff disable it.
+      await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "admin");
+        await view.navigate(new URL("/", STAFF_URL).toString());
+        const disabled = await staffCall(view, {
+          action: "save",
+          reaction: {
+            id: reactionId,
+            key,
+            icon,
+            labelKey: "reaction.label.like",
+            weight: 0,
+            position: 99,
+            enabled: false,
+          },
+        });
+        expect(disabled.status).toBe(200);
+      });
+
+      // The member still sees their reaction and can remove it.
+      await withPage(
+        {
+          url: USER_URL,
+          viewport: "mobile360",
+          allowConsoleErrors: [/ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/],
+        },
+        async (view) => {
+          await loginAs(view, "member-1");
+          await view.navigate(topicUrl);
+          await view.evaluate(
+            `document.querySelector('[data-post="${postId}"]')?.scrollIntoView({ block: "center" })`,
+          );
+          await waitForExpression(
+            view,
+            'document.documentElement.dataset.overlayApplied === "true"',
+            20_000,
+          );
+          await waitForSelector(
+            view,
+            `[data-post="${postId}"] bl-island[data-name="Reactions"][data-hydrated="true"]`,
+            20_000,
+          );
+          await waitForSelector(
+            view,
+            `[data-post="${postId}"] [data-reaction-pick="${reactionId}"][data-selected="true"]:not([disabled])`,
+            20_000,
+          );
+
+          const before = await view.evaluate<number>(`Number(
+            document.querySelector('[data-post="${postId}"] [data-reaction-count="${reactionId}"]')?.textContent ?? "0"
+          )`);
+
+          await clickSelector(
+            view,
+            `[data-post="${postId}"] [data-reaction-pick="${reactionId}"][data-selected="true"]:not([disabled])`,
+          );
+          await waitForExpression(
+            view,
+            `document.querySelector('[data-post="${postId}"] [data-reaction-pick="${reactionId}"]')?.getAttribute('data-selected') !== 'true'`,
+            20_000,
+          );
+          expect(
+            await view.evaluate<number>(`Number(
+              document.querySelector('[data-post="${postId}"] [data-reaction-count="${reactionId}"]')?.textContent ?? "0"
+            )`),
+          ).toBe(before - 1);
+        },
+      );
+    } finally {
+      // Best-effort cleanup so repeated runs never accumulate custom reactions.
+      await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "admin");
+        await view.navigate(new URL("/", STAFF_URL).toString());
+        await staffCall(view, { action: "delete", id: reactionId }).catch(() => undefined);
+      }).catch(() => undefined);
+    }
+  }, 240_000);
+});

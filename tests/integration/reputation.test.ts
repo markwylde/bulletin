@@ -23,13 +23,19 @@ import {
 } from "@bulletin/db/seed";
 import { readBoardSettings } from "@bulletin/domain/board";
 import { can } from "@bulletin/domain/permissions";
-import { listReactions, saveReaction, setReaction } from "@bulletin/domain/reactions";
+import {
+  listReactions,
+  readReactionSummary,
+  saveReaction,
+  setReaction,
+} from "@bulletin/domain/reactions";
 import {
   DEFAULT_REPUTATION_LABEL_SCALE,
   giveReputation,
   listRecountRuns,
   readReputationTarget,
   readViewerVotes,
+  removeReputationEntry,
 } from "@bulletin/domain/reputation";
 import { hardDelete, reply, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
@@ -1009,6 +1015,122 @@ integrationDescribe("reputation", () => {
           `
         ).length,
       ).toBe(1);
+    });
+  }, 60_000);
+
+  test("a config change recounts members the interrupted run had already passed", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberSession(database, "admin");
+      const giver = await memberSession(database, "member-1");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Config cursor reset");
+      const like = (await listReactions(database.sql)).find((reaction) => reaction.key === "like");
+
+      if (like === undefined) {
+        throw new Error("Missing the like reaction");
+      }
+
+      await setReactionsLink(database, true);
+      await saveReaction(database.sql, {
+        id: like.id,
+        key: like.key,
+        icon: like.icon,
+        labelKey: "reaction.label.like",
+        weight: 1,
+        position: like.position,
+        enabled: true,
+      });
+      await setReaction(database.sql, {
+        actorId: giver.memberId,
+        postId: topic.postId,
+        reactionId: like.id,
+      });
+      expect(await reputationOf(database, author.memberId)).toBe(1);
+
+      // Process at least as far as the receiver, leaving the run open.
+      const first = await runReputationRecount(database.sql, {
+        reason: "config-cursor",
+        batchSize: 1,
+        maxBatches: Number(author.memberId),
+      });
+      expect(first.done).toBe(false);
+
+      await saveReaction(
+        database.sql,
+        {
+          id: like.id,
+          key: like.key,
+          icon: like.icon,
+          labelKey: "reaction.label.like",
+          weight: -1,
+          position: like.position,
+          enabled: true,
+        },
+        { requestedById: admin.memberId },
+      );
+
+      const second = await runReputationRecount(database.sql, { reason: "config-cursor" });
+      expect(second.runId).toBe(first.runId);
+      expect(second.done).toBe(true);
+      expect(second.processed).toBe(second.total);
+      // The receiver is behind the old cursor; the reset makes the run recount them.
+      expect(await reputationOf(database, author.memberId)).toBe(-1);
+    });
+  }, 60_000);
+
+  test("staff removal of reaction reputation removes the underlying reaction", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberSession(database, "admin");
+      const giver = await memberSession(database, "member-1");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Removed reaction");
+      const like = (await listReactions(database.sql)).find((reaction) => reaction.key === "like");
+
+      if (like === undefined) {
+        throw new Error("Missing the like reaction");
+      }
+
+      await setReactionsLink(database, true);
+      await setReaction(database.sql, {
+        actorId: giver.memberId,
+        postId: topic.postId,
+        reactionId: like.id,
+      });
+
+      const [entry] = (await database.sql`
+        SELECT id::text AS id FROM core.reputation_entries
+        WHERE post_id = ${topic.postId} AND source = 'reaction'
+      `) as Array<{ id: string }>;
+
+      if (entry === undefined) {
+        throw new Error("Missing the reaction reputation entry");
+      }
+
+      const removed = await removeReputationEntry(database.sql, {
+        actorId: admin.memberId,
+        entryId: entry.id,
+      });
+      expect(removed.ok).toBe(true);
+      expect(
+        (
+          await database.sql`
+          SELECT 1 FROM core.post_reactions WHERE post_id = ${topic.postId}
+        `
+        ).length,
+      ).toBe(0);
+      expect(await readReactionSummary(database.sql, topic.postId)).toEqual({});
+      expect(await reputationOf(database, author.memberId)).toBe(0);
+
+      // A board recount must not resurrect the removed reaction's reputation.
+      await runReputationRecount(database.sql, { reason: "staff-removal" });
+      expect(await reputationOf(database, author.memberId)).toBe(0);
+      expect(
+        (
+          await database.sql`
+          SELECT 1 FROM core.reputation_entries WHERE post_id = ${topic.postId}
+        `
+        ).length,
+      ).toBe(0);
     });
   }, 60_000);
 

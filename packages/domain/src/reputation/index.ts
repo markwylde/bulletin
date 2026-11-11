@@ -1,9 +1,10 @@
-import { bumpCacheTags, memberTag } from "@bulletin/cache";
+import { bumpCacheTags, memberTag, postReactionsTag } from "@bulletin/cache";
 import type { SQL } from "bun";
 import { emit } from "../events/outbox.ts";
 import { runMutation } from "../mutations/index.ts";
 import { reputationGiveMutation } from "../mutations/reputation.ts";
 import { can } from "../permissions/can.ts";
+import { recomputeReactionSummary } from "../reactions/repository.ts";
 import {
   addToReputation,
   canReadPost,
@@ -294,6 +295,18 @@ export async function removeReputationEntry(
 
   return sql.begin(async (tx) => {
     await lockMember(tx, entry.receiverId);
+
+    // Removing reaction-derived reputation must remove the reaction too, otherwise the next
+    // recount rebuilds the entry from the still-present reaction (reviewer finding).
+    if (entry.source === "reaction" && entry.giverId !== null) {
+      await tx`
+        DELETE FROM core.post_reactions
+        WHERE post_id = ${entry.postId} AND member_id = ${entry.giverId}
+      `;
+      await recomputeReactionSummary(tx, entry.postId);
+      await bumpCacheTags(tx, [postReactionsTag(entry.postId)]);
+    }
+
     await tx`DELETE FROM core.reputation_entries WHERE id = ${entry.id}`;
     const recounted = await recomputeReputation(tx, entry.receiverId);
 

@@ -229,8 +229,11 @@ function ReactionsBody({ postId, canReact, reactions, labels }: ReactionsProps) 
           {visible.map((reaction) => {
             const count = counts[reaction.id] ?? 0;
             const selected = mine === reaction.id;
+            // A staff-disabled reaction cannot be chosen, but the member must still be able to
+            // take back the reaction they already gave.
+            const interactive = canPick && (reaction.enabled || selected);
 
-            return canPick && reaction.enabled ? (
+            return interactive ? (
               <button
                 key={reaction.id}
                 type="button"
