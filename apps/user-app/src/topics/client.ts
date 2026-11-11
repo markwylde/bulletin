@@ -682,3 +682,39 @@ window.addEventListener("bulletin:editable-posts", (event) => {
     privatePostControls(post);
   }
 });
+
+/** Moderators remove one attachment from a post; the deletion endpoint bumps the post tags. */
+document.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const button = target.closest("[data-attachment-remove]");
+
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const id = button.dataset.attachmentRemove;
+  const postId = button.closest("[data-post]")?.getAttribute("data-post");
+
+  if (id === undefined || postId === null || postId === undefined) {
+    return;
+  }
+
+  button.disabled = true;
+  void postJson(`/api/attachments/${id}/delete`, { postId })
+    .then((response) => {
+      if (response.ok) {
+        window.location.reload();
+        return;
+      }
+
+      button.disabled = false;
+    })
+    .catch(() => {
+      button.disabled = false;
+    });
+});

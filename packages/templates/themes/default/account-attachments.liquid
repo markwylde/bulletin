@@ -1,0 +1,27 @@
+{{ header }}
+<main id="main" class="bl-main" data-attachments-page>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{{ title }}</h1>
+
+  <section class="bl-card" data-attachment-quota>
+    <h2 class="bl-card__title">{% t "account.attachments.title" %}</h2>
+    <p class="bl-muted" data-attachment-usage>{{ usageLabel }}</p>
+    {% if hasAttachments %}
+      <ul class="bl-attachment-list" data-my-attachments>
+        {% for attachment in attachments %}
+          <li class="bl-attachment-file" data-attachment="{{ attachment.id }}">
+            <a class="bl-attachment-file__name" href="{{ attachment.href }}" data-attachment-download="{{ attachment.id }}">{{ attachment.filename }}</a>
+            <span class="bl-attachment-file__meta">{{ attachment.meta }}</span>
+            <time class="bl-muted">{{ attachment.createdAt }}</time>
+            <button class="bl-button bl-button--quiet bl-button--small" type="button" data-attachment-delete="{{ attachment.id }}">{% t "account.attachments.delete" %}</button>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ emptyState }}
+    {% endif %}
+    <p class="bl-error-text" data-attachment-delete-error hidden>{% t "account.attachments.deleteFailed" %}</p>
+  </section>
+
+  {{ footer }}
+</main>

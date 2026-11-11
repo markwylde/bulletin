@@ -3,6 +3,7 @@ import { contractTags, findContract, validateContracts } from "@bulletin/templat
 import { ISLAND_NAMES } from "@bulletin/ui/islands";
 import {
   accountContract,
+  attachmentsContract,
   callbackContract,
   demoContract,
   displayNameContract,
@@ -33,6 +34,7 @@ describe("route contracts", () => {
         topicContract.route,
         displayNameContract.route,
         accountContract.route,
+        attachmentsContract.route,
       ].sort(),
     );
   });
