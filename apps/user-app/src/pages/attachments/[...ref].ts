@@ -19,6 +19,7 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
 
   return guard(request, () => {
     const id = (params.ref ?? "").split("/")[0] ?? "";
+    const preview = new URL(request.url).searchParams.get("preview") === "1";
 
     return attachmentDownloadResponse({
       sql,
@@ -27,6 +28,7 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
         session === null ? null : { memberId: session.memberId, sessionId: session.sessionId },
       hasSessionCookie: requestHasSession(request.headers.get("cookie"), nodeEnv),
       id,
+      preview,
     });
   });
 };

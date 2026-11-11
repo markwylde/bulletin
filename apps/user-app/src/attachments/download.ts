@@ -1,11 +1,15 @@
-import { isRasterAttachmentType, readDownloadableAttachment } from "@bulletin/domain/attachments";
+import {
+  isRasterAttachmentType,
+  readAttachmentById,
+  readDownloadableAttachment,
+} from "@bulletin/domain/attachments";
 import {
   can,
   GUEST_PRINCIPAL,
   loadForumTree,
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
-import type { StorageClient } from "@bulletin/storage";
+import { type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { applyCacheHeaders } from "../http/cache.ts";
 
@@ -20,6 +24,8 @@ export interface AttachmentDownloadInput {
   /** True for any session cookie, valid or not: such requests never reach the CDN. */
   readonly hasSessionCookie: boolean;
   readonly id: string;
+  /** Serve the generated raster thumbnail instead of the original download object. */
+  readonly preview?: boolean;
 }
 
 function json(body: unknown, status: number): Response {
@@ -54,27 +60,53 @@ export function contentDisposition(kind: "inline" | "attachment", filename: stri
 export async function attachmentDownloadResponse(
   input: AttachmentDownloadInput,
 ): Promise<Response> {
-  const attachment = await readDownloadableAttachment(input.sql, input.id);
+  let attachment = await readDownloadableAttachment(input.sql, input.id);
+  let allowed = false;
+
+  // The editor previews a ready upload before it is referenced by a saved post. Only its owner
+  // may reach it that way; normal delivery still requires the current content permission.
+  if (attachment === null && input.preview === true && input.session !== null) {
+    const own = await readAttachmentById(input.sql, input.id);
+
+    if (
+      own !== null &&
+      own.memberId === input.session.memberId &&
+      own.state === "ready" &&
+      own.deletedAt === null &&
+      own.storageKey !== null &&
+      own.verifiedType !== null
+    ) {
+      attachment = {
+        id: own.id,
+        storageKey: own.storageKey,
+        contentType: own.verifiedType,
+        filename: own.filename,
+        forumIds: [],
+      };
+      allowed = true;
+    }
+  }
 
   if (attachment === null) {
     return json({ code: "not_found" }, 404);
   }
 
-  const principal = input.session?.memberId ?? GUEST_PRINCIPAL;
-  const tree = await loadForumTree(input.sql);
-  const snapshot = await loadPermissionSnapshot(input.sql, principal, {
-    tree,
-    sessionId: input.session?.sessionId ?? null,
-  });
-  let allowed = false;
+  if (!allowed) {
+    const principal = input.session?.memberId ?? GUEST_PRINCIPAL;
+    const tree = await loadForumTree(input.sql);
+    const snapshot = await loadPermissionSnapshot(input.sql, principal, {
+      tree,
+      sessionId: input.session?.sessionId ?? null,
+    });
 
-  for (const forumId of attachment.forumIds) {
-    const scope = { forumId, tree, snapshot };
-    const readable = await can(input.sql, principal, "read", scope);
+    for (const forumId of attachment.forumIds) {
+      const scope = { forumId, tree, snapshot };
+      const readable = await can(input.sql, principal, "read", scope);
 
-    if (readable && (await can(input.sql, principal, "download", scope))) {
-      allowed = true;
-      break;
+      if (readable && (await can(input.sql, principal, "download", scope))) {
+        allowed = true;
+        break;
+      }
     }
   }
 
@@ -83,12 +115,19 @@ export async function attachmentDownloadResponse(
   }
 
   const inline = isRasterAttachmentType(attachment.contentType);
-  const location = input.storage.presignGet(attachment.storageKey, {
+  const preview = input.preview === true;
+  const key = preview ? thumbnailKeyFor(attachment.storageKey) : attachment.storageKey;
+
+  if (preview && !(await input.storage.exists(key))) {
+    return json({ code: "not_found" }, 404);
+  }
+
+  const location = input.storage.presignGet(key, {
     expiresIn: ATTACHMENT_PRESIGN_EXPIRES_IN,
-    responseContentType: attachment.contentType,
+    responseContentType: preview ? "image/webp" : attachment.contentType,
     responseContentDisposition: contentDisposition(
-      inline ? "inline" : "attachment",
-      attachment.filename,
+      preview || inline ? "inline" : "attachment",
+      preview ? "preview.webp" : attachment.filename,
     ),
   });
   const headers = new Headers({ location });

@@ -6,6 +6,7 @@ interface MarkdownChild {
   type: string;
   value?: string;
   url?: string;
+  alt?: string | null | undefined;
   children?: MarkdownChild[];
 }
 
@@ -14,13 +15,14 @@ interface MarkdownParent {
 }
 
 function token(attrs: {
-  kind: "mention" | "emoticon" | "spoiler";
+  kind: "mention" | "emoticon" | "spoiler" | "attachment";
   value: string;
   label?: string;
   href?: string;
   src?: string;
   alt?: string;
   code?: string;
+  inline?: boolean;
 }): MarkdownChild {
   return {
     type: "bulletinToken",
@@ -100,6 +102,29 @@ export function transform(
       continue;
     }
 
+    const attachmentUrl =
+      child.type === "image" || child.type === "link"
+        ? /^attachment:(\d+)$/.exec(child.url ?? "")
+        : null;
+
+    if (attachmentUrl?.[1] !== undefined) {
+      const label =
+        child.type === "image"
+          ? (child.alt ?? "attachment")
+          : (child.children ?? []).map((part) => part.value ?? "").join("") || "attachment";
+      const inline = child.type === "image";
+      children.push(
+        token({
+          kind: "attachment",
+          value: `${inline ? "!" : ""}[${label}](attachment:${attachmentUrl[1]})`,
+          label,
+          href: `attachment:${attachmentUrl[1]}`,
+          inline,
+        }),
+      );
+      continue;
+    }
+
     if (child.type === "code" || child.type === "inlineCode" || child.type === "link") {
       children.push(child);
       continue;
@@ -161,6 +186,7 @@ export function createBulletinTokenPlugins(emoticons: readonly EditorEmoticon[])
       src: { default: "" },
       alt: { default: "" },
       code: { default: "" },
+      inline: { default: false },
     },
     toDOM: (node: ProseNode) => {
       const attrs = node.attrs as Record<string, string>;
@@ -182,6 +208,30 @@ export function createBulletinTokenPlugins(emoticons: readonly EditorEmoticon[])
           "a",
           { href: attrs["href"], "data-mention-id": attrs["href"]?.replace("member:", "") },
           `@${attrs["label"]}`,
+        ];
+      }
+
+      if (attrs["kind"] === "attachment") {
+        const id = attrs["href"]?.replace("attachment:", "") ?? "";
+
+        const inline = (attrs as Record<string, unknown>)["inline"];
+
+        if (inline === true || inline === "true") {
+          return [
+            "img",
+            {
+              src: `/attachments/${id}?preview=1`,
+              alt: attrs["label"] ?? "",
+              class: "attachment-image",
+              "data-attachment": id,
+            },
+          ];
+        }
+
+        return [
+          "span",
+          { class: "bl-editor__attachment", "data-attachment": id },
+          attrs["label"] ?? "",
         ];
       }
 
@@ -209,6 +259,7 @@ export function createBulletinTokenPlugins(emoticons: readonly EditorEmoticon[])
           src: value["src"] ?? "",
           alt: value["alt"] ?? "",
           code: value["code"] ?? "",
+          inline: value["inline"] ?? false,
         });
       },
     },

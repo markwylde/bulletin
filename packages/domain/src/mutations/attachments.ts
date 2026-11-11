@@ -22,3 +22,12 @@ export const attachmentDeleteMutation: Mutation<
     ]),
   ],
 };
+
+/** A counted download changes the file list's count; rebuild the referencing post/topic. */
+export const attachmentDownloadMutation: Mutation<
+  { readonly attachmentId: string },
+  AttachmentDeleteSummary
+> = {
+  name: "attachment.download",
+  tags: (_input, result) => attachmentDeleteMutation.tags(_input, result),
+};

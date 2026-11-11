@@ -35,6 +35,7 @@ export interface EditorLabels {
   readonly uploadReady: string;
   readonly uploadFailed: string;
   readonly uploadQuota: string;
+  readonly uploadQuotaRemaining: string;
   readonly uploadTooLarge: string;
   readonly uploadType: string;
   readonly uploadRejected: string;

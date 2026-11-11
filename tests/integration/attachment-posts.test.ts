@@ -201,6 +201,46 @@ integrationDescribe("attachments in posts", () => {
     });
   }, 30_000);
 
+  test("renders an inline SVG through the raster preview, not the original object", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+      const svgId = await createAttachment(database, {
+        memberId: author.memberId,
+        filename: "vector.svg",
+        contentType: "image/svg+xml",
+        sizeBytes: 512,
+      });
+      const topic = ok(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "SVG preview",
+          bodyMd: `![vector.svg](attachment:${svgId})`,
+        }),
+      );
+      const versions = await createTagVersions({ sql: database.sql });
+      const cache = createRenderCache({ tags: versions });
+
+      try {
+        const result = await topicCache(
+          database,
+          null,
+          `${topic.topicId}-svg-preview`,
+          cache,
+          versions,
+        );
+        const html = result.kind === "page" ? result.html : "";
+
+        expect(html).toContain(`src="/attachments/${svgId}?preview=1"`);
+        expect(html).not.toContain(`src="/attachments/${svgId}/vector.svg"`);
+        expect(html).not.toContain("data-post-files");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
   test("a refreshed post block shows a deleted attachment as removed", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");

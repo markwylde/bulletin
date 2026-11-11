@@ -2,13 +2,13 @@ import type { Logger } from "@bulletin/config";
 import {
   ATTACHMENT_PROCESS_CHANNEL,
   type AttachmentScan,
-  deleteAttachments,
+  claimExpiredAttachments,
   isAttachmentContentType,
   listAttachmentKeys,
-  listExpiredAttachments,
   listProcessableAttachments,
   publishAttachment,
   readAttachmentById,
+  readUploadLimits,
   rejectAttachment,
   sha256Hex,
 } from "@bulletin/domain/attachments";
@@ -154,6 +154,14 @@ export async function processAttachment(
     return reject(sql, storage, record, error.code, options);
   }
 
+  // The declared type was checked at upload time, but the sniffed input type is the truth.
+  // Re-check it against the member's current group/board allowlist before publishing.
+  const limits = await readUploadLimits(sql, record.memberId);
+
+  if (!limits.allowedTypes.includes(processed.sourceType)) {
+    return reject(sql, storage, record, "type_not_allowed", options);
+  }
+
   const publishedBytes = processed.bytes ?? snapshot;
 
   if (options.scan !== undefined) {
@@ -263,7 +271,7 @@ export async function runAttachmentOrphanSweep(
   storage: StorageClient,
   options: AttachmentSweepOptions = {},
 ): Promise<AttachmentSweepResult> {
-  const expired = await listExpiredAttachments(
+  const expired = await claimExpiredAttachments(
     sql,
     options.now ?? new Date(),
     options.limit ?? 200,
@@ -281,10 +289,7 @@ export async function runAttachmentOrphanSweep(
     }
   }
 
-  const deleted = await deleteAttachments(
-    sql,
-    expired.map((record) => record.id),
-  );
+  const deleted = expired.length;
 
   if (deleted > 0) {
     options.logger?.info("attachment.orphans_deleted", { deleted });
@@ -293,17 +298,20 @@ export async function runAttachmentOrphanSweep(
   return { deleted };
 }
 
-/** Removes `att/`, `quarantine/` and `processing/` objects with no authoritative row. */
-export async function runAttachmentReconciliation(
-  sql: SQL,
-  storage: StorageClient,
-  options: { readonly logger?: Logger } = {},
-): Promise<AttachmentSweepResult> {
-  const [objects, rows, unfurlKeys] = await Promise.all([
-    storage.list(""),
-    listAttachmentKeys(sql),
-    listUnfurlImageKeys(sql),
-  ]);
+export interface AttachmentReconcileOptions {
+  readonly logger?: Logger;
+  /** Overridable for tests; defaults to now. */
+  readonly now?: Date;
+  /** Objects written this recently may be waiting for their database commit. */
+  readonly graceMs?: number;
+}
+
+const RECONCILE_GRACE_MS = 15 * 60 * 1_000;
+
+function liveAttachmentKeys(
+  rows: Awaited<ReturnType<typeof listAttachmentKeys>>,
+  unfurlKeys: readonly string[],
+): Set<string> {
   const live = new Set<string>(unfurlKeys);
 
   for (const row of rows) {
@@ -323,16 +331,42 @@ export async function runAttachmentReconciliation(
     }
   }
 
-  let deleted = 0;
+  return live;
+}
 
-  for (const object of objects) {
+/**
+ * Removes `att/`, `quarantine/` and `processing/` objects with no authoritative row. Objects
+ * younger than the grace period are left for the next run (they may be between an object write
+ * and its database commit), and the key set is re-read after the grace filter before deleting.
+ */
+export async function runAttachmentReconciliation(
+  sql: SQL,
+  storage: StorageClient,
+  options: AttachmentReconcileOptions = {},
+): Promise<AttachmentSweepResult> {
+  const objects = await storage.list("");
+  const cutoff = (options.now ?? new Date()).getTime() - (options.graceMs ?? RECONCILE_GRACE_MS);
+  const candidates = objects.filter((object) => {
     const isAttachmentKey =
       object.key.startsWith("att/") ||
       object.key.startsWith("quarantine/") ||
       object.key.startsWith("processing/") ||
       object.key.startsWith("unfurl/");
 
-    if (!isAttachmentKey || !isManagedKey(object.key) || live.has(object.key)) {
+    return isAttachmentKey && isManagedKey(object.key) && object.lastModified.getTime() <= cutoff;
+  });
+
+  if (candidates.length === 0) {
+    return { deleted: 0 };
+  }
+
+  // Revalidate after listing: a row committed since the object listing must win.
+  const [rows, unfurlKeys] = await Promise.all([listAttachmentKeys(sql), listUnfurlImageKeys(sql)]);
+  const live = liveAttachmentKeys(rows, unfurlKeys);
+  let deleted = 0;
+
+  for (const object of candidates) {
+    if (live.has(object.key)) {
       continue;
     }
 

@@ -1,7 +1,7 @@
 import { type StorageClient, unfurlImageKey } from "@bulletin/storage";
 
 /** Content-hashed proxied images never change, so both browser and CDN may keep them. */
-export const UNFURL_IMAGE_CACHE = "public, max-age=31536000, immutable";
+export const UNFURL_IMAGE_CACHE = "public, max-age=86400, immutable";
 export const UNFURL_IMAGE_PRESIGN_EXPIRES_IN = 7 * 24 * 60 * 60;
 
 /**

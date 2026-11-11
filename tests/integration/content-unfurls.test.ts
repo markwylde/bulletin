@@ -191,7 +191,9 @@ integrationDescribe("unfurl worker (ADR 0007, 0016)", () => {
 
       const response = await unfurlImageResponse(storage, hash);
       expect(response.status).toBe(302);
-      expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      const cache = response.headers.get("cache-control") ?? "";
+      expect(cache).toBe("public, max-age=86400, immutable");
+      expect(Number(/max-age=(\d+)/.exec(cache)?.[1] ?? 0)).toBeLessThan(604_800);
 
       const location = response.headers.get("location");
 
@@ -199,6 +201,8 @@ integrationDescribe("unfurl worker (ADR 0007, 0016)", () => {
         throw new Error("Missing redirect location");
       }
 
+      const locationUrl = new URL(location);
+      expect(Number(locationUrl.searchParams.get("X-Amz-Expires"))).toBe(604_800);
       const file = await fetch(location);
       expect(file.status).toBe(200);
       expect(file.headers.get("content-type")).toBe("image/webp");

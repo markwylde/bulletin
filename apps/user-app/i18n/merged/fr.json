@@ -110,6 +110,7 @@
   "editor.upload.failed": "Échec de l’envoi. Réessayez.",
   "editor.upload.processing": "Traitement…",
   "editor.upload.quota": "Il ne reste pas assez d’espace de stockage.",
+  "editor.upload.quotaRemaining": "Il ne reste que %remaining%.",
   "editor.upload.ready": "Joint",
   "editor.upload.rejected": "Ce fichier n’a pas pu être accepté.",
   "editor.upload.tooLarge": "Ce fichier est trop volumineux.",

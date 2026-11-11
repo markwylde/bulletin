@@ -83,6 +83,11 @@ integrationDescribe("editor attachments", () => {
             20_000,
           );
 
+          await clickSelector(view, '[data-editor-mode="wysiwyg"]');
+          await waitForSelector(view, "[data-editor-wysiwyg] img[data-attachment]", 30_000);
+          await clickSelector(view, '[data-editor-mode="source"]');
+          await waitForSelector(view, "[data-editor-source]", 20_000);
+
           await pickFile(view, filePath);
           await waitForExpression(
             view,

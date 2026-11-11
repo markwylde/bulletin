@@ -195,6 +195,7 @@ async function editorPage(input: DemoPageInput): Promise<DemoForumPage> {
           uploadReady: translate("editor.upload.ready"),
           uploadFailed: translate("editor.upload.failed"),
           uploadQuota: translate("editor.upload.quota"),
+          uploadQuotaRemaining: translate("editor.upload.quotaRemaining"),
           uploadTooLarge: translate("editor.upload.tooLarge"),
           uploadType: translate("editor.upload.type"),
           uploadRejected: translate("editor.upload.rejected"),

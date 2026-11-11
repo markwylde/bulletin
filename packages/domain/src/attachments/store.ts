@@ -6,8 +6,12 @@ import {
 } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { readBoardSettings } from "../board/settings.ts";
+import { attachmentDownloadMutation } from "../mutations/attachments.ts";
+import { runMutation } from "../mutations/index.ts";
+import { can } from "../permissions/can.ts";
 import type { ViewerPrincipal } from "../permissions/principal.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
+import { loadForumTree } from "../permissions/tree-store.ts";
 import {
   ATTACHMENT_CONTENT_TYPES,
   type AttachmentContentType,
@@ -416,6 +420,60 @@ export async function listAttachmentKeys(sql: SQL): Promise<readonly AttachmentK
   `) as AttachmentKeysRow[];
 }
 
+/**
+ * Atomically claims and deletes expired, unreferenced attachments. The row lock and the
+ * `NOT EXISTS` recheck make a concurrent post save either keep the row (and its objects) or
+ * lose the race cleanly; the caller removes objects only after this transaction commits.
+ */
+export async function claimExpiredAttachments(
+  sql: SQL,
+  now: Date = new Date(),
+  limit = 200,
+): Promise<readonly AttachmentRecord[]> {
+  return sql.begin(async (tx) => {
+    const candidates = (await tx`
+      SELECT a.*
+      FROM core.attachments a
+      WHERE (
+          a.deleted_at <= ${new Date(now.getTime() - 7 * 24 * 60 * 60 * 1_000)}
+          OR (
+            a.expires_at IS NOT NULL
+            AND a.expires_at <= ${now}
+            AND a.deleted_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM core.post_attachments pa WHERE pa.attachment_id = a.id
+            )
+          )
+        )
+      ORDER BY a.expires_at NULLS LAST, a.id
+      FOR UPDATE SKIP LOCKED
+      LIMIT ${limit}
+    `) as AttachmentRow[];
+
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const ids = candidates.map((row) => row.id);
+    const array = `{${ids.join(",")}}`;
+    const deleted = (await tx`
+      DELETE FROM core.attachments a
+      WHERE a.id = ANY(${array}::bigint[])
+        AND NOT EXISTS (
+          SELECT 1 FROM core.post_attachments pa WHERE pa.attachment_id = a.id
+        )
+      RETURNING a.*
+    `) as AttachmentRow[];
+
+    await refreshMemberStorage(
+      tx,
+      deleted.map((row) => row.member_id),
+    );
+
+    return deleted.map(attachmentFromRow);
+  });
+}
+
 /** Recomputes the derived quota columns from the authoritative attachment rows. */
 export async function refreshMemberStorage(sql: SQL, memberIds: readonly string[]): Promise<void> {
   if (memberIds.length === 0) {
@@ -567,7 +625,10 @@ export function attachmentPlaceholders(bodyHtml: string): ReadonlyMap<string, bo
 
 export interface SyncPostAttachmentsInput {
   readonly postId: string;
+  /** The member performing the save: the author, or a moderator editing the post. */
   readonly authorId: string;
+  readonly forumId: string;
+  readonly sessionId?: string | null;
   readonly bodyHtml: string;
 }
 
@@ -597,17 +658,37 @@ export async function syncPostAttachments(
     return 0;
   }
 
-  const owned = (await tx`
-    SELECT id::text AS id
-    FROM core.attachments
-    WHERE id = ANY(${`{${ids.join(",")}}`}::bigint[])
-      AND state = 'ready'
-      AND deleted_at IS NULL
-      AND (
-        member_id = ${input.authorId}
-        OR id = ANY(${`{${removed.join(",") || "0"}}`}::bigint[])
-      )
-  `) as Array<{ id: string }>;
+  const tree = await loadForumTree(tx);
+  const mayUpload = await can(tx, input.authorId, "upload", {
+    forumId: input.forumId,
+    tree,
+    sessionId: input.sessionId ?? null,
+  });
+  // A save without upload permission may keep attachments already on the post (a moderator
+  // editing it) but never add another one from a forum the member may not upload in.
+  const removedArray = `{${removed.join(",") || "0"}}`;
+  const owned = (
+    mayUpload
+      ? await tx`
+        SELECT id::text AS id
+        FROM core.attachments
+        WHERE id = ANY(${`{${ids.join(",")}}`}::bigint[])
+          AND state = 'ready'
+          AND deleted_at IS NULL
+          AND (
+            member_id = ${input.authorId}
+            OR id = ANY(${removedArray}::bigint[])
+          )
+      `
+      : await tx`
+        SELECT id::text AS id
+        FROM core.attachments
+        WHERE id = ANY(${`{${ids.join(",")}}`}::bigint[])
+          AND state = 'ready'
+          AND deleted_at IS NULL
+          AND id = ANY(${removedArray}::bigint[])
+      `
+  ) as Array<{ id: string }>;
   const ownedIds = new Set(owned.map((row) => row.id));
   let position = 0;
 
@@ -718,6 +799,72 @@ export async function readStorageUsage(sql: SQL, memberId: string): Promise<Stor
     usedBytes: row === undefined ? 0 : Number(row.used_bytes),
     reservedBytes: row === undefined ? 0 : Number(row.reserved_bytes),
   };
+}
+
+export type RecordDownloadOutcome =
+  | { readonly ok: true; readonly downloadCount: number }
+  | { readonly ok: false; readonly code: "not_found" | "forbidden" };
+
+/**
+ * Counts one authorised download and invalidates the post blocks that show the count. The
+ * caller is the user-api beacon endpoint; the content download route itself stays read-only.
+ */
+export async function recordAttachmentDownload(
+  sql: SQL,
+  input: {
+    readonly actorId: string;
+    readonly sessionId?: string | null;
+    readonly attachmentId: string;
+  },
+): Promise<RecordDownloadOutcome> {
+  const attachment = await readAttachmentById(sql, input.attachmentId);
+
+  if (attachment === null || attachment.state !== "ready" || attachment.sizeBytes === null) {
+    return { ok: false, code: "not_found" };
+  }
+
+  const references = await readAttachmentReferences(sql, attachment.id);
+
+  if (references.length === 0) {
+    return { ok: false, code: "not_found" };
+  }
+
+  const tree = await loadForumTree(sql);
+  let allowed = false;
+
+  for (const reference of references) {
+    const scope = { forumId: reference.forumId, tree, sessionId: input.sessionId ?? null };
+    const readable = await can(sql, input.actorId, "read", scope);
+
+    if (readable && (await can(sql, input.actorId, "download", scope))) {
+      allowed = true;
+      break;
+    }
+  }
+
+  if (!allowed) {
+    return { ok: false, code: "forbidden" };
+  }
+
+  await runMutation({
+    sql,
+    mutation: attachmentDownloadMutation,
+    input: { attachmentId: attachment.id },
+    apply: async (tx) => {
+      await tx`
+        UPDATE core.attachments
+        SET download_count = download_count + 1
+        WHERE id = ${attachment.id} AND deleted_at IS NULL
+      `;
+      return {
+        postIds: references.map((reference) => reference.postId),
+        topicIds: [...new Set(references.map((reference) => reference.topicId))],
+      };
+    },
+  });
+
+  const updated = await readAttachmentById(sql, attachment.id);
+  return { ok: true, downloadCount: updated?.downloadCount ?? attachment.downloadCount + 1 };
 }
 
 export interface AttachmentReference {

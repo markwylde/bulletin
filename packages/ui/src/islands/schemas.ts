@@ -66,6 +66,7 @@ const editorLabelsSchema = v.strictObject({
   uploadReady: v.pipe(v.string(), v.minLength(1)),
   uploadFailed: v.pipe(v.string(), v.minLength(1)),
   uploadQuota: v.pipe(v.string(), v.minLength(1)),
+  uploadQuotaRemaining: v.pipe(v.string(), v.minLength(1)),
   uploadTooLarge: v.pipe(v.string(), v.minLength(1)),
   uploadType: v.pipe(v.string(), v.minLength(1)),
   uploadRejected: v.pipe(v.string(), v.minLength(1)),

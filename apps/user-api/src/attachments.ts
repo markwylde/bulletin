@@ -4,6 +4,7 @@ import {
   parseUploadRequest,
   readAttachment,
   readUploadLimits,
+  recordAttachmentDownload,
   recordSnapshot,
   reserveUpload,
   sha256Hex,
@@ -246,4 +247,23 @@ export async function attachmentDeleteResponse(
   }
 
   return json({ ok: true });
+}
+
+/** `POST /api/attachments/<id>/download`: counts one authorised download (task finding 9). */
+export async function attachmentDownloadCountResponse(
+  sql: SQL,
+  session: Session,
+  id: string,
+): Promise<Response> {
+  const outcome = await recordAttachmentDownload(sql, {
+    actorId: session.memberId,
+    sessionId: session.id ?? session.sessionId ?? null,
+    attachmentId: id,
+  });
+
+  if (!outcome.ok) {
+    return json({ code: outcome.code }, outcome.code === "forbidden" ? 403 : 404);
+  }
+
+  return json({ downloadCount: outcome.downloadCount });
 }

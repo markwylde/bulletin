@@ -718,3 +718,36 @@ document.addEventListener("click", (event) => {
       button.disabled = false;
     });
 });
+
+/** Counts a file-list download through user-api; the redirect itself stays on user-app. */
+document.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const link = target.closest("[data-attachment-download]");
+
+  if (!(link instanceof HTMLAnchorElement)) {
+    return;
+  }
+
+  const id = link.dataset.attachmentDownload;
+
+  if (id === undefined || id === "") {
+    return;
+  }
+
+  void csrfToken().then((token) => {
+    void fetch(`/api/attachments/${id}/download`, {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "content-type": "application/json",
+        ...(token === null ? {} : { "x-bulletin-csrf": token }),
+      },
+      body: "{}",
+    }).catch(() => undefined);
+  });
+});

@@ -1,7 +1,7 @@
 import { type AvatarVariant, avatarKey, type StorageClient } from "@bulletin/storage";
 
 /** Public, content-hashed avatar objects are immutable, so browser and CDN cache them for a year. */
-export const AVATAR_CACHE = "public, max-age=31536000, immutable";
+export const AVATAR_CACHE = "public, max-age=86400, immutable";
 export const AVATAR_PRESIGN_EXPIRES_IN = 7 * 24 * 60 * 60;
 
 const FILE = /^([0-9a-f]{64})-(lg|md|sm)\.webp$/;

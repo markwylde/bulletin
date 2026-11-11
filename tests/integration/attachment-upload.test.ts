@@ -426,6 +426,38 @@ integrationDescribe("attachment finalise and processing", () => {
     });
   });
 
+  test("rejects a PDF disguised as an image when documents are not allowed", async () => {
+    await withHarness("attach_disguised", async (harness) => {
+      await setUploadLimits(harness.database, { quotaMb: 10, perFileKb: 10_240 });
+      const member = await memberId(harness.database, "member-1");
+      const pdf = textBytes(
+        "%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<<>>\n%%EOF\n",
+      );
+
+      await harness.database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'posting.upload_images', 'true'::jsonb
+        FROM core.groups WHERE key IN ('members', 'regulars')
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      await harness.database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'posting.upload_documents', 'false'::jsonb
+        FROM core.groups WHERE key IN ('members', 'regulars')
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+
+      const upload = await uploadBytes(harness, member, pdf, "image/jpeg");
+      expect((await finalise(harness, member, upload.id)).status).toBe(200);
+
+      const result = await processAttachment(harness.database.sql, harness.storage, upload.id);
+      expect(result.kind).toBe("rejected");
+      expect((await readAttachmentById(harness.database.sql, upload.id))?.rejectionCode).toBe(
+        "type_not_allowed",
+      );
+    });
+  }, 30_000);
+
   test("gives the scan hook a veto", async () => {
     await withHarness("attach_scan", async (harness) => {
       await setUploadLimits(harness.database, { quotaMb: 10, perFileKb: 10_240 });
@@ -482,6 +514,29 @@ integrationDescribe("attachment cleanup", () => {
     });
   });
 
+  test("skips an expired upload locked by a concurrent save", async () => {
+    await withHarness("attach_orphan_lock", async (harness) => {
+      await setUploadLimits(harness.database, { quotaMb: 10, perFileKb: 10_240 });
+      const member = await memberId(harness.database, "member-1");
+      const upload = await uploadBytes(harness, member, textBytes("racing upload"), "text/plain");
+
+      await harness.database.sql`
+        UPDATE core.attachments SET expires_at = now() - interval '1 minute'
+        WHERE id = ${upload.id}
+      `;
+
+      const during = await harness.database.sql.begin(async (tx) => {
+        await tx`SELECT 1 FROM core.attachments WHERE id = ${upload.id} FOR UPDATE`;
+        return runAttachmentOrphanSweep(harness.database.sql, harness.storage);
+      });
+
+      expect(during.deleted).toBe(0);
+
+      const after = await runAttachmentOrphanSweep(harness.database.sql, harness.storage);
+      expect(after.deleted).toBe(1);
+    });
+  }, 30_000);
+
   test("keeps a ready attachment before its deadline", async () => {
     await withHarness("attach_orphan_live", async (harness) => {
       await setUploadLimits(harness.database, { quotaMb: 10, perFileKb: 10_240 });
@@ -498,6 +553,22 @@ integrationDescribe("attachment cleanup", () => {
       expect((await readAttachmentById(harness.database.sql, upload.id))?.state).toBe("ready");
     });
   });
+
+  test("reconciliation leaves freshly written objects for a later run", async () => {
+    await withHarness("attach_reconcile_grace", async (harness) => {
+      await harness.storage.put("att/in-flight", "just written");
+      await harness.storage.put("quarantine/in-flight", "just written");
+
+      const immediate = await runAttachmentReconciliation(harness.database.sql, harness.storage);
+      expect(immediate.deleted).toBe(0);
+      expect(await harness.storage.exists("att/in-flight")).toBe(true);
+
+      const later = await runAttachmentReconciliation(harness.database.sql, harness.storage, {
+        now: new Date(Date.now() + 20 * 60 * 1_000),
+      });
+      expect(later.deleted).toBe(2);
+    });
+  }, 30_000);
 
   test("reconciliation removes bucket objects with no attachment row", async () => {
     await withHarness("attach_reconcile", async (harness) => {
@@ -518,7 +589,9 @@ integrationDescribe("attachment cleanup", () => {
       await harness.storage.put(record?.quarantineKey ?? "", "replayed");
       await harness.storage.put(record?.snapshotKey ?? "", "leftover");
 
-      const result = await runAttachmentReconciliation(harness.database.sql, harness.storage);
+      const result = await runAttachmentReconciliation(harness.database.sql, harness.storage, {
+        now: new Date(Date.now() + 20 * 60 * 1_000),
+      });
 
       expect(result.deleted).toBe(6);
       expect(await harness.storage.exists(liveKey)).toBe(true);

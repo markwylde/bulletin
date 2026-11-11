@@ -475,7 +475,14 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     );
     const [views, cards, poll] = await Promise.all([
       renderTopicViewsFragment(input.sql, input.cache, topic.id, input.locale, input.translate),
-      renderMemberCards(input.sql, input.cache, pageData.memberIds, input.locale, input.translate),
+      renderMemberCards(
+        input.sql,
+        input.cache,
+        pageData.memberIds,
+        input.locale,
+        input.translate,
+        latest?.flags.clientFlags.avatar_upload === true,
+      ),
       pageData.pollId === null
         ? Promise.resolve(null)
         : renderPollFragment(

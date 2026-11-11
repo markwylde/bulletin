@@ -42,6 +42,7 @@ export interface AttachmentRecord {
   readonly rejectionCode: string | null;
   readonly downloadCount: number;
   readonly expiresAt: Date | null;
+  readonly deletedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -80,6 +81,7 @@ export interface AttachmentRow {
   readonly rejection_code: string | null;
   readonly download_count: number;
   readonly expires_at: Date | null;
+  readonly deleted_at: Date | null;
   readonly created_at: Date;
   readonly updated_at: Date;
 }
@@ -150,6 +152,7 @@ export function attachmentFromRow(row: AttachmentRow): AttachmentRecord {
     rejectionCode: row.rejection_code,
     downloadCount: Number(row.download_count),
     expiresAt: row.expires_at,
+    deletedAt: row.deleted_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

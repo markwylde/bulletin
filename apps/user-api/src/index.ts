@@ -15,6 +15,7 @@ import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
 import {
   attachmentDeleteResponse,
+  attachmentDownloadCountResponse,
   attachmentFinaliseResponse,
   attachmentRequestResponse,
 } from "./attachments.ts";
@@ -316,6 +317,22 @@ await startService({
 
         return flags.guard("attachments", session.memberId)(request, () =>
           attachmentFinaliseResponse(sql, storage, session, attachmentFinaliseMatch[1] ?? ""),
+        );
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const attachmentDownloadMatch = /^\/api\/attachments\/(\d+)\/download$/.exec(pathname);
+
+    if (request.method === "POST" && attachmentDownloadMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return flags.guard("attachments", session.memberId)(request, () =>
+          attachmentDownloadCountResponse(sql, session, attachmentDownloadMatch[1] ?? ""),
         );
       });
 

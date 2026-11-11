@@ -10,6 +10,7 @@ import {
   writeDraft,
 } from "./editor/drafts.ts";
 import type { EditorCommand, EditorController, EditorMode, EditorProps } from "./editor/types.ts";
+import { uploadErrorMessage } from "./editor/upload-errors.ts";
 
 interface SuggestedMember {
   readonly id: string;
@@ -547,17 +548,15 @@ function EditorContent({
     );
   }
 
-  function uploadErrorLabel(code: string | undefined): string {
-    switch (code) {
-      case "quota_exceeded":
-        return labels.uploadQuota;
-      case "file_too_large":
-        return labels.uploadTooLarge;
-      case "type_not_allowed":
-        return labels.uploadType;
-      default:
-        return labels.uploadFailed;
-    }
+  function uploadErrorLabel(body: {
+    readonly code?: string;
+    readonly remainingBytes?: number;
+  }): string {
+    return uploadErrorMessage(
+      labels,
+      body,
+      document.documentElement.lang === "" ? "en" : document.documentElement.lang,
+    );
   }
 
   async function finaliseUpload(id: string): Promise<void> {
@@ -573,6 +572,7 @@ function EditorContent({
       const body = (await response.json().catch(() => ({}))) as {
         readonly state?: string;
         readonly code?: string;
+        readonly remainingBytes?: number;
       };
 
       if (!response.ok) {
@@ -580,7 +580,7 @@ function EditorContent({
           throw new Error(labels.uploadRejected);
         }
 
-        throw new Error(uploadErrorLabel(body.code));
+        throw new Error(uploadErrorLabel(body));
       }
 
       if (body.state === "ready") {
@@ -625,8 +625,11 @@ function EditorContent({
         });
 
         if (!response.ok) {
-          const body = (await response.json().catch(() => ({}))) as { readonly code?: string };
-          throw new Error(uploadErrorLabel(body.code));
+          const body = (await response.json().catch(() => ({}))) as {
+            readonly code?: string;
+            readonly remainingBytes?: number;
+          };
+          throw new Error(uploadErrorLabel(body));
         }
 
         const created = (await response.json()) as {

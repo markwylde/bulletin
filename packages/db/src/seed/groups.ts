@@ -196,7 +196,7 @@ export const groupsSeedModule: SeedModule = {
       const forumId = rootBySlug.get(slug);
 
       if (guest !== undefined && forumId !== undefined) {
-        await setForumMatrix(sql, forumId, guest, ["show", "read"]);
+        await setForumMatrix(sql, forumId, guest, ["show", "read", "download"]);
       }
     }
 
@@ -210,6 +210,7 @@ export const groupsSeedModule: SeedModule = {
           "start",
           "reply",
           "upload",
+          "download",
           "vote",
         ]);
       }
@@ -269,13 +270,13 @@ export const groupsSeedModule: SeedModule = {
 
     // Upload limits make the editor usable on a fresh board (attachments-avatars, task 6.1
     // exposes them in the ACP). Quota is total bytes, per-file is one file.
-    for (const [groupKey, quotaMb, perFileKb, avatarKb] of [
-      ["members", 50, 10_240, 512],
-      ["regulars", 100, 10_240, 512],
-      ["vip", 200, 20_480, 1_024],
-      ["moderators", 200, 20_480, 1_024],
-      ["super_moderators", 500, 51_200, 2_048],
-      ["administrators", 500, 51_200, 2_048],
+    for (const [groupKey, quotaMb, perFileKb, avatarKb, avatarEdge] of [
+      ["members", 50, 10_240, 512, 512],
+      ["regulars", 100, 10_240, 512, 512],
+      ["vip", 200, 20_480, 1_024, 1_024],
+      ["moderators", 200, 20_480, 1_024, 1_024],
+      ["super_moderators", 500, 51_200, 2_048, 2_048],
+      ["administrators", 500, 51_200, 2_048, 2_048],
     ] as const) {
       const groupId = ids.get(groupKey);
 
@@ -287,6 +288,8 @@ export const groupsSeedModule: SeedModule = {
         ["posting.upload_quota_mb", quotaMb],
         ["posting.upload_per_file_kb", perFileKb],
         ["members.avatar_max_kb", avatarKb],
+        ["members.avatar_max_width", avatarEdge],
+        ["members.avatar_max_height", avatarEdge],
       ] as const) {
         await sql`
           INSERT INTO core.group_settings (group_id, key, value)

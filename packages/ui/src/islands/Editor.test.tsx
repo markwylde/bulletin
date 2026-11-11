@@ -33,6 +33,7 @@ const labels: EditorLabels = {
   uploadReady: "Attached",
   uploadFailed: "Upload failed. Try again.",
   uploadQuota: "There is not enough storage space left.",
+  uploadQuotaRemaining: "Only %remaining% left.",
   uploadTooLarge: "That file is too large.",
   uploadType: "That file type is not allowed.",
   uploadRejected: "That file could not be accepted.",

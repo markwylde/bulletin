@@ -110,6 +110,7 @@
   "editor.upload.failed": "Upload failed. Try again.",
   "editor.upload.processing": "Processing…",
   "editor.upload.quota": "There is not enough storage space left.",
+  "editor.upload.quotaRemaining": "Only %remaining% left.",
   "editor.upload.ready": "Attached",
   "editor.upload.rejected": "That file could not be accepted.",
   "editor.upload.tooLarge": "That file is too large.",

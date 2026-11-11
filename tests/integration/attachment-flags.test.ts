@@ -13,6 +13,7 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
+import { setMemberAvatar } from "@bulletin/domain/member";
 import { startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
@@ -165,6 +166,59 @@ integrationDescribe("attachment and avatar feature flags", () => {
         });
 
         expect(page.html.includes("data-account-avatar")).toBe(enabled);
+      }
+    });
+  }, 30_000);
+
+  test("the avatar flag switches populated author cards back to initials", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const member = await memberId(database, "member-1");
+      const topic = await startTopic(database.sql, {
+        actorId: member,
+        forumId: offTopic,
+        title: "Avatar flag card",
+        bodyMd: "Hello with an avatar.",
+      });
+
+      if (!topic.ok) {
+        throw new Error(`Could not start the topic: ${topic.code}`);
+      }
+
+      await setMemberAvatar(database.sql, member, "b".repeat(64));
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+      const cache = createRenderCache({ tags: versions });
+
+      try {
+        const render = () =>
+          renderTopicRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: null,
+            ref: `${topic.result.topicId}-avatar-flag-card`,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+
+        const before = await render();
+        expect(before.kind === "page" ? before.html : "").toContain("data-member-avatar");
+
+        await setFlag(database, "avatar_upload", false);
+        await versions.refresh();
+        const after = await render();
+        const html = after.kind === "page" ? after.html : "";
+
+        expect(html).toContain("data-member-initials");
+        expect(html).not.toContain("data-member-avatar");
+      } finally {
+        await versions.close();
       }
     });
   }, 30_000);

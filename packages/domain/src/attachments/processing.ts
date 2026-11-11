@@ -16,9 +16,9 @@ import {
 
 /** A rejection the pipeline understands; the message is a stable code, never user-facing. */
 export class AttachmentProcessingError extends Error {
-  readonly code: "type_not_allowed" | "image_invalid";
+  readonly code: "type_not_allowed" | "image_invalid" | "image_too_large";
 
-  constructor(code: "type_not_allowed" | "image_invalid") {
+  constructor(code: "type_not_allowed" | "image_invalid" | "image_too_large") {
     super(code);
     this.name = "AttachmentProcessingError";
     this.code = code;
@@ -30,6 +30,8 @@ export interface ProcessedAttachmentBytes {
   readonly bytes?: Uint8Array;
   /** The type actually stored and served, never copied from the client declaration. */
   readonly contentType: AttachmentContentType;
+  /** The type sniffed from the input, checked against the effective group/board allowlist. */
+  readonly sourceType: AttachmentContentType;
   /** WebP preview for posts and the file list. */
   readonly thumbnail?: Uint8Array;
 }
@@ -97,7 +99,10 @@ export async function processRasterImage(
 }
 
 /** Decodes and re-encodes a raster image to WebP, dropping every metadata block (ADR 0019). */
-async function processRaster(bytes: Uint8Array): Promise<ProcessedAttachmentBytes> {
+async function processRaster(
+  bytes: Uint8Array,
+  sourceType: AttachmentContentType,
+): Promise<ProcessedAttachmentBytes> {
   try {
     const image = sharpImage(bytes);
     await assertRaster(image);
@@ -110,6 +115,7 @@ async function processRaster(bytes: Uint8Array): Promise<ProcessedAttachmentByte
     return {
       bytes: main,
       contentType: "image/webp",
+      sourceType,
       thumbnail,
     };
   } catch (error) {
@@ -139,7 +145,11 @@ async function processSvg(bytes: Uint8Array): Promise<ProcessedAttachmentBytes> 
       .webp({ quality: 80, effort: 4 })
       .toBuffer();
 
-    return { contentType: SVG_ATTACHMENT_TYPE, thumbnail: new Uint8Array(thumbnail) };
+    return {
+      contentType: SVG_ATTACHMENT_TYPE,
+      sourceType: SVG_ATTACHMENT_TYPE,
+      thumbnail: new Uint8Array(thumbnail),
+    };
   } catch {
     throw new AttachmentProcessingError("type_not_allowed");
   }
@@ -182,14 +192,17 @@ export async function processAttachmentBytes(
         throw new AttachmentProcessingError("type_not_allowed");
       }
 
-      return { contentType: declaredType };
+      return { contentType: declaredType, sourceType: declaredType };
     }
 
     throw new AttachmentProcessingError("type_not_allowed");
   }
 
   if (DOCUMENT_TYPES.has(detected.mime)) {
-    return { contentType: detected.mime as AttachmentContentType };
+    return {
+      contentType: detected.mime as AttachmentContentType,
+      sourceType: detected.mime as AttachmentContentType,
+    };
   }
 
   if (detected.mime === SVG_ATTACHMENT_TYPE) {
@@ -201,7 +214,7 @@ export async function processAttachmentBytes(
       throw new AttachmentProcessingError("type_not_allowed");
     }
 
-    return { contentType: detected.mime };
+    return { contentType: detected.mime, sourceType: detected.mime };
   }
 
   if (!isAttachmentContentType(detected.mime)) {
@@ -209,7 +222,7 @@ export async function processAttachmentBytes(
   }
 
   if (isRasterAttachmentType(detected.mime)) {
-    return processRaster(bytes);
+    return processRaster(bytes, detected.mime);
   }
 
   throw new AttachmentProcessingError("type_not_allowed");
@@ -228,10 +241,21 @@ export interface ProcessedAvatarImage {
  * stripping every metadata block. Avatars are public, so the bytes are validated as a real
  * raster image before anything is stored.
  */
-export async function processAvatarImage(bytes: Uint8Array): Promise<ProcessedAvatarImage> {
+export async function processAvatarImage(
+  bytes: Uint8Array,
+  options: { readonly maxWidth?: number; readonly maxHeight?: number } = {},
+): Promise<ProcessedAvatarImage> {
   try {
     const image = sharpImage(bytes);
     await assertRaster(image);
+    const metadata = await image.metadata();
+    const maxWidth = options.maxWidth ?? 512;
+    const maxHeight = options.maxHeight ?? 512;
+
+    if ((metadata.width ?? 0) > maxWidth || (metadata.height ?? 0) > maxHeight) {
+      throw new AttachmentProcessingError("image_too_large");
+    }
+
     const sizes = {} as Record<keyof typeof AVATAR_SIZES, Uint8Array>;
 
     for (const [variant, edge] of Object.entries(AVATAR_SIZES) as Array<

@@ -198,17 +198,44 @@ integrationDescribe("avatars", () => {
 
       const file = await avatarImageResponse(storage, member, `${secondHash}-md.webp`);
       expect(file.status).toBe(302);
-      expect(file.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      const cache = file.headers.get("cache-control") ?? "";
+      expect(cache).toBe("public, max-age=86400, immutable");
+      expect(Number(/max-age=(\d+)/.exec(cache)?.[1] ?? 0)).toBeLessThan(604_800);
       const location = file.headers.get("location");
 
       if (location === null) {
         throw new Error("Missing avatar redirect");
       }
 
+      const locationUrl = new URL(location);
+      expect(Number(locationUrl.searchParams.get("X-Amz-Expires"))).toBe(604_800);
       const bytes = await fetch(location);
       expect(bytes.status).toBe(200);
       expect(bytes.headers.get("content-type")).toBe("image/webp");
       expect((await sharp(new Uint8Array(await bytes.arrayBuffer())).metadata()).width).toBe(128);
+    });
+  }, 30_000);
+
+  test("uploading the same bytes twice keeps the active objects", async () => {
+    await withHarness("avatar_same_hash", async ({ database, storage }) => {
+      const member = await memberId(database, "member-1");
+      const bytes = base64(await imageBytes());
+
+      await avatarUploadResponse(database.sql, storage, { memberId: member }, avatarRequest(bytes));
+      const hash = (await readMemberAvatar(database.sql, member))?.hash ?? "";
+      const again = await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(bytes),
+      );
+
+      expect(again.status).toBe(200);
+      expect((await readMemberAvatar(database.sql, member))?.hash).toBe(hash);
+
+      for (const variant of ["lg", "md", "sm"]) {
+        expect(await storage.exists(`av/${member}/${hash}-${variant}.webp`)).toBe(true);
+      }
     });
   }, 30_000);
 
@@ -252,6 +279,39 @@ integrationDescribe("avatars", () => {
       );
       expect(blocked.status).toBe(403);
       expect(await blocked.json()).toMatchObject({ code: "avatar_blocked" });
+    });
+  }, 30_000);
+
+  test("enforces the merged group dimension limits", async () => {
+    await withHarness("avatar_dimensions", async ({ database, storage }) => {
+      const member = await memberId(database, "member-1");
+      const admin = await memberId(database, "admin");
+
+      for (const key of ["members.avatar_max_width", "members.avatar_max_height"]) {
+        await database.sql`
+          INSERT INTO core.group_settings (group_id, key, value)
+          SELECT id, ${key}, '32'::jsonb
+          FROM core.groups WHERE key IN ('members', 'regulars')
+          ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+        `;
+      }
+
+      const rejected = await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(base64(await imageBytes(64))),
+      );
+      expect(rejected.status).toBe(413);
+      expect(await rejected.json()).toMatchObject({ code: "avatar_too_large" });
+
+      const accepted = await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: admin },
+        avatarRequest(base64(await imageBytes(64))),
+      );
+      expect(accepted.status).toBe(200);
     });
   }, 30_000);
 

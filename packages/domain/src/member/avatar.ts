@@ -7,6 +7,8 @@ import { loadMergedGroupSettings } from "../permissions/store.ts";
 export interface AvatarPolicy {
   /** Upload bytes allowed by the group setting; 0 means avatars are disabled. */
   readonly maxBytes: number;
+  readonly maxWidth: number;
+  readonly maxHeight: number;
   readonly blockedUntil: Date | null;
 }
 
@@ -42,9 +44,13 @@ export async function readAvatarPolicy(sql: SQL, memberId: string): Promise<Avat
 
   const settings = await loadMergedGroupSettings(sql, memberId);
   const maxKb = settings["members.avatar_max_kb"];
+  const maxWidth = settings["members.avatar_max_width"];
+  const maxHeight = settings["members.avatar_max_height"];
 
   return {
     maxBytes: typeof maxKb === "number" && maxKb > 0 ? maxKb * 1024 : 0,
+    maxWidth: typeof maxWidth === "number" && maxWidth > 0 ? maxWidth : 512,
+    maxHeight: typeof maxHeight === "number" && maxHeight > 0 ? maxHeight : 512,
     blockedUntil: avatar.blockedUntil,
   };
 }

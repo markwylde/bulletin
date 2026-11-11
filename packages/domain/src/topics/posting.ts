@@ -240,6 +240,8 @@ export async function startTopic(
         await syncPostAttachments(tx, {
           postId: post.id,
           authorId: input.actorId,
+          forumId: forum.id,
+          sessionId: input.sessionId ?? null,
           bodyHtml: rendered.bodyHtml,
         });
 
@@ -388,6 +390,8 @@ export async function reply(
         await syncPostAttachments(tx, {
           postId: post.id,
           authorId: input.actorId,
+          forumId: current.forumId,
+          sessionId: input.sessionId ?? null,
           bodyHtml: rendered.bodyHtml,
         });
 
@@ -550,6 +554,8 @@ export async function editPost(
         await syncPostAttachments(tx, {
           postId: current.id,
           authorId: input.actorId,
+          forumId: current.forumId,
+          sessionId: input.sessionId ?? null,
           bodyHtml: rendered.bodyHtml,
         });
 

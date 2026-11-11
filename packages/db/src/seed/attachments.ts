@@ -236,6 +236,8 @@ async function seedTopic(
   await syncPostAttachments(sql, {
     postId: post.id,
     authorId: author,
+    forumId: forum,
+    sessionId: null,
     bodyHtml: rendered.bodyHtml,
   });
 

@@ -1,4 +1,8 @@
-import { AVATAR_SIZES, processAvatarImage } from "@bulletin/domain/attachments/processing";
+import {
+  AttachmentProcessingError,
+  AVATAR_SIZES,
+  processAvatarImage,
+} from "@bulletin/domain/attachments/processing";
 import {
   clearMemberAvatar,
   readAvatarPolicy,
@@ -95,8 +99,22 @@ export async function avatarUploadResponse(
   let processed: Awaited<ReturnType<typeof processAvatarImage>>;
 
   try {
-    processed = await processAvatarImage(bytes);
-  } catch {
+    processed = await processAvatarImage(bytes, {
+      maxWidth: policy.maxWidth,
+      maxHeight: policy.maxHeight,
+    });
+  } catch (error) {
+    if (error instanceof AttachmentProcessingError && error.code === "image_too_large") {
+      return json(
+        {
+          code: "avatar_too_large",
+          maxWidth: policy.maxWidth,
+          maxHeight: policy.maxHeight,
+        },
+        413,
+      );
+    }
+
     return json({ code: "avatar_invalid" }, 400);
   }
 
@@ -119,7 +137,9 @@ export async function avatarUploadResponse(
     return json({ code: "not_found" }, 404);
   }
 
-  await deleteAvatarObjects(storage, session.memberId, previous?.hash ?? null);
+  if (previous?.hash !== undefined && previous.hash !== processed.hash) {
+    await deleteAvatarObjects(storage, session.memberId, previous.hash);
+  }
 
   return json({ avatarUrl: avatarUrl(session.memberId, processed.hash) });
 }

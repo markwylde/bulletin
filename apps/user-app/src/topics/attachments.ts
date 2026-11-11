@@ -1,4 +1,8 @@
-import { isRasterAttachmentType, type PostAttachmentRecord } from "@bulletin/domain/attachments";
+import {
+  isRasterAttachmentType,
+  type PostAttachmentRecord,
+  SVG_ATTACHMENT_TYPE,
+} from "@bulletin/domain/attachments";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
 
@@ -28,6 +32,11 @@ function attribute(attributes: string, name: string): string | null {
 /** `/attachments/<id>/<filename>` — the filename is cosmetic; the route resolves by ID. */
 export function attachmentPath(id: string, filename: string): string {
   return `/attachments/${id}/${encodeURIComponent(filename)}`;
+}
+
+/** Raster preview for an SVG attachment; the original remains download-only (ADR 0019). */
+export function attachmentPreviewPath(id: string): string {
+  return `/attachments/${id}?preview=1`;
 }
 
 /** Localised short file size via Intl units (no hard-coded "MB" strings). */
@@ -94,18 +103,21 @@ export function renderPostAttachments(input: PostAttachmentRenderInput): PostAtt
       return "";
     }
 
-    if (!isRasterAttachmentType(attachment.contentType)) {
-      // SVG and documents stay download-only; they appear in the file list instead.
+    const isSvg = attachment.contentType === SVG_ATTACHMENT_TYPE;
+
+    if (!isRasterAttachmentType(attachment.contentType) && !isSvg) {
+      // Documents stay download-only; they appear in the file list instead.
       return "";
     }
 
     inline.add(attachment.id);
     const href = escapeHtml(attachmentPath(attachment.id, attachment.filename));
+    const src = isSvg ? escapeHtml(attachmentPreviewPath(attachment.id)) : href;
 
     return [
       `<figure class="bl-attachment-image" data-attachment="${attachment.id}">`,
       `<a href="${href}" data-attachment-download="${attachment.id}">`,
-      `<img src="${href}" alt="${escapeHtml(attachment.filename)}" loading="lazy" decoding="async">`,
+      `<img src="${src}" alt="${escapeHtml(attachment.filename)}" loading="lazy" decoding="async">`,
       "</a>",
       removeButton(attachment.id, input.translate, input.canRemove),
       "</figure>",

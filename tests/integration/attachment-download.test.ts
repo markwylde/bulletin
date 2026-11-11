@@ -335,6 +335,51 @@ integrationDescribe("attachment downloads (ADR 0019)", () => {
     });
   });
 
+  test("serves an SVG as a raster preview and the original only as a download", async () => {
+    await withHarness("attach_dl_svg", async (harness) => {
+      await setDownloads(harness.database, "guest", true);
+      const admin = await memberId(harness.database, "admin");
+      const svg = new TextEncoder().encode(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40"/></svg>',
+      );
+      const attachment = await createAttachment(harness.database, harness.storage, {
+        forumSlug: "off-topic",
+        authorId: admin,
+        filename: "vector.svg",
+        contentType: "image/svg+xml",
+        bytes: svg,
+      });
+      await harness.storage.put(`${attachment.key}.thumb.webp`, IMAGE, {
+        contentType: "image/webp",
+      });
+
+      const preview = await attachmentDownloadResponse({
+        sql: harness.database.sql,
+        storage: harness.storage,
+        session: null,
+        hasSessionCookie: false,
+        id: attachment.id,
+        preview: true,
+      });
+      expect(preview.status).toBe(302);
+      const previewUrl = new URL(preview.headers.get("location") ?? "");
+      expect(previewUrl.searchParams.get("response-content-type")).toBe("image/webp");
+      const previewBytes = await fetch(preview.headers.get("location") ?? "");
+      expect(previewBytes.headers.get("content-type")).toBe("image/webp");
+
+      const original = await attachmentDownloadResponse({
+        sql: harness.database.sql,
+        storage: harness.storage,
+        session: null,
+        hasSessionCookie: false,
+        id: attachment.id,
+      });
+      const originalUrl = new URL(original.headers.get("location") ?? "");
+      expect(originalUrl.searchParams.get("response-content-type")).toBe("image/svg+xml");
+      expect(originalUrl.searchParams.get("response-content-disposition")).toContain("attachment;");
+    });
+  }, 30_000);
+
   test("revoking access denies new requests and the issued link expires after 60 seconds", async () => {
     await withHarness("attach_dl_revoked", async (harness) => {
       await setDownloads(harness.database, "guest", true);

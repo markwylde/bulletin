@@ -14,13 +14,17 @@ import {
   deleteAttachment,
   listMemberAttachments,
   readAttachmentById,
+  readPostAttachments,
+  recordAttachmentDownload,
 } from "@bulletin/domain/attachments";
+import { FORUM_ACTION_BITS } from "@bulletin/domain/permissions";
 import { startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { attachmentDeleteResponse } from "../../apps/user-api/src/attachments.ts";
 import { buildAttachmentsPage } from "../../apps/user-app/src/account/attachments.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { renderPostAttachments } from "../../apps/user-app/src/topics/attachments.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -167,6 +171,100 @@ integrationDescribe("attachment management", () => {
         SELECT used_bytes::text AS used_bytes FROM core.member_storage WHERE member_id = ${member}
       `) as Array<{ used_bytes: string }>;
       expect(usage[0]?.used_bytes).toBe("0");
+    });
+  }, 30_000);
+
+  test("counts an authorised download and updates the displayed count", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const member = await memberId(database, "member-1");
+      const staffRoom = await forumId(database, "staff-room");
+      const admin = await memberId(database, "admin");
+      const attachmentId = await createAttachment(database, member, "counted.pdf");
+      await database.sql`
+        UPDATE core.attachments SET download_count = 0 WHERE id = ${attachmentId}
+      `;
+      const topic = ok(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: offTopic,
+          title: "Counted download",
+          bodyMd: `[counted.pdf](attachment:${attachmentId})`,
+        }),
+      );
+
+      const downloadBit = 1 << FORUM_ACTION_BITS.download;
+
+      await database.sql`
+        UPDATE core.forum_permissions
+        SET actions = actions | ${downloadBit}::int
+        WHERE forum_id = (SELECT id FROM core.forums WHERE slug = 'community')
+          AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+      `;
+
+      const outcome = await recordAttachmentDownload(database.sql, {
+        actorId: member,
+        attachmentId,
+      });
+      expect(outcome).toEqual({ ok: true, downloadCount: 1 });
+      expect((await readAttachmentById(database.sql, attachmentId))?.downloadCount).toBe(1);
+
+      const attachments = await readPostAttachments(database.sql, [topic.postId]);
+      const rendered = renderPostAttachments({
+        postId: topic.postId,
+        html: "",
+        attachments: attachments.get(topic.postId) ?? [],
+        locale: "en",
+        translate,
+        canRemove: false,
+      });
+      expect(rendered.files?.html ?? "").toContain("1 download");
+
+      const staffAttachment = await createAttachment(database, admin, "staff-counted.pdf");
+      ok(
+        await startTopic(database.sql, {
+          actorId: admin,
+          forumId: staffRoom,
+          title: "Staff counted download",
+          bodyMd: `[staff-counted.pdf](attachment:${staffAttachment})`,
+        }),
+      );
+      expect(
+        await recordAttachmentDownload(database.sql, {
+          actorId: member,
+          attachmentId: staffAttachment,
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+    });
+  }, 30_000);
+
+  test("refuses to link an attachment in a forum where upload is denied", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const member = await memberId(database, "member-1");
+      const attachmentId = await createAttachment(database, member);
+      const uploadBit = 1 << FORUM_ACTION_BITS.upload;
+
+      await database.sql`
+        UPDATE core.forum_permissions
+        SET actions = actions & ~(${uploadBit}::int)
+        WHERE forum_id = (SELECT id FROM core.forums WHERE slug = 'community')
+          AND mask_id = (SELECT id FROM core.masks WHERE key = 'standard')
+      `;
+
+      const topic = ok(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: offTopic,
+          title: "Denied upload reuse",
+          bodyMd: `[notes.pdf](attachment:${attachmentId})`,
+        }),
+      );
+
+      const links = (await database.sql`
+        SELECT 1 FROM core.post_attachments WHERE post_id = ${topic.postId}
+      `) as unknown[];
+      expect(links).toHaveLength(0);
     });
   }, 30_000);
 

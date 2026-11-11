@@ -102,6 +102,7 @@ describe("attachment content processing", () => {
 
     expect(await processAttachmentBytes(text, "text/plain")).toEqual({
       contentType: "text/plain",
+      sourceType: "text/plain",
     });
 
     const binary = new Uint8Array([0x68, 0x69, 0x00, 0xff, 0xfe]);
@@ -128,7 +129,7 @@ describe("avatar image processing", () => {
         .toBuffer(),
     );
 
-    const processed = await processAvatarImage(original);
+    const processed = await processAvatarImage(original, { maxWidth: 1_024, maxHeight: 1_024 });
 
     expect(processed.hash).toMatch(/^[0-9a-f]{64}$/);
 
