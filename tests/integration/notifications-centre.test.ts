@@ -363,6 +363,58 @@ integrationDescribe("notification centre", () => {
     });
   }, 30_000);
 
+  test("pagination reaches an old unread entry beyond the first page", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      await database.sql`
+        INSERT INTO core.notifications (member_id, type, count, read_at, created_at, updated_at)
+        SELECT ${member}, 'member.promoted', 1, now(), now(), now()
+        FROM generate_series(1, 100)
+      `;
+      await database.sql`
+        INSERT INTO core.notifications (member_id, type, count, read_at, created_at, updated_at)
+        VALUES (${member}, 'member.promoted', 1, NULL, now() - interval '1 day', now() - interval '1 day')
+      `;
+
+      const first = await buildNotificationsPage({
+        sql: database.sql,
+        memberId: member,
+        sessionId: null,
+        locale: "en",
+        translate,
+        page: 1,
+      });
+
+      expect(first.viewModel.unreadCount).toBe(1);
+      expect(first.viewModel.readAllDisabled).toBe(false);
+      expect(first.viewModel.pagination).toMatchObject({
+        page: 1,
+        hasPrevious: false,
+        hasNext: true,
+      });
+      expect(first.viewModel.sections.flatMap((section) => section.entries)).toHaveLength(50);
+
+      const third = await buildNotificationsPage({
+        sql: database.sql,
+        memberId: member,
+        sessionId: null,
+        locale: "en",
+        translate,
+        page: 3,
+      });
+
+      expect(third.viewModel.unreadCount).toBe(1);
+      expect(third.viewModel.pagination).toMatchObject({
+        page: 3,
+        hasPrevious: true,
+        hasNext: false,
+      });
+      const lastEntries = third.viewModel.sections.flatMap((section) => section.entries);
+      expect(lastEntries).toHaveLength(1);
+      expect(lastEntries[0]).toMatchObject({ unread: true, unreadAttr: "true" });
+    });
+  }, 60_000);
+
   test("the overlay carries the unread count for the bell", async () => {
     await withSeededDb(async (database) => {
       const fixture = await topicFixture(database);

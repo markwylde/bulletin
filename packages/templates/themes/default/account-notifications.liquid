@@ -29,6 +29,16 @@
         </ul>
       </section>
     {% endfor %}
+    {% if pagination.hasPrevious or pagination.hasNext %}
+      <nav class="bl-pagination" data-notifications-pagination aria-label="{% t "notifications.pagination" %}">
+        {% if pagination.hasPrevious %}
+          <a class="bl-pagination__link" href="/account/notifications?page={{ pagination.page | minus: 1 }}" rel="prev" data-page-prev>{% t "notifications.previousPage" %}</a>
+        {% endif %}
+        {% if pagination.hasNext %}
+          <a class="bl-pagination__link" href="/account/notifications?page={{ pagination.page | plus: 1 }}" rel="next" data-page-next>{% t "notifications.nextPage" %}</a>
+        {% endif %}
+      </nav>
+    {% endif %}
   {% else %}
     {{ emptyState }}
   {% endif %}

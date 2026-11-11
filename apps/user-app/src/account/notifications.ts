@@ -1,4 +1,8 @@
-import { listNotifications, type NotificationEntry } from "@bulletin/domain/notifications";
+import {
+  listNotifications,
+  type NotificationEntry,
+  unreadNotificationCount,
+} from "@bulletin/domain/notifications";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import { formatRelativeTime, type Locale, type Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
@@ -10,6 +14,8 @@ export interface NotificationsPageInput {
   readonly sessionId: string | null;
   readonly locale: Locale;
   readonly translate: Translator;
+  /** One-based; page size is fixed so the query is bounded. */
+  readonly page?: number;
 }
 
 export interface NotificationRow {
@@ -37,6 +43,11 @@ export interface NotificationsPageData {
     readonly unreadCount: number;
     readonly readAllDisabled: boolean;
     readonly sections: readonly NotificationSection[];
+    readonly pagination: {
+      readonly page: number;
+      readonly hasPrevious: boolean;
+      readonly hasNext: boolean;
+    };
   };
 }
 
@@ -97,10 +108,18 @@ function sectionKey(value: Date, dayStart: Date, weekStart: Date): "today" | "we
 }
 
 /** "Notifications": the member's entries grouped by recency, plus the mark-all control. */
+export const NOTIFICATIONS_PAGE_SIZE = 50;
+
 export async function buildNotificationsPage(
   input: NotificationsPageInput,
 ): Promise<NotificationsPageData> {
-  const entries = await listNotifications(input.sql, input.memberId, { limit: 100 });
+  const page = Math.max(1, Math.trunc(input.page ?? 1));
+  const pageEntries = await listNotifications(input.sql, input.memberId, {
+    limit: NOTIFICATIONS_PAGE_SIZE + 1,
+    offset: (page - 1) * NOTIFICATIONS_PAGE_SIZE,
+  });
+  const entries = pageEntries.slice(0, NOTIFICATIONS_PAGE_SIZE);
+  const unreadCount = await unreadNotificationCount(input.sql, input.memberId);
   const title = input.translate("notifications.title");
   const now = new Date();
   const dayStart = new Date(now);
@@ -135,7 +154,6 @@ export async function buildNotificationsPage(
     });
   }
 
-  const unreadCount = entries.filter((entry) => !entry.read).length;
   const labels = {
     today: input.translate("notifications.section.today"),
     week: input.translate("notifications.section.week"),
@@ -153,6 +171,11 @@ export async function buildNotificationsPage(
       hasNotifications: entries.length > 0,
       unreadCount,
       readAllDisabled: unreadCount === 0,
+      pagination: {
+        page,
+        hasPrevious: page > 1,
+        hasNext: pageEntries.length > NOTIFICATIONS_PAGE_SIZE,
+      },
       sections: (["today", "week", "earlier"] as const)
         .map((key) => ({ key, label: labels[key], entries: sections.get(key) ?? [] }))
         .filter((section) => section.entries.length > 0),

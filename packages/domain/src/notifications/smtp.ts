@@ -27,10 +27,12 @@ export class SmtpError extends Error {
 }
 
 export interface SmtpOptions {
-  /** `smtp://host:port`, optionally with `user:pass@`. */
+  /** `smtp://host:port` for local relays, or `smtps://host:port` for verified TLS. */
   readonly url: string;
   readonly message: SmtpMessage;
   readonly timeoutMs?: number;
+  /** Test/deployment TLS trust override; production uses the system trust store. */
+  readonly tls?: Bun.TLSOptions;
 }
 
 function mailbox(value: string): string {
@@ -88,10 +90,22 @@ export function buildRawMessage(message: SmtpMessage): string {
 
 export async function sendSmtpMail(options: SmtpOptions): Promise<void> {
   const url = new URL(options.url);
-  const port = url.port === "" ? 25 : Number(url.port);
+  const secure = url.protocol === "smtps:";
+
+  if (!secure && url.protocol !== "smtp:") {
+    throw new Error("SMTP URL must use smtp:// or smtps://");
+  }
+
+  // AUTH over plaintext would expose the password (and any relay that asked for it); TLS is
+  // mandatory whenever credentials are configured.
+  if (!secure && url.username !== "") {
+    throw new Error("SMTP AUTH requires TLS; use smtps://");
+  }
+
+  const port = url.port === "" ? (secure ? 465 : 25) : Number(url.port);
 
   if (url.hostname === "" || !Number.isSafeInteger(port) || port < 1) {
-    throw new Error(`Invalid SMTP URL: ${options.url}`);
+    throw new Error("Invalid SMTP URL");
   }
 
   let buffer = "";
@@ -102,6 +116,9 @@ export async function sendSmtpMail(options: SmtpOptions): Promise<void> {
   const socket = await Bun.connect({
     hostname: url.hostname,
     port,
+    ...(secure
+      ? { tls: options.tls ?? { serverName: url.hostname, rejectUnauthorized: true } }
+      : {}),
     socket: {
       data(_socket, chunk) {
         buffer += chunk.toString("utf8");

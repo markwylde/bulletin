@@ -94,6 +94,34 @@ function wrapSelection(
   return `${value.slice(0, start)}${before}${value.slice(start, end)}${after}${value.slice(end)}`;
 }
 
+/** Local fallback for the re-auth round trip, when server draft autosave is refused (ADR 0018). */
+function reauthDraftKey(contextKey: string): string {
+  return `bulletin:draft:reauth:${contextKey}`;
+}
+
+function readReauthDraft(contextKey: string): string | null {
+  try {
+    const raw = localStorage.getItem(reauthDraftKey(contextKey));
+
+    if (raw === null) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as { readonly bodyMd?: unknown };
+    return typeof parsed.bodyMd === "string" ? parsed.bodyMd : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearReauthDraft(contextKey: string): void {
+  try {
+    localStorage.removeItem(reauthDraftKey(contextKey));
+  } catch {
+    // Private mode.
+  }
+}
+
 /** The editor island (ADR 0007): WYSIWYG/source, toolbar, emoticons, mentions and drafts. */
 export function Editor(props: EditorProps) {
   return (
@@ -180,6 +208,39 @@ function EditorContent({
     return () => {
       active = false;
     };
+  }, [contextKey]);
+
+  // The stream asks editors to persist before the session's re-auth grace expires; server
+  // draft autosave is refused at that point, so keep the text locally for the return.
+  useEffect(() => {
+    const persist = (): void => {
+      if (markdownRef.current.trim() === "" || markdownRef.current === initialRef.current) {
+        return;
+      }
+
+      try {
+        localStorage.setItem(
+          reauthDraftKey(contextKey),
+          JSON.stringify({ bodyMd: markdownRef.current, savedAt: Date.now() }),
+        );
+      } catch {
+        // Private mode: the server draft may still be available after re-auth.
+      }
+    };
+
+    window.addEventListener("bulletin:reauth", persist);
+    return () => {
+      window.removeEventListener("bulletin:reauth", persist);
+    };
+  }, [contextKey]);
+
+  // Offer a locally saved re-auth draft once the editor mounts again.
+  useEffect(() => {
+    const saved = readReauthDraft(contextKey);
+
+    if (saved !== null && saved !== initialRef.current) {
+      setDraft({ contextKey, bodyMd: saved, updatedAt: new Date().toISOString() });
+    }
   }, [contextKey]);
 
   // The personal overlay delivers the draft before/alongside the editor's own request.
@@ -478,10 +539,12 @@ function EditorContent({
       restoringRef.current = false;
     }, 400);
     setDraft(null);
+    clearReauthDraft(contextKey);
   }
 
   function discardDraft(): void {
     setDraft(null);
+    clearReauthDraft(contextKey);
 
     if (csrfToken !== null) {
       void clearDraft(contextKey, csrfToken);

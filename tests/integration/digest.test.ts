@@ -558,6 +558,44 @@ integrationDescribe("digests", () => {
     });
   }, 30_000);
 
+  test("a disabled mention does not suppress an enabled reply in the same topic", async () => {
+    await withMailStack(async ({ database, worker }) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+
+      await setNotificationPreference(database.sql, member, "topic.reply", "digest", true);
+      await setNotificationPreference(database.sql, member, "post.mention", "digest", false);
+
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Mixed digest topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await follow(database.sql, { memberId: member, kind: "topic", id: topic.topicId });
+      await database.sql`
+        UPDATE core.posts SET created_at = now() - interval '10 days' WHERE id = ${topic.postId}
+      `;
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: `Hello @[Regular Member Two](member:${member})`,
+        }),
+      );
+
+      const items = await digestItems(worker, member, {
+        since: new Date(Date.now() - 60 * 60 * 1_000),
+      });
+      expect(items).toEqual([
+        expect.objectContaining({ kind: "reply", title: "Mixed digest topic" }),
+      ]);
+    });
+  }, 60_000);
+
   test("only subscribed members are queued, with the right cadence", async () => {
     await withMailStack(async ({ database, worker }) => {
       const member = await memberId(database, "member-2");

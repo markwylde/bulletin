@@ -295,7 +295,7 @@ integrationDescribe("notification email", () => {
       expect(intents).toHaveLength(1);
       expect(await deliverNotificationEmail(database.sql, options, intents[0] ?? "")).toBe("sent");
 
-      await expectOk(
+      const second = expectOk(
         await reply(database.sql, {
           actorId: fixture.actor,
           topicId: fixture.topicId,
@@ -310,7 +310,18 @@ integrationDescribe("notification email", () => {
       expect(intents).toHaveLength(2);
       expect(intents[0]).not.toBe(intents[1]);
       expect(await deliverNotificationEmail(database.sql, options, intents[1] ?? "")).toBe("sent");
-      expect(store.list()).toHaveLength(2);
+      const messages = store.list();
+      expect(messages).toHaveLength(2);
+      // Each queued intent keeps its own source event's post link, not the coalesced latest one.
+      const firstMail = messages.find((message) =>
+        message.text.includes(`/post/${fixture.postId}`),
+      );
+      const secondMail = messages.find((message) =>
+        message.text.includes(`/post/${second.postId}`),
+      );
+      expect(firstMail).toBeDefined();
+      expect(secondMail).toBeDefined();
+      expect(firstMail?.text).not.toContain(`/post/${second.postId}`);
     });
   }, 60_000);
 

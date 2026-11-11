@@ -108,6 +108,8 @@ async function refreshCounts(): Promise<void> {
 }
 
 function showReauthPrompt(): void {
+  // Editors keep unsaved text locally before the grace window makes draft autosave fail.
+  window.dispatchEvent(new CustomEvent("bulletin:reauth"));
   const banner = document.querySelector<HTMLElement>("[data-stream-reauth]");
   const link = document.querySelector<HTMLAnchorElement>("[data-stream-reauth-continue]");
 

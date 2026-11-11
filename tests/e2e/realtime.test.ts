@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   clickSelector,
   loginAs,
+  setInputValue,
   waitForExpression,
   waitForSelector,
   withPage,
@@ -14,6 +15,7 @@ const integrationDescribe = ENABLED ? describe : describe.skip;
 const USER_URL = userBaseUrl();
 const STAFF_URL = staffBaseUrl();
 const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
+const EDITOR_URL = new URL("/_demo/editor", USER_URL).toString();
 
 interface TopicTarget {
   readonly id: string;
@@ -200,6 +202,51 @@ integrationDescribe("realtime stream in the browser", () => {
       },
     );
   }, 300_000);
+
+  test("keeps unsaved editor text across the re-auth round trip", async () => {
+    const text = `Draft kept for reauth ${Date.now()}`;
+
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "member-1");
+      await view.navigate(EDITOR_URL);
+      await waitForSelector(view, "[data-editor]", 20_000);
+      await waitForSelector(view, "[data-editor-wysiwyg] .ProseMirror", 30_000);
+
+      await view.evaluate(`(async () => {
+        const session = await fetch("/api/auth/session").then((response) => response.json());
+        await fetch("/api/me/drafts?contextKey=demo%3Aeditor", {
+          method: "DELETE",
+          headers: { "x-bulletin-csrf": session.csrfToken ?? "" }
+        });
+        return true;
+      })()`);
+      await clickSelector(view, '[data-editor-mode="source"]');
+      await waitForSelector(view, "[data-editor-source]");
+      await setInputValue(view, "[data-editor-source]", text);
+
+      // The stream fires this when the background grace ends and draft autosave starts failing.
+      await view.evaluate('window.dispatchEvent(new CustomEvent("bulletin:reauth"))');
+      await waitForExpression(
+        view,
+        `localStorage.getItem("bulletin:draft:reauth:demo:editor") !== null`,
+      );
+
+      await view.navigate(EDITOR_URL);
+      await waitForSelector(view, "[data-draft-offer]", 20_000);
+      await clickSelector(view, "[data-draft-restore]");
+      await clickSelector(view, '[data-editor-mode="source"]');
+      await waitForSelector(view, "[data-editor-source]");
+      await waitForExpression(
+        view,
+        `document.querySelector("[data-editor-source]")?.value === ${JSON.stringify(text)}`,
+      );
+      expect(
+        await view.evaluate<boolean>(
+          'localStorage.getItem("bulletin:draft:reauth:demo:editor") === null',
+        ),
+      ).toBe(true);
+    });
+  }, 180_000);
 
   test("a revoked session's open page switches to logged out", async () => {
     await withPages(

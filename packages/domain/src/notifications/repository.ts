@@ -1,5 +1,5 @@
 import type { SQL } from "bun";
-import type { StoredEvent } from "../events/outbox.ts";
+import { loadEvent, type StoredEvent } from "../events/outbox.ts";
 import { can } from "../permissions/can.ts";
 import { loadPermissionSnapshot, type PermissionSnapshot } from "../permissions/snapshot.ts";
 import type { ForumTree } from "../permissions/tree.ts";
@@ -700,6 +700,10 @@ export async function digestItems(
     ["mention", mentions],
     ["quote", quotes],
   ] as const) {
+    if (preferences[DIGEST_TYPE_BY_KIND[kind]].digest !== true) {
+      continue;
+    }
+
     for (const row of rows) {
       const existing = byTopic.get(row.topic_id);
 
@@ -726,6 +730,11 @@ export async function digestItems(
     }
 
     const kind = row.type_from_notification === "member.promoted" ? "promotion" : "reaction";
+
+    if (preferences[DIGEST_TYPE_BY_KIND[kind]].digest !== true) {
+      continue;
+    }
+
     const key =
       kind === "promotion" ? `promotion:${row.id}` : (row.topic_id ?? `reaction:${row.id}`);
     const existing = byTopic.get(key);
@@ -749,10 +758,6 @@ export async function digestItems(
   const readable: DigestItem[] = [];
 
   for (const item of byTopic.values()) {
-    if (preferences[DIGEST_TYPE_BY_KIND[item.kind]].digest !== true) {
-      continue;
-    }
-
     if (
       item.forumId !== null &&
       !(await can(sql, memberId, "read", { forumId: item.forumId, tree, snapshot }))
@@ -788,35 +793,125 @@ export async function notificationEmailContext(
   sql: SQL,
   intentId: string,
 ): Promise<NotificationEmailContext | null> {
-  const [row] = (await sql`
+  const [base] = (await sql`
     SELECT
       i.member_id::text AS member_id,
       m.locale,
       m.display_name AS recipient_name,
       n.type,
+      i.source_event_id::text AS source_event_id,
+      n.actor_id::text AS actor_id,
+      n.topic_id::text AS topic_id,
+      n.post_id::text AS post_id
+    FROM core.delivery_intents i
+    JOIN core.notifications n ON n.id = i.ref_id AND n.member_id = i.member_id
+    JOIN core.members m ON m.id = i.member_id
+    WHERE i.id = ${intentId}
+      AND i.kind = 'notification'
+      AND i.channel = 'email'
+      AND i.delivered_at IS NULL
+  `) as Array<{
+    member_id: string;
+    locale: string | null;
+    recipient_name: string | null;
+    type: string;
+    source_event_id: string | null;
+    actor_id: string | null;
+    topic_id: string | null;
+    post_id: string | null;
+  }>;
+
+  if (base === undefined || !isNotificationTypeValue(base.type)) {
+    return null;
+  }
+
+  // The coalesced notification row points at the latest reply; the email must describe the
+  // event that created this intent, with current visibility and permission checks.
+  if (base.source_event_id !== null) {
+    const event = await loadEvent(sql, BigInt(base.source_event_id));
+
+    if (event !== null && (event.type === "post.created" || event.type === "topic.created")) {
+      const postId = event.payloadIds.postId;
+
+      if (postId === undefined) {
+        return null;
+      }
+
+      const [post] = (await sql`
+        SELECT
+          p.id::text AS post_id,
+          p.visibility,
+          t.id::text AS topic_id,
+          t.title,
+          t.slug,
+          t.forum_id::text AS forum_id,
+          a.display_name AS actor_name
+        FROM core.posts p
+        JOIN core.topics t ON t.id = p.topic_id
+        LEFT JOIN core.members a ON a.id = p.author_id
+        WHERE p.id = ${postId}
+      `) as Array<{
+        post_id: string;
+        visibility: string;
+        topic_id: string;
+        title: string;
+        slug: string;
+        forum_id: string;
+        actor_name: string | null;
+      }>;
+
+      if (post === undefined || post.visibility !== "visible") {
+        return null;
+      }
+
+      const tree = await loadForumTree(sql);
+      const snapshot = await loadPermissionSnapshot(sql, base.member_id, {
+        tree,
+        sessionId: null,
+      });
+
+      if (
+        !(await can(sql, base.member_id, "read", {
+          forumId: post.forum_id,
+          tree,
+          snapshot,
+        }))
+      ) {
+        return null;
+      }
+
+      return {
+        memberId: base.member_id,
+        locale: base.locale,
+        recipientName: base.recipient_name,
+        type: base.type,
+        actorName: post.actor_name,
+        topicId: post.topic_id,
+        topicTitle: post.title,
+        topicSlug: post.slug,
+        postId: post.post_id,
+      };
+    }
+  }
+
+  // Notification types without content (promotions) and legacy intents without a source event.
+  const rows = (await sql`
+    SELECT
       a.display_name AS actor_name,
       t.forum_id::text AS forum_id,
       n.topic_id::text AS topic_id,
       t.title AS topic_title,
       t.slug AS topic_slug,
       n.post_id::text AS post_id
-    FROM core.delivery_intents i
-    JOIN core.notifications n ON n.id = i.ref_id AND n.member_id = i.member_id
-    JOIN core.members m ON m.id = i.member_id
+    FROM core.notifications n
+    JOIN core.delivery_intents i ON i.id = ${intentId} AND i.ref_id = n.id
     LEFT JOIN core.members a ON a.id = n.actor_id
     LEFT JOIN core.topics t ON t.id = n.topic_id
     LEFT JOIN core.posts p ON p.id = n.post_id
-    WHERE i.id = ${intentId}
-      AND i.kind = 'notification'
-      AND i.channel = 'email'
-      AND i.delivered_at IS NULL
+    WHERE n.member_id = ${base.member_id}
       AND (n.post_id IS NULL OR p.visibility = 'visible')
       AND (n.topic_id IS NULL OR t.id IS NOT NULL)
   `) as Array<{
-    member_id: string;
-    locale: string | null;
-    recipient_name: string | null;
-    type: string;
     actor_name: string | null;
     forum_id: string | null;
     topic_id: string | null;
@@ -825,29 +920,32 @@ export async function notificationEmailContext(
     post_id: string | null;
   }>;
 
-  if (row === undefined || !isNotificationTypeValue(row.type)) {
+  const row = rows[0];
+
+  if (row === undefined) {
     return null;
   }
 
   if (row.forum_id !== null) {
     const tree = await loadForumTree(sql);
-    const snapshot = await loadPermissionSnapshot(sql, row.member_id, { tree, sessionId: null });
-    const readable = await can(sql, row.member_id, "read", {
-      forumId: row.forum_id,
-      tree,
-      snapshot,
-    });
+    const snapshot = await loadPermissionSnapshot(sql, base.member_id, { tree, sessionId: null });
 
-    if (!readable) {
+    if (
+      !(await can(sql, base.member_id, "read", {
+        forumId: row.forum_id,
+        tree,
+        snapshot,
+      }))
+    ) {
       return null;
     }
   }
 
   return {
-    memberId: row.member_id,
-    locale: row.locale,
-    recipientName: row.recipient_name,
-    type: row.type,
+    memberId: base.member_id,
+    locale: base.locale,
+    recipientName: base.recipient_name,
+    type: base.type,
     actorName: row.actor_name,
     topicId: row.topic_id,
     topicTitle: row.topic_title,
