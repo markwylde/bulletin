@@ -14,9 +14,11 @@ import {
   listConversations,
   readConversationForParticipant,
   readStartUsage,
+  searchConversations,
   startConversation,
 } from "@bulletin/domain/conversations";
 import { insertIgnore } from "@bulletin/domain/relationships";
+import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import {
   archiveConversationResponse,
@@ -27,6 +29,8 @@ import {
   readConversationResponse,
   replyConversationResponse,
 } from "../../apps/user-api/src/conversations.ts";
+import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { buildInboxPage } from "../../apps/user-app/src/conversations/page.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -863,6 +867,63 @@ integrationDescribe("conversation folders and unread tracking", () => {
         expect(response.status).toBe(404);
         expect(await response.json()).toEqual({ code: "not_found" });
       }
+    });
+  }, 30_000);
+});
+
+integrationDescribe("conversation search", () => {
+  test("finds title and message matches only in the member's own conversations", async () => {
+    await withSeededDb(async (database) => {
+      const memberOne = await memberId(database, "member-1");
+      const memberTwo = await memberId(database, "member-2");
+      const other = await memberId(database, "member-es");
+
+      const outcome = await startConversation(database.sql, {
+        actorId: memberOne,
+        title: "Zebra planning",
+        bodyMd: "The password is flamingo.",
+        recipientIds: [memberTwo],
+      });
+
+      if (!outcome.ok) {
+        throw new Error("Could not create the search fixture");
+      }
+
+      const otherConversation = await startConversation(database.sql, {
+        actorId: memberTwo,
+        title: "Private unicorn",
+        bodyMd: "The unicorn stays secret.",
+        recipientIds: [other],
+      });
+
+      if (!otherConversation.ok) {
+        throw new Error("Could not create the other fixture");
+      }
+
+      expect(
+        (await searchConversations(database.sql, memberOne, "flamingo")).map((row) => row.id),
+      ).toEqual([outcome.result.conversationId]);
+      expect(
+        (await searchConversations(database.sql, memberOne, "Zebra")).map((row) => row.id),
+      ).toEqual([outcome.result.conversationId]);
+      // The other conversation contains the word but member one is not a participant.
+      expect(await searchConversations(database.sql, memberOne, "unicorn")).toEqual([]);
+      expect(
+        (await searchConversations(database.sql, memberTwo, "unicorn")).map((row) => row.id),
+      ).toEqual([otherConversation.result.conversationId]);
+      expect(await searchConversations(database.sql, memberOne, "   ")).toEqual([]);
+
+      const translate = createServerT("en", { shipped: USER_CATALOGS });
+      const page = await buildInboxPage({
+        sql: database.sql,
+        memberId: memberOne,
+        locale: "en",
+        translate,
+        folder: "inbox",
+        query: "unicorn",
+      });
+      expect(page.conversations).toEqual([]);
+      expect(page.hasConversations).toBe(false);
     });
   }, 30_000);
 });

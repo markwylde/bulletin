@@ -4,6 +4,7 @@ import {
   listConversations,
   readConversationForParticipant,
   readPmPolicy,
+  searchConversations,
 } from "@bulletin/domain/conversations";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
@@ -170,17 +171,20 @@ function rowView(
 export async function buildInboxPage(input: InboxPageInput): Promise<InboxPageData> {
   const lists = await listConversations(input.sql, input.memberId);
   const policy = await readPmPolicy(input.sql, input.memberId);
-  const selected = lists[input.folder];
   const selectedLabel = folderLabel(input.folder, input.translate);
+  const query = (input.query ?? "").trim();
+  const searching = query !== "";
 
   const folders: FolderTab[] = (["inbox", "sent", "archive"] as const).map((key) => ({
     key,
     label: folderLabel(key, input.translate),
     href: `/conversations?folder=${key}`,
-    active: key === input.folder,
+    active: key === input.folder && !searching,
     count: lists[key].length,
   }));
-  const conversations = selected.map((summary) => rowView(summary, input.locale, input.translate));
+  const conversations = (
+    searching ? await searchConversations(input.sql, input.memberId, query) : lists[input.folder]
+  ).map((summary) => rowView(summary, input.locale, input.translate));
   const editor =
     policy.canUse && input.folder !== "archive"
       ? await buildEditorView(input.sql, input.translate, {
@@ -199,7 +203,7 @@ export async function buildInboxPage(input: InboxPageInput): Promise<InboxPageDa
     folders,
     hasConversations: conversations.length > 0,
     conversations,
-    searchQuery: input.query ?? "",
+    searchQuery: query,
     canStart: policy.canUse,
     editor,
     breadcrumbs: [
@@ -211,11 +215,13 @@ export async function buildInboxPage(input: InboxPageInput): Promise<InboxPageDa
       folders,
       hasConversations: conversations.length > 0,
       conversations,
-      searchQuery: input.query ?? "",
+      searchQuery: query,
       canStart: policy.canUse && editor !== null,
       editor,
       folderLabel: selectedLabel,
-      emptyText: emptyText(input.folder, input.translate),
+      emptyText: searching
+        ? input.translate("conversation.empty.search")
+        : emptyText(input.folder, input.translate),
     },
   };
 }

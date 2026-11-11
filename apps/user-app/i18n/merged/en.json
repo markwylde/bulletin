@@ -78,6 +78,7 @@
   "conversation.back": "All conversations",
   "conversation.empty.archive": "You have not archived any conversations.",
   "conversation.empty.inbox": "No conversations in your inbox.",
+  "conversation.empty.search": "No conversations match your search.",
   "conversation.empty.sent": "You have not started any conversations.",
   "conversation.folder.archive": "Archive",
   "conversation.folder.inbox": "Inbox",

@@ -78,6 +78,7 @@
   "conversation.back": "Todas las conversaciones",
   "conversation.empty.archive": "No has archivado ninguna conversación.",
   "conversation.empty.inbox": "No hay conversaciones en tu bandeja de entrada.",
+  "conversation.empty.search": "Ninguna conversación coincide con tu búsqueda.",
   "conversation.empty.sent": "No has iniciado ninguna conversación.",
   "conversation.folder.archive": "Archivo",
   "conversation.folder.inbox": "Bandeja de entrada",

@@ -9,7 +9,7 @@
 
 - [x] 2.1 Reply, invite, remove, leave (ends all access, frees a quota slot) and block re-invites, plus full history for new participants; integration tests for each scenario, including 404 after leaving
 - [x] 2.2 Inbox, Sent and Archive folders, unread tracking, archive/unarchive with auto-unarchive on reply; integration tests; E2E at 360 and 1440
-- [ ] 2.3 Search within own conversations, with a test that results never include others' conversations
+- [x] 2.3 Search within own conversations, with a test that results never include others' conversations
 - [ ] 2.4 `conversation_message_holds` table and the permanent removal job (deletes unheld messages and attachment objects; keeps the conversation row, held messages and their attachments while holds exist; finishes on hold release); integration tests with no holds and with fixture holds
 
 ## 3. Integrations

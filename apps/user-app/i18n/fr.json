@@ -74,6 +74,7 @@
   "conversation.back": "Toutes les conversations",
   "conversation.empty.archive": "Vous n’avez archivé aucune conversation.",
   "conversation.empty.inbox": "Aucune conversation dans votre boîte de réception.",
+  "conversation.empty.search": "Aucune conversation ne correspond à votre recherche.",
   "conversation.empty.sent": "Vous n’avez commencé aucune conversation.",
   "conversation.folder.archive": "Archives",
   "conversation.folder.inbox": "Boîte de réception",

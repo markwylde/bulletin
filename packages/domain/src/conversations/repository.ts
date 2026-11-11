@@ -659,6 +659,22 @@ function summaryFolder(row: SummaryRow, memberId: string): ConversationFolder {
   return row.starter_id === memberId ? "sent" : "inbox";
 }
 
+function summaryFromRow(row: SummaryRow, memberId: string): ConversationSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    starterId: row.starter_id,
+    folder: summaryFolder(row, memberId),
+    lastMessageAt: new Date(row.last_message_at),
+    unreadCount: row.unread_count,
+    participants: row.participant_rows.map((participant) => ({
+      id: participant.id,
+      displayName: participant.displayName,
+      avatarHash: participant.avatarHash,
+    })),
+  };
+}
+
 /**
  * The member's three folders. `Sent` is the conversations they started; `Archive` is their
  * own archived bucket. Only active participations are listed (design).
@@ -712,19 +728,7 @@ export async function listConversations(sql: SQL, memberId: string): Promise<Con
   } = { inbox: [], sent: [], archive: [] };
 
   for (const row of rows) {
-    const summary: ConversationSummary = {
-      id: row.id,
-      title: row.title,
-      starterId: row.starter_id,
-      folder: summaryFolder(row, memberId),
-      lastMessageAt: new Date(row.last_message_at),
-      unreadCount: row.unread_count,
-      participants: row.participant_rows.map((participant) => ({
-        id: participant.id,
-        displayName: participant.displayName,
-        avatarHash: participant.avatarHash,
-      })),
-    };
+    const summary = summaryFromRow(row, memberId);
 
     if (summary.folder === "archive") {
       lists.archive.push(summary);
@@ -740,4 +744,69 @@ export async function listConversations(sql: SQL, memberId: string): Promise<Con
   }
 
   return lists;
+}
+
+const SEARCH_MAX_LENGTH = 200;
+
+/**
+ * Searches only conversations where the viewer is an active participant. The participant join
+ * is the authorisation boundary, so a matching message in someone else's conversation can never
+ * appear in the result (task 2.3).
+ */
+export async function searchConversations(
+  sql: SQL,
+  memberId: string,
+  query: string,
+): Promise<readonly ConversationSummary[]> {
+  const term = query.trim().slice(0, SEARCH_MAX_LENGTH);
+
+  if (!MEMBER_ID.test(memberId) || term === "") {
+    return [];
+  }
+
+  const rows = (await sql`
+    SELECT
+      c.id::text AS id,
+      c.title,
+      c.starter_id::text AS starter_id,
+      p.folder,
+      c.last_message_at,
+      (
+        SELECT count(*)::int
+        FROM core.conversation_messages msg
+        WHERE msg.conversation_id = c.id
+          AND (p.last_read_message_id IS NULL OR msg.id > p.last_read_message_id)
+      ) AS unread_count,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'id', m.id::text,
+              'displayName', m.display_name,
+              'avatarHash', m.avatar_hash
+            )
+            ORDER BY lower(m.display_name), m.id
+          )
+          FROM core.conversation_participants cp
+          JOIN core.members m ON m.id = cp.member_id
+          WHERE cp.conversation_id = c.id AND cp.state = 'active'
+        ),
+        '[]'::json
+      ) AS participant_rows
+    FROM core.conversations c
+    JOIN core.conversation_participants p
+      ON p.conversation_id = c.id
+     AND p.member_id = ${memberId}
+     AND p.state = 'active'
+    WHERE c.title_search_vector @@ websearch_to_tsquery('simple', ${term})
+       OR EXISTS (
+         SELECT 1
+         FROM core.conversation_messages msg
+         WHERE msg.conversation_id = c.id
+           AND msg.search_vector @@ websearch_to_tsquery('simple', ${term})
+       )
+    ORDER BY c.last_message_at DESC, c.id DESC
+  `) as SummaryRow[];
+
+  return rows.map((row) => summaryFromRow(row, memberId));
 }
