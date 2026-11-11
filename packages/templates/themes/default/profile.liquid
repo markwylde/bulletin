@@ -27,12 +27,13 @@
           <p class="bl-profile__pips" data-profile-rank-pips="{{ profile.rankPips }}" aria-hidden="true">{% for i in (1..profile.rankPips) %}●{% endfor %}</p>
         {% endif %}
         <div class="bl-actions" data-member-actions data-member-id="{{ profile.id }}" hidden>
-          <button type="button" class="bl-button bl-button--small" data-friend-request hidden>{% t "profile.friends.add" %}</button>
+          {% if flags.friends %}<button type="button" class="bl-button bl-button--small" data-friend-request hidden>{% t "profile.friends.add" %}</button>
           <button type="button" class="bl-button bl-button--small" data-friend-pending hidden disabled>{% t "profile.friends.pending" %}</button>
           <button type="button" class="bl-button bl-button--small" data-friend-accept hidden>{% t "profile.friends.accept" %}</button>
           <button type="button" class="bl-button bl-button--quiet bl-button--small" data-friend-decline hidden>{% t "profile.friends.decline" %}</button>
           <button type="button" class="bl-button bl-button--quiet bl-button--small" data-friend-remove hidden>{% t "profile.friends.remove" %}</button>
-          <button type="button" class="bl-button bl-button--quiet bl-button--small" data-ignore-toggle hidden>{% t "profile.ignore.add" %}</button>
+          {% endif %}
+          {% if flags.ignore_list %}<button type="button" class="bl-button bl-button--quiet bl-button--small" data-ignore-toggle hidden>{% t "profile.ignore.add" %}</button>{% endif %}
         </div>
         <p class="bl-error-text" data-member-action-error hidden></p>
         <dl class="bl-profile__stats">
@@ -68,7 +69,7 @@
     {% endif %}
   </section>
 
-  {% if profile.fields.size > 0 %}
+  {% if flags.custom_profile_fields and profile.fields.size > 0 %}
     <section class="bl-card" data-profile-fields>
       <h2 class="bl-card__title">{% t "profile.fields.title" %}</h2>
       <dl class="bl-profile__fields">
@@ -88,7 +89,7 @@
     </section>
   {% endif %}
 
-  {% if profile.badges.size > 0 %}
+  {% if flags.badges and profile.badges.size > 0 %}
     <section class="bl-card" data-profile-badges>
       <h2 class="bl-card__title">{% t "profile.badges.title" %}</h2>
       <ul class="bl-profile__badges">
@@ -107,7 +108,7 @@
     </section>
   {% endif %}
 
-  {% if profile.friends.size > 0 %}
+  {% if flags.friends and profile.friends.size > 0 %}
     <section class="bl-card" data-profile-friends>
       <h2 class="bl-card__title">{% t "profile.friends.title" %}</h2>
       <ul class="bl-profile__friends">

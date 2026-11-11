@@ -70,6 +70,8 @@ export interface AuthServiceOptions extends AuthRouterOptions {
   readonly testEndpoints?: boolean;
   /** Staff-only audit hook, called in the same transaction as a locale preference write. */
   readonly onStaffLocaleChange?: (sql: SQL, change: StaffLocaleChange) => Promise<void>;
+  /** Evaluates a member-facing flag for overlay personalisation (ADR 0010). */
+  readonly featureEnabled?: (key: string, memberId: string | null) => Promise<boolean>;
 }
 
 export interface StaffLocaleChange {
@@ -590,6 +592,10 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         reactionPosts,
       );
       const viewerVotes = await readViewerVotes(options.sql, session.memberId, reactionPosts);
+      const [ignoreEnabled, signaturesEnabled] = await Promise.all([
+        options.featureEnabled?.("ignore_list", session.memberId) ?? Promise.resolve(true),
+        options.featureEnabled?.("signatures", session.memberId) ?? Promise.resolve(true),
+      ]);
       const payload = {
         ctx,
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
@@ -611,8 +617,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           conversations: 0,
         },
         polls: poll === null ? [] : [poll],
-        hideSignatures: signaturePrivacy[0]?.hide_signatures === true,
-        ignored,
+        hideSignatures: signaturesEnabled && signaturePrivacy[0]?.hide_signatures === true,
+        ignored: ignoreEnabled ? ignored : [],
         editablePosts,
         reactions: viewerReactions,
         reputation: viewerVotes,

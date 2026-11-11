@@ -484,6 +484,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     );
     const reactionsEnabled = latest?.flags.values.reactions === true;
     const reputationEnabled = latest?.flags.values.reputation === true;
+    const signaturesEnabled = latest?.flags.values.signatures === true;
     const [views, cards, signatures, poll] = await Promise.all([
       renderTopicViewsFragment(input.sql, input.cache, topic.id, input.locale, input.translate),
       renderMemberCards(
@@ -499,14 +500,17 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
               scale: latest?.settings.reputationLabelScale ?? [],
             }
           : null,
+        latest?.flags.values.badges === true,
       ),
-      renderMemberSignatures(
-        input.sql,
-        input.cache,
-        pageData.memberIds,
-        input.locale,
-        input.translate,
-      ),
+      signaturesEnabled
+        ? renderMemberSignatures(
+            input.sql,
+            input.cache,
+            pageData.memberIds,
+            input.locale,
+            input.translate,
+          )
+        : Promise.resolve(new Map<string, string>()),
       pageData.pollId === null
         ? Promise.resolve(null)
         : renderPollFragment(
@@ -566,7 +570,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     );
     html = html.replace(
       /<bl-post-signature data-member="(\d+)"><\/bl-post-signature>/g,
-      (match, memberId: string) => signatures.get(memberId) ?? match,
+      (_match, memberId: string) => signatures.get(memberId) ?? "",
     );
     html = replaceMemberCards(html, cards);
 

@@ -7,6 +7,7 @@ import { leaderboardContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
+import { renderThemedNotFound } from "../theme/not-found.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
 import { buildLeaderboardsPage, type LeaderboardView } from "./page.ts";
 
@@ -38,6 +39,25 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
   readonly etag: string | null;
   readonly errors: readonly string[];
 }> {
+  const viewerFlags = await loadViewerFlags(input.sql, input.session);
+
+  if (viewerFlags.values.leaderboards !== true) {
+    const notFound = await renderThemedNotFound({
+      sql: input.sql,
+      locale: input.locale,
+      translate: input.translate,
+      route: leaderboardContract,
+    });
+
+    return {
+      ...notFound,
+      cache: null,
+      variant: "flag-off",
+      tags: [],
+      etag: null,
+    };
+  }
+
   let title = input.translate("leaderboards.title");
   let boardName = "";
 

@@ -80,6 +80,20 @@ export async function eligibleRecipients(
       ) {
         continue;
       }
+
+      if (
+        recipient.type === "friend.accepted" &&
+        !(await options.flags.enabled("friends", recipient.memberId))
+      ) {
+        continue;
+      }
+
+      if (
+        recipient.type === "badge.awarded" &&
+        !(await options.flags.enabled("badges", recipient.memberId))
+      ) {
+        continue;
+      }
     }
 
     if (await memberIsActive(options.sql, recipient.memberId)) {

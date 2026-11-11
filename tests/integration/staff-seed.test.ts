@@ -105,9 +105,15 @@ integrationDescribe("flags seed", () => {
         "announcements",
         "attachments",
         "avatar_upload",
+        "badges",
         "compactTopicList",
+        "custom_profile_fields",
         "digests",
         "follows",
+        "friends",
+        "ignore_list",
+        "leaderboards",
+        "member_directory",
         "mentions",
         "newEditor",
         "notifications",
@@ -116,7 +122,9 @@ integrationDescribe("flags seed", () => {
         "reactions",
         "realtime",
         "reputation",
+        "signatures",
         "unfurls",
+        "whos_online",
       ]);
 
       expect(byKey.get("announcements")).toMatchObject({

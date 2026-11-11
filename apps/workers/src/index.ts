@@ -26,6 +26,7 @@ import {
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
+import type { NotificationRecipientFilter } from "@bulletin/domain/notifications";
 import { ignoreRecipientFilter } from "@bulletin/domain/relationships";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
@@ -107,6 +108,11 @@ const enqueueFanout = async (job: {
   });
 };
 const workerFlags = createWorkerFlags(sql);
+const notificationFilters: readonly NotificationRecipientFilter[] = [
+  async (context) =>
+    !(await workerFlags.enabled("ignore_list", context.recipient.memberId)) ||
+    ignoreRecipientFilter(context),
+];
 const digestJobs = await createDigestJobs({
   boss: boss.boss,
   sql,
@@ -141,7 +147,7 @@ const eventWorker = await createEventWorker({
       sql,
       logger,
       flags: workerFlags,
-      filters: [ignoreRecipientFilter],
+      filters: notificationFilters,
       enqueueEmail,
       enqueueFanout,
     }),
@@ -154,7 +160,7 @@ const notificationFanout = await createNotificationsFanoutWorker({
   sql,
   logger,
   flags: workerFlags,
-  filters: [ignoreRecipientFilter],
+  filters: notificationFilters,
   enqueueEmail,
 });
 const leaderboardJobs = await createLeaderboardJobs({ boss: boss.boss, sql, logger });

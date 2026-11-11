@@ -8,6 +8,7 @@ import { memberListContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
+import { renderThemedNotFound } from "../theme/not-found.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
 import { buildMemberListPage, type MemberListView } from "./list.ts";
 
@@ -44,6 +45,26 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
   readonly etag: string | null;
   readonly errors: readonly string[];
 }> {
+  const flags = await loadViewerFlags(input.sql, input.session);
+
+  if (flags.values.member_directory !== true) {
+    const notFound = await renderThemedNotFound({
+      sql: input.sql,
+      locale: input.locale,
+      translate: input.translate,
+      route: memberListContract,
+    });
+
+    return {
+      ...notFound,
+      status: 404,
+      cache: null,
+      variant: "flag-off",
+      tags: [],
+      etag: null,
+    };
+  }
+
   const principal = input.session?.memberId ?? GUEST_PRINCIPAL;
   const allowed = await can(input.sql, principal, "members.view_list");
   const canViewHidden = await can(input.sql, principal, "members.view_hidden");

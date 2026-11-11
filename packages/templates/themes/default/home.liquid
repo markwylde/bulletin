@@ -50,13 +50,13 @@
         <div><dt>{% t "index.stats.record" %}</dt><dd>{{ statistics.recordOnline.count }}{% if statistics.recordOnline.date %} · {{ statistics.recordOnline.date }}{% endif %}</dd></div>
       {% endif %}
     </dl>
-    {% if todayTopPoster %}
+    {% if flags.leaderboards and todayTopPoster %}
       <p class="bl-muted" data-today-top-poster>{% t "index.stats.todayTop" %} <a href="{{ todayTopPoster.href }}">{{ todayTopPoster.name }}</a></p>
     {% endif %}
   </section>
   {% endif %}
 
-  {% if online %}
+  {% if flags.whos_online and online %}
   <section class="bl-card" data-online-summary>
     <h2 class="bl-card__title">{% t "index.online.title" %}</h2>
     <p class="bl-muted">{{ online.memberCount }} · {{ online.guestCount }}</p>

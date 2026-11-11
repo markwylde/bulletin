@@ -2,6 +2,7 @@
 import { createServerT } from "@bulletin/i18n";
 import { profileEditContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
+import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { buildProfileEditPage } from "../../profiles/edit.ts";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
@@ -18,6 +19,7 @@ if (session === null) {
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
+const flags = await loadViewerFlags(sql, session);
 const page = await buildProfileEditPage({
   sql,
   memberId: session.memberId,
@@ -54,7 +56,7 @@ const rendered = await renderCachedPage({
       locale,
       translate,
       template: profileEditContract.templates.page,
-      viewModel: page.viewModel,
+      viewModel: { ...page.viewModel, flags: flags.values },
       breadcrumbs: page.breadcrumbs,
       route: profileEditContract,
     });

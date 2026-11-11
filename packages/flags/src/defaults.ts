@@ -172,6 +172,79 @@ export const reputationFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Member profiles and their fields, signatures and privacy options (change `member-profiles`). */
+export const customProfileFieldsFlag = defineFlag({
+  key: "custom_profile_fields",
+  description: "Staff-defined custom profile fields and their values.",
+  owner: "members",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+export const signaturesFlag = defineFlag({
+  key: "signatures",
+  description: "Member signatures under posts and the signature editor.",
+  owner: "members",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+export const friendsFlag = defineFlag({
+  key: "friends",
+  description: "Friend requests, friend lists and friend notifications.",
+  owner: "members",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+export const ignoreListFlag = defineFlag({
+  key: "ignore_list",
+  description: "Ignoring members, collapsed posts and ignore filtering.",
+  owner: "members",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+export const memberDirectoryFlag = defineFlag({
+  key: "member_directory",
+  description: "The member list with search, filters and sorting.",
+  owner: "members",
+  default: false,
+  affectsRender: true,
+  clientVisible: false,
+});
+
+export const whosOnlineFlag = defineFlag({
+  key: "whos_online",
+  description: "The who's-online summary and full online list.",
+  owner: "members",
+  default: false,
+  affectsRender: true,
+  clientVisible: false,
+});
+
+export const leaderboardsFlag = defineFlag({
+  key: "leaderboards",
+  description: "Top-poster and most-reacted leaderboards and today's top poster.",
+  owner: "members",
+  default: false,
+  affectsRender: true,
+  clientVisible: false,
+});
+
+export const badgesFlag = defineFlag({
+  key: "badges",
+  description: "Member badges, awards and featured badges.",
+  owner: "members",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
@@ -186,4 +259,12 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   realtimeFlag,
   reactionsFlag,
   reputationFlag,
+  customProfileFieldsFlag,
+  signaturesFlag,
+  friendsFlag,
+  ignoreListFlag,
+  memberDirectoryFlag,
+  whosOnlineFlag,
+  leaderboardsFlag,
+  badgesFlag,
 ]);

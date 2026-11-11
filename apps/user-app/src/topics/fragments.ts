@@ -66,6 +66,7 @@ function cardHtml(
   translate: Translator,
   avatarEnabled: boolean,
   reputation: ReputationDisplay | null,
+  badgesEnabled = true,
 ): string {
   const name = card.displayName ?? translate("member.deletedName");
   const group = card.groupTitle ?? translate("member.noGroup");
@@ -87,15 +88,17 @@ function cardHtml(
             Math.min(card.rankPips, 20),
           )}</span>`
         : "";
-  const badges = card.featuredBadges
-    .map((badge) =>
-      badge.imageKey === null
-        ? `<span class="bl-author-card__badge" data-member-badge>${escapeHtml(badge.label)}</span>`
-        : `<img class="bl-author-card__badge" src="${escapeHtml(badge.imageKey)}" alt="${escapeHtml(
-            badge.label,
-          )}" width="16" height="16" loading="lazy" data-member-badge>`,
-    )
-    .join("");
+  const badges = !badgesEnabled
+    ? ""
+    : card.featuredBadges
+        .map((badge) =>
+          badge.imageKey === null
+            ? `<span class="bl-author-card__badge" data-member-badge>${escapeHtml(badge.label)}</span>`
+            : `<img class="bl-author-card__badge" src="${escapeHtml(badge.imageKey)}" alt="${escapeHtml(
+                badge.label,
+              )}" width="16" height="16" loading="lazy" data-member-badge>`,
+        )
+        .join("");
 
   return [
     '<span class="bl-author-card" data-member-card="',
@@ -131,6 +134,7 @@ export async function renderMemberCards(
   translate: Translator,
   avatarEnabled = true,
   reputation: ReputationDisplay | null = null,
+  badgesEnabled = true,
 ): Promise<ReadonlyMap<string, string>> {
   const unique = [...new Set(memberIds)];
   const cards = await loadMemberCards(sql, unique, locale);
@@ -157,7 +161,7 @@ export async function renderMemberCards(
         }`,
         data: card,
       }),
-      render: (value) => cardHtml(value, translate, avatarEnabled, reputation),
+      render: (value) => cardHtml(value, translate, avatarEnabled, reputation, badgesEnabled),
     });
 
     rendered.set(id, fragment.html);

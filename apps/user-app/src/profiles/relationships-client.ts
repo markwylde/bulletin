@@ -64,11 +64,21 @@ function applyState(state: RelationshipState): void {
   }
 }
 
+const ACTION_BUTTONS = [
+  "friend-request",
+  "friend-pending",
+  "friend-accept",
+  "friend-decline",
+  "friend-remove",
+  "ignore-toggle",
+] as const;
+
 async function load(): Promise<void> {
   if (
     actions === null ||
     memberId === "" ||
-    document.documentElement.dataset.visitor !== "member"
+    document.documentElement.dataset.visitor !== "member" ||
+    !ACTION_BUTTONS.some((name) => button(name) !== null)
   ) {
     return;
   }

@@ -289,7 +289,18 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return profileSaveResponse(sql, session, request);
+        const [customFields, signatures, badges] = await Promise.all([
+          flags.enabled("custom_profile_fields", session.memberId),
+          flags.enabled("signatures", session.memberId),
+          flags.enabled("badges", session.memberId),
+        ]);
+
+        return profileSaveResponse(sql, session, request, {
+          customFields,
+          signatures,
+          customTitles: true,
+          badges,
+        });
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -299,6 +310,15 @@ await startService({
       const response = await auth.handle(request, async ({ session }) => {
         if (session === null) {
           return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        const [friendsOn, ignoreOn] = await Promise.all([
+          flags.enabled("friends", session.memberId),
+          flags.enabled("ignore_list", session.memberId),
+        ]);
+
+        if (!friendsOn && !ignoreOn) {
+          return Response.json({ code: "not_found" }, { status: 404 });
         }
 
         return relationshipStateResponse(sql, session, new URL(request.url));
@@ -313,7 +333,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return ignoreResponse(sql, session, request);
+        return flags.guard("ignore_list", session.memberId)(request, () =>
+          ignoreResponse(sql, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -325,7 +347,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return friendResponse(sql, session, request);
+        return flags.guard("friends", session.memberId)(request, () =>
+          friendResponse(sql, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

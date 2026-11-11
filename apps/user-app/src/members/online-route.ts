@@ -14,6 +14,7 @@ import { onlineContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
+import { renderThemedNotFound } from "../theme/not-found.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
 import { buildOnlinePage, type OnlinePageView } from "./online.ts";
 
@@ -46,6 +47,26 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
   readonly hasUnlockGrant: boolean;
   readonly errors: readonly string[];
 }> {
+  const flags = await loadViewerFlags(input.sql, input.session);
+
+  if (flags.values.whos_online !== true) {
+    const notFound = await renderThemedNotFound({
+      sql: input.sql,
+      locale: input.locale,
+      translate: input.translate,
+      route: onlineContract,
+    });
+
+    return {
+      ...notFound,
+      cache: null,
+      variant: "flag-off",
+      tags: [],
+      etag: null,
+      hasUnlockGrant: false,
+    };
+  }
+
   const principal = input.session?.memberId ?? GUEST_PRINCIPAL;
   const sessionId = input.session?.sessionId ?? null;
   const tree = await loadForumTree(input.sql);

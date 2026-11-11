@@ -12,7 +12,7 @@
       <p class="bl-muted">{% t "profile.edit.aboutHelp" %}</p>
     </section>
 
-    {% if fields.size > 0 %}
+    {% if flags.custom_profile_fields and fields.size > 0 %}
       <section class="bl-card" data-profile-edit-fields>
         <h2 class="bl-card__title">{% t "profile.fields.title" %}</h2>
         {% for field in fields %}
@@ -63,7 +63,7 @@
       </section>
     {% endif %}
 
-    {% if badges.size > 0 %}
+    {% if flags.badges and badges.size > 0 %}
       <section class="bl-card" data-profile-edit-badges>
         <h2 class="bl-card__title">{% t "profile.badges.featured.title" %}</h2>
         <p class="bl-muted">{% t "profile.badges.featured.help" %}</p>
@@ -78,6 +78,7 @@
       </section>
     {% endif %}
 
+    {% if flags.signatures %}
     <section class="bl-card" data-profile-edit-signature>
       <h2 class="bl-card__title">{% t "profile.signature.title" %}</h2>
       {% if signature.enabled %}
@@ -92,6 +93,7 @@
         <span>{% t "profile.signature.hide" %}</span>
       </label>
     </section>
+    {% endif %}
 
     <section class="bl-card" data-profile-edit-privacy>
       <h2 class="bl-card__title">{% t "profile.privacy.title" %}</h2>

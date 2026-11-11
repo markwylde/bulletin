@@ -17,10 +17,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * `POST /api/me/profile`: the member's about text, custom fields and privacy options. Only
  * fields their groups may edit are accepted; anything else is a 403 (profile spec).
  */
+export interface ProfileSaveFeatures {
+  readonly customFields: boolean;
+  readonly signatures: boolean;
+  readonly customTitles: boolean;
+  readonly badges: boolean;
+}
+
 export async function profileSaveResponse(
   sql: SQL,
   session: SessionRecord,
   request: Request,
+  features: ProfileSaveFeatures = {
+    customFields: true,
+    signatures: true,
+    customTitles: true,
+    badges: true,
+  },
 ): Promise<Response> {
   const body: unknown = await request.json().catch(() => null);
 
@@ -28,7 +41,9 @@ export async function profileSaveResponse(
     return json({ code: "invalid" }, 400);
   }
 
-  const editable = await editableProfileFieldIds(sql, session.memberId);
+  const editable = features.customFields
+    ? await editableProfileFieldIds(sql, session.memberId)
+    : new Set<string>();
   const fields = (await readProfileFields(sql, editable)).filter((field) => editable.has(field.id));
   const result = await saveMemberProfile(sql, {
     memberId: session.memberId,
@@ -37,9 +52,14 @@ export async function profileSaveResponse(
     hideFromMemberList: body.hideFromMemberList === true,
     ...(typeof body.hideSignatures === "boolean" ? { hideSignatures: body.hideSignatures } : {}),
     ...(typeof body.hideFriends === "boolean" ? { hideFriends: body.hideFriends } : {}),
-    ...(typeof body.signatureMd === "string" ? { signatureMd: body.signatureMd } : {}),
-    ...(typeof body.customTitle === "string" ? { customTitle: body.customTitle } : {}),
-    ...(Array.isArray(body.featuredBadges) &&
+    ...(features.signatures && typeof body.signatureMd === "string"
+      ? { signatureMd: body.signatureMd }
+      : {}),
+    ...(features.customTitles && typeof body.customTitle === "string"
+      ? { customTitle: body.customTitle }
+      : {}),
+    ...(features.badges &&
+    Array.isArray(body.featuredBadges) &&
     body.featuredBadges.every((id) => typeof id === "string" && /^\d+$/.test(id))
       ? { featuredBadges: body.featuredBadges as string[] }
       : {}),
