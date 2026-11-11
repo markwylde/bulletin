@@ -13,6 +13,7 @@ function target(): {
   readonly firstUnread: string[];
   readonly editable: string[];
   readonly follows: string[];
+  readonly reactions: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
@@ -24,6 +25,7 @@ function target(): {
   const firstUnread: string[] = [];
   const editable: string[] = [];
   const follows: string[] = [];
+  const reactions: string[] = [];
 
   return {
     unread,
@@ -36,6 +38,7 @@ function target(): {
     firstUnread,
     editable,
     follows,
+    reactions,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -51,6 +54,13 @@ function target(): {
       setEditablePosts: (posts) =>
         editable.push(...posts.map((post) => `${post.postId}:${post.canEdit ? "edit" : "read"}`)),
       setFollow: (context, following) => follows.push(`${context}:${following ? "yes" : "no"}`),
+      setReactions: (states) =>
+        reactions.push(
+          ...states.map(
+            (state) =>
+              `${state.postId}:${state.reactionId ?? "none"}:${state.own ? "own" : "other"}`,
+          ),
+        ),
     },
   };
 }
@@ -161,6 +171,21 @@ describe("overlay applier", () => {
     });
 
     expect(fixture.follows).toEqual(["topic:12:yes", "forum:3:no"]);
+  });
+
+  test("marks the member's own reaction and own posts, ignoring unsafe ids", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, {
+      reactions: [
+        { postId: "7", reactionId: "2", own: false },
+        { postId: "8", reactionId: null, own: true },
+        { postId: "x", reactionId: "2", own: false },
+        { postId: "9", reactionId: "x", own: false },
+      ],
+    });
+
+    expect(fixture.reactions).toEqual(["7:2:other", "8:none:own"]);
   });
 
   test("ignores unknown payload fields and keeps applying the rest", () => {

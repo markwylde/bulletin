@@ -34,6 +34,7 @@ import {
   notificationReadResponse,
 } from "./notifications.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
+import { reactionMembersResponse, reactionSetResponse } from "./reactions.ts";
 
 import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
@@ -324,8 +325,35 @@ await startService({
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }
 
-    const createTopicMatch = /^\/api\/forums\/(\d+)\/topics$/.exec(pathname);
+    const reactionMatch = /^\/api\/posts\/(\d+)\/reactions$/.exec(pathname);
 
+    if (reactionMatch !== null) {
+      const postId = reactionMatch[1] ?? "";
+
+      if (request.method === "GET") {
+        const response = await auth.handle(request, async ({ session }) =>
+          reactionMembersResponse(sql, session, postId, new URL(request.url)),
+        );
+
+        return response ?? Response.json({ code: "not_found" }, { status: 404 });
+      }
+
+      if (request.method === "POST") {
+        const response = await auth.handle(request, async ({ session }) => {
+          if (session === null) {
+            return Response.json({ code: "unauthenticated" }, { status: 401 });
+          }
+
+          return reactionSetResponse(sql, session, postId, request);
+        });
+
+        return response ?? Response.json({ code: "not_found" }, { status: 404 });
+      }
+
+      return Response.json({ code: "method_not_allowed" }, { status: 405 });
+    }
+
+    const createTopicMatch = /^\/api\/forums\/(\d+)\/topics$/.exec(pathname);
     if (request.method === "POST" && createTopicMatch !== null) {
       const response = await auth.handle(request, async ({ session }) => {
         if (session === null) {

@@ -7,11 +7,13 @@ import {
   membersSeedModule,
   moderatorAssignmentsSeedModule,
   permissionFixtureSeedModule,
+  reactionsSeedModule,
   runSeeds,
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
 import { createAuthService, hashToken, sessionCookieName } from "@bulletin/domain/auth";
+import { setReaction } from "@bulletin/domain/reactions";
 import { markBoardRead, reply, startTopic } from "@bulletin/domain/topics";
 import { memberViewerKey, recordVisit } from "@bulletin/domain/visits";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -34,6 +36,7 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
         baseSeedModule,
         flagsSeedModule,
         permissionFixtureSeedModule,
+        reactionsSeedModule,
         groupsSeedModule,
         forumExtrasSeedModule,
         membersSeedModule,
@@ -181,6 +184,69 @@ integrationDescribe("overlay security and unread state", () => {
           publicTopic.result.postId,
         ]);
         expect(payload.editablePosts[0]).toMatchObject({ bodyMd: "Public body." });
+      } finally {
+        await auth.close();
+      }
+    });
+  }, 30_000);
+
+  test("delivers the member's own reaction and own posts through the overlay", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const replier = await memberId(database, "member-2");
+      const offTopic = await forumId(database, "off-topic");
+      const topic = await startTopic(database.sql, {
+        actorId: member,
+        forumId: offTopic,
+        title: "Overlay reaction topic",
+        bodyMd: "My own body.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      const answer = await reply(database.sql, {
+        actorId: replier,
+        topicId: topic.result.topicId,
+        bodyMd: "Someone else's body.",
+      });
+
+      if (!answer.ok) {
+        throw new Error("Could not reply");
+      }
+
+      const [reaction] = (await database.sql`
+        SELECT id::text AS id FROM core.reactions WHERE key = 'like'
+      `) as Array<{ id: string }>;
+
+      if (reaction === undefined) {
+        throw new Error("Missing the like reaction");
+      }
+
+      await setReaction(database.sql, {
+        actorId: member,
+        postId: answer.result.postId,
+        reactionId: reaction.id,
+      });
+
+      const auth = await overlayAuth(database);
+      const cookie = await sessionCookie(database, member);
+
+      try {
+        const response = await overlay(auth.auth, cookie, {
+          ctx: `topic:${topic.result.topicId}`,
+          posts: [topic.result.postId, answer.result.postId],
+        });
+        expect(response.status).toBe(200);
+        const payload = (await response.json()) as {
+          reactions: Array<{ postId: string; reactionId: string | null; own: boolean }>;
+        };
+
+        expect(payload.reactions).toEqual([
+          { postId: topic.result.postId, reactionId: null, own: true },
+          { postId: answer.result.postId, reactionId: reaction.id, own: false },
+        ]);
       } finally {
         await auth.close();
       }

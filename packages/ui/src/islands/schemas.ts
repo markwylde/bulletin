@@ -91,12 +91,41 @@ export const localeSuggestionSchema = v.strictObject({
   dismiss: v.pipe(v.string(), v.minLength(1)),
 });
 
+const reactionOptionSchema = v.strictObject({
+  id: v.pipe(v.string(), v.regex(/^\d+$/)),
+  icon: v.pipe(v.string(), v.minLength(1), v.maxLength(32)),
+  label: v.pipe(v.string(), v.minLength(1)),
+  count: v.pipe(v.number(), v.integer(), v.minValue(0)),
+  enabled: v.boolean(),
+});
+
+const reactionLabelsSchema = v.strictObject({
+  bar: v.pipe(v.string(), v.minLength(1)),
+  pick: v.pipe(v.string(), v.minLength(1)),
+  remove: v.pipe(v.string(), v.minLength(1)),
+  whoReacted: v.pipe(v.string(), v.minLength(1)),
+  close: v.pipe(v.string(), v.minLength(1)),
+  loading: v.pipe(v.string(), v.minLength(1)),
+  empty: v.pipe(v.string(), v.minLength(1)),
+  failed: v.pipe(v.string(), v.minLength(1)),
+  deletedMember: v.pipe(v.string(), v.minLength(1)),
+});
+
+/** The reaction bar: totals server-rendered, the member's own reaction via the overlay. */
+export const reactionsSchema = v.strictObject({
+  postId: v.pipe(v.string(), v.regex(/^\d+$/)),
+  canReact: v.boolean(),
+  reactions: v.array(reactionOptionSchema),
+  labels: reactionLabelsSchema,
+});
+
 /** The canonical island names; the template registry and the client runtime must match. */
 export const ISLAND_SCHEMAS = {
   SpikeCounter: spikeCounterSchema,
   LanguageSwitcher: languageSwitcherSchema,
   LocaleSuggestion: localeSuggestionSchema,
   Editor: editorSchema,
+  Reactions: reactionsSchema,
 } as const;
 
 export type IslandName = keyof typeof ISLAND_SCHEMAS;

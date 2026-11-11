@@ -24,6 +24,7 @@
     "./content": "./src/content/index.ts",
     "./topics": "./src/topics/index.ts",
     "./polls": "./src/polls/index.ts",
+    "./reactions": "./src/reactions/index.ts",
     "./attachments": "./src/attachments/index.ts",
     "./attachments/processing": "./src/attachments/processing.ts",
     "./events/stream": "./src/events/stream.ts"

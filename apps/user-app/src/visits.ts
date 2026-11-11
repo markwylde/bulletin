@@ -5,6 +5,7 @@
  */
 
 import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
+import { publishReactionStates } from "@bulletin/ui/islands/reactions/store";
 import { setFollowState } from "./follows/dom.ts";
 import {
   applyOverlay,
@@ -176,6 +177,10 @@ const overlayTarget: OverlayTarget = {
   setFollow(context, following) {
     setFollowState(context, following);
   },
+
+  setReactions(states) {
+    publishReactionStates(states);
+  },
 };
 
 function draftContext(): string | null {
@@ -203,6 +208,8 @@ async function loadOverlay(ctx: string): Promise<void> {
     }
 
     applyOverlay(overlayTarget, (await response.json()) as OverlayPayload);
+    // A signal for tests and for scripts that need the private state before they run.
+    document.documentElement.dataset.overlayApplied = "true";
   } catch {
     // The overlay is an enhancement; the page works without it.
   }

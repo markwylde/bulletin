@@ -12,6 +12,7 @@ import { groupsSeedModule } from "./groups.ts";
 import { membersSeedModule } from "./members.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
 import { notificationsSeedModule } from "./notifications.ts";
+import { reactionsSeedModule } from "./reactions.ts";
 import { themesSeedModule } from "./themes.ts";
 import { topicsSeedModule } from "./topics.ts";
 
@@ -54,6 +55,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         baseSeedModule,
         forumSeedModule,
         emoticonSeedModule,
+        reactionsSeedModule,
         groupsSeedModule,
         forumExtrasSeedModule,
         membersSeedModule,

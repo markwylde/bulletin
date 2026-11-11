@@ -5,12 +5,14 @@ import * as v from "valibot";
 import { Editor } from "./Editor.tsx";
 import { LanguageSwitcher } from "./LanguageSwitcher.tsx";
 import { LocaleSuggestion } from "./LocaleSuggestion.tsx";
+import { Reactions } from "./Reactions.tsx";
 import { SpikeCounter } from "./SpikeCounter.tsx";
 import {
   editorSchema,
   type IslandPropsSchema,
   languageSwitcherSchema,
   localeSuggestionSchema,
+  reactionsSchema,
   spikeCounterSchema,
 } from "./schemas.ts";
 
@@ -48,4 +50,5 @@ export const SERVER_ISLANDS: ServerIslandRegistry = {
     LocaleSuggestion,
   ),
   Editor: defineServerIsland("Editor", editorSchema, Editor),
+  Reactions: defineServerIsland("Reactions", reactionsSchema, Reactions),
 };

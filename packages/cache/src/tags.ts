@@ -17,6 +17,8 @@ export const GLOBAL_CACHE_TAGS = {
   emoticons: "emoticons",
   /** Rank titles/pips: author cards rebuild when a rank rule changes (member-profiles). */
   ranks: "ranks",
+  /** The staff-managed reaction set: every reaction bar rebuilds when it changes. */
+  reactions: "reactions",
   /** Board name, description, locale and offline state: the shared home shell. */
   board: "board",
 } as const;
@@ -64,6 +66,14 @@ export function postTag(postId: string): string {
 
 export function postSnapshotsTag(postId: string): string {
   return `${resourceTag("post", postId)}:snapshots`;
+}
+
+/**
+ * One post's reaction bar. Reactions bump only this tag, so the post body fragment stays valid
+ * (ADR 0006; the bar is composed after the post block, like author cards).
+ */
+export function postReactionsTag(postId: string): string {
+  return `${resourceTag("post", postId)}:reactions`;
 }
 
 export function pollTag(pollId: string): string {

@@ -25,6 +25,7 @@ import { topicContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import { etagWithFragments } from "../http/cache.ts";
 import { renderPollFragment } from "../polls/fragment.ts";
+import { renderReactionBar } from "../reactions/fragment.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
@@ -497,11 +498,31 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
             input.translate,
           ),
     ]);
+    const reactionBars = new Map<string, string>();
+    await Promise.all(
+      pageData.viewModel.posts.map(async (post) => {
+        reactionBars.set(
+          post.id,
+          await renderReactionBar({
+            sql: input.sql,
+            cache: input.cache,
+            postId: post.id,
+            locale: input.locale,
+            translate: input.translate,
+            canReact: pageData.canReact,
+          }),
+        );
+      }),
+    );
 
     html = html.replace("<bl-topic-views></bl-topic-views>", views);
     html = html.replace(
       /<bl-post-block data-post="(\d+)"><\/bl-post-block>/g,
       (match, postId: string) => postBlocks.get(postId) ?? match,
+    );
+    html = html.replace(
+      /<bl-post-reactions data-post="(\d+)"><\/bl-post-reactions>/g,
+      (match, postId: string) => reactionBars.get(postId) ?? match,
     );
     html = replaceMemberCards(html, cards);
 
@@ -513,6 +534,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       views,
       poll ?? "",
       ...postBlocks.values(),
+      ...reactionBars.values(),
       ...pageData.memberIds.map((id) => cards.get(id) ?? ""),
     ];
   }

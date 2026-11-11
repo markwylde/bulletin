@@ -2,9 +2,9 @@
 
 ## 1. Reactions
 
-- [ ] 1.1 Migrations for reactions, post_reactions and the reaction_summary column; reaction mutations (add, change, remove; no own posts) emitting `reaction.added`; integration tests including permission denial
-- [ ] 1.2 Reaction bar island and fragment, the "who reacted" list, and own-reaction via the overlay; cache test that a reaction doesn't invalidate the post-body fragment; E2E at 360 and 1440
-- [ ] 1.3 Staff reaction set manager (icon, labels, order, weight, enable), with tests
+- [x] 1.1 Migrations for reactions, post_reactions and the reaction_summary column; reaction mutations (add, change, remove; no own posts) emitting `reaction.added`; integration tests including permission denial
+- [x] 1.2 Reaction bar island and fragment, the "who reacted" list, and own-reaction via the overlay; cache test that a reaction doesn't invalidate the post-body fragment; E2E at 360 and 1440
+- [x] 1.3 Staff reaction set manager (icon, labels, order, weight, enable), with tests
 
 ## 2. Reputation
 

@@ -4,6 +4,8 @@
  * `visits.ts` is all that touches the document.
  */
 
+import type { ReactionViewerState } from "@bulletin/ui/islands/reactions/store";
+
 export type OverlayCount = "notifications" | "conversations";
 
 export interface OverlayEditablePost {
@@ -49,6 +51,8 @@ export interface OverlayPayload {
   readonly editablePosts?: readonly OverlayEditablePost[];
   /** Follow state for every follow target the page rendered, e.g. `topic:12`. */
   readonly follows?: Readonly<Record<string, boolean>>;
+  /** The member's own reaction on each rendered post; never in shared HTML (ADR 0006). */
+  readonly reactions?: readonly ReactionViewerState[];
 }
 
 export interface UnreadSlot {
@@ -70,6 +74,7 @@ export interface OverlayTarget {
   setFirstUnread(topicId: string, url: string): void;
   setEditablePosts(posts: readonly OverlayEditablePost[]): void;
   setFollow(context: string, following: boolean): void;
+  setReactions(states: readonly ReactionViewerState[]): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -159,6 +164,26 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
       target.setFollow(context, following);
     }
   }
+
+  const reactions = (payload.reactions ?? []).flatMap((state) => {
+    if (
+      typeof state !== "object" ||
+      state === null ||
+      typeof state.postId !== "string" ||
+      !/^[1-9]\d{0,18}$/.test(state.postId) ||
+      typeof state.own !== "boolean" ||
+      !(
+        state.reactionId === null ||
+        (typeof state.reactionId === "string" && /^[1-9]\d{0,18}$/.test(state.reactionId))
+      )
+    ) {
+      return [];
+    }
+
+    return [{ postId: state.postId, reactionId: state.reactionId, own: state.own }];
+  });
+
+  target.setReactions(reactions);
 
   const draft = payload.draft;
 

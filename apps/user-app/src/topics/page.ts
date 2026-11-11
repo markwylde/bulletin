@@ -107,6 +107,8 @@ export interface TopicPageData {
   readonly postTags: ReadonlyMap<string, readonly string[]>;
   readonly allPostTags: readonly string[];
   readonly loadPost: (postId: string) => Promise<TopicPagePost | null>;
+  /** The viewer may react (a member whose groups allow it); own posts are excluded by overlay. */
+  readonly canReact: boolean;
 }
 
 function formatDate(locale: Locale, value: Date): string {
@@ -465,6 +467,9 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     page,
     pageCount,
     memberIds,
+    canReact:
+      principalMemberId(input.principal) !== null &&
+      input.snapshot.settings["posting.can_react"] === true,
     pollId: poll?.id ?? null,
     postTags,
     allPostTags: [...new Set(allPostTags)],

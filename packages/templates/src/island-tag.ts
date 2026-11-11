@@ -41,7 +41,7 @@ export interface IslandTagOptions {
  * `<bl-island data-name data-props>` carries the hydrated component; the SSR markup sits
  * inside it so the island is visible before its chunk loads (ADR 0008).
  */
-function islandMarkup(name: string, props: object, html: string): string {
+export function islandMarkup(name: string, props: object, html: string): string {
   const serialised = escapeAttribute(JSON.stringify(props) ?? "{}");
   return `<bl-island data-name="${escapeAttribute(name)}" data-props="${serialised}">${html}</bl-island>`;
 }

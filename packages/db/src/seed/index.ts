@@ -11,6 +11,7 @@ export * from "./members.ts";
 export * from "./moderator-assignments.ts";
 export * from "./notifications.ts";
 export * from "./permission-fixtures.ts";
+export * from "./reactions.ts";
 export * from "./rng.ts";
 export * from "./themes.ts";
 export * from "./topics.ts";

@@ -68,6 +68,7 @@ import {
   type PromotionMutation,
   savePromotionRule,
 } from "./promotions.ts";
+import { listReactionsForStaff, mutateReaction } from "./reactions.ts";
 import {
   listActiveOverrides,
   revertOverride,
@@ -686,6 +687,23 @@ async function moderatorsMutate(context: StaffRouteContext): Promise<Response> {
   }
 }
 
+async function reactionsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listReactionsForStaff(context.sql));
+}
+
+async function reactionsMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await mutateReaction(context.sql, context.session.memberId, body);
+
+  if (result.ok) {
+    return json({ ok: true, id: result.reactionId });
+  }
+
+  const status = result.code === "not_found" ? 404 : result.code === "invalid" ? 400 : 409;
+
+  return json({ code: result.code }, status);
+}
+
 async function promotionsList(context: StaffRouteContext): Promise<Response> {
   return json(await listPromotions(context.sql));
 }
@@ -1072,6 +1090,20 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     permission: "acp.members",
     requiresStepUp: true,
     handler: moderatorsMutate,
+  },
+  {
+    id: "reactions.list",
+    method: "GET",
+    path: "/api/staff/reactions",
+    permission: "acp.reactions",
+    handler: reactionsList,
+  },
+  {
+    id: "reactions.mutate",
+    method: "POST",
+    path: "/api/staff/reactions",
+    permission: "acp.reactions",
+    handler: reactionsMutate,
   },
   {
     id: "promotions.list",

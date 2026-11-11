@@ -6,6 +6,7 @@ import {
   memberTag,
   pollResultsTag,
   pollTag,
+  postReactionsTag,
   postSnapshotsTag,
   postTag,
   themeTag,
@@ -25,6 +26,7 @@ describe("cache tags", () => {
     expect(memberTag("7")).toBe("member:7");
     expect(pollTag("4")).toBe("poll:4");
     expect(pollResultsTag("4")).toBe("poll:4:results");
+    expect(postReactionsTag("4")).toBe("post:4:reactions");
     expect(themeTag(3)).toBe("theme:3");
     expect(i18nTag("fr")).toBe("i18n:fr");
   });
@@ -37,6 +39,7 @@ describe("cache tags", () => {
       announcements: "announcements",
       emoticons: "emoticons",
       ranks: "ranks",
+      reactions: "reactions",
       board: "board",
     });
   });

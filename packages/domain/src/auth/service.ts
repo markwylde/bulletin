@@ -23,6 +23,7 @@ import { can } from "../permissions/can.ts";
 import { loadPermissionSnapshot } from "../permissions/snapshot.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
 import { pollVoteStateForTopic } from "../polls/repository.ts";
+import { readViewerReactions } from "../reactions/repository.ts";
 import {
   firstUnreadForTopics,
   readPostContext,
@@ -526,6 +527,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       const editWindow = Number(snapshot.settings["posting.edit_window_minutes"] ?? 0);
       const canDeleteOwn = snapshot.settings["posting.can_delete_own"] === true;
       const editablePosts: Array<Record<string, unknown>> = [];
+      const reactionPosts: string[] = [];
 
       for (const postId of requestedPosts) {
         const post = await readPostContext(options.sql, postId);
@@ -539,6 +541,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         if (!(await can(options.sql, session.memberId, "read", postScope))) {
           continue;
         }
+
+        reactionPosts.push(post.id);
 
         const isAuthor = post.authorId === session.memberId;
         const moderatorEdit = await can(options.sql, session.memberId, "edit", postScope);
@@ -567,6 +571,11 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       }
 
       const unreadSet = new Set(unreadIds);
+      const viewerReactions = await readViewerReactions(
+        options.sql,
+        session.memberId,
+        reactionPosts,
+      );
       const payload = {
         ctx,
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
@@ -589,6 +598,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         },
         polls: poll === null ? [] : [poll],
         editablePosts,
+        reactions: viewerReactions,
         ...(draft === null ? {} : { draft }),
       };
       const text = JSON.stringify(payload);

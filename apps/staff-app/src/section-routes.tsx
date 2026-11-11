@@ -13,6 +13,7 @@ import { MemberGroupsPage } from "./members/MemberGroupsPage.tsx";
 import { ModeratorsPage } from "./moderators/ModeratorsPage.tsx";
 import { MasksPage } from "./permissions/MasksPage.tsx";
 import { PromotionsPage } from "./promotions/PromotionsPage.tsx";
+import { ReactionsPage } from "./reactions/ReactionsPage.tsx";
 import type { StaffSection } from "./sections.ts";
 import { BoardSettingsPage } from "./settings/BoardSettingsPage.tsx";
 import { StringOverridesPage } from "./strings/StringOverridesPage.tsx";
@@ -32,6 +33,7 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   memberGroups: MemberGroupsPage,
   moderators: ModeratorsPage,
   promotions: PromotionsPage,
+  reactions: ReactionsPage,
   forums: ForumsPage,
   prefixes: PrefixesPage,
   announcements: AnnouncementsPage,

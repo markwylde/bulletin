@@ -176,6 +176,15 @@ const PERMISSION_DEFINITIONS = [
     labelKey: "staff.groups.permission.acpStrings",
   },
   {
+    key: "acp.reactions",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "acp",
+    labelKey: "staff.groups.permission.acpReactions",
+  },
+  {
     key: "acp.system",
     kind: "permission",
     type: "bool",
