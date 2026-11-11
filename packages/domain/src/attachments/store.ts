@@ -1,3 +1,4 @@
+import { bumpCacheTags } from "@bulletin/cache";
 import {
   type AttachmentRecord,
   type AttachmentRow,
@@ -876,6 +877,75 @@ export async function recordAttachmentDownload(
 
   const updated = await readAttachmentById(sql, attachment.id);
   return { ok: true, downloadCount: updated?.downloadCount ?? attachment.downloadCount + 1 };
+}
+
+export interface DownloadBufferInput {
+  readonly attachmentId: string;
+  /** Pseudonymous, rotating viewer digest; never a raw IP (ADR 0012). */
+  readonly viewerKey: string;
+  readonly now?: Date;
+}
+
+/** Records one guest download into the UNLOGGED buffer; the primary key rate-limits per minute. */
+export async function recordAttachmentDownloadBuffer(
+  sql: SQL,
+  input: DownloadBufferInput,
+): Promise<void> {
+  const now = input.now ?? new Date();
+  const bucket = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+
+  await sql`
+    INSERT INTO core.attachment_download_buffer (attachment_id, viewer_key, bucket)
+    VALUES (${input.attachmentId}, ${input.viewerKey}, ${bucket})
+    ON CONFLICT (attachment_id, viewer_key, bucket) DO NOTHING
+  `;
+}
+
+/** Folds guest download counts into the attachment rows and invalidates their posts. */
+export async function flushAttachmentDownloadBuffer(sql: SQL): Promise<number> {
+  return sql.begin(async (tx) => {
+    const counts = (await tx`
+      DELETE FROM core.attachment_download_buffer
+      RETURNING attachment_id::text AS attachment_id
+    `) as Array<{ attachment_id: string }>;
+
+    if (counts.length === 0) {
+      return 0;
+    }
+
+    const totals = new Map<string, number>();
+
+    for (const row of counts) {
+      totals.set(row.attachment_id, (totals.get(row.attachment_id) ?? 0) + 1);
+    }
+
+    const postIds = new Set<string>();
+    const topicIds = new Set<string>();
+
+    for (const [attachmentId, count] of totals) {
+      await tx`
+        UPDATE core.attachments
+        SET download_count = download_count + ${count}
+        WHERE id = ${attachmentId}
+      `;
+
+      for (const reference of await readAttachmentReferences(tx, attachmentId)) {
+        postIds.add(reference.postId);
+        topicIds.add(reference.topicId);
+      }
+    }
+
+    const tags = attachmentDownloadMutation.tags(
+      { attachmentId: "0" },
+      { postIds: [...postIds], topicIds: [...topicIds] },
+    );
+
+    if (tags.length > 0) {
+      await bumpCacheTags(tx, tags);
+    }
+
+    return counts.length;
+  });
 }
 
 export interface AttachmentReference {

@@ -34,6 +34,76 @@ export async function readMemberAvatar(sql: SQL, memberId: string): Promise<Memb
   return readAvatarRow(sql, memberId);
 }
 
+async function scheduleAvatarDeletion(
+  tx: SQL,
+  memberId: string,
+  hash: string | null,
+): Promise<void> {
+  if (hash === null) {
+    return;
+  }
+
+  await tx`
+    INSERT INTO core.avatar_deletions (member_id, avatar_hash)
+    VALUES (${memberId}, ${hash})
+    ON CONFLICT (member_id, avatar_hash) DO NOTHING
+  `;
+}
+
+export interface PendingAvatarDeletion {
+  readonly memberId: string;
+  readonly avatarHash: string;
+  readonly attempts: number;
+  readonly createdAt: Date;
+}
+
+export async function listAvatarDeletions(
+  sql: SQL,
+  limit = 50,
+): Promise<readonly PendingAvatarDeletion[]> {
+  const rows = (await sql`
+    SELECT member_id::text AS member_id, avatar_hash, attempts, created_at
+    FROM core.avatar_deletions
+    ORDER BY created_at, member_id
+    LIMIT ${limit}
+  `) as Array<{
+    member_id: string;
+    avatar_hash: string;
+    attempts: number;
+    created_at: Date;
+  }>;
+
+  return rows.map((row) => ({
+    memberId: row.member_id,
+    avatarHash: row.avatar_hash,
+    attempts: row.attempts,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function finishAvatarDeletion(
+  sql: SQL,
+  memberId: string,
+  hash: string,
+): Promise<void> {
+  await sql`
+    DELETE FROM core.avatar_deletions
+    WHERE member_id = ${memberId} AND avatar_hash = ${hash}
+  `;
+}
+
+export async function markAvatarDeletionFailed(
+  sql: SQL,
+  memberId: string,
+  hash: string,
+): Promise<void> {
+  await sql`
+    UPDATE core.avatar_deletions
+    SET attempts = attempts + 1
+    WHERE member_id = ${memberId} AND avatar_hash = ${hash}
+  `;
+}
+
 /** The merged `members.avatar_max_kb` limit (max across groups) plus any staff block. */
 export async function readAvatarPolicy(sql: SQL, memberId: string): Promise<AvatarPolicy | null> {
   const avatar = await readAvatarRow(sql, memberId);
@@ -74,23 +144,41 @@ export async function setMemberAvatar(
     mutation: memberAvatarMutation,
     input: { memberId },
     apply: async (tx) => {
-      const rows = (await tx`
+      const [current] = (await tx`
+        SELECT avatar_hash, avatar_blocked_until
+        FROM core.members
+        WHERE id = ${memberId}
+        FOR UPDATE
+      `) as Array<{ avatar_hash: string | null; avatar_blocked_until: Date | null }>;
+
+      if (current === undefined) {
+        result = "missing";
+        return { memberId };
+      }
+
+      if (
+        current.avatar_blocked_until !== null &&
+        current.avatar_blocked_until.getTime() > Date.now()
+      ) {
+        result = "blocked";
+        return { memberId };
+      }
+
+      if (current.avatar_hash !== hash) {
+        await scheduleAvatarDeletion(tx, memberId, current.avatar_hash);
+      }
+
+      await tx`
         UPDATE core.members
         SET avatar_hash = ${hash}, avatar_updated_at = now()
         WHERE id = ${memberId}
-          AND (avatar_blocked_until IS NULL OR avatar_blocked_until <= now())
-        RETURNING id
-      `) as Array<{ id: string }>;
-
-      if (rows.length > 0) {
-        result = "ok";
-      } else {
-        const [member] = (await tx`
-          SELECT 1 FROM core.members WHERE id = ${memberId}
-        `) as unknown[];
-        result = member === undefined ? "missing" : "blocked";
-      }
-
+      `;
+      // Re-uploading the same hash cancels any pending deletion of those objects.
+      await tx`
+        DELETE FROM core.avatar_deletions
+        WHERE member_id = ${memberId} AND avatar_hash = ${hash}
+      `;
+      result = "ok";
       return { memberId };
     },
   });
@@ -109,17 +197,24 @@ export async function clearMemberAvatar(
   memberId: string,
   options: ClearAvatarOptions = {},
 ): Promise<string | null> {
-  const previous = await readAvatarRow(sql, memberId);
-
-  if (previous === null) {
-    return null;
-  }
+  let previousHash: string | null = null;
 
   await runMutation({
     sql,
     mutation: memberAvatarMutation,
     input: { memberId },
     apply: async (tx) => {
+      const [previous] = (await tx`
+        SELECT avatar_hash FROM core.members WHERE id = ${memberId} FOR UPDATE
+      `) as Array<{ avatar_hash: string | null }>;
+
+      if (previous === undefined) {
+        return { memberId };
+      }
+
+      previousHash = previous.avatar_hash;
+      await scheduleAvatarDeletion(tx, memberId, previous.avatar_hash);
+
       if (options.blockUntil === undefined) {
         await tx`
           UPDATE core.members
@@ -138,7 +233,7 @@ export async function clearMemberAvatar(
     },
   });
 
-  return previous.hash;
+  return previousHash;
 }
 
 export interface StaffAvatarRemovalInput {

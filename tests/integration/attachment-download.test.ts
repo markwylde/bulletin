@@ -7,7 +7,11 @@ import {
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
-import { sha256Hex } from "@bulletin/domain/attachments";
+import {
+  flushAttachmentDownloadBuffer,
+  readAttachmentById,
+  sha256Hex,
+} from "@bulletin/domain/attachments";
 import { FORUM_ACTION_BITS } from "@bulletin/domain/permissions";
 import { createS3Handler } from "@bulletin/mock-s3/app";
 import { createMemoryStore } from "@bulletin/mock-s3/memory";
@@ -206,6 +210,7 @@ function download(
   options: {
     readonly session?: { memberId: string; sessionId: string } | null;
     readonly cookie?: boolean;
+    readonly guestViewerKey?: string;
   } = {},
 ): Promise<Response> {
   return attachmentDownloadResponse({
@@ -214,6 +219,7 @@ function download(
     session: options.session ?? null,
     hasSessionCookie: options.cookie ?? options.session !== undefined,
     id,
+    ...(options.guestViewerKey === undefined ? {} : { guestViewerKey: options.guestViewerKey }),
   });
 }
 
@@ -377,6 +383,43 @@ integrationDescribe("attachment downloads (ADR 0019)", () => {
       const originalUrl = new URL(original.headers.get("location") ?? "");
       expect(originalUrl.searchParams.get("response-content-type")).toBe("image/svg+xml");
       expect(originalUrl.searchParams.get("response-content-disposition")).toContain("attachment;");
+    });
+  }, 30_000);
+
+  test("counts a permitted guest download once per minute and rejects a denied one", async () => {
+    await withHarness("attach_dl_guest_count", async (harness) => {
+      await setDownloads(harness.database, "guest", true);
+      const admin = await memberId(harness.database, "admin");
+      const visible = await createAttachment(harness.database, harness.storage, {
+        forumSlug: "off-topic",
+        authorId: admin,
+        filename: "guest-count.pdf",
+        contentType: "application/pdf",
+        bytes: HTML,
+      });
+      const privateAttachment = await createAttachment(harness.database, harness.storage, {
+        forumSlug: "staff-room",
+        authorId: admin,
+        filename: "staff-count.pdf",
+        contentType: "application/pdf",
+        bytes: HTML,
+      });
+
+      await download(harness, visible.id, { guestViewerKey: "guest:one" });
+      await download(harness, visible.id, { guestViewerKey: "guest:one" });
+      const buffered = (await harness.database.sql`
+        SELECT count(*)::int AS count FROM core.attachment_download_buffer
+      `) as Array<{ count: number }>;
+      expect(buffered[0]?.count).toBe(1);
+
+      await download(harness, privateAttachment.id, { guestViewerKey: "guest:one" });
+      const stillBuffered = (await harness.database.sql`
+        SELECT count(*)::int AS count FROM core.attachment_download_buffer
+      `) as Array<{ count: number }>;
+      expect(stillBuffered[0]?.count).toBe(1);
+
+      expect(await flushAttachmentDownloadBuffer(harness.database.sql)).toBe(1);
+      expect((await readAttachmentById(harness.database.sql, visible.id))?.downloadCount).toBe(1);
     });
   }, 30_000);
 

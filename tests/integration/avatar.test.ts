@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRenderCache, createTagVersions } from "@bulletin/cache";
+import { processAvatarDeletions } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -196,7 +197,12 @@ integrationDescribe("avatars", () => {
       expect(secondHash).not.toBe(firstHash);
       expect(await storage.exists(`av/${member}/${firstHash}-lg.webp`)).toBe(false);
 
-      const file = await avatarImageResponse(storage, member, `${secondHash}-md.webp`);
+      const file = await avatarImageResponse(
+        database.sql,
+        storage,
+        member,
+        `${secondHash}-md.webp`,
+      );
       expect(file.status).toBe(302);
       const cache = file.headers.get("cache-control") ?? "";
       expect(cache).toBe("public, max-age=86400, immutable");
@@ -279,6 +285,58 @@ integrationDescribe("avatars", () => {
       );
       expect(blocked.status).toBe(403);
       expect(await blocked.json()).toMatchObject({ code: "avatar_blocked" });
+    });
+  }, 30_000);
+
+  test("retries a failed avatar object deletion and blocks the old URL immediately", async () => {
+    await withHarness("avatar_deletion_retry", async ({ database, storage }) => {
+      const member = await memberId(database, "member-1");
+      const admin = await memberId(database, "admin");
+      await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(base64(await imageBytes())),
+      );
+      const hash = (await readMemberAvatar(database.sql, member))?.hash ?? "";
+
+      const failing = {
+        ...storage,
+        async delete(key: string) {
+          if (key.startsWith("av/")) {
+            throw new Error("storage down");
+          }
+
+          await storage.delete(key);
+        },
+      } as StorageClient;
+
+      const removed = await removeMemberAvatarForStaff(database.sql, failing, {
+        actorId: admin,
+        memberId: member,
+        blockDays: 0,
+      });
+      expect(removed.ok).toBe(true);
+
+      const pending = (await database.sql`
+        SELECT count(*)::int AS count FROM core.avatar_deletions
+        WHERE member_id = ${member} AND avatar_hash = ${hash}
+      `) as Array<{ count: number }>;
+      expect(pending[0]?.count).toBe(1);
+
+      // The hash check makes the old URL 404 even while the object is still present.
+      expect(
+        (await avatarImageResponse(database.sql, storage, member, `${hash}-lg.webp`)).status,
+      ).toBe(404);
+      expect(await storage.exists(`av/${member}/${hash}-lg.webp`)).toBe(true);
+
+      const retried = await processAvatarDeletions(database.sql, storage);
+      expect(retried.deleted).toBe(1);
+      expect(await storage.exists(`av/${member}/${hash}-lg.webp`)).toBe(false);
+      const remaining = (await database.sql`
+        SELECT count(*)::int AS count FROM core.avatar_deletions
+      `) as Array<{ count: number }>;
+      expect(remaining[0]?.count).toBe(0);
     });
   }, 30_000);
 

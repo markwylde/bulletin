@@ -2,6 +2,7 @@ import {
   isRasterAttachmentType,
   readAttachmentById,
   readDownloadableAttachment,
+  recordAttachmentDownloadBuffer,
 } from "@bulletin/domain/attachments";
 import {
   can,
@@ -26,6 +27,8 @@ export interface AttachmentDownloadInput {
   readonly id: string;
   /** Serve the generated raster thumbnail instead of the original download object. */
   readonly preview?: boolean;
+  /** Pseudonymous guest viewer digest for the rate-limited download counter. */
+  readonly guestViewerKey?: string;
 }
 
 function json(body: unknown, status: number): Response {
@@ -112,6 +115,13 @@ export async function attachmentDownloadResponse(
 
   if (!allowed) {
     return json({ code: "forbidden" }, 403);
+  }
+
+  if (input.session === null && input.guestViewerKey !== undefined && input.preview !== true) {
+    await recordAttachmentDownloadBuffer(input.sql, {
+      attachmentId: attachment.id,
+      viewerKey: input.guestViewerKey,
+    }).catch(() => undefined);
   }
 
   const inline = isRasterAttachmentType(attachment.contentType);

@@ -17,6 +17,7 @@ import { createS3Handler } from "@bulletin/mock-s3/app";
 import { createMemoryStore } from "@bulletin/mock-s3/memory";
 import { createStorage, type StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import {
   attachmentFinaliseResponse,
   attachmentRequestResponse,
@@ -514,6 +515,33 @@ integrationDescribe("attachment cleanup", () => {
     });
   });
 
+  test("runs a nonempty cleanup as the workers role", async () => {
+    await withHarness("attach_orphan_worker", async (harness) => {
+      await setUploadLimits(harness.database, { quotaMb: 10, perFileKb: 10_240 });
+      const member = await memberId(harness.database, "member-1");
+      const upload = await uploadBytes(harness, member, textBytes("worker cleanup"), "text/plain");
+
+      await harness.database.sql`
+        UPDATE core.attachments SET expires_at = now() - interval '1 minute'
+        WHERE id = ${upload.id}
+      `;
+
+      const url = new URL(harness.database.url);
+      url.username = "workers";
+      url.password = "";
+      const worker = new SQL(url.toString());
+
+      try {
+        const swept = await runAttachmentOrphanSweep(worker, harness.storage);
+        expect(swept.deleted).toBe(1);
+      } finally {
+        await worker.close();
+      }
+
+      expect(await readAttachmentById(harness.database.sql, upload.id)).toBeNull();
+    });
+  }, 30_000);
+
   test("skips an expired upload locked by a concurrent save", async () => {
     await withHarness("attach_orphan_lock", async (harness) => {
       await setUploadLimits(harness.database, { quotaMb: 10, perFileKb: 10_240 });
@@ -584,6 +612,7 @@ integrationDescribe("attachment cleanup", () => {
       await harness.storage.put("quarantine/stray", "stray");
       await harness.storage.put("processing/stray", "stray");
       await harness.storage.put(`unfurl/${"b".repeat(64)}`, "stray");
+      await harness.storage.put(`av/999/${"c".repeat(64)}-lg.webp`, "stray avatar");
       await harness.storage.put(`${liveKey}.thumb.webp`, "thumbnail");
       // Finalised rows no longer own their quarantine or snapshot keys: a replay is stray.
       await harness.storage.put(record?.quarantineKey ?? "", "replayed");
@@ -593,13 +622,14 @@ integrationDescribe("attachment cleanup", () => {
         now: new Date(Date.now() + 20 * 60 * 1_000),
       });
 
-      expect(result.deleted).toBe(6);
+      expect(result.deleted).toBe(7);
       expect(await harness.storage.exists(liveKey)).toBe(true);
       expect(await harness.storage.exists(`${liveKey}.thumb.webp`)).toBe(true);
       expect(await harness.storage.exists("att/stray")).toBe(false);
       expect(await harness.storage.exists("quarantine/stray")).toBe(false);
       expect(await harness.storage.exists("processing/stray")).toBe(false);
       expect(await harness.storage.exists(`unfurl/${"b".repeat(64)}`)).toBe(false);
+      expect(await harness.storage.exists(`av/999/${"c".repeat(64)}-lg.webp`)).toBe(false);
       expect(await harness.storage.exists(record?.quarantineKey ?? "")).toBe(false);
       expect(await harness.storage.exists(record?.snapshotKey ?? "")).toBe(false);
     });

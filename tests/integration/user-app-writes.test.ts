@@ -11,6 +11,7 @@ const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
  * writes the durable audit log.
  */
 const ALLOWED_WRITES = [
+  "attachment_download_buffer",
   "forum_redirect_clicks",
   "presence",
   "system_audit_buffer",

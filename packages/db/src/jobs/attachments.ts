@@ -3,6 +3,7 @@ import {
   ATTACHMENT_PROCESS_CHANNEL,
   type AttachmentScan,
   claimExpiredAttachments,
+  flushAttachmentDownloadBuffer,
   isAttachmentContentType,
   listAttachmentKeys,
   listProcessableAttachments,
@@ -17,8 +18,16 @@ import {
   processAttachmentBytes,
 } from "@bulletin/domain/attachments/processing";
 import {
+  finishAvatarDeletion,
+  listAvatarDeletions,
+  markAvatarDeletionFailed,
+  readMemberAvatar,
+} from "@bulletin/domain/member";
+import {
   type AttachmentRecord,
+  AVATAR_VARIANTS,
   attachmentKey,
+  avatarKey,
   isManagedKey,
   type StorageClient,
   thumbnailKeyFor,
@@ -215,10 +224,57 @@ export async function processAttachment(
   return { kind: "ready", attachment: ready };
 }
 
+export interface AvatarDeletionResult {
+  readonly deleted: number;
+  readonly failed: number;
+}
+
+/** Retries persisted avatar-object deletions; old URLs are already blocked by the hash check. */
+export async function processAvatarDeletions(
+  sql: SQL,
+  storage: StorageClient,
+  options: { readonly limit?: number; readonly logger?: Logger } = {},
+): Promise<AvatarDeletionResult> {
+  const pending = await listAvatarDeletions(sql, options.limit ?? 50);
+  let deleted = 0;
+  let failed = 0;
+
+  for (const row of pending) {
+    const current = await readMemberAvatar(sql, row.memberId);
+
+    if (current?.hash === row.avatarHash) {
+      await finishAvatarDeletion(sql, row.memberId, row.avatarHash);
+      continue;
+    }
+
+    try {
+      await Promise.all(
+        AVATAR_VARIANTS.map((variant) =>
+          storage.delete(avatarKey(row.memberId, row.avatarHash, variant)),
+        ),
+      );
+      await finishAvatarDeletion(sql, row.memberId, row.avatarHash);
+      deleted += 1;
+    } catch (error) {
+      failed += 1;
+      await markAvatarDeletionFailed(sql, row.memberId, row.avatarHash).catch(() => undefined);
+      options.logger?.warn("avatar.deletion_failed", {
+        memberId: row.memberId,
+        avatarHash: row.avatarHash,
+        error,
+      });
+    }
+  }
+
+  return { deleted, failed };
+}
+
 export interface AttachmentProcessingResult {
   readonly processed: number;
   readonly rejected: number;
   readonly failed: number;
+  readonly avatarDeletions: AvatarDeletionResult;
+  readonly downloadsFlushed: number;
 }
 
 /** One sweep of the snapshotted/stale-processing queue. */
@@ -227,6 +283,15 @@ export async function runAttachmentProcessing(
   storage: StorageClient,
   options: ProcessAttachmentOptions & { readonly limit?: number } = {},
 ): Promise<AttachmentProcessingResult> {
+  const [downloadsFlushed, avatarDeletions] = await Promise.all([
+    flushAttachmentDownloadBuffer(sql).catch((error: unknown) => {
+      options.logger?.error("attachment.download_flush_failed", { error });
+      return 0;
+    }),
+    processAvatarDeletions(sql, storage, {
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    }),
+  ]);
   const rows = await listProcessableAttachments(sql, {
     limit: options.limit ?? 20,
   });
@@ -252,7 +317,7 @@ export async function runAttachmentProcessing(
     }
   }
 
-  return { processed, rejected, failed };
+  return { processed, rejected, failed, avatarDeletions, downloadsFlushed };
 }
 
 export interface AttachmentSweepOptions {
@@ -308,6 +373,18 @@ export interface AttachmentReconcileOptions {
 
 const RECONCILE_GRACE_MS = 15 * 60 * 1_000;
 
+async function listAvatarObjectKeys(sql: SQL): Promise<readonly string[]> {
+  const rows = (await sql`
+    SELECT id::text AS member_id, avatar_hash
+    FROM core.members
+    WHERE avatar_hash IS NOT NULL
+  `) as Array<{ member_id: string; avatar_hash: string }>;
+
+  return rows.flatMap((row) =>
+    AVATAR_VARIANTS.map((variant) => avatarKey(row.member_id, row.avatar_hash, variant)),
+  );
+}
+
 function liveAttachmentKeys(
   rows: Awaited<ReturnType<typeof listAttachmentKeys>>,
   unfurlKeys: readonly string[],
@@ -353,7 +430,11 @@ export async function runAttachmentReconciliation(
       object.key.startsWith("processing/") ||
       object.key.startsWith("unfurl/");
 
-    return isAttachmentKey && isManagedKey(object.key) && object.lastModified.getTime() <= cutoff;
+    return (
+      (isAttachmentKey || object.key.startsWith("av/")) &&
+      isManagedKey(object.key) &&
+      object.lastModified.getTime() <= cutoff
+    );
   });
 
   if (candidates.length === 0) {
@@ -361,8 +442,16 @@ export async function runAttachmentReconciliation(
   }
 
   // Revalidate after listing: a row committed since the object listing must win.
-  const [rows, unfurlKeys] = await Promise.all([listAttachmentKeys(sql), listUnfurlImageKeys(sql)]);
+  const [rows, unfurlKeys, avatarKeys] = await Promise.all([
+    listAttachmentKeys(sql),
+    listUnfurlImageKeys(sql),
+    listAvatarObjectKeys(sql),
+  ]);
   const live = liveAttachmentKeys(rows, unfurlKeys);
+
+  for (const key of avatarKeys) {
+    live.add(key);
+  }
   let deleted = 0;
 
   for (const object of candidates) {
