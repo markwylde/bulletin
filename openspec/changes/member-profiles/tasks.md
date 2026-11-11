@@ -19,12 +19,12 @@
 
 ## 4. Directory
 
-- [ ] 4.1 Member list (search, filters, sort, opt-out exclusion, `members.view_list`), with tests including permission denial; E2E at 360 (card layout)
-- [ ] 4.2 Presence tracking via the overlay and guest beacon, the who's-online summary and full list with permission-filtered locations, with tests for the hidden-location scenario and that CDN-served guests are counted
-- [ ] 4.3 Board statistics and record online, with integration tests
-- [ ] 4.4 Leaderboards job and page (guest-visible content only), plus today's top poster; tests for the private-content exclusion
-- [ ] 4.5 Per-forum leaderboard entries summed over currently guest-readable forums; a test that making a forum private removes its contribution immediately
-- [ ] 4.6 View-model contracts and cache variant harness registration for the member list, who's online and leaderboard routes
+- [x] 4.1 Member list (search, filters, sort, opt-out exclusion, `members.view_list`), with tests including permission denial; E2E at 360 (card layout)
+- [x] 4.2 Presence tracking via the overlay and guest beacon, the who's-online summary and full list with permission-filtered locations, with tests for the hidden-location scenario and that CDN-served guests are counted
+- [x] 4.3 Board statistics and record online, with integration tests
+- [x] 4.4 Leaderboards job and page (guest-visible content only), plus today's top poster; tests for the private-content exclusion
+- [x] 4.5 Per-forum leaderboard entries summed over currently guest-readable forums; a test that making a forum private removes its contribution immediately
+- [x] 4.6 View-model contracts and cache variant harness registration for the member list, who's online and leaderboard routes
 
 ## 5. Ranks and badges
 

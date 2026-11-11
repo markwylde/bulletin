@@ -53,7 +53,7 @@ export const homeContract = defineContract({
   route: "/",
   templates: { page: "home", regions: ["header", "footer"] },
   deps: [],
-  tags: [GLOBAL_CACHE_TAGS.board, GLOBAL_CACHE_TAGS.announcements],
+  tags: [GLOBAL_CACHE_TAGS.board, GLOBAL_CACHE_TAGS.announcements, GLOBAL_CACHE_TAGS.leaderboards],
   // Guests see the same board shell; the member session arrives through the overlay/API.
   cdnCacheable: true,
   requiredIslands: ["LanguageSwitcher"],
@@ -245,6 +245,36 @@ export const attachmentsContract = defineContract<AccountViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/** The member directory (task 4.1); hidden members change the variant by permission. */
+export const memberListContract = defineContract({
+  route: "/members",
+  templates: { page: "members", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: [GLOBAL_CACHE_TAGS.directory, GLOBAL_CACHE_TAGS.board],
+  cdnCacheable: true,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+/** Who's online; the route adds every forum read bit to the variant at render time. */
+export const onlineContract = defineContract({
+  route: "/members/online",
+  templates: { page: "online", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: [GLOBAL_CACHE_TAGS.board],
+  cdnCacheable: true,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+/** Guest-visible leaderboards; the variant is the current Guests-readable forum set. */
+export const leaderboardContract = defineContract({
+  route: "/leaderboards",
+  templates: { page: "leaderboards", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: [GLOBAL_CACHE_TAGS.leaderboards, GLOBAL_CACHE_TAGS.board],
+  cdnCacheable: true,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [homeContract.route]: homeContract,
   [loginContract.route]: loginContract,
@@ -256,6 +286,9 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [accountContract.route]: accountContract,
   [profileEditContract.route]: profileEditContract,
   [profileContract.route]: profileContract,
+  [memberListContract.route]: memberListContract,
+  [onlineContract.route]: onlineContract,
+  [leaderboardContract.route]: leaderboardContract,
   [unsubscribeContract.route]: unsubscribeContract,
   [unsubscribeConfirmedContract.route]: unsubscribeConfirmedContract,
   [notificationPreferencesContract.route]: notificationPreferencesContract,

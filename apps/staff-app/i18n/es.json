@@ -274,6 +274,7 @@
   "staff.groups.permission.membersEdit": "Editar perfiles y avatares de miembros",
   "staff.groups.permission.membersReputation": "Gestionar reputación",
   "staff.groups.permission.membersViewHidden": "Ver miembros que ocultan su estado",
+  "staff.groups.permission.membersViewList": "Ver la lista de miembros",
   "staff.groups.permission.membersViewNameHistory": "Ver historial de nombres",
   "staff.groups.permission.sessionsRevoke": "Revocar sesiones",
   "staff.groups.power.approve": "Aprobar",

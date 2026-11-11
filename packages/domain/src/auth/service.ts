@@ -445,6 +445,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         }
       }
 
+      let locationForumId: string | undefined;
+
       if (visitContext?.kind === "topic") {
         const forumId = (await readTopicForumIds(options.sql, [visitContext.id])).get(
           visitContext.id,
@@ -456,6 +458,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         ) {
           return json({ code: "not_found" }, 404);
         }
+
+        locationForumId = forumId;
       } else if (visitContext?.kind === "forum") {
         if (
           tree.get(visitContext.id) === undefined ||
@@ -466,12 +470,15 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         ) {
           return json({ code: "not_found" }, 404);
         }
+
+        locationForumId = visitContext.id;
       }
 
       const [visits, dismissedAnnouncements, draft, poll, signaturePrivacy] = await Promise.all([
         recordVisit(options.sql, {
           viewerKey: memberViewerKey(session.memberId),
           ctx,
+          ...(locationForumId === undefined ? {} : { locationForumId }),
           topics: readableTopics,
           memberId: session.memberId,
           ...(lastReadAt === undefined ? {} : { lastReadAt }),

@@ -53,12 +53,19 @@ integrationDescribe("read-path visits", () => {
       const now = new Date("2026-11-10T12:00:00Z");
 
       expect(
-        await recordVisit(database.sql, { viewerKey, ctx: "topic:201", memberId, now }),
+        await recordVisit(database.sql, {
+          viewerKey,
+          ctx: "topic:201",
+          locationForumId: "7",
+          memberId,
+          now,
+        }),
       ).toEqual({ unread: [] });
       // The same viewer in the same half-hour bucket is one view (ADR 0006 dedupe).
       await recordVisit(database.sql, {
         viewerKey,
         ctx: "topic:201",
+        locationForumId: "7",
         memberId,
         now: new Date(now.getTime() + 60_000),
       });
@@ -75,7 +82,7 @@ integrationDescribe("read-path visits", () => {
 
       expect(views[0]?.count).toBe(1);
       expect(reads).toEqual([{ topic_id: "201" }]);
-      expect(presence).toEqual([{ location: "topic:201" }]);
+      expect(presence).toEqual([{ location: "forum:7" }]);
     });
   });
 

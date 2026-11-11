@@ -27,6 +27,9 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "account-follows",
   "account-notifications",
   "account-notification-preferences",
+  "members",
+  "online",
+  "leaderboards",
   "profile",
   "unsubscribe",
 ] as const;

@@ -307,6 +307,28 @@ export const groupsSeedModule: SeedModule = {
       }
     }
 
+    for (const groupKey of [
+      "guests",
+      "members",
+      "regulars",
+      "vip",
+      "moderators",
+      "super_moderators",
+      "administrators",
+    ] as const) {
+      const groupId = ids.get(groupKey);
+
+      if (groupId === undefined) {
+        continue;
+      }
+
+      await sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${groupId}, 'members.view_list', 'true'::jsonb)
+        ON CONFLICT (group_id, key) DO NOTHING
+      `;
+    }
+
     // Staff groups cannot be ignored by members (ignore-list spec).
     for (const groupKey of ["moderators", "super_moderators", "administrators"] as const) {
       const groupId = ids.get(groupKey);

@@ -1,6 +1,7 @@
 import { ensureCurrentRendering } from "@bulletin/content";
 import { listEmbedProviders } from "@bulletin/domain/content";
-import { type ForumRecord, listVisibleForums } from "@bulletin/domain/forums";
+import { type ForumRecord, listVisibleForums, readBoardStatistics } from "@bulletin/domain/forums";
+import { readTodayTopPoster } from "@bulletin/domain/leaderboards";
 import {
   announcementAudienceClass,
   CapabilityView,
@@ -11,8 +12,8 @@ import {
   loadAnnouncements,
   loadForumTree,
   loadPermissionSnapshot,
-  nextAnnouncementTransitionMs,
 } from "@bulletin/domain/permissions";
+import { readOnlineOverview } from "@bulletin/domain/presence";
 import { type LatestReadablePost, latestReadablePost } from "@bulletin/domain/topics";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
@@ -60,10 +61,31 @@ export interface BoardIndexAnnouncement {
   readonly version: number;
 }
 
+export interface BoardIndexOnlineMember {
+  readonly id: string;
+  readonly name: string;
+  readonly href: string;
+  readonly groupTitle: string | null;
+  readonly groupColour: string | null;
+}
+
 export interface BoardIndexView {
   readonly categories: readonly BoardIndexCategory[];
   readonly rootForums: readonly BoardIndexForum[];
   readonly announcements: readonly BoardIndexAnnouncement[];
+  readonly online: {
+    readonly memberCount: string;
+    readonly guestCount: string;
+    readonly members: readonly BoardIndexOnlineMember[];
+  };
+  readonly statistics: {
+    readonly topics: string;
+    readonly posts: string;
+    readonly members: string;
+    readonly newestMember: BoardIndexOnlineMember | null;
+    readonly recordOnline: { readonly count: string; readonly date: string | null } | null;
+  };
+  readonly todayTopPoster: BoardIndexOnlineMember | null;
   readonly flags: Readonly<Record<string, boolean>>;
 }
 
@@ -223,6 +245,35 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
     })),
   );
   const audience = announcementAudienceClass(announcements, snapshot.groupIds, now);
+  const guestSnapshot = await loadPermissionSnapshot(input.sql, GUEST_PRINCIPAL, {
+    tree,
+    sessionId: null,
+  });
+  const canViewHidden = await can(input.sql, principal, "members.view_hidden");
+  const [online, statistics, todayTopPoster] = await Promise.all([
+    readOnlineOverview(input.sql, {
+      now,
+      principal,
+      sessionId,
+      tree,
+      snapshot,
+      canViewHidden,
+    }),
+    readBoardStatistics(input.sql),
+    readTodayTopPoster(input.sql, { tree, snapshot: guestSnapshot }),
+  ]);
+  const onlineMember = (member: {
+    readonly id: string;
+    readonly displayName: string;
+    readonly groupTitle: string | null;
+    readonly groupColour: string | null;
+  }): BoardIndexOnlineMember => ({
+    id: member.id,
+    name: member.displayName,
+    href: canonicalUrl("profile", member.id, member.displayName),
+    groupTitle: member.groupTitle,
+    groupColour: member.groupColour,
+  });
   const categories = rows
     .filter((row) => row.type === "category")
     .map((category) => {
@@ -253,10 +304,46 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
         dismissible: announcement.dismissible,
         version: announcement.version,
       })),
+      online: {
+        memberCount: input.translate("index.online.members", { count: online.memberCount }),
+        guestCount: input.translate("index.online.guests", { count: online.guestCount }),
+        members: online.members.slice(0, 20).map(onlineMember),
+      },
+      statistics: {
+        topics: input.translate("index.stats.topics", { count: statistics.topics }),
+        posts: input.translate("index.stats.posts", { count: statistics.posts }),
+        members: input.translate("index.stats.members", { count: statistics.members }),
+        newestMember:
+          statistics.newestMember === null
+            ? null
+            : onlineMember({
+                ...statistics.newestMember,
+                groupTitle: null,
+                groupColour: null,
+              }),
+        recordOnline:
+          statistics.recordOnline.count === 0 || statistics.recordOnline.at === null
+            ? null
+            : {
+                count: input.translate("index.stats.recordOnline", {
+                  count: statistics.recordOnline.count,
+                }),
+                date: formatDate(input.locale, statistics.recordOnline.at),
+              },
+      },
+      todayTopPoster:
+        todayTopPoster === null
+          ? null
+          : onlineMember({
+              id: todayTopPoster.memberId,
+              displayName: todayTopPoster.displayName,
+              groupTitle: null,
+              groupColour: null,
+            }),
       flags: { announcements: announcementsEnabled },
     },
-    visibilityKey: `${view.visibilityKey()}|audience:${audience}`,
+    visibilityKey: `${view.visibilityKey()}|audience:${audience}|hidden:${canViewHidden ? 1 : 0}`,
     hasUnlockGrant: view.hasUnlockGrant,
-    ttlMs: announcementsEnabled ? nextAnnouncementTransitionMs(announcements, now) : null,
+    ttlMs: 60_000,
   };
 }

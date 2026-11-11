@@ -36,6 +36,44 @@
     </section>
   {% endif %}
 
+  {% if statistics %}
+  <section class="bl-card" data-board-statistics>
+    <h2 class="bl-card__title">{% t "index.stats.title" %}</h2>
+    <dl class="bl-board-stats">
+      <div><dt>{% t "index.stats.topicsLabel" %}</dt><dd data-stat-topics>{{ statistics.topics }}</dd></div>
+      <div><dt>{% t "index.stats.postsLabel" %}</dt><dd data-stat-posts>{{ statistics.posts }}</dd></div>
+      <div><dt>{% t "index.stats.membersLabel" %}</dt><dd data-stat-members>{{ statistics.members }}</dd></div>
+      {% if statistics.newestMember %}
+        <div><dt>{% t "index.stats.newest" %}</dt><dd><a href="{{ statistics.newestMember.href }}">{{ statistics.newestMember.name }}</a></dd></div>
+      {% endif %}
+      {% if statistics.recordOnline %}
+        <div><dt>{% t "index.stats.record" %}</dt><dd>{{ statistics.recordOnline.count }}{% if statistics.recordOnline.date %} · {{ statistics.recordOnline.date }}{% endif %}</dd></div>
+      {% endif %}
+    </dl>
+    {% if todayTopPoster %}
+      <p class="bl-muted" data-today-top-poster>{% t "index.stats.todayTop" %} <a href="{{ todayTopPoster.href }}">{{ todayTopPoster.name }}</a></p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if online %}
+  <section class="bl-card" data-online-summary>
+    <h2 class="bl-card__title">{% t "index.online.title" %}</h2>
+    <p class="bl-muted">{{ online.memberCount }} · {{ online.guestCount }}</p>
+    {% if online.members.size > 0 %}
+      <ul class="bl-online-list">
+        {% for member in online.members %}
+          <li data-online-member="{{ member.id }}">
+            <a href="{{ member.href }}"{% if member.groupColour %} style="color: {{ member.groupColour }}"{% endif %}>{{ member.name }}</a>
+            {% if member.groupTitle %}<span class="bl-muted">· {{ member.groupTitle }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    <a class="bl-button bl-button--quiet bl-button--small" href="/members/online">{% t "index.online.fullList" %}</a>
+  </section>
+  {% endif %}
+
   <button class="bl-button bl-button--quiet bl-button--small" type="button" data-mark-board-read data-overlay-member-only hidden>{% t "read.markBoard" %}</button>
 
   {% if rootForums.size > 0 %}

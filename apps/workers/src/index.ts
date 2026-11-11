@@ -17,6 +17,7 @@ import {
   createAttachmentJobs,
   createContentJobs,
   createForumJobs,
+  createLeaderboardJobs,
   createMaintenanceJobs,
   createPromotionJobs,
   createReputationJobs,
@@ -148,6 +149,7 @@ const notificationFanout = await createNotificationsFanoutWorker({
   filters: [ignoreRecipientFilter],
   enqueueEmail,
 });
+const leaderboardJobs = await createLeaderboardJobs({ boss: boss.boss, sql, logger });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
 const reputationJobs = await createReputationJobs({ boss: boss.boss, sql, logger });
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
@@ -203,6 +205,7 @@ await startService({
     await digestJobs.stop();
     await emailJobs.stop();
     await maintenanceJobs.stop();
+    await leaderboardJobs.stop();
     await forumJobs.stop();
     await contentJobs.stop();
     await unfurlJobs.stop();
@@ -219,6 +222,7 @@ await startService({
   await digestJobs.stop();
   await emailJobs.stop();
   await maintenanceJobs.stop();
+  await leaderboardJobs.stop();
   await forumJobs.stop();
   await contentJobs.stop();
   await unfurlJobs.stop();

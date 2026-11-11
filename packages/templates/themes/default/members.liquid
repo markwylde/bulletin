@@ -1,0 +1,62 @@
+{{ header }}
+<main id="main" class="bl-main" data-member-list>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{% t "members.title" %}</h1>
+
+  <form class="bl-form bl-filters" method="get" action="/members" data-member-filters>
+    <label class="bl-label" for="member-search">{% t "members.search" %}</label>
+    <input class="bl-input" id="member-search" type="search" name="q" value="{{ filters.query }}" maxlength="80" data-member-search>
+
+    <label class="bl-label" for="member-group">{% t "members.group" %}</label>
+    <select class="bl-input" id="member-group" name="group" data-member-group>
+      <option value="">{% t "members.allGroups" %}</option>
+      {% for group in groups %}
+        <option value="{{ group.id }}"{% if group.selected %} selected{% endif %}>{{ group.title }}</option>
+      {% endfor %}
+    </select>
+
+    <label class="bl-label" for="member-joined-from">{% t "members.joinedFrom" %}</label>
+    <input class="bl-input" id="member-joined-from" type="date" name="joinedFrom" value="{{ filters.joinedFrom }}" data-member-joined-from>
+    <label class="bl-label" for="member-joined-to">{% t "members.joinedTo" %}</label>
+    <input class="bl-input" id="member-joined-to" type="date" name="joinedTo" value="{{ filters.joinedTo }}" data-member-joined-to>
+
+    <label class="bl-label" for="member-sort">{% t "members.sort" %}</label>
+    <select class="bl-input" id="member-sort" name="sort" data-member-sort>
+      {% for option in sorts %}
+        <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+
+    <button class="bl-button" type="submit" data-member-filter-submit>{% t "members.apply" %}</button>
+  </form>
+
+  {% if members.size > 0 %}
+    <ul class="bl-member-list" data-member-cards>
+      {% for member in members %}
+        <li class="bl-member-card" data-member-card="{{ member.id }}">
+          <a class="bl-member-card__link" href="{{ member.href }}">
+            {{ member.avatarHtml }}
+            <span class="bl-member-card__name"{% if member.groupColour %} style="color: {{ member.groupColour }}"{% endif %}>{{ member.name }}</span>
+            {% if member.groupTitle %}<span class="bl-muted">{{ member.groupTitle }}</span>{% endif %}
+            <span class="bl-muted">{% t "members.cardStats" joined: member.joinedLabel, posts: member.postCountLabel, reputation: member.reputationLabel %}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% if pagination.pageCount > 1 %}
+      <nav class="bl-pagination" aria-label="{% t "members.pagination" %}" data-member-pagination>
+        {% if pagination.previousHref %}
+          <a class="bl-button bl-button--quiet" href="{{ pagination.previousHref }}" data-member-previous>{% t "members.previous" %}</a>
+        {% endif %}
+        <span class="bl-muted">{% t "members.pageOf" page: pagination.page, pages: pagination.pageCount %}</span>
+        {% if pagination.nextHref %}
+          <a class="bl-button bl-button--quiet" href="{{ pagination.nextHref }}" data-member-next>{% t "members.next" %}</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    {{ emptyState }}
+  {% endif %}
+</main>
+{{ footer }}

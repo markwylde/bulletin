@@ -41,6 +41,8 @@ describe("cache tags", () => {
       ranks: "ranks",
       badges: "badges",
       profileFields: "profile_fields",
+      directory: "member_directory",
+      leaderboards: "leaderboards",
       reactions: "reactions",
       board: "board",
     });

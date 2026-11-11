@@ -4,6 +4,7 @@ import {
   type SessionRecord,
   serializeCookie,
 } from "@bulletin/domain/auth";
+import { readTopicForumIds } from "@bulletin/domain/topics";
 import {
   BEACON_RATE_LIMIT,
   BEACON_RATE_WINDOW_MS,
@@ -80,9 +81,16 @@ export async function beaconResponse(
   }
 
   const ctx = await readContext(request);
+  const context = ctx === null ? null : parseVisitContext(ctx);
 
-  if (ctx === null || parseVisitContext(ctx) === null) {
+  if (ctx === null || context === null) {
     return Response.json({ code: "invalid_context" }, { status: 400, headers: NO_STORE });
+  }
+
+  let locationForumId = context.kind === "forum" ? context.id : undefined;
+
+  if (context.kind === "topic") {
+    locationForumId = (await readTopicForumIds(sql, [context.id])).get(context.id);
   }
 
   const cookies = parseCookieHeader(request.headers.get("cookie"));
@@ -101,7 +109,11 @@ export async function beaconResponse(
     );
   }
 
-  await recordVisit(sql, { viewerKey: guestViewerKey(guestId), ctx });
+  await recordVisit(sql, {
+    viewerKey: guestViewerKey(guestId),
+    ctx,
+    ...(locationForumId === undefined ? {} : { locationForumId }),
+  });
 
   return new Response(null, { status: 204, headers });
 }

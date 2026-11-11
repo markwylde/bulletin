@@ -83,7 +83,7 @@ integrationDescribe("home route cache (ADR 0006)", () => {
         expect(warm.variant).toBe(first.variant);
         expect(warm.etag).toBe(first.etag);
         expect(first.etag).toBeString();
-        expect(first.tags).toEqual(["board", "announcements"]);
+        expect(first.tags).toEqual(["board", "announcements", "leaderboards"]);
         expect(first.html).toContain("data-theme-header");
         expect(first.html).toContain("data-theme-footer");
         expect(first.html).toContain("data-online");

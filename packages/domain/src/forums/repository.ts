@@ -412,3 +412,50 @@ export async function flushRedirectClicks(
     return total;
   });
 }
+
+export interface BoardStatistics {
+  readonly topics: number;
+  readonly posts: number;
+  readonly members: number;
+  readonly newestMember: { readonly id: string; readonly displayName: string } | null;
+  readonly recordOnline: { readonly count: number; readonly at: Date | null };
+}
+
+/** Counts and the online record for the board index (task 4.3); no viewer content is read. */
+export async function readBoardStatistics(sql: SQL): Promise<BoardStatistics> {
+  const [counts] = (await sql`
+    SELECT
+      COALESCE(sum(topic_count), 0)::int AS topics,
+      COALESCE(sum(post_count), 0)::int AS posts
+    FROM core.forums
+  `) as Array<{ topics: number; posts: number }>;
+  const [members] = (await sql`
+    SELECT count(*)::int AS count
+    FROM core.members
+    WHERE is_service = false AND state = 'active' AND display_name IS NOT NULL
+  `) as Array<{ count: number }>;
+  const [newest] = (await sql`
+    SELECT id::text AS id, display_name
+    FROM core.members
+    WHERE is_service = false AND state = 'active' AND display_name IS NOT NULL
+    ORDER BY joined_at DESC, id DESC
+    LIMIT 1
+  `) as Array<{ id: string; display_name: string }>;
+  const [board] = (await sql`
+    SELECT record_online_count, record_online_at FROM core.board_settings WHERE id = 1
+  `) as Array<{ record_online_count: number; record_online_at: Date | null }>;
+
+  return {
+    topics: counts?.topics ?? 0,
+    posts: counts?.posts ?? 0,
+    members: members?.count ?? 0,
+    newestMember: newest === undefined ? null : { id: newest.id, displayName: newest.display_name },
+    recordOnline: {
+      count: board?.record_online_count ?? 0,
+      at:
+        board?.record_online_at === null || board?.record_online_at === undefined
+          ? null
+          : new Date(board.record_online_at),
+    },
+  };
+}

@@ -149,6 +149,15 @@ const PERMISSION_DEFINITIONS = [
     labelKey: "staff.groups.permission.membersViewHidden",
   },
   {
+    key: "members.view_list",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "members",
+    labelKey: "staff.groups.permission.membersViewList",
+  },
+  {
     key: "acp.profile_fields",
     kind: "permission",
     type: "bool",

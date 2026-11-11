@@ -10,3 +10,9 @@ export const boardSettingsMutation: Mutation<BoardSettingsInput, BoardSettings> 
   name: "board.settings.update",
   tags: () => [GLOBAL_CACHE_TAGS.board],
 };
+
+/** The hourly leaderboard recompute invalidates every cached leaderboard page. */
+export const leaderboardMutation: Mutation<Record<string, never>, unknown> = {
+  name: "leaderboard.recompute",
+  tags: () => [GLOBAL_CACHE_TAGS.leaderboards],
+};

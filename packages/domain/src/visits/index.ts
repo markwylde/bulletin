@@ -99,6 +99,8 @@ export interface VisitInput {
   readonly topics?: readonly string[];
   /** Only a member principal owns read markers and unread state. */
   readonly memberId?: string | null;
+  /** The forum the visitor is in; presence locations are filtered by read bits (task 4.2). */
+  readonly locationForumId?: string;
   /** The `created_at` of the last post on the page; timestamps survive merge and split. */
   readonly lastReadAt?: Date;
   /** The last post on the page, kept for permalinks and history. */
@@ -150,8 +152,10 @@ export async function recordVisit(sql: SQL, input: VisitInput): Promise<VisitRes
     return { unread: [] };
   }
 
-  // The location of a topic is its forum; without a forum table yet, use the topic context.
-  const location = context.kind === "forum" ? `forum:${context.id}` : input.ctx;
+  // The location is the forum the visitor is in; a topic without its forum falls back to the
+  // board so the online list never leaks a topic id it cannot authorise.
+  const locationForumId = input.locationForumId ?? (context.kind === "forum" ? context.id : null);
+  const location = locationForumId === null ? "board" : `forum:${locationForumId}`;
 
   await recordPresence(sql, input.viewerKey, location, now);
 

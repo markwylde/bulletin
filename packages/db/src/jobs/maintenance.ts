@@ -2,6 +2,7 @@ import type { Logger } from "@bulletin/config";
 import { forwardSystemAudits } from "@bulletin/domain/audit";
 import { purgeExpiredDrafts } from "@bulletin/domain/content";
 import { closePollTransitions } from "@bulletin/domain/polls";
+import { updateOnlineRecord } from "@bulletin/domain/presence";
 import { flushTopicViews, purgeExpiredTopicStubs } from "@bulletin/domain/topics";
 import { expireVisitBuffers } from "@bulletin/domain/visits";
 import type { SQL } from "bun";
@@ -33,9 +34,9 @@ export async function runMaintenance(
   options: MaintenanceOptions = {},
 ): Promise<MaintenanceResult> {
   const [audits, drafts] = await Promise.all([forwardSystemAudits(sql), purgeExpiredDrafts(sql)]);
-  // Count views before expiring their buckets. A view late in a bucket (12:29:59) still
-  // belongs to it, and expiry must never drop a view that was not counted (reviewer finding).
+  // Count views and the online peak before expiring their rows.
   const topicViews = await flushTopicViews(sql);
+  await updateOnlineRecord(sql, options.now);
   const visits = await expireVisitBuffers(sql, options);
   const topicStubs = await purgeExpiredTopicStubs(sql);
   const closedPolls = await closePollTransitions(sql);

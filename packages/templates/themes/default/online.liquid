@@ -1,0 +1,21 @@
+{{ header }}
+<main id="main" class="bl-main" data-online-page>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{% t "online.title" %}</h1>
+  <p class="bl-muted" data-online-counts>{{ online.memberCount }} · {{ online.guestCount }}</p>
+
+  {% if online.members.size > 0 %}
+    <ul class="bl-online-list bl-card" data-online-members>
+      {% for member in online.members %}
+        <li class="bl-online-row" data-online-member="{{ member.id }}">
+          <a href="{{ member.href }}"{% if member.groupColour %} style="color: {{ member.groupColour }}"{% endif %} data-online-name>{{ member.name }}</a>
+          {% if member.groupTitle %}<span class="bl-muted">{{ member.groupTitle }}</span>{% endif %}
+          <span class="bl-muted" data-online-location>{{ member.location }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {{ emptyState }}
+  {% endif %}
+</main>
+{{ footer }}

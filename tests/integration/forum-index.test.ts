@@ -483,7 +483,7 @@ integrationDescribe("board index view model", () => {
         expect(off.variant).not.toBe(on.variant);
         expect(off.html).toContain(`@${name}`);
         expect(off.html).not.toContain("data-mention");
-        expect(off.html).not.toContain('href="/profile/');
+        expect(off.html).not.toContain(`href="/profile/${admin.memberId}`);
 
         // A warm flag-off cache keeps serving plain text for the flag-off variant only.
         const warmOff = await renderIndex();
