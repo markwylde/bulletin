@@ -245,6 +245,72 @@ integrationDescribe("post editor", () => {
     });
   }, 240_000);
 
+  test("a re-auth draft never leaks to another account on the same browser", async () => {
+    const body = "A private re-auth draft";
+
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "member-1");
+      await view.evaluate(
+        `(() => {
+          Object.keys(localStorage)
+            .filter((key) => key.startsWith("bulletin:draft:"))
+            .forEach((key) => localStorage.removeItem(key));
+          return true;
+        })()`,
+      );
+      await clearEditorDraft(view);
+      await openEditor(view);
+      await switchToSource(view);
+      await waitForExpression(
+        view,
+        'localStorage.getItem("bulletin:draft:owner") !== null',
+        15_000,
+      );
+      await setInputValue(view, "[data-editor-source]", body);
+      // The stream asks open editors to keep their text before the re-auth grace expires.
+      await view.evaluate('window.dispatchEvent(new CustomEvent("bulletin:reauth"))');
+
+      const draftKeys = () =>
+        view.evaluate<string[]>(
+          'Object.keys(localStorage).filter((key) => key.startsWith("bulletin:draft:reauth:"))',
+        );
+      const memberId = await view.evaluate<string>(
+        'fetch("/api/auth/session", { headers: { accept: "application/json" } }).then((response) => response.json()).then((session) => session.memberId)',
+      );
+      const memberDrafts = await draftKeys();
+
+      expect(memberId).toMatch(/^\d+$/);
+      expect(memberDrafts).toEqual([`bulletin:draft:reauth:${memberId}:demo:editor`]);
+      expect(
+        await view.evaluate<string | null>(
+          `localStorage.getItem(${JSON.stringify(memberDrafts[0] ?? "")})`,
+        ),
+      ).toContain(body);
+
+      // Logging out clears the local draft before another account can sign in.
+      await view.navigate(USER_URL);
+      await waitForSelector(view, "[data-logout]:not([hidden])");
+      await clickSelector(view, "[data-logout]");
+      await waitForSelector(view, '[data-auth-state="guest"]', 20_000);
+
+      expect(await draftKeys()).toEqual([]);
+
+      await loginAs(view, "member-2");
+      await openEditor(view);
+      await waitForExpression(
+        view,
+        'localStorage.getItem("bulletin:draft:owner") !== null',
+        15_000,
+      );
+      await Bun.sleep(500);
+
+      expect(
+        await view.evaluate<boolean>('document.querySelector("[data-draft-offer]") === null'),
+      ).toBe(true);
+      expect(await draftKeys()).toEqual([]);
+    });
+  }, 240_000);
+
   test("reverting to the original content clears the saved draft", async () => {
     await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "member-1");

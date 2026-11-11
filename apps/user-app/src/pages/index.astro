@@ -94,6 +94,7 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
       ReauthRequiredError,
       takeStashedRequest,
     } from "@bulletin/domain/auth/browser";
+    import { clearReauthDrafts } from "@bulletin/ui/islands/editor/drafts";
     import { resumeStashedRequest } from "../resume.ts";
 
     const root = document.querySelector<HTMLElement>("[data-auth]");
@@ -212,7 +213,7 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
     if (logoutButton !== null) {
       logoutButton.addEventListener("click", () => {
         logoutButton.disabled = true;
-        void logout().then((ok) => {
+        void logout({ clearLocalData: clearReauthDrafts }).then((ok) => {
           if (!ok) {
             if (logoutError !== null) {
               logoutError.hidden = false;

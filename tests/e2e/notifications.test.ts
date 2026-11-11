@@ -177,6 +177,56 @@ async function waitForUnreadOverlay(view: Bun.WebView): Promise<void> {
 }
 
 integrationDescribe("notification centre", () => {
+  test("following Next shows the next page of notifications", async () => {
+    // member-2 has a seeded history longer than one page (page size is 50).
+    await withPage(
+      {
+        url: USER_URL,
+        viewport: "mobile360",
+        allowConsoleErrors: [/ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/],
+      },
+      async (view) => {
+        await loginAs(view, "member-2");
+        await view.navigate(NOTIFICATIONS_URL);
+        await waitForSelector(view, "[data-notifications-page]");
+        await waitForSelector(view, "[data-notification-row]");
+
+        const ids = () =>
+          view.evaluate<string[]>(
+            `[...document.querySelectorAll("[data-notification-row]")]
+              .map((row) => row.getAttribute("data-notification-row") ?? "")`,
+          );
+        const firstPage = await ids();
+
+        expect(firstPage).toHaveLength(50);
+        await waitForSelector(view, "[data-page-next]:not([disabled])");
+        await clickSelector(view, "[data-page-next]");
+        await waitForExpression(
+          view,
+          'new URLSearchParams(window.location.search).get("page") === "2"',
+          10_000,
+        );
+        await waitForSelector(view, "[data-notification-row]");
+
+        const secondPage = await ids();
+
+        expect(secondPage.length).toBeGreaterThan(0);
+        expect(secondPage.length).toBeLessThan(firstPage.length);
+        expect(secondPage.some((id) => firstPage.includes(id))).toBe(false);
+        await waitForSelector(view, "[data-page-prev]:not([disabled])");
+        await clickSelector(view, "[data-page-prev]");
+        await waitForExpression(
+          view,
+          'new URLSearchParams(window.location.search).get("page") === "1"',
+          10_000,
+        );
+        await waitForSelector(view, "[data-notification-row]");
+
+        expect((await ids()).slice(0, 5)).toEqual(firstPage.slice(0, 5));
+      },
+    );
+  }, 180_000);
+
   for (const viewport of VIEWPORTS) {
     test(`shows the bell, opens and marks all read at ${viewport}`, async () => {
       const topic = await followedTopic();

@@ -304,6 +304,8 @@ export interface LogoutDependencies {
   readonly storage: LogoutStorage;
   readonly redirect: (url: string) => void;
   readonly clearStashed: () => void;
+  /** Clears member-scoped client data (local drafts); called before the redirect (ADR 0014). */
+  readonly clearLocalData?: () => void;
 }
 
 /**
@@ -370,16 +372,25 @@ export async function performLogout(dependencies: LogoutDependencies): Promise<b
 
   dependencies.storage.removeItem(CSRF_STORAGE_KEY);
   dependencies.clearStashed();
+  dependencies.clearLocalData?.();
   dependencies.redirect("/");
   return true;
 }
 
+export interface LogoutOptions {
+  /** Extra member-scoped local data to discard after the server revoked the session. */
+  readonly clearLocalData?: () => void;
+}
+
 /** Logout clears local data only after the server has confirmed revocation (ADR 0018). */
-export function logout(): Promise<boolean> {
+export function logout(options: LogoutOptions = {}): Promise<boolean> {
   return performLogout({
-    fetch,
+    // Browsers reject `fetch` when it is invoked as a property of another object, which is how
+    // `performLogout` calls it; the arrow keeps the global receiver.
+    fetch: (input, init) => fetch(input, init),
     storage: browser.sessionStorage,
     redirect: (url) => browser.location.replace(url),
     clearStashed: () => clearStashedRequest(),
+    ...(options.clearLocalData === undefined ? {} : { clearLocalData: options.clearLocalData }),
   });
 }

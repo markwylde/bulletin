@@ -3,6 +3,7 @@ import {
   AccessDeniedError,
   CSRF_STORAGE_KEY,
   type LogoutStorage,
+  logout,
   performLogout,
   submitIdToken,
 } from "./browser.ts";
@@ -27,6 +28,7 @@ describe("logout", () => {
   test("uses the CSRF token from a reauth_required response after grace", async () => {
     const storage = new MemoryStorage();
     let clearStashed = false;
+    let clearLocalData = false;
     let redirect = "";
     const headersSeen: Array<Record<string, string>> = [];
     const fetch = async (input: string | URL | Request, init?: RequestInit) => {
@@ -52,6 +54,9 @@ describe("logout", () => {
       clearStashed: () => {
         clearStashed = true;
       },
+      clearLocalData: () => {
+        clearLocalData = true;
+      },
     });
 
     expect(ok).toBe(true);
@@ -63,6 +68,7 @@ describe("logout", () => {
     ]);
     expect(storage.getItem(CSRF_STORAGE_KEY)).toBeNull();
     expect(clearStashed).toBe(true);
+    expect(clearLocalData).toBe(true);
     expect(redirect).toBe("/");
   });
 
@@ -145,6 +151,52 @@ describe("logout", () => {
     });
 
     expect(ok).toBe(false);
+  });
+});
+
+describe("logout() global wrapper", () => {
+  test("calls fetch without a foreign receiver", async () => {
+    const globals = globalThis as unknown as Record<string, unknown>;
+    const original = {
+      fetch: globals.fetch,
+      sessionStorage: globals.sessionStorage,
+      location: globals.location,
+    };
+    const storage = new MemoryStorage();
+    const calls: string[] = [];
+    let redirected = "";
+
+    // Chrome rejects the native fetch when a caller invokes it as an object's property.
+    globals.fetch = function (this: unknown, input: string | URL | Request) {
+      if (this !== undefined && this !== globalThis) {
+        throw new TypeError("Illegal invocation");
+      }
+
+      const url = String(input);
+      calls.push(url);
+
+      return Promise.resolve(
+        url === "/api/auth/session"
+          ? Response.json({ authenticated: true, csrfToken: "live-token" })
+          : new Response(null, { status: 204 }),
+      );
+    };
+    globals.sessionStorage = storage;
+    globals.location = {
+      replace: (url: string) => {
+        redirected = url;
+      },
+    };
+
+    try {
+      expect(await logout()).toBe(true);
+      expect(calls).toEqual(["/api/auth/session", "/api/auth/logout"]);
+      expect(redirected).toBe("/");
+    } finally {
+      globals.fetch = original.fetch;
+      globals.sessionStorage = original.sessionStorage;
+      globals.location = original.location;
+    }
   });
 });
 

@@ -39,7 +39,8 @@ integrationDescribe("notification seed", () => {
         members: 3,
         digests: 3,
         preferences: 5,
-        notifications: 6,
+        // Six hand-written entries plus 55 read ones that give member-2 a second page.
+        notifications: 61,
       });
 
       const [spanish] = (await database.sql`
@@ -64,6 +65,17 @@ integrationDescribe("notification seed", () => {
         { sub: "member-2", frequency: "daily" },
         { sub: "member-fr", frequency: "weekly" },
       ]);
+
+      const [paged] = (await database.sql`
+        SELECT count(*)::int AS total
+        FROM core.notifications n
+        JOIN core.members m ON m.id = n.member_id
+        JOIN pii.identities i ON i.member_id = m.id
+        WHERE i.sub = 'member-2'
+      `) as Array<{ total: number }>;
+
+      // More than one page of 50 so the notification centre's Next link has entries.
+      expect(paged?.total).toBe(56);
 
       const [preference] = (await database.sql`
         SELECT p.enabled

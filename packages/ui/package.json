@@ -9,6 +9,7 @@
     "./forms": "./src/forms/index.ts",
     "./islands": "./src/islands/index.ts",
     "./islands/client": "./src/islands/client.ts",
+    "./islands/editor/drafts": "./src/islands/editor/drafts.ts",
     "./islands/runtime": "./src/islands/runtime.ts",
     "./islands/server": "./src/islands/server.tsx",
     "./table": "./src/table/index.ts"

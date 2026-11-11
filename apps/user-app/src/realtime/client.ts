@@ -5,6 +5,7 @@ import {
   type StreamNewRepliesPayload,
   type StreamNotificationPayload,
 } from "@bulletin/domain/events/stream";
+import { clearReauthDrafts } from "@bulletin/ui/islands/editor/drafts";
 
 const ID = /^[1-9]\d{0,18}$/;
 
@@ -131,6 +132,8 @@ function reloadLoggedOut(): void {
     // Private mode.
   }
 
+  // A revoked session clears member-scoped local drafts (ADR 0014).
+  clearReauthDrafts();
   window.location.reload();
 }
 

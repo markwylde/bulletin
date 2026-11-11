@@ -7,9 +7,155 @@ export interface EditorDraft {
 interface SessionView {
   readonly authenticated?: boolean;
   readonly csrfToken?: string | null;
+  readonly memberId?: string | null;
 }
 
 const DRAFTS = "/api/me/drafts";
+
+/** The minimal `localStorage` surface the re-auth draft store needs (fakeable in tests). */
+export interface LocalStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+  key(index: number): string | null;
+  readonly length: number;
+}
+
+const REAUTH_PREFIX = "bulletin:draft:reauth:";
+const OWNER_KEY = "bulletin:draft:owner";
+
+function defaultStore(): LocalStore | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    // Private mode.
+    return null;
+  }
+}
+
+/**
+ * Re-auth drafts are keyed by the authenticated member as well as the editor context: a shared
+ * browser must never offer one account's private text to another (ADR 0014).
+ */
+export function reauthDraftKey(memberId: string, contextKey: string): string {
+  return `${REAUTH_PREFIX}${memberId}:${contextKey}`;
+}
+
+export function readReauthDraft(
+  memberId: string,
+  contextKey: string,
+  store: LocalStore | null = defaultStore(),
+): string | null {
+  if (store === null) {
+    return null;
+  }
+
+  try {
+    const raw = store.getItem(reauthDraftKey(memberId, contextKey));
+
+    if (raw === null) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as { readonly bodyMd?: unknown };
+    return typeof parsed.bodyMd === "string" ? parsed.bodyMd : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeReauthDraft(
+  memberId: string,
+  contextKey: string,
+  bodyMd: string,
+  store: LocalStore | null = defaultStore(),
+): void {
+  if (store === null) {
+    return;
+  }
+
+  try {
+    store.setItem(
+      reauthDraftKey(memberId, contextKey),
+      JSON.stringify({ bodyMd, savedAt: Date.now(), memberId }),
+    );
+  } catch {
+    // Private mode: the server draft may still be available after re-auth.
+  }
+}
+
+export function clearReauthDraft(
+  memberId: string,
+  contextKey: string,
+  store: LocalStore | null = defaultStore(),
+): void {
+  try {
+    store?.removeItem(reauthDraftKey(memberId, contextKey));
+  } catch {
+    // Private mode.
+  }
+}
+
+function reauthDraftKeys(store: LocalStore): string[] {
+  const keys: string[] = [];
+
+  for (let index = 0; index < store.length; index += 1) {
+    const key = store.key(index);
+
+    if (key?.startsWith(REAUTH_PREFIX) === true) {
+      keys.push(key);
+    }
+  }
+
+  return keys;
+}
+
+/** Clears every local draft; called on logout and session revocation (ADR 0014, ADR 0018). */
+export function clearReauthDrafts(store: LocalStore | null = defaultStore()): void {
+  if (store === null) {
+    return;
+  }
+
+  try {
+    for (const key of reauthDraftKeys(store)) {
+      store.removeItem(key);
+    }
+
+    store.removeItem(OWNER_KEY);
+  } catch {
+    // Private mode.
+  }
+}
+
+/**
+ * Claims the local draft store for the signed-in member. Any draft left behind by a different
+ * account is discarded first, so an account switch can never surface the previous member's text.
+ * Returns whether drafts of another account were cleared.
+ */
+export function claimReauthDrafts(
+  memberId: string,
+  store: LocalStore | null = defaultStore(),
+): boolean {
+  if (store === null) {
+    return false;
+  }
+
+  try {
+    const owner = store.getItem(OWNER_KEY);
+    const changed = owner !== memberId;
+
+    if (changed) {
+      for (const key of reauthDraftKeys(store)) {
+        store.removeItem(key);
+      }
+    }
+
+    store.setItem(OWNER_KEY, memberId);
+    return changed;
+  } catch {
+    return false;
+  }
+}
 
 /** The editor only asks for a draft when a member session exists. */
 export async function readEditorSession(): Promise<SessionView | null> {

@@ -1,5 +1,39 @@
 import { describe, expect, test } from "bun:test";
-import { draftWriteFor, serializeDraftWrite } from "./drafts.ts";
+import {
+  claimReauthDrafts,
+  clearReauthDraft,
+  clearReauthDrafts,
+  draftWriteFor,
+  type LocalStore,
+  readReauthDraft,
+  reauthDraftKey,
+  serializeDraftWrite,
+  writeReauthDraft,
+} from "./drafts.ts";
+
+class MemoryStore implements LocalStore {
+  readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+
+  key(index: number): string | null {
+    return [...this.values.keys()][index] ?? null;
+  }
+
+  get length(): number {
+    return this.values.size;
+  }
+}
 
 describe("draft write mode", () => {
   test("clears the draft when an edit is undone back to the original", () => {
@@ -84,5 +118,57 @@ describe("serialised draft writes", () => {
     releaseFirst();
     await first;
     expect(events).toEqual(["first:start", "other", "first:end"]);
+  });
+});
+
+describe("member-scoped re-auth drafts", () => {
+  test("a draft is only visible to the member who saved it", () => {
+    const store = new MemoryStore();
+    writeReauthDraft("11", "reply:topic:1", "Member one's private text", store);
+
+    expect(reauthDraftKey("11", "reply:topic:1")).not.toBe(reauthDraftKey("12", "reply:topic:1"));
+    expect(readReauthDraft("11", "reply:topic:1", store)).toBe("Member one's private text");
+    expect(readReauthDraft("12", "reply:topic:1", store)).toBeNull();
+  });
+
+  test("a different account claims the store and the previous member's drafts are gone", () => {
+    const store = new MemoryStore();
+    claimReauthDrafts("11", store);
+    writeReauthDraft("11", "reply:topic:1", "Member one's private text", store);
+
+    expect(claimReauthDrafts("12", store)).toBe(true);
+    expect(readReauthDraft("11", "reply:topic:1", store)).toBeNull();
+    expect(store.length).toBe(1);
+  });
+
+  test("logout clears every draft and the owner marker", () => {
+    const store = new MemoryStore();
+    claimReauthDrafts("11", store);
+    writeReauthDraft("11", "reply:topic:1", "one", store);
+    writeReauthDraft("11", "reply:topic:2", "two", store);
+
+    clearReauthDrafts(store);
+
+    expect(store.length).toBe(0);
+  });
+
+  test("a draft saved by the previous version is discarded on first claim", () => {
+    const store = new MemoryStore();
+    store.setItem("bulletin:draft:reauth:reply:topic:1", JSON.stringify({ bodyMd: "old" }));
+
+    claimReauthDrafts("11", store);
+
+    expect(store.getItem("bulletin:draft:reauth:reply:topic:1")).toBeNull();
+  });
+
+  test("clearing one context leaves the member's other drafts alone", () => {
+    const store = new MemoryStore();
+    claimReauthDrafts("11", store);
+    writeReauthDraft("11", "reply:topic:1", "one", store);
+    writeReauthDraft("11", "reply:topic:2", "two", store);
+
+    clearReauthDraft("11", "reply:topic:1", store);
+
+    expect(readReauthDraft("11", "reply:topic:2", store)).toBe("two");
   });
 });

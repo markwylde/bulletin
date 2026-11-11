@@ -110,6 +110,18 @@ function sectionKey(value: Date, dayStart: Date, weekStart: Date): "today" | "we
 /** "Notifications": the member's entries grouped by recency, plus the mark-all control. */
 export const NOTIFICATIONS_PAGE_SIZE = 50;
 
+/**
+ * The `page` query parameter: one based and bounded so a hand-edited URL cannot ask for an
+ * unbounded offset. Missing or malformed values fall back to the first page.
+ */
+export function parseNotificationsPageParam(value: string | null): number | undefined {
+  if (value === null || !/^\d{1,6}$/.test(value)) {
+    return undefined;
+  }
+
+  return Math.max(1, Number(value));
+}
+
 export async function buildNotificationsPage(
   input: NotificationsPageInput,
 ): Promise<NotificationsPageData> {

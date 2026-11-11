@@ -1,6 +1,6 @@
 ---
 import { createServerT } from "@bulletin/i18n";
-import { buildNotificationsPage } from "../../account/notifications.ts";
+import { buildNotificationsPage, parseNotificationsPageParam } from "../../account/notifications.ts";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { notificationsContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
@@ -22,12 +22,14 @@ const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
 const flags = await loadViewerFlags(sql, session);
 const enabled = flags.values.notifications === true;
+const requestedPage = parseNotificationsPageParam(Astro.url.searchParams.get("page"));
 const page = enabled ? await buildNotificationsPage({
     sql,
     memberId: session.memberId,
     sessionId: session.sessionId,
     locale,
     translate,
+    ...(requestedPage === undefined ? {} : { page: requestedPage }),
   }) : null;
 const notFound = enabled
   ? null

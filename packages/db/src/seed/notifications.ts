@@ -191,6 +191,21 @@ export const notificationsSeedModule: SeedModule = {
       `;
     }
 
+    // A member with more than one page of history, so the notification centre's Next link and
+    // the pagination E2E have real entries to page through (page size is 50).
+    await sql`
+      INSERT INTO core.notifications (
+        member_id, type, actor_id, topic_id, forum_id, post_id, count, read_at,
+        created_at, updated_at
+      )
+      SELECT
+        ${memberTwo}, 'topic.reply', ${memberOne}, ${reading.id}, ${reading.forumId},
+        ${reading.lastPostId}, 1, now() - (age || ' days')::interval,
+        now() - (age || ' days')::interval,
+        now() - (age || ' days')::interval
+      FROM generate_series(4, 58) AS age
+    `;
+
     for (const [member, frequency] of [
       [memberOne, "weekly"],
       [memberTwo, "daily"],

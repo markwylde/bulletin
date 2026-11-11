@@ -220,16 +220,17 @@ integrationDescribe("realtime stream in the browser", () => {
         });
         return true;
       })()`);
+      const memberId = await view.evaluate<string>(
+        'fetch("/api/auth/session", { headers: { accept: "application/json" } }).then((response) => response.json()).then((session) => session.memberId)',
+      );
+      const draftKey = `bulletin:draft:reauth:${memberId}:demo:editor`;
       await clickSelector(view, '[data-editor-mode="source"]');
       await waitForSelector(view, "[data-editor-source]");
       await setInputValue(view, "[data-editor-source]", text);
 
       // The stream fires this when the background grace ends and draft autosave starts failing.
       await view.evaluate('window.dispatchEvent(new CustomEvent("bulletin:reauth"))');
-      await waitForExpression(
-        view,
-        `localStorage.getItem("bulletin:draft:reauth:demo:editor") !== null`,
-      );
+      await waitForExpression(view, `localStorage.getItem(${JSON.stringify(draftKey)}) !== null`);
 
       await view.navigate(EDITOR_URL);
       await waitForSelector(view, "[data-draft-offer]", 20_000);
@@ -241,9 +242,7 @@ integrationDescribe("realtime stream in the browser", () => {
         `document.querySelector("[data-editor-source]")?.value === ${JSON.stringify(text)}`,
       );
       expect(
-        await view.evaluate<boolean>(
-          'localStorage.getItem("bulletin:draft:reauth:demo:editor") === null',
-        ),
+        await view.evaluate<boolean>(`localStorage.getItem(${JSON.stringify(draftKey)}) === null`),
       ).toBe(true);
     });
   }, 180_000);
@@ -274,6 +273,12 @@ integrationDescribe("realtime stream in the browser", () => {
         );
         expect(memberId).toMatch(/^\d+$/);
 
+        // An unsaved re-auth draft must not survive the server-side revocation.
+        await user.evaluate(`localStorage.setItem(
+          "bulletin:draft:reauth:${memberId}:reply:topic:1",
+          JSON.stringify({ bodyMd: "private text" })
+        )`);
+
         await loginAs(staff, "admin");
         await waitForSelector(staff, '[data-auth-state="authenticated"]');
 
@@ -293,6 +298,11 @@ integrationDescribe("realtime stream in the browser", () => {
           'document.documentElement.dataset.visitor === "guest"',
           30_000,
         );
+        expect(
+          await user.evaluate<number>(
+            'Object.keys(localStorage).filter((key) => key.startsWith("bulletin:draft:")).length',
+          ),
+        ).toBe(0);
       },
     );
   }, 300_000);
