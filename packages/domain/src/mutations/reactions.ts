@@ -12,7 +12,9 @@ export const reactionSetMutation: Mutation<{ readonly postId: string }, Reaction
   name: "reaction.set",
   tags: (_input, result) => [
     postReactionsTag(result.postId),
-    ...(result.reputationReceiverId === null ? [] : [memberTag(result.reputationReceiverId)]),
+    ...(result.reputationReceiverId === null
+      ? []
+      : [memberTag(result.reputationReceiverId), GLOBAL_CACHE_TAGS.directory]),
   ],
 };
 

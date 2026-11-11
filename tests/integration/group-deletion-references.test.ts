@@ -336,4 +336,38 @@ integrationDescribe("group deletion with audience references", () => {
       }
     });
   }, 30_000);
+
+  test("refuses to delete a group referenced by a profile-field visibility rule", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await createMember(database, "Field Group Admin", ["administrators"]);
+      const [group] = (await database.sql`
+        INSERT INTO core.groups (key, title, display_order)
+        VALUES ('field_visibility_group', 'Field visibility', 120)
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [field] = (await database.sql`
+        INSERT INTO core.profile_fields (type, labels)
+        VALUES ('short_text', '{"en":"Secret","es":"Secreto","fr":"Secret"}'::jsonb)
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (group === undefined || field === undefined) {
+        throw new Error("Could not create the field visibility fixture");
+      }
+
+      await database.sql`
+        INSERT INTO core.profile_field_groups (field_id, group_id, can_view, can_edit)
+        VALUES (${field.id}, ${group.id}, true, false)
+      `;
+
+      expect(await deleteGroup(database.sql, admin, { id: group.id })).toEqual({
+        ok: false,
+        code: "group_in_use",
+      });
+      await expectRejection(
+        () => database.sql`DELETE FROM core.groups WHERE id = ${group.id}`,
+        "profile_field_groups_group_id_fkey",
+      );
+    });
+  }, 30_000);
 });

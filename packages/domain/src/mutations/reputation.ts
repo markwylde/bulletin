@@ -1,4 +1,4 @@
-import { memberTag } from "@bulletin/cache";
+import { GLOBAL_CACHE_TAGS, memberTag } from "@bulletin/cache";
 import type { Mutation } from "./index.ts";
 
 export interface ReputationGiveResult {
@@ -14,5 +14,5 @@ export const reputationGiveMutation: Mutation<
   ReputationGiveResult
 > = {
   name: "reputation.give",
-  tags: (_input, result) => [memberTag(result.receiverId)],
+  tags: (_input, result) => [memberTag(result.receiverId), GLOBAL_CACHE_TAGS.directory],
 };

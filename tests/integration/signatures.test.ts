@@ -21,6 +21,7 @@ import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/databa
 import { profileSaveResponse } from "../../apps/user-api/src/profile.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderTopicRoute } from "../../apps/user-app/src/topics/route.ts";
+import { renderMemberSignatures } from "../../apps/user-app/src/topics/signatures.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -311,5 +312,33 @@ integrationDescribe("signatures", () => {
       expect(bareUrls.status).toBe(400);
       expect(((await bareUrls.json()) as { code: string }).code).toBe("signature_too_many_links");
     });
+  }, 30_000);
+
+  test("a signature edit during preparation is never stored under the new tag version", async () => {
+    let version = "0";
+    let calls = 0;
+    const cache = createRenderCache({
+      tags: { version: () => version, isTrusted: () => true },
+    });
+    const rendered = await renderMemberSignatures(
+      undefined as never,
+      cache,
+      ["7"],
+      "en",
+      translate,
+      async () => {
+        calls += 1;
+
+        if (calls === 1) {
+          version = "1";
+          return "old sign";
+        }
+
+        return "new sign";
+      },
+    );
+
+    expect(rendered.get("7")).toContain("new sign");
+    expect(rendered.get("7")).not.toContain("old sign");
   }, 30_000);
 });

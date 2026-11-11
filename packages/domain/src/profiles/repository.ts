@@ -230,59 +230,75 @@ export async function readRecentProfilePosts(
   sql: SQL,
   input: RecentProfilePostsInput,
 ): Promise<RecentProfilePosts> {
-  const rows = (await sql`
-    SELECT
-      p.id::text AS id,
-      t.id::text AS topic_id,
-      t.title AS topic_title,
-      t.slug AS topic_slug,
-      t.forum_id::text AS forum_id,
-      f.title AS forum_title,
-      p.created_at
-    FROM core.posts p
-    JOIN core.topics t ON t.id = p.topic_id
-    JOIN core.forums f ON f.id = t.forum_id
-    WHERE p.author_id = ${input.memberId}
-      AND p.visibility = 'visible'
-      AND t.moved_to IS NULL
-    ORDER BY p.created_at DESC, p.id DESC
-    LIMIT ${Math.max(input.limit * 4, input.limit)}
-  `) as Array<{
-    id: string;
-    topic_id: string;
-    topic_title: string;
-    topic_slug: string;
-    forum_id: string;
-    forum_title: string;
-    created_at: Date;
-  }>;
-
   const readableForums = new Map<string, boolean>();
+  const posts: RecentProfilePost[] = [];
+  const batchSize = 20;
+  let offset = 0;
+  let hasRows = true;
 
-  for (const forumId of new Set(rows.map((row) => row.forum_id))) {
-    readableForums.set(
-      forumId,
-      await can(sql, input.principal, "read", {
-        forumId,
-        tree: input.tree,
-        sessionId: input.sessionId,
-        snapshot: input.snapshot,
-      }),
-    );
+  // Keep fetching candidates until enough readable posts are found. A run of recent private
+  // posts must not hide an older readable post from the short recent list.
+  while (hasRows && posts.length < input.limit) {
+    const rows = (await sql`
+      SELECT
+        p.id::text AS id,
+        t.id::text AS topic_id,
+        t.title AS topic_title,
+        t.slug AS topic_slug,
+        t.forum_id::text AS forum_id,
+        f.title AS forum_title,
+        p.created_at
+      FROM core.posts p
+      JOIN core.topics t ON t.id = p.topic_id
+      JOIN core.forums f ON f.id = t.forum_id
+      WHERE p.author_id = ${input.memberId}
+        AND p.visibility = 'visible'
+        AND t.moved_to IS NULL
+      ORDER BY p.created_at DESC, p.id DESC
+      LIMIT ${batchSize} OFFSET ${offset}
+    `) as Array<{
+      id: string;
+      topic_id: string;
+      topic_title: string;
+      topic_slug: string;
+      forum_id: string;
+      forum_title: string;
+      created_at: Date;
+    }>;
+
+    offset += rows.length;
+    hasRows = rows.length === batchSize;
+
+    for (const row of rows) {
+      let readable = readableForums.get(row.forum_id);
+
+      if (readable === undefined) {
+        readable = await can(sql, input.principal, "read", {
+          forumId: row.forum_id,
+          tree: input.tree,
+          sessionId: input.sessionId,
+          snapshot: input.snapshot,
+        });
+        readableForums.set(row.forum_id, readable);
+      }
+
+      if (readable) {
+        posts.push({
+          id: row.id,
+          topicId: row.topic_id,
+          topicTitle: row.topic_title,
+          topicSlug: row.topic_slug,
+          forumId: row.forum_id,
+          forumTitle: row.forum_title,
+          createdAt: new Date(row.created_at),
+        });
+
+        if (posts.length >= input.limit) {
+          break;
+        }
+      }
+    }
   }
-
-  const posts = rows
-    .filter((row) => readableForums.get(row.forum_id) === true)
-    .slice(0, input.limit)
-    .map((row) => ({
-      id: row.id,
-      topicId: row.topic_id,
-      topicTitle: row.topic_title,
-      topicSlug: row.topic_slug,
-      forumId: row.forum_id,
-      forumTitle: row.forum_title,
-      createdAt: new Date(row.created_at),
-    }));
 
   return {
     posts,

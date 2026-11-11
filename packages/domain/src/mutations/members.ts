@@ -11,7 +11,7 @@ export interface MemberAvatarSummary {
  */
 export const memberAvatarMutation: Mutation<{ readonly memberId: string }, MemberAvatarSummary> = {
   name: "member.avatar.update",
-  tags: (_input, result) => [memberTag(result.memberId)],
+  tags: (_input, result) => [memberTag(result.memberId), GLOBAL_CACHE_TAGS.directory],
 };
 
 /**

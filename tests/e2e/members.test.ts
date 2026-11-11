@@ -78,4 +78,20 @@ integrationDescribe("member directory", () => {
       },
     );
   }, 120_000);
+
+  test("a guest visit to the member list records presence", async () => {
+    await withPage({ url: MEMBERS_URL, viewport: "mobile360" }, async (view) => {
+      await waitForSelector(view, "[data-member-list]", 20_000);
+      await Bun.sleep(500);
+
+      await view.navigate(new URL("/members/online", USER_URL).toString());
+      await waitForSelector(view, "[data-online-page]", 20_000);
+      await waitForSelector(view, "[data-online-counts]", 20_000);
+      const counts = await view.evaluate<string>(
+        'document.querySelector("[data-online-counts]")?.textContent ?? ""',
+      );
+      expect(counts).toContain("guest");
+      expect(counts).not.toContain("No guests");
+    });
+  }, 120_000);
 });

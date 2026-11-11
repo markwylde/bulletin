@@ -21,6 +21,11 @@ import {
 } from "@bulletin/domain/leaderboards";
 import { listMembers } from "@bulletin/domain/member";
 import {
+  memberAvatarMutation,
+  reputationGiveMutation,
+  runMutation,
+} from "@bulletin/domain/mutations";
+import {
   bumpPermVersion,
   GUEST_PRINCIPAL,
   loadForumTree,
@@ -1041,6 +1046,118 @@ integrationDescribe("member directory", () => {
       expect(guestAfter.posts).toBe(guestBefore.posts);
       expect(adminAfter.topics).toBe(adminBefore.topics + 5);
       expect(adminAfter.posts).toBe(adminBefore.posts + 5);
+    });
+  }, 30_000);
+
+  test("avatar and reputation mutations invalidate warmed directory caches", async () => {
+    await withDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const render = () =>
+          renderMemberListRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: null,
+            params: new URLSearchParams({ q: "Regular Member One" }),
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+        const first = await render();
+        expect(first.cache).toBe("miss");
+
+        await runMutation({
+          sql: database.sql,
+          mutation: reputationGiveMutation,
+          input: { receiverId: member },
+          apply: async (tx) => {
+            await tx`UPDATE core.members SET reputation = reputation + 25 WHERE id = ${member}`;
+            return { receiverId: member };
+          },
+        });
+        await versions.refresh();
+        const afterReputation = await render();
+        expect(afterReputation.cache).toBe("miss");
+        expect(afterReputation.html).toContain("25");
+
+        await runMutation({
+          sql: database.sql,
+          mutation: memberAvatarMutation,
+          input: { memberId: member },
+          apply: async (tx) => {
+            await tx`
+              UPDATE core.members
+              SET avatar_hash = ${"ab".repeat(32)}
+              WHERE id = ${member}
+            `;
+            return { memberId: member };
+          },
+        });
+        await versions.refresh();
+        const afterAvatar = await render();
+        expect(afterAvatar.cache).toBe("miss");
+        expect(afterAvatar.html).toContain("ab".repeat(32));
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("leaderboards stop counting a post as soon as it moves private or is deleted", async () => {
+    await withDb(async (database) => {
+      const publicForum = await forumId(database, "off-topic");
+      const staffForum = await forumId(database, "staff-room");
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton)
+        VALUES ('Moving Poster', 'moving poster')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined) {
+        throw new Error("Could not create the moving poster");
+      }
+
+      const [topic] = (await database.sql`
+        INSERT INTO core.topics (forum_id, title, slug, starter_id)
+        VALUES (${publicForum}, 'Moving leaderboard topic', 'moving-leaderboard-topic', ${member.id})
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [post] = (await database.sql`
+        INSERT INTO core.posts (
+          topic_id, author_id, body_md, body_html, body_text, render_version, sanitiser_version, position
+        )
+        VALUES (${topic?.id ?? "0"}, ${member.id}, 'Body.', '<p>Body.</p>', 'Body.', 1, 1, 1)
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      await recomputeLeaderboards(database.sql);
+
+      const tree = await loadForumTree(database.sql);
+      const snapshot = await loadPermissionSnapshot(database.sql, GUEST_PRINCIPAL, {
+        tree,
+        sessionId: null,
+      });
+      const read = () =>
+        readLeaderboard(database.sql, { period: "all", metric: "posts", tree, snapshot });
+
+      expect((await read()).some((entry) => entry.memberId === member.id)).toBe(true);
+
+      await database.sql`UPDATE core.topics SET forum_id = ${staffForum} WHERE id = ${topic?.id ?? "0"}`;
+      expect((await read()).some((entry) => entry.memberId === member.id)).toBe(false);
+
+      await database.sql`UPDATE core.topics SET forum_id = ${publicForum} WHERE id = ${topic?.id ?? "0"}`;
+      expect((await read()).some((entry) => entry.memberId === member.id)).toBe(true);
+
+      await database.sql`UPDATE core.posts SET visibility = 'soft_deleted' WHERE id = ${post?.id ?? "0"}`;
+      expect((await read()).some((entry) => entry.memberId === member.id)).toBe(false);
     });
   }, 30_000);
 });

@@ -520,4 +520,39 @@ integrationDescribe("profile page (member-profiles)", () => {
       await close(harness);
     }
   }, 30_000);
+
+  test("older readable posts remain visible behind a run of private posts", async () => {
+    const harness = await seed();
+
+    try {
+      const staffForum = (await harness.database.sql`
+        SELECT id::text AS id FROM core.forums WHERE slug = 'staff-room'
+      `) as Array<{ id: string }>;
+      const forum = staffForum[0]?.id;
+
+      if (forum === undefined) {
+        throw new Error("Missing staff forum");
+      }
+
+      await createPost(harness.database, {
+        memberId: harness.memberId,
+        forumId: harness.publicForumId,
+        title: "Older readable profile post",
+      });
+
+      for (let index = 0; index < 20; index += 1) {
+        await createPost(harness.database, {
+          memberId: harness.memberId,
+          forumId: forum,
+          title: `Recent private profile post ${index}`,
+        });
+      }
+
+      const result = await render(harness, { session: null });
+      expect(htmlOf(result)).toContain("Older readable profile post");
+      expect(htmlOf(result)).not.toContain("Recent private profile post");
+    } finally {
+      await close(harness);
+    }
+  }, 30_000);
 });

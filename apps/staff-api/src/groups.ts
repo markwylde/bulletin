@@ -361,10 +361,16 @@ export async function deleteGroup(
           EXISTS (SELECT 1 FROM core.announcement_groups WHERE group_id = ${input.id})
             AS announcements,
           EXISTS (SELECT 1 FROM core.prefix_groups WHERE group_id = ${input.id})
-            AS prefixes
-      `) as Array<{ announcements: boolean; prefixes: boolean }>;
+            AS prefixes,
+          EXISTS (SELECT 1 FROM core.profile_field_groups WHERE group_id = ${input.id})
+            AS profile_fields
+      `) as Array<{ announcements: boolean; prefixes: boolean; profile_fields: boolean }>;
 
-      if (references?.announcements === true || references?.prefixes === true) {
+      if (
+        references?.announcements === true ||
+        references?.prefixes === true ||
+        references?.profile_fields === true
+      ) {
         return { ok: false, code: "group_in_use" } as const;
       }
 

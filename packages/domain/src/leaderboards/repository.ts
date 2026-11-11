@@ -62,6 +62,35 @@ export async function guestReadableForumIds(
  * Sums materialised per-forum rows over only the forums Guests may read now. A forum made
  * private stops contributing on the next request, without waiting for a recompute.
  */
+function startFor(period: LeaderboardPeriod, now: Date): Date | null {
+  if (period === "all") {
+    return null;
+  }
+
+  const start = new Date(now);
+
+  if (period === "today") {
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  if (period === "week") {
+    const day = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - day);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
+
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+/**
+ * Counts authoritative visible content in forums Guests may read now, rather than trusting a
+ * materialised forum id: a post moved into a private forum or deleted stops contributing on
+ * the next request.
+ */
 export async function readLeaderboard(
   sql: SQL,
   input: {
@@ -70,6 +99,7 @@ export async function readLeaderboard(
     readonly tree: ForumTree;
     readonly snapshot: PermissionSnapshot;
     readonly limit?: number;
+    readonly now?: Date;
   },
 ): Promise<readonly LeaderboardEntry[]> {
   const forums = await guestReadableForumIds(sql, input.tree, input.snapshot);
@@ -78,24 +108,50 @@ export async function readLeaderboard(
     return [];
   }
 
-  const rows = (await sql`
-    SELECT
-      e.member_id::text AS member_id,
-      m.display_name,
-      m.avatar_hash,
-      sum(e.value)::int AS value
-    FROM core.leaderboard_entries e
-    JOIN core.members m ON m.id = e.member_id
-    WHERE e.period = ${input.period}
-      AND e.metric = ${input.metric}
-      AND e.forum_id = ANY(${`{${forums.join(",")}}`}::bigint[])
-      AND m.display_name IS NOT NULL
-      AND m.state = 'active'
-    GROUP BY e.member_id, m.display_name, m.avatar_hash
-    HAVING sum(e.value) > 0
-    ORDER BY value DESC, lower(m.display_name), e.member_id
-    LIMIT ${Math.min(Math.max(input.limit ?? 10, 1), 50)}
-  `) as LeaderboardRow[];
+  const start = startFor(input.period, input.now ?? new Date());
+  const forumArray = `{${forums.join(",")}}`;
+  const limit = Math.min(Math.max(input.limit ?? 10, 1), 50);
+  const rows =
+    input.metric === "posts"
+      ? ((await sql`
+          SELECT
+            p.author_id::text AS member_id,
+            m.display_name,
+            m.avatar_hash,
+            count(*)::int AS value
+          FROM core.posts p
+          JOIN core.topics t ON t.id = p.topic_id
+          JOIN core.members m ON m.id = p.author_id
+          WHERE p.visibility = 'visible'
+            AND p.author_id IS NOT NULL
+            AND t.forum_id = ANY(${forumArray}::bigint[])
+            AND (${start}::timestamptz IS NULL OR p.created_at >= ${start})
+            AND m.display_name IS NOT NULL
+            AND m.state = 'active'
+          GROUP BY p.author_id, m.display_name, m.avatar_hash
+          ORDER BY value DESC, lower(m.display_name), p.author_id
+          LIMIT ${limit}
+        `) as LeaderboardRow[])
+      : ((await sql`
+          SELECT
+            p.author_id::text AS member_id,
+            m.display_name,
+            m.avatar_hash,
+            count(*)::int AS value
+          FROM core.post_reactions pr
+          JOIN core.posts p ON p.id = pr.post_id
+          JOIN core.topics t ON t.id = p.topic_id
+          JOIN core.members m ON m.id = p.author_id
+          WHERE p.visibility = 'visible'
+            AND p.author_id IS NOT NULL
+            AND t.forum_id = ANY(${forumArray}::bigint[])
+            AND (${start}::timestamptz IS NULL OR pr.created_at >= ${start})
+            AND m.display_name IS NOT NULL
+            AND m.state = 'active'
+          GROUP BY p.author_id, m.display_name, m.avatar_hash
+          ORDER BY value DESC, lower(m.display_name), p.author_id
+          LIMIT ${limit}
+        `) as LeaderboardRow[]);
 
   return rows.map((row) => ({
     memberId: row.member_id,
