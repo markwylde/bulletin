@@ -22,13 +22,21 @@ export interface MaintenanceResult {
   readonly closedPolls: number;
 }
 
+export interface MaintenanceOptions {
+  /** Test seam: the clock used to expire view buckets. */
+  readonly now?: Date;
+}
+
 /** The maintenance sweep itself, so tests and the scheduled job share one implementation. */
-export async function runMaintenance(sql: SQL): Promise<MaintenanceResult> {
+export async function runMaintenance(
+  sql: SQL,
+  options: MaintenanceOptions = {},
+): Promise<MaintenanceResult> {
   const [audits, drafts] = await Promise.all([forwardSystemAudits(sql), purgeExpiredDrafts(sql)]);
-  // Expire stale buffers before counting views, so a row past its dedupe window is never
-  // counted as a fresh visit.
-  const visits = await expireVisitBuffers(sql);
+  // Count views before expiring their buckets. A view late in a bucket (12:29:59) still
+  // belongs to it, and expiry must never drop a view that was not counted (reviewer finding).
   const topicViews = await flushTopicViews(sql);
+  const visits = await expireVisitBuffers(sql, options);
   const topicStubs = await purgeExpiredTopicStubs(sql);
   const closedPolls = await closePollTransitions(sql);
 

@@ -12,6 +12,7 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
+import { bumpPermVersion, forumActionMask } from "@bulletin/domain/permissions";
 import {
   firstUnreadForTopics,
   markBoardRead,
@@ -152,6 +153,81 @@ integrationDescribe("read tracking", () => {
           forumIds: [community, offTopic],
         }),
       ).toEqual([]);
+    });
+  }, 30_000);
+
+  test("a category reports an unread grandchild that the request omitted", async () => {
+    await withSeededDb(async (database) => {
+      const staffArea = await forumId(database, "staff-area");
+      const staffRoom = await forumId(database, "staff-room");
+      const moderationNotes = await forumId(database, "moderation-notes");
+      const community = await forumId(database, "community");
+      const admin = await memberSession(database, "admin");
+      const member = await memberSession(database, "super-mod");
+
+      await markBoardRead(database.sql, member.memberId);
+      await createQuestionTopic(database, admin.memberId, moderationNotes, "Grandchild activity");
+
+      // Only the category was requested; its grandchild still marks it unread.
+      expect(
+        await unreadForumIds(database.sql, {
+          memberId: member.memberId,
+          forumIds: [staffArea],
+        }),
+      ).toEqual([staffArea]);
+      expect(
+        await unreadForumIds(database.sql, {
+          memberId: member.memberId,
+          forumIds: [staffRoom],
+        }),
+      ).toEqual([staffRoom]);
+      expect(
+        await unreadForumIds(database.sql, {
+          memberId: member.memberId,
+          forumIds: [community],
+        }),
+      ).toEqual([]);
+    });
+  }, 30_000);
+
+  test("an unread descendant the member cannot read never marks its parent", async () => {
+    await withSeededDb(async (database) => {
+      const community = await forumId(database, "community");
+      const offTopic = await forumId(database, "off-topic");
+      const guidelines = await forumId(database, "guidelines");
+      const admin = await memberSession(database, "admin");
+      const member = await memberSession(database, "member-2");
+
+      await markBoardRead(database.sql, member.memberId);
+
+      // Give the members' mask a show-only, non-inheriting row on Off Topic.
+      await database.sql`
+        INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+        SELECT ${offTopic}, m.id, ${forumActionMask(["show"])}, false
+        FROM core.masks m
+        WHERE m.key = 'standard'
+        ON CONFLICT (forum_id, mask_id) DO UPDATE
+          SET actions = EXCLUDED.actions, inherits = EXCLUDED.inherits
+      `;
+      await bumpPermVersion(database.sql);
+
+      await createQuestionTopic(database, admin.memberId, offTopic, "Hidden child activity");
+
+      expect(
+        await unreadForumIds(database.sql, {
+          memberId: member.memberId,
+          forumIds: [community],
+        }),
+      ).toEqual([]);
+
+      await createQuestionTopic(database, admin.memberId, guidelines, "Readable activity");
+
+      expect(
+        await unreadForumIds(database.sql, {
+          memberId: member.memberId,
+          forumIds: [community],
+        }),
+      ).toEqual([community]);
     });
   }, 30_000);
 

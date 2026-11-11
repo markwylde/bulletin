@@ -80,6 +80,33 @@ integrationDescribe("personal overlay", () => {
     });
   }, 120_000);
 
+  test("marks unread forums and categories on the board index", async () => {
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "member-1");
+      await waitForSelector(view, '[data-overlay-ctx="board"]');
+      await waitForSelector(view, '[data-overlay-forum-unread][data-unread="true"]', 20_000);
+
+      // Category-contained forums carry their own slot, and the category header aggregates
+      // unread descendants even when only a grandchild has new posts.
+      const flagged = await view.evaluate<{
+        category: boolean;
+        child: boolean;
+      }>(`({
+        category: Boolean(document.querySelector('.bl-board-category__header [data-overlay-forum-unread][data-unread="true"]')),
+        child: Boolean(document.querySelector('[data-category] [data-forum-row] [data-overlay-forum-unread][data-unread="true"]'))
+      })`);
+
+      expect(flagged).toEqual({ category: true, child: true });
+
+      const html = await view.evaluate<string>(
+        'fetch("/", { credentials: "include" }).then((response) => response.text())',
+      );
+
+      expect(html).toContain('data-overlay-ctx="board"');
+      expect(html).not.toMatch(/data-overlay-forum-unread[^>]*data-unread="true"/);
+    });
+  }, 120_000);
+
   test("guests send the beacon and never see member unread markers", async () => {
     await withPage({ url: DEMO_URL, viewport: "mobile360" }, async (view) => {
       await waitForSelector(view, '[data-visitor="guest"]');

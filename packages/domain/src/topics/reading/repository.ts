@@ -1,6 +1,8 @@
 import type { SQL } from "bun";
 import { can } from "../../permissions/can.ts";
+import { loadPermissionSnapshot, type PermissionSnapshot } from "../../permissions/snapshot.ts";
 import type { ForumTree } from "../../permissions/tree.ts";
+import { loadForumTree } from "../../permissions/tree-store.ts";
 
 export const TOPIC_LIST_SORTS = ["last_post", "start_date", "title"] as const;
 export type TopicListSort = (typeof TOPIC_LIST_SORTS)[number];
@@ -1078,13 +1080,56 @@ export async function firstUnreadForTopics(
 
 /**
  * Forums (including ancestors) whose visible topics contain a post newer than the member's
- * effective watermark. Callers pass only forums the viewer may see.
+ * effective watermark. Unread topics are found in every descendant of the requested forums
+ * that the member can read, then aggregated onto the requested ancestors: a category must show
+ * unread when only a grandchild has new posts (reviewer finding), and a descendant the member
+ * cannot read never marks anything.
  */
 export async function unreadForumIds(
   sql: SQL,
-  input: { readonly memberId: string; readonly forumIds: readonly string[] },
+  input: {
+    readonly memberId: string;
+    readonly forumIds: readonly string[];
+    readonly sessionId?: string | null;
+    /** Reuse the caller's permission context instead of loading it again. */
+    readonly tree?: ForumTree;
+    readonly snapshot?: PermissionSnapshot;
+  },
 ): Promise<readonly string[]> {
   if (input.forumIds.length === 0) {
+    return [];
+  }
+
+  const tree = input.tree ?? (await loadForumTree(sql));
+  const snapshot =
+    input.snapshot ??
+    (await loadPermissionSnapshot(sql, input.memberId, {
+      tree,
+      sessionId: input.sessionId ?? null,
+    }));
+  const candidates = new Set<string>();
+
+  for (const forumId of input.forumIds) {
+    if (tree.get(forumId) === undefined) {
+      continue;
+    }
+
+    candidates.add(forumId);
+
+    for (const descendant of tree.descendants(forumId)) {
+      candidates.add(descendant.id);
+    }
+  }
+
+  const readable: string[] = [];
+
+  for (const forumId of candidates) {
+    if (await can(sql, input.memberId, "read", { forumId, tree, snapshot })) {
+      readable.push(forumId);
+    }
+  }
+
+  if (readable.length === 0) {
     return [];
   }
 
@@ -1102,7 +1147,7 @@ export async function unreadForumIds(
         JOIN core.forums marked ON marked.id = fr.forum_id
         WHERE fr.member_id = m.id AND topic_forum.path <@ marked.path
       ) fr ON true
-      WHERE t.forum_id = ANY(${`{${input.forumIds.join(",")}}`}::bigint[])
+      WHERE t.forum_id = ANY(${`{${readable.join(",")}}`}::bigint[])
         AND t.last_post_at IS NOT NULL
         AND (
           date_trunc('milliseconds', t.last_post_at) > GREATEST(
@@ -1134,7 +1179,6 @@ export async function unreadForumIds(
         FROM unread
         JOIN core.forums topic_forum ON topic_forum.id = unread.forum_id
         WHERE topic_forum.path <@ forum.path
-          AND unread.forum_id = ANY(${`{${input.forumIds.join(",")}}`}::bigint[])
       )
     ORDER BY forum.id::text
   `) as Array<{ id: string }>;

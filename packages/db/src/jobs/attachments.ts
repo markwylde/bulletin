@@ -273,11 +273,11 @@ export async function processAvatarDeletions(
 
   for (const row of pending) {
     try {
-      const current = await withAvatarObjectLock(sql, row.memberId, async () => {
-        const avatar = await readMemberAvatar(sql, row.memberId);
+      const current = await withAvatarObjectLock(sql, row.memberId, async (tx) => {
+        const avatar = await readMemberAvatar(tx, row.memberId);
 
         if (avatar?.hash === row.avatarHash) {
-          await finishAvatarDeletion(sql, row.memberId, row.avatarHash);
+          await finishAvatarDeletion(tx, row.memberId, row.avatarHash);
           return "kept" as const;
         }
 
@@ -286,7 +286,7 @@ export async function processAvatarDeletions(
             storage.delete(avatarKey(row.memberId, row.avatarHash, variant)),
           ),
         );
-        await finishAvatarDeletion(sql, row.memberId, row.avatarHash);
+        await finishAvatarDeletion(tx, row.memberId, row.avatarHash);
         return "deleted" as const;
       });
 

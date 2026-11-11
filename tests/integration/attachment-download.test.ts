@@ -10,6 +10,7 @@ import {
 import {
   flushAttachmentDownloadBuffer,
   readAttachmentById,
+  recordAttachmentDownloadBuffer,
   sha256Hex,
 } from "@bulletin/domain/attachments";
 import { FORUM_ACTION_BITS } from "@bulletin/domain/permissions";
@@ -17,6 +18,7 @@ import { createS3Handler } from "@bulletin/mock-s3/app";
 import { createMemoryStore } from "@bulletin/mock-s3/memory";
 import { createStorage, type StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import { attachmentDownloadResponse } from "../../apps/user-app/src/attachments/download.ts";
 import { createCdn } from "../../mocks/cdn/src/app.ts";
 
@@ -420,6 +422,41 @@ integrationDescribe("attachment downloads (ADR 0019)", () => {
 
       expect(await flushAttachmentDownloadBuffer(harness.database.sql)).toBe(1);
       expect((await readAttachmentById(harness.database.sql, visible.id))?.downloadCount).toBe(1);
+    });
+  }, 30_000);
+
+  test("the user_app role records guest downloads with the targetless buffer insert", async () => {
+    await withHarness("attach_dl_user_app", async (harness) => {
+      const admin = await memberId(harness.database, "admin");
+      const attachment = await createAttachment(harness.database, harness.storage, {
+        forumSlug: "off-topic",
+        authorId: admin,
+        filename: "role-count.pdf",
+        contentType: "application/pdf",
+        bytes: HTML,
+      });
+      const url = new URL(harness.database.url);
+      url.username = "user_app";
+      url.password = "";
+      const sql = new SQL(url.toString());
+
+      try {
+        await recordAttachmentDownloadBuffer(sql, {
+          attachmentId: attachment.id,
+          viewerKey: "guest:role",
+        });
+        await recordAttachmentDownloadBuffer(sql, {
+          attachmentId: attachment.id,
+          viewerKey: "guest:role",
+        });
+
+        const [buffered] = (await harness.database.sql`
+          SELECT count(*)::int AS count FROM core.attachment_download_buffer
+        `) as Array<{ count: number }>;
+        expect(buffered?.count).toBe(1);
+      } finally {
+        await sql.close();
+      }
     });
   }, 30_000);
 

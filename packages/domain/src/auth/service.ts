@@ -487,7 +487,13 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           memberId: session.memberId,
           topicIds: readableTopics,
         }),
-        unreadForumIds(options.sql, { memberId: session.memberId, forumIds: readableForums }),
+        unreadForumIds(options.sql, {
+          memberId: session.memberId,
+          forumIds: readableForums,
+          sessionId: session.id,
+          tree,
+          snapshot,
+        }),
         followedTargets(options.sql, session.memberId, followTargets),
       ]);
       const followed = new Set(follows);

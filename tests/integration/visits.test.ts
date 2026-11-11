@@ -5,6 +5,7 @@ import {
   readTagVersions,
   topicPagesTag,
 } from "@bulletin/cache";
+import { flushTopicViews } from "@bulletin/domain/topics";
 import {
   consumeRateBucket,
   expireVisitBuffers,
@@ -268,6 +269,7 @@ integrationDescribe("read-path visits", () => {
 
       await recordVisit(database.sql, { viewerKey: "guest:old", ctx: "topic:301", now: expired });
       await recordVisit(database.sql, { viewerKey: "guest:fresh", ctx: "topic:302", now });
+      await flushTopicViews(database.sql);
 
       expect(await expireVisitBuffers(database.sql, { now })).toEqual({
         presence: 1,
@@ -319,7 +321,8 @@ integrationDescribe("read-path visits", () => {
 
       expect(count?.count).toBe(1);
 
-      // Once the dedupe bucket ends the view row expires.
+      // Once the dedupe bucket ends the counted view row expires.
+      await flushTopicViews(database.sql);
       expect(
         await expireVisitBuffers(database.sql, { now: new Date("2026-11-10T12:31:00Z") }),
       ).toEqual({ presence: 0, views: 1 });

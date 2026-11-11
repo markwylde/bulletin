@@ -120,8 +120,8 @@ export async function avatarUploadResponse(
     return json({ code: "avatar_invalid" }, 400);
   }
 
-  const stored = await withAvatarObjectLock(sql, session.memberId, async () => {
-    const current = await readMemberAvatar(sql, session.memberId);
+  const stored = await withAvatarObjectLock(sql, session.memberId, async (tx) => {
+    const current = await readMemberAvatar(tx, session.memberId);
 
     for (const variant of AVATAR_VARIANTS) {
       await storage.put(
@@ -133,7 +133,7 @@ export async function avatarUploadResponse(
       );
     }
 
-    const outcome = await setMemberAvatar(sql, session.memberId, processed.hash);
+    const outcome = await setMemberAvatar(tx, session.memberId, processed.hash);
 
     if (outcome !== "ok") {
       await deleteAvatarObjects(storage, session.memberId, processed.hash);
@@ -163,14 +163,14 @@ export async function avatarRemoveResponse(
   storage: StorageClient,
   session: Session,
 ): Promise<Response> {
-  const removed = await withAvatarObjectLock(sql, session.memberId, async () => {
-    const current = await readMemberAvatar(sql, session.memberId);
+  const removed = await withAvatarObjectLock(sql, session.memberId, async (tx) => {
+    const current = await readMemberAvatar(tx, session.memberId);
 
     if (current === null) {
       return false;
     }
 
-    await clearMemberAvatar(sql, session.memberId);
+    await clearMemberAvatar(tx, session.memberId);
     await deleteAvatarObjects(storage, session.memberId, current.hash);
 
     return true;

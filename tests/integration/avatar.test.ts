@@ -13,13 +13,19 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
-import { clearMemberAvatar, readMemberAvatar, setMemberAvatar } from "@bulletin/domain/member";
+import {
+  clearMemberAvatar,
+  readMemberAvatar,
+  setMemberAvatar,
+  withAvatarObjectLock,
+} from "@bulletin/domain/member";
 import { startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { createS3Handler } from "@bulletin/mock-s3/app";
 import { createMemoryStore } from "@bulletin/mock-s3/memory";
 import { createStorage, type StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import sharp from "sharp";
 import { removeMemberAvatarForStaff } from "../../apps/staff-api/src/members.ts";
 import { avatarRemoveResponse, avatarUploadResponse } from "../../apps/user-api/src/avatars.ts";
@@ -524,6 +530,33 @@ integrationDescribe("avatars", () => {
       // An upload that passed its early policy check still cannot commit after the block.
       expect(await setMemberAvatar(database.sql, member, "d".repeat(64))).toBe("blocked");
       expect((await readMemberAvatar(database.sql, member))?.hash).toBeNull();
+    });
+  }, 30_000);
+
+  test("protected avatar queries run on the reserved connection with a one-slot pool", async () => {
+    await withHarness("avatar_pool", async (harness) => {
+      const first = await memberId(harness.database, "member-1");
+      const second = await memberId(harness.database, "member-2");
+      const small = new SQL(harness.database.url, { max: 1, connectionTimeout: 2 });
+
+      try {
+        // Two concurrent lock holders share one pool slot: each must query through its own
+        // reserved connection or the holder waits for a connection it is itself occupying.
+        const results = await Promise.all([
+          withAvatarObjectLock(small, first, async (tx) => {
+            const avatar = await readMemberAvatar(tx, first);
+            return avatar !== null;
+          }),
+          withAvatarObjectLock(small, second, async (tx) => {
+            const avatar = await readMemberAvatar(tx, second);
+            return avatar !== null;
+          }),
+        ]);
+
+        expect(results).toEqual([true, true]);
+      } finally {
+        await small.close();
+      }
     });
   }, 30_000);
 

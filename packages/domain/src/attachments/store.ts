@@ -956,7 +956,7 @@ export async function recordAttachmentDownloadBuffer(
   await sql`
     INSERT INTO core.attachment_download_buffer (attachment_id, viewer_key, bucket)
     VALUES (${input.attachmentId}, ${input.viewerKey}, ${bucket})
-    ON CONFLICT (attachment_id, viewer_key, bucket) DO NOTHING
+    ON CONFLICT DO NOTHING
   `;
 }
 

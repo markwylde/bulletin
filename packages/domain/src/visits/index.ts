@@ -42,12 +42,18 @@ const GUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 const CONTEXT = /^(topic|forum):([1-9]\d{0,18})$/;
 
 export interface VisitContext {
-  readonly kind: "topic" | "forum";
+  readonly kind: "topic" | "forum" | "board";
   readonly id: string;
 }
 
 export function parseVisitContext(ctx: string): VisitContext | null {
-  const match = CONTEXT.exec(ctx.trim());
+  const trimmed = ctx.trim();
+
+  if (trimmed === "board") {
+    return { kind: "board", id: "0" };
+  }
+
+  const match = CONTEXT.exec(trimmed);
 
   if (match === null) {
     return null;
@@ -255,9 +261,11 @@ export async function expireVisitBuffers(
     WHERE last_seen < ${presenceCutoff}
     RETURNING 1
   `) as unknown[];
+  // Only counted rows may go: a row the flush has not seen is kept for the next sweep, so a
+  // view late in its bucket is never dropped before it reaches `view_count`.
   const views = (await sql`
     DELETE FROM core.topic_view_buffer
-    WHERE bucket <= ${bucketCutoff}
+    WHERE bucket <= ${bucketCutoff} AND flushed_at IS NOT NULL
     RETURNING 1
   `) as unknown[];
 

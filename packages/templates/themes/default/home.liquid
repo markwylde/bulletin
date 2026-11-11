@@ -1,5 +1,5 @@
 {{ header }}
-<main id="main" class="bl-main" data-online hidden data-board-index>
+<main id="main" class="bl-main" data-online hidden data-board-index data-overlay-ctx="board">
   <section class="bl-card">
     <h1 class="bl-page__title" data-i18n="user.placeholder.title" data-board-name>{{ boardName }}</h1>
     <p class="bl-muted" data-i18n="user.placeholder.body" data-board-description>{{ boardDescription }}</p>
@@ -117,6 +117,7 @@
               <div class="bl-forum-row__stats">
                 <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
                 <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
+                <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ forum.id }}">—</span>
                 {% if forum.lastPost %}
                   <span class="bl-muted" data-last-post="{{ forum.id }}">
                     {% if forum.lastPost.memberName %}

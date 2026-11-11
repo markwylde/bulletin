@@ -37,8 +37,8 @@ export async function removeMemberAvatarForStaff(
   storage: StorageClient | undefined,
   input: StaffAvatarRemovalInput,
 ): Promise<StaffAvatarRemoval> {
-  const outcome = await withAvatarObjectLock(sql, input.memberId, async () => {
-    const removed = await removeAvatarForStaff(sql, input);
+  const outcome = await withAvatarObjectLock(sql, input.memberId, async (tx) => {
+    const removed = await removeAvatarForStaff(tx, input);
 
     if (removed.ok) {
       await deleteAvatarObjects(storage, input.memberId, removed.previousHash);

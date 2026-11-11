@@ -11,19 +11,21 @@ const AVATAR_OBJECT_LOCK = "bulletin.avatar_objects";
  * member. Without it a retried deletion can read "hash no longer current", a re-upload of that
  * same hash then writes and publishes its three objects, and the worker deletes them. The lock
  * is a session advisory lock on a reserved connection (ADR 0003: Postgres is the only
- * stateful dependency), held across the object I/O and the member row update.
+ * stateful dependency), held across the object I/O and the member row update. The callback
+ * runs on that reserved connection: querying through the pool while holding a connection can
+ * occupy every pool slot and deadlock under concurrent uploads.
  */
 export async function withAvatarObjectLock<T>(
   sql: SQL,
   memberId: string,
-  run: () => Promise<T>,
+  run: (tx: SQL) => Promise<T>,
 ): Promise<T> {
   const reserved = await sql.reserve();
   const key = `${AVATAR_OBJECT_LOCK}:${memberId}`;
 
   try {
     await reserved`SELECT pg_advisory_lock(hashtext(${key}))`;
-    return await run();
+    return await run(reserved);
   } finally {
     try {
       await reserved`SELECT pg_advisory_unlock(hashtext(${key}))`;
