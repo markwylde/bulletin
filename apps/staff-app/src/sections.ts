@@ -4,6 +4,7 @@ export type StaffNavGroup = "overview" | "configuration";
 
 export type StaffIcon =
   | "dashboard"
+  | "events"
   | "flags"
   | "settings"
   | "strings"
@@ -41,6 +42,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     permission: "acp.log",
     icon: "log",
     labelKey: "staff.nav.adminLog",
+  },
+  {
+    id: "deadLetters",
+    path: "/system/dead-letters",
+    navGroup: "overview",
+    permission: "acp.system",
+    icon: "events",
+    labelKey: "staff.nav.deadLetters",
   },
   {
     id: "boardSettings",

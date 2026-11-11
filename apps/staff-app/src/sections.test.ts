@@ -45,4 +45,13 @@ describe("staff section registry", () => {
       "flags",
     );
   });
+
+  test("shows dead letters only with acp.system", () => {
+    expect(visibleSections(["acp.access", "acp.log"]).map((section) => section.id)).not.toContain(
+      "deadLetters",
+    );
+    expect(visibleSections(["acp.access", "acp.system"]).map((section) => section.id)).toContain(
+      "deadLetters",
+    );
+  });
 });

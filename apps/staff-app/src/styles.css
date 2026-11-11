@@ -389,6 +389,21 @@ a:focus-visible {
   font-size: 0.82rem;
 }
 
+.dead-letter-queue,
+.dead-letter-payload {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.dead-letter-error {
+  display: block;
+  max-width: 34rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+}
+
 .health-status {
   margin: 0 0 0.5rem;
   font-weight: 700;

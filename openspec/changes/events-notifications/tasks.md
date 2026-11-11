@@ -4,7 +4,7 @@
 
 - [x] 1.1 Add the notification, follow and digest event types to the catalog (the outbox, relay and `emit()` exist from `foundation-dev-environment`)
 - [x] 1.2 Dead-letter list and retry in the staff app, with tests for the retry scenario and permission denial
-- [ ] 1.3 Add the dead-letter list and retry in the staff app, with integration tests and permission denial
+- [x] 1.3 Add the dead-letter list and retry in the staff app, with integration tests and permission denial
 - [ ] 1.4 Subscribe notifications to the events `topics-posts` and `groups-permissions` already emit (`post.created`, `topic.created`, `member.promoted`), with tests asserting payloads carry IDs only and that a promotion notifies the member
 
 ## 2. Follows

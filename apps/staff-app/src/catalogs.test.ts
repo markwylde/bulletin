@@ -59,6 +59,10 @@ const REQUIRED_KEYS = [
   "ui.table.empty",
   "ui.dialog.confirm",
   "ui.toast.dismiss",
+  "staff.nav.deadLetters",
+  "staff.deadLetters.title",
+  "staff.deadLetters.intro",
+  "staff.deadLetters.retry",
 ] as const;
 
 describe("staff catalogs", () => {

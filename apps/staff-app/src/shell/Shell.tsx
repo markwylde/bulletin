@@ -29,6 +29,12 @@ function SectionIcon({ icon }: { readonly icon: StaffIcon }) {
           <path d="M5 3h2v18H5zM8 4h10l-2 4 2 4H8z" />
         </svg>
       );
+    case "events":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M13 2 4 14h6l-1 8 9-12h-6z" />
+        </svg>
+      );
     case "settings":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
