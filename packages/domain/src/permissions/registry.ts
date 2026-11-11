@@ -122,6 +122,15 @@ const PERMISSION_DEFINITIONS = [
     labelKey: "staff.groups.permission.acpMembersGroups",
   },
   {
+    key: "members.edit",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "members",
+    labelKey: "staff.groups.permission.membersEdit",
+  },
+  {
     key: "acp.groups",
     kind: "permission",
     type: "bool",

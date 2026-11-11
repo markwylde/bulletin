@@ -18,6 +18,7 @@ import {
   attachmentFinaliseResponse,
   attachmentRequestResponse,
 } from "./attachments.ts";
+import { avatarRemoveResponse, avatarUploadResponse } from "./avatars.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { draftsRoute } from "./drafts.ts";
@@ -326,6 +327,30 @@ await startService({
         }
 
         return attachmentDeleteResponse(sql, session, attachmentDeleteMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/avatar") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return avatarUploadResponse(sql, storage, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/avatar/remove") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return avatarRemoveResponse(sql, storage, session);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

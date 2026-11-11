@@ -1,6 +1,8 @@
 import { readMember, readNameHistory } from "@bulletin/domain/member";
 import type { Locale, Translator } from "@bulletin/i18n";
+import { safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
+import { avatarUrl, initialsSvg } from "../avatar.ts";
 import type { BreadcrumbItem, LanguageSwitcherView } from "../theme/render.ts";
 import { languageSwitcherView } from "../theme/render.ts";
 
@@ -17,6 +19,14 @@ export interface AccountPageData {
   readonly viewModel: object;
 }
 
+export interface AvatarLabels {
+  readonly invalid: string;
+  readonly tooLarge: string;
+  readonly blocked: string;
+  readonly notAllowed: string;
+  readonly failed: string;
+}
+
 export interface AccountLabels {
   readonly saved: string;
   readonly saveFailed: string;
@@ -30,6 +40,17 @@ export interface AccountLabels {
   readonly lastSeen: string;
   readonly unknownBrowser: string;
   readonly browsers: Readonly<Record<string, string>>;
+}
+
+/** Translated strings the avatar crop script needs. */
+export function avatarLabels(translate: Translator): AvatarLabels {
+  return {
+    invalid: translate("account.avatar.invalid"),
+    tooLarge: translate("account.avatar.tooLarge"),
+    blocked: translate("account.avatar.blocked"),
+    notAllowed: translate("account.avatar.notAllowed"),
+    failed: translate("account.avatar.failed"),
+  };
 }
 
 /** Translated strings the account page's browser script needs. */
@@ -76,6 +97,12 @@ export async function buildAccountPage(input: AccountPageInput): Promise<Account
     breadcrumbs: [{ label: title, href: null }],
     viewModel: {
       displayName: member.displayName ?? "",
+      avatar: {
+        url: member.avatarHash === null ? null : avatarUrl(input.memberId, member.avatarHash, "lg"),
+        initialsHtml: safeHtml(
+          initialsSvg(input.memberId, member.displayName ?? input.translate("member.deletedName")),
+        ),
+      },
       history: history.map((entry) => ({
         oldName: entry.oldName,
         newName: entry.newName,

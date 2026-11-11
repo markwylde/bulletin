@@ -5,6 +5,7 @@ import { NAME_CHANGE_INTERVAL_MS } from "./names.ts";
 export interface MemberRecord {
   readonly displayName: string | null;
   readonly locale: Locale | null;
+  readonly avatarHash: string | null;
 }
 
 export interface NameHistoryEntry {
@@ -35,10 +36,14 @@ function isUniqueViolation(error: unknown): boolean {
 
 export async function readMember(sql: SQL, memberId: string): Promise<MemberRecord | null> {
   const [row] = (await sql`
-    SELECT display_name, locale
+    SELECT display_name, locale, avatar_hash
     FROM core.members
     WHERE id = ${memberId}
-  `) as Array<{ display_name: string | null; locale: string | null }>;
+  `) as Array<{
+    display_name: string | null;
+    locale: string | null;
+    avatar_hash: string | null;
+  }>;
 
   if (row === undefined) {
     return null;
@@ -47,6 +52,7 @@ export async function readMember(sql: SQL, memberId: string): Promise<MemberReco
   return {
     displayName: row.display_name,
     locale: isLocale(row.locale) ? row.locale : null,
+    avatarHash: row.avatar_hash,
   };
 }
 

@@ -14,6 +14,29 @@
     </form>
   </section>
 
+  <section class="bl-card" data-account-avatar>
+    <h2 class="bl-card__title">{% t "account.avatar.title" %}</h2>
+    <p class="bl-muted">{% t "account.avatar.body" %}</p>
+    <div class="bl-avatar-editor" data-avatar-editor>
+      <div class="bl-avatar-editor__current" data-avatar-current>
+        {% if avatar.url %}
+          <img class="bl-avatar bl-avatar--image" data-account-avatar-img src="{{ avatar.url }}" alt="" width="64" height="64" loading="lazy">
+        {% else %}
+          {{ avatar.initialsHtml }}
+        {% endif %}
+      </div>
+      <input class="bl-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" data-avatar-file />
+      <canvas class="bl-avatar-editor__canvas" width="256" height="256" data-avatar-canvas hidden></canvas>
+      <label class="bl-label" for="avatar-zoom">{% t "account.avatar.zoom" %}</label>
+      <input id="avatar-zoom" type="range" min="1" max="3" step="0.05" value="1" data-avatar-zoom disabled />
+      <div class="bl-avatar-editor__actions">
+        <button class="bl-button" type="button" data-avatar-save disabled>{% t "account.avatar.save" %}</button>
+        <button class="bl-button bl-button--quiet" type="button" data-avatar-remove>{% t "account.avatar.remove" %}</button>
+      </div>
+      <p class="bl-error-text" data-avatar-error hidden></p>
+    </div>
+  </section>
+
   <section class="bl-card" data-account-history>
     <h2 class="bl-card__title">{% t "account.history.title" %}</h2>
     {% if history.size > 0 %}

@@ -248,6 +248,7 @@
   "staff.groups.permission.acpStrings": "Gestionar textos",
   "staff.groups.permission.acpSystem": "Herramientas del sistema",
   "staff.groups.permission.boardViewOffline": "Ver el foro mientras está desconectado",
+  "staff.groups.permission.membersEdit": "Editar perfiles y avatares de miembros",
   "staff.groups.permission.membersViewNameHistory": "Ver historial de nombres",
   "staff.groups.permission.sessionsRevoke": "Revocar sesiones",
   "staff.groups.power.approve": "Aprobar",

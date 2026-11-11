@@ -1,6 +1,6 @@
 ---
 import { createServerT } from "@bulletin/i18n";
-import { accountLabels, buildAccountPage } from "../account/page.ts";
+import { accountLabels, avatarLabels, buildAccountPage } from "../account/page.ts";
 import { USER_CATALOGS } from "../catalogs.ts";
 import { accountContract } from "../contracts.ts";
 import { readSql } from "../db.ts";
@@ -67,6 +67,7 @@ const rendered = await renderCachedPage({
 // A personal, uncached page (ADR 0006).
 Astro.response.headers.set("cache-control", "private, no-store");
 const labels = accountLabels(translate);
+const avatarMessages = avatarLabels(translate);
 ---
 
 <ThemeLayout
@@ -77,5 +78,7 @@ const labels = accountLabels(translate);
   visitor="member"
 >
   <script type="application/json" id="account-labels" set:html={JSON.stringify(labels)}></script>
+  <script type="application/json" id="account-avatar-labels" set:html={JSON.stringify(avatarMessages)}></script>
   <script>import "../account/client.ts";</script>
+  <script>import "../account/avatar-client.ts";</script>
 </ThemeLayout>

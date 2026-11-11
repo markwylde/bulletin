@@ -248,6 +248,7 @@
   "staff.groups.permission.acpStrings": "Manage strings",
   "staff.groups.permission.acpSystem": "System tools",
   "staff.groups.permission.boardViewOffline": "View the board while offline",
+  "staff.groups.permission.membersEdit": "Edit member profiles and avatars",
   "staff.groups.permission.membersViewNameHistory": "View display-name history",
   "staff.groups.permission.sessionsRevoke": "Revoke sessions",
   "staff.groups.power.approve": "Approve",

@@ -11,6 +11,7 @@ import {
   isTextAttachmentType,
   isVerifiableText,
   SVG_ATTACHMENT_TYPE,
+  sha256Hex,
 } from "./rules.ts";
 
 /** A rejection the pipeline understands; the message is a stable code, never user-facing. */
@@ -212,4 +213,46 @@ export async function processAttachmentBytes(
   }
 
   throw new AttachmentProcessingError("type_not_allowed");
+}
+
+export const AVATAR_SIZES = { lg: 512, md: 128, sm: 48 } as const;
+
+export interface ProcessedAvatarImage {
+  /** Content hash shared by every size; a new avatar gets a new URL (ADR 0019). */
+  readonly hash: string;
+  readonly sizes: Readonly<Record<keyof typeof AVATAR_SIZES, Uint8Array>>;
+}
+
+/**
+ * Crops the uploaded image to a centred square and re-encodes it at three display sizes,
+ * stripping every metadata block. Avatars are public, so the bytes are validated as a real
+ * raster image before anything is stored.
+ */
+export async function processAvatarImage(bytes: Uint8Array): Promise<ProcessedAvatarImage> {
+  try {
+    const image = sharpImage(bytes);
+    await assertRaster(image);
+    const sizes = {} as Record<keyof typeof AVATAR_SIZES, Uint8Array>;
+
+    for (const [variant, edge] of Object.entries(AVATAR_SIZES) as Array<
+      [keyof typeof AVATAR_SIZES, number]
+    >) {
+      const output = await image
+        .clone()
+        .rotate()
+        .resize({ width: edge, height: edge, fit: "cover", position: "centre" })
+        .webp({ quality: 82, effort: 4 })
+        .toBuffer();
+
+      sizes[variant] = new Uint8Array(output);
+    }
+
+    return { hash: sha256Hex(sizes.lg), sizes };
+  } catch (error) {
+    if (error instanceof AttachmentProcessingError) {
+      throw error;
+    }
+
+    throw new AttachmentProcessingError("image_invalid");
+  }
 }

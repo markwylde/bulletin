@@ -88,6 +88,7 @@ export interface MemberCardRecord {
   readonly postCount: number;
   readonly groupTitle: string | null;
   readonly joinedAt: Date;
+  readonly avatarHash: string | null;
 }
 
 export interface QuoteSourceRecord {
@@ -724,7 +725,8 @@ export async function loadMemberCards(
 
   const rows = (await sql`
     SELECT
-      m.id, m.display_name, m.post_count, m.joined_at, g.title AS group_title
+      m.id, m.display_name, m.post_count, m.joined_at, m.avatar_hash,
+      g.title AS group_title
     FROM core.members m
     LEFT JOIN core.member_groups mg ON mg.member_id = m.id AND mg.is_primary
     LEFT JOIN core.groups g ON g.id = mg.group_id
@@ -735,6 +737,7 @@ export async function loadMemberCards(
     post_count: number;
     joined_at: Date;
     group_title: string | null;
+    avatar_hash: string | null;
   }>;
 
   return new Map(
@@ -746,6 +749,7 @@ export async function loadMemberCards(
         postCount: row.post_count,
         groupTitle: row.group_title,
         joinedAt: row.joined_at,
+        avatarHash: row.avatar_hash,
       },
     ]),
   );

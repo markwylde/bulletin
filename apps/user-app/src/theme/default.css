@@ -837,15 +837,61 @@ fieldset.bl-editor__modes {
 }
 
 .bl-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: inline-block;
+  flex: 0 0 auto;
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 999px;
+  vertical-align: middle;
+}
+
+.bl-avatar__bg {
+  fill: hsl(var(--bl-avatar-hue, 220) 55% 88%);
+}
+
+.bl-avatar__text {
+  fill: hsl(var(--bl-avatar-hue, 220) 45% 30%);
+}
+
+.bl-avatar--image {
+  object-fit: cover;
+  background: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  .bl-avatar__bg {
+    fill: hsl(var(--bl-avatar-hue, 220) 30% 24%);
+  }
+
+  .bl-avatar__text {
+    fill: hsl(var(--bl-avatar-hue, 220) 55% 82%);
+  }
+}
+
+.bl-avatar-editor {
+  display: grid;
+  gap: var(--bl-space-small);
+  justify-items: start;
+  min-width: 0;
+}
+
+.bl-avatar-editor > *,
+.bl-avatar-editor input {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.bl-avatar-editor__canvas {
+  width: min(100%, 256px);
+  height: auto;
+  border-radius: var(--bl-radius);
   background: var(--bl-accent-soft);
-  color: var(--bl-accent);
-  font-weight: 700;
+}
+
+.bl-avatar-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bl-space-small);
 }
 
 .bl-author-card__details {

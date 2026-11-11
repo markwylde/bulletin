@@ -25,11 +25,11 @@
 
 ## 5. Avatars
 
-- [ ] 5.1 Avatar upload, crop UI and processing to 3 sizes with group limits; tests for the upload and group-disallowed scenarios; E2E crop at 360
-- [ ] 5.2 Add the uploaded avatar to the `member:{id}:card` fragment, bumping `member:{id}` on avatar change or removal; invalidation test that post blocks are not re-rendered
-- [ ] 5.3 Initials fallback in the default theme templates, with a unit test for stable colour
-- [ ] 5.4 Staff avatar removal with block period, logged; integration test with permission denial
-- [ ] 5.5 Unfurl image proxy (fetch through the SSRF-safe client, re-encode with sharp, store under `unfurl/<hash>`, serve from the files origin) with a test for the preview-card image scenario
+- [x] 5.1 Avatar upload, crop UI and processing to 3 sizes with group limits; tests for the upload and group-disallowed scenarios; E2E crop at 360
+- [x] 5.2 Add the uploaded avatar to the `member:{id}:card` fragment, bumping `member:{id}` on avatar change or removal; invalidation test that post blocks are not re-rendered
+- [x] 5.3 Initials fallback in the default theme templates, with a unit test for stable colour
+- [x] 5.4 Staff avatar removal with block period, logged; integration test with permission denial
+- [x] 5.5 Unfurl image proxy (fetch through the SSRF-safe client, re-encode with sharp, store under `unfurl/<hash>`, serve from the files origin) with a test for the preview-card image scenario
 
 ## 6. Settings, strings and seed
 

@@ -8,6 +8,7 @@ import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
+import { avatarUrl, initialsSvg } from "../avatar.ts";
 
 /** The 60 s view-count fragment, independent of the topic's content fragments (ADR 0006). */
 export async function renderTopicViewsFragment(
@@ -33,29 +34,24 @@ export async function renderTopicViewsFragment(
   return rendered.html;
 }
 
-function initials(name: string): string {
-  const parts = name
-    .trim()
-    .split(/\s+/)
-    .filter((part) => part !== "")
-    .slice(0, 2);
-
-  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "?";
-}
-
 function cardHtml(card: MemberCardRecord, translate: Translator): string {
   const name = card.displayName ?? translate("member.deletedName");
   const group = card.groupTitle ?? translate("member.noGroup");
   const profile =
     card.displayName === null ? null : canonicalUrl("profile", card.id, card.displayName);
 
+  const avatar =
+    card.avatarHash === null
+      ? initialsSvg(card.id, name)
+      : `<img class="bl-avatar bl-avatar--image" src="${escapeHtml(
+          avatarUrl(card.id, card.avatarHash, "sm"),
+        )}" alt="" width="40" height="40" loading="lazy" data-member-avatar>`;
+
   return [
     '<span class="bl-author-card" data-member-card="',
     card.id,
     '">',
-    '<span class="bl-avatar" aria-hidden="true">',
-    escapeHtml(initials(name)),
-    "</span>",
+    avatar,
     '<span class="bl-author-card__details">',
     profile === null
       ? `<span class="bl-author-card__name">${escapeHtml(name)}</span>`

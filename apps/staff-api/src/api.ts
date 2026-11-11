@@ -52,6 +52,7 @@ import {
   saveMask,
   saveMatrixCell,
 } from "./masks.ts";
+import { removeMemberAvatarForStaff } from "./members.ts";
 import {
   deleteModerator,
   listModerators,
@@ -711,6 +712,43 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/dashboard/members",
     permission: "acp.members",
     handler: async ({ sql }) => json(await memberStats(sql)),
+  },
+  {
+    id: "members.avatar.remove",
+    method: "POST",
+    path: "/api/staff/members/avatar",
+    permission: "acp.members",
+    handler: async ({ request, sql, session, storage }) => {
+      const body: unknown = await request.json().catch(() => null);
+      const record =
+        typeof body === "object" && body !== null && !Array.isArray(body)
+          ? (body as Record<string, unknown>)
+          : {};
+      const memberId = typeof record.memberId === "string" ? record.memberId : "";
+      const blockDays =
+        typeof record.blockDays === "number" &&
+        Number.isInteger(record.blockDays) &&
+        record.blockDays >= 0 &&
+        record.blockDays <= 3_650
+          ? record.blockDays
+          : 0;
+
+      if (!/^\d+$/.test(memberId)) {
+        return json({ code: "invalid_request" }, 400);
+      }
+
+      const outcome = await removeMemberAvatarForStaff(sql, storage, {
+        actorId: session.memberId,
+        memberId,
+        blockDays,
+      });
+
+      if (!outcome.ok) {
+        return json({ code: outcome.code }, outcome.code === "forbidden" ? 403 : 404);
+      }
+
+      return json({ ok: true });
+    },
   },
   {
     id: "dashboard.topics",
