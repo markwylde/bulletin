@@ -244,10 +244,6 @@ export async function vote(
     return { ok: false, code: "already_voted" };
   }
 
-  if (!validSelections(poll, input.selections)) {
-    return { ok: false, code: "invalid_choice" };
-  }
-
   try {
     const result = await runMutation({
       sql,
@@ -255,14 +251,14 @@ export async function vote(
       input: { pollId: poll.id },
       apply: async (tx) => {
         await tx`SELECT id FROM core.poll_votes WHERE poll_id = ${poll.id} FOR UPDATE`;
-        const [closed] = (await tx`
+        const [locked] = (await tx`
           SELECT closes_at FROM core.polls WHERE id = ${poll.id} FOR UPDATE
         `) as Array<{ closes_at: Date | null }>;
 
         if (
-          closed?.closes_at !== null &&
-          closed?.closes_at !== undefined &&
-          closed.closes_at.getTime() <= now.getTime()
+          locked?.closes_at !== null &&
+          locked?.closes_at !== undefined &&
+          locked.closes_at.getTime() <= now.getTime()
         ) {
           reject("closed");
         }
@@ -275,8 +271,20 @@ export async function vote(
           reject("already_voted");
         }
 
-        await insertPollVote(tx, poll.id, input.actorId, input.selections);
-        return { pollId: poll.id, voterCount: poll.totalVoters + 1 };
+        // A concurrent edit may have changed questions, choices or single/multiple since the
+        // pre-lock read: only the locked poll's rules may validate the vote.
+        const current = await readPoll(tx, poll.id);
+
+        if (current === null) {
+          reject("not_found");
+        }
+
+        if (!validSelections(current, input.selections)) {
+          reject("invalid_choice");
+        }
+
+        await insertPollVote(tx, current.id, input.actorId, input.selections);
+        return { pollId: current.id, voterCount: current.totalVoters + 1 };
       },
     });
 

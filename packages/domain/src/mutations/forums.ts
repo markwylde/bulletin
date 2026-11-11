@@ -1,9 +1,14 @@
-import { forumAnnouncementsTag, forumTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
+import { forumAnnouncementsTag, forumTag, GLOBAL_CACHE_TAGS, memberTag } from "@bulletin/cache";
 import type { Mutation } from "./index.ts";
 
 export interface ForumTreeChange {
   /** The moved forum, its old and new ancestors and its whole subtree. */
   readonly affectedForumIds: readonly string[];
+}
+
+/** Work only known inside the transaction, such as the authors losing post counts. */
+export interface ForumTreeChangeResult {
+  readonly affectedMemberIds?: readonly string[];
 }
 
 export interface ForumSettingsChange {
@@ -64,9 +69,14 @@ function uniqueTags(tags: readonly string[]): readonly string[] {
  * sub-forum links point at it (ADR 0006). The caller passes the whole affected set because
  * only it knows the old and new parent chains.
  */
-export const forumTreeMutation: Mutation<ForumTreeChange, void> = {
+export const forumTreeMutation: Mutation<ForumTreeChange, ForumTreeChangeResult> = {
   name: "forum.tree.move",
-  tags: (input) => uniqueTags([GLOBAL_CACHE_TAGS.board, ...input.affectedForumIds.map(forumTag)]),
+  tags: (input, result) =>
+    uniqueTags([
+      GLOBAL_CACHE_TAGS.board,
+      ...input.affectedForumIds.map(forumTag),
+      ...(result.affectedMemberIds ?? []).map(memberTag),
+    ]),
 };
 
 /** A settings/name/rules save changes the index, the forum and ancestor/descendant breadcrumbs. */

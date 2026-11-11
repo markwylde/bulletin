@@ -196,8 +196,21 @@ document.addEventListener("submit", (event) => {
 });
 
 if (document.documentElement.dataset.visitor !== "member") {
+  // Guests keep the shared ballot (questions and choices) so they can read the poll, but the
+  // controls cannot vote: the API rejects unauthenticated votes and the member overlay reveals
+  // results after a member votes (ADR 0006).
   for (const form of document.querySelectorAll<HTMLFormElement>("[data-poll-form]")) {
-    form.hidden = true;
+    form.dataset.pollGuest = "true";
+
+    for (const input of form.querySelectorAll<HTMLInputElement>("input[data-poll-choice]")) {
+      input.disabled = true;
+    }
+
+    const submit = form.querySelector<HTMLButtonElement>("[data-poll-submit]");
+
+    if (submit !== null) {
+      submit.disabled = true;
+    }
   }
 }
 

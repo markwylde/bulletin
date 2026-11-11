@@ -30,6 +30,7 @@ import { startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import type { SQL } from "bun";
 import { pollResultsResponse } from "../../apps/user-api/src/polls.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderPollFragment } from "../../apps/user-app/src/polls/fragment.ts";
@@ -148,6 +149,36 @@ function selectionsFor(pollRecord: NonNullable<Awaited<ReturnType<typeof readPol
     questionId: question.id,
     choiceIds: [question.choices[0]?.id ?? ""],
   }));
+}
+
+/**
+ * Runs `edit` right after the vote's unlocked poll read, so the vote still holds the stale
+ * pre-lock rules when it acquires the row lock.
+ */
+function withEditAfterPollRead(sql: SQL, edit: () => Promise<unknown>): SQL {
+  let fired = false;
+
+  return new Proxy(sql, {
+    apply(target, _thisArg, args) {
+      const result = Reflect.apply(target, sql, args) as Promise<unknown>;
+      const query = Array.isArray(args[0]) ? (args[0] as readonly string[]).join("?") : "";
+
+      if (!fired && query.includes("FROM core.polls p")) {
+        fired = true;
+
+        return result.then(async (rows) => {
+          await edit();
+          return rows;
+        });
+      }
+
+      return result;
+    },
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as SQL;
 }
 
 integrationDescribe("polls", () => {
@@ -590,6 +621,90 @@ integrationDescribe("polls", () => {
           (SELECT count(*)::int FROM core.poll_questions WHERE poll_id = ${created.pollId}) AS questions
       `) as Array<{ votes: number; questions: number }>;
       expect(votes).toEqual({ votes: 1, questions: 2 });
+    });
+  }, 30_000);
+
+  test("revalidates a vote against a poll edited while the vote waits for its lock", async () => {
+    await withSeededDb(async (database) => {
+      const created = await createPollTopic(
+        database,
+        poll({
+          questions: [
+            {
+              prompt: "Pick any format",
+              multiple: true,
+              choices: [{ label: "Novel" }, { label: "Short story" }, { label: "Poetry" }],
+            },
+            {
+              prompt: "Pick any theme",
+              multiple: true,
+              choices: [{ label: "History" }, { label: "Science" }],
+            },
+          ],
+        }),
+        "Interleaved poll",
+      );
+      const member = await memberSession(database, "member-1");
+      const moderator = await memberSession(database, "super-mod");
+      const stored = await readPollForTopic(database.sql, created.topicId);
+
+      if (stored === null || stored.questions[0] === undefined) {
+        throw new Error("Missing poll");
+      }
+
+      const first = stored.questions[0];
+      const chosen = first.choices.slice(0, 2).map((choice) => choice.id);
+
+      if (chosen.length !== 2) {
+        throw new Error("Missing poll choices");
+      }
+
+      const edited = {
+        ...poll(),
+        questions: stored.questions.map((question, index) => ({
+          id: question.id,
+          prompt: question.prompt,
+          multiple: index === 0 ? false : question.multiple,
+          choices:
+            index === 0
+              ? question.choices
+                  .slice(0, 1)
+                  .map((choice) => ({ id: choice.id, label: choice.label }))
+              : question.choices.map((choice) => ({ id: choice.id, label: choice.label })),
+        })),
+      } satisfies PollInput;
+      const interleavedSql = withEditAfterPollRead(database.sql, async () => {
+        const result = await editPoll(database.sql, {
+          actorId: moderator.memberId,
+          pollId: created.pollId,
+          poll: edited,
+        });
+
+        expect(result).toMatchObject({ ok: true });
+      });
+      const outcome = await vote(interleavedSql, {
+        actorId: member.memberId,
+        pollId: created.pollId,
+        selections: [
+          { questionId: first.id, choiceIds: chosen },
+          {
+            questionId: stored.questions[1]?.id ?? "",
+            choiceIds: [stored.questions[1]?.choices[0]?.id ?? ""],
+          },
+        ],
+      });
+
+      expect(outcome).toEqual({ ok: false, code: "invalid_choice" });
+
+      const [counts] = (await database.sql`
+        SELECT
+          (SELECT count(*)::int FROM core.poll_votes WHERE poll_id = ${created.pollId}) AS votes,
+          (
+            SELECT count(*)::int FROM core.poll_choices
+            WHERE poll_id = ${created.pollId} AND id = ${chosen[1] ?? ""}
+          ) AS removed
+      `) as Array<{ votes: number; removed: number }>;
+      expect(counts).toEqual({ votes: 0, removed: 0 });
     });
   }, 30_000);
 

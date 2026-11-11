@@ -501,6 +501,9 @@ integrationDescribe("forum page", () => {
       expect(locked.html).toContain("data-forum-locked");
       expect(locked.html).toContain("data-forum-unlock");
       expect(locked.html).not.toContain("data-forum-content");
+      // The overlay cannot read a locked forum, so it must not ask for it and 404.
+      expect(locked.html).not.toContain("data-overlay-ctx");
+      expect(locked.html).not.toContain("data-overlay-forum=");
 
       const sessionId = await unlockedSession(database, member.memberId);
       const unlocked = await render(database, ref, { ...member, sessionId });
@@ -511,6 +514,7 @@ integrationDescribe("forum page", () => {
 
       expect(unlocked.html).toContain("data-forum-content");
       expect(unlocked.html).not.toContain("data-forum-locked");
+      expect(unlocked.html).toContain('data-overlay-ctx="forum:3"');
     });
   }, 30_000);
 

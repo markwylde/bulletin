@@ -3,6 +3,7 @@ import {
   clickSelector,
   loginAs,
   setInputValue,
+  waitForExpression,
   waitForSelector,
   withPage,
 } from "@bulletin/test-utils/e2e";
@@ -27,13 +28,16 @@ integrationDescribe("staff emoticon sets", () => {
         ),
       ).toBe(true);
 
-      await setInputValue(view, '[data-emoticon-set-field="key"]', "e2e");
-      await setInputValue(view, '[data-emoticon-set-field="title"]', "E2E set");
+      const suffix = String(Date.now());
+      const title = `E2E set ${suffix}`;
+      await setInputValue(view, '[data-emoticon-set-field="key"]', `e2e-${suffix}`);
+      await setInputValue(view, '[data-emoticon-set-field="title"]', title);
+      await waitForSelector(view, "[data-emoticon-set-save]:not([disabled])");
       await clickSelector(view, "[data-emoticon-set-save]");
-      await waitForSelector(view, "[data-emoticon-set]", 20_000);
-
-      expect(await view.evaluate<boolean>('document.body.innerText.includes("E2E set")')).toBe(
-        true,
+      await waitForExpression(
+        view,
+        `document.body.innerText.includes(${JSON.stringify(title)})`,
+        20_000,
       );
     });
   }, 180_000);

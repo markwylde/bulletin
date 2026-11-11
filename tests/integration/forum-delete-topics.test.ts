@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createRenderCache, createTagVersions } from "@bulletin/cache";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -12,11 +13,15 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import { startTopic } from "@bulletin/domain/topics";
+import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { deleteForum } from "../../apps/staff-api/src/forums.ts";
+import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { renderMemberCards } from "../../apps/user-app/src/topics/fragments.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
+const translate = createServerT("en", { shipped: USER_CATALOGS });
 
 async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Promise<void> {
   if (adminUrl === undefined) {
@@ -122,6 +127,63 @@ integrationDescribe("forum deletion with topics", () => {
 
       const missingChoice = await deleteForum(database.sql, admin, { id: secondSource });
       expect(missingChoice).toEqual({ ok: false, code: "topic_choice_required" });
+    });
+  }, 30_000);
+
+  test("invalidates the author cards whose post counts the deletion reduces", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const author = await memberId(database, "member-1");
+      const source = await createForum(database, "Doomed Forum", "doomed-forum");
+      const topicResult = await startTopic(database.sql, {
+        actorId: author,
+        forumId: source,
+        title: "Topic that will vanish",
+        bodyMd: "Body.",
+      });
+
+      if (!topicResult.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const renderCard = async (): Promise<string> =>
+          (await renderMemberCards(database.sql, cache, [author], "en", translate)).get(author) ??
+          "";
+
+        const [before] = (await database.sql`
+          SELECT post_count FROM core.members WHERE id = ${author}
+        `) as Array<{ post_count: number }>;
+        const cardCount = (html: string): number =>
+          Number(/bl-author-card__posts">(\d+) posts?/.exec(html)?.[1] ?? -1);
+        const warm = await renderCard();
+        expect(cardCount(warm)).toBe(before?.post_count ?? -1);
+
+        const result = await deleteForum(database.sql, admin, {
+          id: source,
+          topicAction: "delete",
+        });
+        expect(result).toEqual({ ok: true });
+        await versions.refresh();
+
+        const [after] = (await database.sql`
+          SELECT post_count FROM core.members WHERE id = ${author}
+        `) as Array<{ post_count: number }>;
+        const rebuilt = await renderCard();
+
+        expect(after?.post_count).toBe((before?.post_count ?? 0) - 1);
+        expect(cardCount(rebuilt)).toBe(after?.post_count ?? -1);
+        expect(rebuilt).not.toBe(warm);
+      } finally {
+        await versions.close();
+      }
     });
   }, 30_000);
 });

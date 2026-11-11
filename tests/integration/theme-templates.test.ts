@@ -272,6 +272,8 @@ integrationDescribe("default theme templates", () => {
       expect(locked.status).toBe(200);
       expect(locked.html).toContain("data-demo-locked");
       expect(locked.html).toContain("demo-password");
+      // Nobody can read a locked forum yet, so the overlay must not ask for it and 404.
+      expect(locked.html).not.toContain("data-overlay-ctx");
       expect(locked.errors).toEqual([]);
 
       const [row] = (await database.sql`
@@ -299,6 +301,7 @@ integrationDescribe("default theme templates", () => {
       expect(unlocked.status).toBe(200);
       expect(unlocked.html).not.toContain("data-demo-locked");
       expect(unlocked.html).toContain("data-demo-topics");
+      expect(unlocked.html).toContain('data-overlay-ctx="forum:3"');
     });
   });
 

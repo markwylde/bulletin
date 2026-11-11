@@ -142,6 +142,7 @@ integrationDescribe("forum mutations invalidate the index and affected pages", (
           input: { affectedForumIds: ["1", "2", "3"] },
           apply: async (tx) => {
             await tx`UPDATE core.forums SET parent_id = 3 WHERE id = 2`;
+            return {};
           },
         });
         await versions.refresh();

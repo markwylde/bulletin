@@ -294,6 +294,8 @@ export async function createForum(
         targetId: forum.id,
         summary: { title, type, parentId },
       });
+
+      return {};
     },
   });
 
@@ -391,6 +393,8 @@ export async function moveForum(
         targetId: forumId,
         summary: { from: before, to: parentId, position },
       });
+
+      return {};
     },
   });
 
@@ -464,6 +468,8 @@ export async function deleteForum(
         throw new Error("Forum disappeared during deletion");
       }
 
+      let affectedMemberIds: readonly string[] = [];
+
       // Sub-forums move up one level and keep their settings.
       await tx`
         UPDATE core.forums SET parent_id = ${before[0].parent_id} WHERE parent_id = ${forumId}
@@ -532,6 +538,8 @@ export async function deleteForum(
             WHERE id = ${author.author_id}
           `;
         }
+
+        affectedMemberIds = authors.map((author) => author.author_id);
       }
 
       await tx`DELETE FROM core.forums WHERE id = ${forumId}`;
@@ -551,6 +559,8 @@ export async function deleteForum(
           moveToForumId,
         },
       });
+
+      return { affectedMemberIds };
     },
   });
 

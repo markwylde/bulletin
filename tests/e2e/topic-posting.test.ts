@@ -19,6 +19,11 @@ const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 async function openNewTopicForm(view: Bun.WebView): Promise<void> {
   await waitForSelector(view, "[data-new-topic-form]", 20_000);
   await clickSelector(view, "[data-new-topic] summary");
+  // The island runtime hydrates lazily when an island nears the viewport; a person opening the
+  // form scrolls to the editor they want to type in.
+  await view.evaluate(
+    `document.querySelector('[data-new-topic-form] bl-island[data-name="Editor"]')?.scrollIntoView({ block: "center" })`,
+  );
   await waitForSelector(view, '[data-new-topic-form] [data-editor-ready="true"]', 20_000);
   await waitForSelector(view, '[data-editor-mode="source"]', 20_000);
   await clickSelector(view, '[data-editor-mode="source"]');
