@@ -6,11 +6,22 @@ interface Labels {
   readonly required: string;
   readonly invalid: string;
   readonly notEditable: string;
+  readonly signatureDisabled: string;
+  readonly signatureTooLong: string;
+  readonly signatureTooManyLines: string;
+  readonly signatureTooManyImages: string;
+  readonly signatureTooManyLinks: string;
 }
 
 const labels = readLabels<Labels>("profile-edit-labels");
 
-function messageFor(code: string | undefined): string {
+function withLimit(pattern: string | undefined, limit: unknown): string {
+  const maximum = typeof limit === "number" && Number.isFinite(limit) ? String(limit) : "";
+
+  return (pattern ?? "").replaceAll("{limit}", maximum);
+}
+
+function messageFor(code: string | undefined, limit: unknown): string {
   switch (code) {
     case "required":
       return labels?.required ?? "";
@@ -18,6 +29,16 @@ function messageFor(code: string | undefined): string {
       return labels?.invalid ?? "";
     case "not_editable":
       return labels?.notEditable ?? "";
+    case "signature_disabled":
+      return labels?.signatureDisabled ?? "";
+    case "signature_too_long":
+      return withLimit(labels?.signatureTooLong, limit);
+    case "signature_too_many_lines":
+      return withLimit(labels?.signatureTooManyLines, limit);
+    case "signature_too_many_images":
+      return withLimit(labels?.signatureTooManyImages, limit);
+    case "signature_too_many_links":
+      return withLimit(labels?.signatureTooManyLinks, limit);
     default:
       return labels?.saveFailed ?? "";
   }
@@ -73,8 +94,10 @@ async function submit(form: HTMLFormElement): Promise<void> {
   const error = document.querySelector<HTMLElement>("[data-profile-error]");
   const saved = document.querySelector<HTMLElement>("[data-profile-saved]");
   const about = form.querySelector<HTMLTextAreaElement>("[data-profile-about]");
+  const signature = form.querySelector<HTMLTextAreaElement>("[data-profile-signature]");
   const hideOnline = form.querySelector<HTMLInputElement>("[data-profile-hide-online]");
   const hideFromList = form.querySelector<HTMLInputElement>("[data-profile-hide-from-list]");
+  const hideSignatures = form.querySelector<HTMLInputElement>("[data-profile-hide-signatures]");
   const values = fieldValues();
 
   if (error !== null) {
@@ -113,8 +136,10 @@ async function submit(form: HTMLFormElement): Promise<void> {
       },
       body: JSON.stringify({
         about: about?.value ?? "",
+        ...(signature === null ? {} : { signatureMd: signature.value }),
         hideOnline: hideOnline?.checked === true,
         hideFromMemberList: hideFromList?.checked === true,
+        hideSignatures: hideSignatures?.checked === true,
         values,
       }),
     });
@@ -126,10 +151,13 @@ async function submit(form: HTMLFormElement): Promise<void> {
       return;
     }
 
-    const body = (await response.json().catch(() => ({}))) as { readonly code?: string };
+    const body = (await response.json().catch(() => ({}))) as {
+      readonly code?: string;
+      readonly limit?: unknown;
+    };
 
     if (error !== null) {
-      error.textContent = messageFor(body.code);
+      error.textContent = messageFor(body.code, body.limit);
       error.hidden = false;
     }
   } catch {

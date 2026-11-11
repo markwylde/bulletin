@@ -1,12 +1,15 @@
-import { renderSnapshot } from "@bulletin/content";
+import { renderContent, renderSnapshot } from "@bulletin/content";
 import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { runMutation } from "../mutations/index.ts";
 import { memberProfileMutation, profileFieldMutation } from "../mutations/members.ts";
+import { loadMergedGroupSettings } from "../permissions/store.ts";
 import {
   deleteProfileField,
   type ProfileFieldWrite,
   replaceFieldValues,
+  updateHideSignatures,
+  updateMemberSignature,
   updateProfileRow,
   writeProfileField,
 } from "./repository.ts";
@@ -17,6 +20,7 @@ import {
   type ProfileField,
   type ProfileFieldOption,
   type ProfileFieldValue,
+  type SignatureLimits,
 } from "./types.ts";
 
 const LOCALES: readonly Locale[] = ["en", "es", "fr"];
@@ -290,15 +294,112 @@ export type SaveProfileResult =
   | { readonly ok: true }
   | {
       readonly ok: false;
-      readonly code: "invalid" | "required" | "not_editable" | "unknown_field";
+      readonly code:
+        | "invalid"
+        | "required"
+        | "not_editable"
+        | "unknown_field"
+        | "signature_disabled"
+        | "signature_too_long"
+        | "signature_too_many_lines"
+        | "signature_too_many_images"
+        | "signature_too_many_links";
       readonly fieldId?: string;
+      readonly limit?: number;
     };
+
+/** The group-merged signature limits for one member; zero characters disables signatures. */
+export async function readSignatureLimits(sql: SQL, memberId: string): Promise<SignatureLimits> {
+  const settings = await loadMergedGroupSettings(sql, memberId);
+  const limit = (key: string): number =>
+    typeof settings[key] === "number" ? (settings[key] as number) : 0;
+
+  return {
+    maxChars: limit("members.signature_max_chars"),
+    maxLines: limit("members.signature_max_lines"),
+    maxImages: limit("members.signature_max_images"),
+    maxLinks: limit("members.signature_max_links"),
+  };
+}
+
+function countImages(markdown: string): number {
+  const markdownImages = markdown.match(/!\[[^\]]*\]\([^)]*\)/g)?.length ?? 0;
+  const htmlImages = markdown.match(/<img\b[^>]*>/gi)?.length ?? 0;
+
+  return markdownImages + htmlImages;
+}
+
+function countLinks(markdown: string): number {
+  const markdownLinks = markdown.match(/(?<!!)\[[^\]]*\]\([^)]*\)/g)?.length ?? 0;
+  const htmlLinks = markdown.match(/<a\b[^>]*>/gi)?.length ?? 0;
+  const autolinks = markdown.match(/<(?:https?|mailto):[^>\s]+>/gi)?.length ?? 0;
+
+  return markdownLinks + htmlLinks + autolinks;
+}
+
+interface SignatureValidation {
+  readonly ok: true;
+  readonly bodyHtml: string;
+}
+
+type SignatureOutcome =
+  | SignatureValidation
+  | {
+      readonly ok: false;
+      readonly code: Extract<SaveProfileResult, { readonly ok: false }>["code"];
+      readonly limit?: number;
+    };
+
+/** Renders a signature and enforces the member's group limits (signatures spec). */
+export async function validateMemberSignature(
+  sql: SQL,
+  memberId: string,
+  bodyMd: string,
+): Promise<SignatureOutcome> {
+  const limits = await readSignatureLimits(sql, memberId);
+
+  if (bodyMd.trim() === "") {
+    return { ok: true, bodyHtml: "" };
+  }
+
+  if (limits.maxChars <= 0) {
+    return { ok: false, code: "signature_disabled" };
+  }
+
+  if (bodyMd.length > limits.maxChars) {
+    return { ok: false, code: "signature_too_long", limit: limits.maxChars };
+  }
+
+  if (bodyMd.split(/\r?\n/).length > limits.maxLines) {
+    return { ok: false, code: "signature_too_many_lines", limit: limits.maxLines };
+  }
+
+  if (countImages(bodyMd) > limits.maxImages) {
+    return { ok: false, code: "signature_too_many_images", limit: limits.maxImages };
+  }
+
+  if (countLinks(bodyMd) > limits.maxLinks) {
+    return { ok: false, code: "signature_too_many_links", limit: limits.maxLinks };
+  }
+
+  const rendered = await renderContent(bodyMd, {
+    profile: "signature",
+    context: { kind: "forum_post", forumId: "0" },
+    authorId: memberId,
+  });
+
+  return { ok: true, bodyHtml: rendered.bodyHtml };
+}
 
 export interface SaveMemberProfileInput {
   readonly memberId: string;
   readonly aboutMd: string;
   readonly hideOnline: boolean;
   readonly hideFromMemberList: boolean;
+  /** Only changed when present, so a staff edit never resets the member's preference. */
+  readonly hideSignatures?: boolean;
+  /** Only changed when present (the member's own editor sends it, staff edits need not). */
+  readonly signatureMd?: string;
   /** Raw JSON values keyed by field id; every key must be an editable field. */
   readonly values: Readonly<Record<string, unknown>>;
   /** The fields this actor may edit; staff edits pass every field. */
@@ -356,6 +457,21 @@ export async function saveMemberProfile(
             authorId: input.memberId,
           })
         ).bodyHtml;
+  let signatureHtml: string | null = null;
+
+  if (input.signatureMd !== undefined) {
+    const signature = await validateMemberSignature(sql, input.memberId, input.signatureMd);
+
+    if (!signature.ok) {
+      return {
+        ok: false,
+        code: signature.code,
+        ...(signature.limit === undefined ? {} : { limit: signature.limit }),
+      };
+    }
+
+    signatureHtml = signature.bodyHtml;
+  }
 
   await runMutation({
     sql,
@@ -369,6 +485,18 @@ export async function saveMemberProfile(
         hideFromMemberList: input.hideFromMemberList,
       });
       await replaceFieldValues(tx, input.memberId, normalized);
+
+      if (input.signatureMd !== undefined && signatureHtml !== null) {
+        await updateMemberSignature(tx, input.memberId, {
+          bodyMd: input.signatureMd,
+          bodyHtml: signatureHtml,
+        });
+      }
+
+      if (input.hideSignatures !== undefined) {
+        await updateHideSignatures(tx, input.memberId, input.hideSignatures);
+      }
+
       return { memberId: input.memberId };
     },
   });

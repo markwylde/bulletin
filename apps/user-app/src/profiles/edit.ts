@@ -5,6 +5,7 @@ import {
   type ProfileFieldValue,
   readEditableProfile,
   readProfileFields,
+  readSignatureLimits,
 } from "@bulletin/domain/profiles";
 import type { Locale, Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
@@ -33,6 +34,15 @@ export interface ProfileEditPageData {
     readonly about: string;
     readonly hideOnline: boolean;
     readonly hideFromMemberList: boolean;
+    readonly hideSignatures: boolean;
+    readonly signature: {
+      readonly value: string;
+      readonly enabled: boolean;
+      readonly maxChars: number;
+      readonly maxLines: number;
+      readonly maxImages: number;
+      readonly maxLinks: number;
+    };
     readonly fields: readonly ProfileEditFieldView[];
   };
 }
@@ -97,7 +107,10 @@ export async function buildProfileEditPage(input: {
     profileFieldVisibilityClass(input.sql, input.memberId),
     editableProfileFieldIds(input.sql, input.memberId),
   ]);
-  const fields = await readProfileFields(input.sql, fieldClass.ids);
+  const [fields, signatureLimits] = await Promise.all([
+    readProfileFields(input.sql, fieldClass.ids),
+    readSignatureLimits(input.sql, input.memberId),
+  ]);
   const title = input.translate("profile.edit.title");
 
   return {
@@ -110,6 +123,15 @@ export async function buildProfileEditPage(input: {
       about: editable.profile.aboutMd,
       hideOnline: editable.profile.hideOnline,
       hideFromMemberList: editable.profile.hideFromMemberList,
+      hideSignatures: editable.profile.hideSignatures,
+      signature: {
+        value: editable.profile.signatureMd,
+        enabled: signatureLimits.maxChars > 0,
+        maxChars: signatureLimits.maxChars,
+        maxLines: signatureLimits.maxLines,
+        maxImages: signatureLimits.maxImages,
+        maxLinks: signatureLimits.maxLinks,
+      },
       fields: fields
         .filter((field) => editableIds.has(field.id))
         .map((field) => editField(field, editable.values.get(field.id), input.locale)),

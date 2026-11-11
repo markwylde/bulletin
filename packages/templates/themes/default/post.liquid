@@ -53,6 +53,7 @@
             {% if flags.attachments and post.files %}
               <div class="bl-post__attachments" data-post-files="{{ post.id }}">{{ post.files }}</div>
             {% endif %}
+            {% if post.authorId %}<bl-post-signature data-member="{{ post.authorId }}"></bl-post-signature>{% endif %}
             {% if flags.reactions %}<bl-post-reactions data-post="{{ post.id }}"></bl-post-reactions>{% endif %}
           </div>
         </li>

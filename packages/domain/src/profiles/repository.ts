@@ -28,6 +28,9 @@ interface ProfileRow {
   readonly about_html: string;
   readonly hide_online: boolean;
   readonly hide_from_member_list: boolean;
+  readonly hide_signatures: boolean;
+  readonly signature_md: string;
+  readonly signature_html: string;
   readonly group_title: string | null;
   readonly group_colour: string | null;
 }
@@ -45,6 +48,9 @@ function profileRecord(row: ProfileRow): ProfileRecord {
     aboutHtml: row.about_html,
     hideOnline: row.hide_online,
     hideFromMemberList: row.hide_from_member_list,
+    hideSignatures: row.hide_signatures,
+    signatureMd: row.signature_md,
+    signatureHtml: row.signature_html,
     groupTitle: row.group_title,
     groupColour: row.group_colour,
   };
@@ -64,6 +70,9 @@ export async function readProfile(sql: SQL, memberId: string): Promise<ProfileRe
       m.about_html,
       m.hide_online,
       m.hide_from_member_list,
+      m.hide_signatures,
+      m.signature_md,
+      m.signature_html,
       g.title AS group_title,
       g.name_colour AS group_colour
     FROM core.members m
@@ -438,4 +447,49 @@ export async function replaceFieldValues(
         SET value = EXCLUDED.value, updated_at = now()
     `;
   }
+}
+
+/** The rendered signature for each of the given members; empty signatures are omitted. */
+export async function readMemberSignatures(
+  sql: SQL,
+  memberIds: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  const ids = [...new Set(memberIds)].sort();
+
+  if (ids.length === 0) {
+    return new Map();
+  }
+
+  const rows = (await sql`
+    SELECT id::text AS id, signature_html
+    FROM core.members
+    WHERE id = ANY(${`{${ids.join(",")}}`}::bigint[])
+      AND signature_html <> ''
+  `) as Array<{ id: string; signature_html: string }>;
+
+  return new Map(rows.map((row) => [row.id, row.signature_html]));
+}
+
+/** Stores a rendered signature. Called in the same transaction as the `member:{id}` bump. */
+export async function updateMemberSignature(
+  tx: SQL,
+  memberId: string,
+  input: { readonly bodyHtml: string; readonly bodyMd: string },
+): Promise<void> {
+  await tx`
+    UPDATE core.members
+    SET signature_md = ${input.bodyMd},
+        signature_html = ${input.bodyHtml},
+        signature_updated_at = now()
+    WHERE id = ${memberId}
+  `;
+}
+
+/** Stores the member's "hide all signatures" preference (applied by the overlay, ADR 0006). */
+export async function updateHideSignatures(
+  tx: SQL,
+  memberId: string,
+  hide: boolean,
+): Promise<void> {
+  await tx`UPDATE core.members SET hide_signatures = ${hide} WHERE id = ${memberId}`;
 }

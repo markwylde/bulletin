@@ -70,6 +70,7 @@ integrationDescribe("identity schema", () => {
           "display_name",
           "hide_from_member_list",
           "hide_online",
+          "hide_signatures",
           "id",
           "is_service",
           "joined_at",

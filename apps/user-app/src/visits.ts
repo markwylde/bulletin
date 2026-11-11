@@ -186,6 +186,10 @@ const overlayTarget: OverlayTarget = {
   setReputation(states) {
     publishReputationStates(states);
   },
+
+  setHideSignatures(hidden) {
+    document.documentElement.toggleAttribute("data-hide-signatures", hidden);
+  },
 };
 
 function draftContext(): string | null {

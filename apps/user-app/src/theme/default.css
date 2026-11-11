@@ -934,6 +934,25 @@ fieldset.bl-editor__modes {
   max-width: 100%;
 }
 
+.bl-post__signature {
+  border-top: 1px solid var(--bl-border);
+  margin-top: var(--bl-space-small);
+  padding-top: var(--bl-space-small);
+  color: var(--bl-muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.bl-post__signature img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* "Hide all signatures" is a personal overlay preference, never a cache variant (ADR 0006). */
+html[data-hide-signatures] [data-signature] {
+  display: none;
+}
+
 .bl-attachment-image {
   display: grid;
   gap: var(--bl-space-tiny, 0.25rem);

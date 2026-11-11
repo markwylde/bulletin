@@ -59,8 +59,18 @@ export interface ProfileRecord {
   readonly aboutHtml: string;
   readonly hideOnline: boolean;
   readonly hideFromMemberList: boolean;
+  readonly hideSignatures: boolean;
+  readonly signatureMd: string;
+  readonly signatureHtml: string;
   readonly groupTitle: string | null;
   readonly groupColour: string | null;
+}
+
+export interface SignatureLimits {
+  readonly maxChars: number;
+  readonly maxLines: number;
+  readonly maxImages: number;
+  readonly maxLinks: number;
 }
 
 export interface MemberBadge {

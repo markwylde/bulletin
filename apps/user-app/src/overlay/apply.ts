@@ -56,6 +56,8 @@ export interface OverlayPayload {
   readonly reactions?: readonly ReactionViewerState[];
   /** The member's own reputation vote on each rendered post. */
   readonly reputation?: readonly ReputationViewerState[];
+  /** The member hides every signature under posts; applied client-side only (task 2.1). */
+  readonly hideSignatures?: boolean;
 }
 
 export interface UnreadSlot {
@@ -79,6 +81,7 @@ export interface OverlayTarget {
   setFollow(context: string, following: boolean): void;
   setReactions(states: readonly ReactionViewerState[]): void;
   setReputation(states: readonly ReputationViewerState[]): void;
+  setHideSignatures(hidden: boolean): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -205,6 +208,7 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
   });
 
   target.setReputation(reputation);
+  target.setHideSignatures(payload.hideSignatures === true);
 
   const draft = payload.draft;
 

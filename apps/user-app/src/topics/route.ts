@@ -34,6 +34,7 @@ import { topicCapabilityDeps } from "./capability.ts";
 import { renderMemberCards, renderTopicViewsFragment } from "./fragments.ts";
 import { buildTopicPage, type TopicPageData } from "./page.ts";
 import { renderPostBlock } from "./post-block.ts";
+import { renderMemberSignatures } from "./signatures.ts";
 
 export interface TopicRouteInput {
   readonly sql: SQL;
@@ -483,7 +484,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     );
     const reactionsEnabled = latest?.flags.values.reactions === true;
     const reputationEnabled = latest?.flags.values.reputation === true;
-    const [views, cards, poll] = await Promise.all([
+    const [views, cards, signatures, poll] = await Promise.all([
       renderTopicViewsFragment(input.sql, input.cache, topic.id, input.locale, input.translate),
       renderMemberCards(
         input.sql,
@@ -498,6 +499,13 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
               scale: latest?.settings.reputationLabelScale ?? [],
             }
           : null,
+      ),
+      renderMemberSignatures(
+        input.sql,
+        input.cache,
+        pageData.memberIds,
+        input.locale,
+        input.translate,
       ),
       pageData.pollId === null
         ? Promise.resolve(null)
@@ -556,6 +564,10 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       /<bl-post-reputation data-post="(\d+)"><\/bl-post-reputation>/g,
       (match, postId: string) => reputationControls.get(postId) ?? match,
     );
+    html = html.replace(
+      /<bl-post-signature data-member="(\d+)"><\/bl-post-signature>/g,
+      (match, memberId: string) => signatures.get(memberId) ?? match,
+    );
     html = replaceMemberCards(html, cards);
 
     if (poll !== null) {
@@ -568,6 +580,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       ...postBlocks.values(),
       ...reactionBars.values(),
       ...pageData.memberIds.map((id) => cards.get(id) ?? ""),
+      ...pageData.memberIds.map((id) => signatures.get(id) ?? ""),
     ];
   }
 

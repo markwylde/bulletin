@@ -307,6 +307,35 @@ export const groupsSeedModule: SeedModule = {
       }
     }
 
+    // Signature limits by group (task 2.1). Zero would disable signatures entirely.
+    for (const [groupKey, limits] of [
+      ["members", { chars: 500, lines: 4, images: 1, links: 2 }],
+      ["regulars", { chars: 1_000, lines: 6, images: 2, links: 4 }],
+      ["vip", { chars: 1_500, lines: 8, images: 3, links: 6 }],
+      ["moderators", { chars: 2_000, lines: 10, images: 4, links: 8 }],
+      ["super_moderators", { chars: 2_000, lines: 10, images: 4, links: 8 }],
+      ["administrators", { chars: 2_000, lines: 10, images: 4, links: 8 }],
+    ] as const) {
+      const groupId = ids.get(groupKey);
+
+      if (groupId === undefined) {
+        continue;
+      }
+
+      for (const [key, value] of [
+        ["members.signature_max_chars", limits.chars],
+        ["members.signature_max_lines", limits.lines],
+        ["members.signature_max_images", limits.images],
+        ["members.signature_max_links", limits.links],
+      ] as const) {
+        await sql`
+          INSERT INTO core.group_settings (group_id, key, value)
+          VALUES (${groupId}, ${key}, to_jsonb(${value}::int))
+          ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        `;
+      }
+    }
+
     const members = ids.get("members");
     const regulars = ids.get("regulars");
     const vip = ids.get("vip");

@@ -54,6 +54,21 @@
       </section>
     {% endif %}
 
+    <section class="bl-card" data-profile-edit-signature>
+      <h2 class="bl-card__title">{% t "profile.signature.title" %}</h2>
+      {% if signature.enabled %}
+        <p class="bl-muted">{% t "profile.signature.limits" chars: signature.maxChars, lines: signature.maxLines, images: signature.maxImages, links: signature.maxLinks %}</p>
+        <label class="bl-label" for="profile-signature">{% t "profile.signature.label" %}</label>
+        <textarea class="bl-input bl-textarea" id="profile-signature" rows="4" maxlength="{{ signature.maxChars }}" data-profile-signature>{{ signature.value }}</textarea>
+      {% else %}
+        <p class="bl-muted" data-profile-signature-disabled>{% t "profile.signature.disabled" %}</p>
+      {% endif %}
+      <label class="bl-checkbox">
+        <input type="checkbox" data-profile-hide-signatures{% if hideSignatures %} checked{% endif %}>
+        <span>{% t "profile.signature.hide" %}</span>
+      </label>
+    </section>
+
     <section class="bl-card" data-profile-edit-privacy>
       <h2 class="bl-card__title">{% t "profile.privacy.title" %}</h2>
       <label class="bl-checkbox">

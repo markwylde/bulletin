@@ -70,6 +70,12 @@ const labels = {
   required: translate("profile.edit.required"),
   invalid: translate("profile.edit.invalid"),
   notEditable: translate("profile.edit.notEditable"),
+  signatureDisabled: translate("profile.signature.disabled"),
+  // The client replaces the `{limit}` placeholder with the API's value.
+  signatureTooLong: translate("profile.signature.tooLong", { limit: "{limit}" }),
+  signatureTooManyLines: translate("profile.signature.tooManyLines", { limit: "{limit}" }),
+  signatureTooManyImages: translate("profile.signature.tooManyImages", { limit: "{limit}" }),
+  signatureTooManyLinks: translate("profile.signature.tooManyLinks", { limit: "{limit}" }),
 };
 ---
 

@@ -9,7 +9,7 @@
 
 ## 2. Signatures
 
-- [ ] 2.1 Signature editor with group limits, the signature fragment under posts, and "hide signatures" via the overlay; tests for the too-many-links and hide scenarios
+- [x] 2.1 Signature editor with group limits, the signature fragment under posts, and "hide signatures" via the overlay; tests for the too-many-links and hide scenarios
 
 ## 3. Relationships
 

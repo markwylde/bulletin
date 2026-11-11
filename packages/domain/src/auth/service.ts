@@ -467,7 +467,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         }
       }
 
-      const [visits, dismissedAnnouncements, draft, poll] = await Promise.all([
+      const [visits, dismissedAnnouncements, draft, poll, signaturePrivacy] = await Promise.all([
         recordVisit(options.sql, {
           viewerKey: memberViewerKey(session.memberId),
           ctx,
@@ -483,6 +483,9 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         visitContext?.kind === "topic"
           ? pollVoteStateForTopic(options.sql, visitContext.id, session.memberId)
           : Promise.resolve(null),
+        options.sql`
+          SELECT hide_signatures FROM core.members WHERE id = ${session.memberId}
+        `,
       ]);
       void visits;
       const [unreadIds, unreadForums, follows] = await Promise.all([
@@ -599,6 +602,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           conversations: 0,
         },
         polls: poll === null ? [] : [poll],
+        hideSignatures: signaturePrivacy[0]?.hide_signatures === true,
         editablePosts,
         reactions: viewerReactions,
         reputation: viewerVotes,

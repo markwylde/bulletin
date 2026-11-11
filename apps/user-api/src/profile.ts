@@ -35,6 +35,8 @@ export async function profileSaveResponse(
     aboutMd: body.about,
     hideOnline: body.hideOnline === true,
     hideFromMemberList: body.hideFromMemberList === true,
+    ...(typeof body.hideSignatures === "boolean" ? { hideSignatures: body.hideSignatures } : {}),
+    ...(typeof body.signatureMd === "string" ? { signatureMd: body.signatureMd } : {}),
     values: (body.values ?? {}) as Record<string, unknown>,
     fields,
   });
@@ -43,21 +45,23 @@ export async function profileSaveResponse(
     return json({ ok: true });
   }
 
+  const details = {
+    ...(result.fieldId === undefined ? {} : { fieldId: result.fieldId }),
+    ...(result.limit === undefined ? {} : { limit: result.limit }),
+  };
+
   switch (result.code) {
     case "required":
     case "invalid":
-      return json(
-        { code: result.code, ...(result.fieldId === undefined ? {} : { fieldId: result.fieldId }) },
-        400,
-      );
+    case "signature_too_long":
+    case "signature_too_many_lines":
+    case "signature_too_many_images":
+    case "signature_too_many_links":
+      return json({ code: result.code, ...details }, 400);
+    case "signature_disabled":
+      return json({ code: result.code }, 403);
     case "not_editable":
     case "unknown_field":
-      return json(
-        {
-          code: "not_editable",
-          ...(result.fieldId === undefined ? {} : { fieldId: result.fieldId }),
-        },
-        403,
-      );
+      return json({ code: "not_editable", ...details }, 403);
   }
 }

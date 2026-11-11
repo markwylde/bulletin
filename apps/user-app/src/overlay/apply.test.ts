@@ -15,6 +15,7 @@ function target(): {
   readonly follows: string[];
   readonly reactions: string[];
   readonly reputation: string[];
+  readonly hideSignatures: boolean[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
@@ -28,6 +29,7 @@ function target(): {
   const follows: string[] = [];
   const reactions: string[] = [];
   const reputation: string[] = [];
+  const hideSignatures: boolean[] = [];
 
   return {
     unread,
@@ -42,6 +44,7 @@ function target(): {
     follows,
     reactions,
     reputation,
+    hideSignatures,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -70,6 +73,7 @@ function target(): {
             (state) => `${state.postId}:${state.points ?? "none"}:${state.own ? "own" : "other"}`,
           ),
         ),
+      setHideSignatures: (hidden) => hideSignatures.push(hidden),
     },
   };
 }
@@ -81,6 +85,16 @@ describe("overlay applier", () => {
     applyOverlay(fixture.target, { unread: ["201", "202"] });
 
     expect(fixture.unread).toEqual(["201", "201 (second slot)", "202", "202 (second slot)"]);
+  });
+
+  test("applies the hide-signatures preference from the member overlay", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, { hideSignatures: true });
+    expect(fixture.hideSignatures).toEqual([true]);
+
+    applyOverlay(fixture.target, { hideSignatures: false });
+    expect(fixture.hideSignatures).toEqual([true, false]);
   });
 
   test("applies fixture counts to their slots and floors invalid values", () => {
