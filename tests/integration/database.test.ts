@@ -200,7 +200,13 @@ integrationDescribe("database lifecycle", () => {
           has_table_privilege('workers', 'core.system_audit_buffer', 'DELETE') AS workers_audit_queue_delete,
           has_table_privilege('user_api', 'core.events', 'INSERT') AS api_events_insert,
           has_table_privilege('workers', 'core.events', 'UPDATE') AS workers_events_update,
-          has_table_privilege('workers', 'core.seed_runs', 'INSERT') AS workers_seed_insert
+          has_table_privilege('workers', 'core.seed_runs', 'INSERT') AS workers_seed_insert,
+          has_table_privilege('user_api', 'core.conversation_messages', 'INSERT') AS api_messages_insert,
+          has_table_privilege('user_app', 'core.conversations', 'INSERT') AS app_conversations_insert,
+          has_table_privilege('staff_api', 'core.conversations', 'SELECT') AS staff_conversations_select,
+          has_table_privilege('workers', 'core.conversations', 'UPDATE') AS workers_conversations_update,
+          has_table_privilege('workers', 'core.conversations', 'DELETE') AS workers_conversations_delete,
+          has_table_privilege('staff_api', 'core.conversation_message_holds', 'INSERT') AS staff_holds_insert
       `) as Array<Record<string, boolean>>;
 
       expect(privileges).toMatchObject({
@@ -223,6 +229,14 @@ integrationDescribe("database lifecycle", () => {
         api_events_insert: true,
         workers_events_update: true,
         workers_seed_insert: true,
+        // Conversation privacy: only user-api writes, the renderer only reads, and staff have
+        // no browsing grant; the removal worker can update/delete an empty conversation.
+        api_messages_insert: true,
+        app_conversations_insert: false,
+        staff_conversations_select: false,
+        workers_conversations_update: true,
+        workers_conversations_delete: true,
+        staff_holds_insert: true,
       });
 
       await sql.close();

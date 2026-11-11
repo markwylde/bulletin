@@ -44,7 +44,8 @@ GRANT SELECT, INSERT, DELETE ON core.conversation_message_attachments TO user_ap
 
 -- The removal worker deletes conversations, messages, links and objects. Moderation adds its
 -- own INSERT/DELETE grant for holds when reports are implemented.
-GRANT SELECT, DELETE ON core.conversations, core.conversation_participants,
+GRANT SELECT, UPDATE, DELETE ON core.conversations TO workers;
+GRANT SELECT, DELETE ON core.conversation_participants,
   core.conversation_messages, core.conversation_message_attachments,
   core.conversation_message_holds TO workers;
 
