@@ -4,6 +4,7 @@ import type { SQL } from "bun";
 import { syncPostAttachments } from "../attachments/store.ts";
 import { redactQuoteSnapshotsInTransaction } from "../content/quotes.ts";
 import { loadContentRenderDependencies } from "../content/rendering.ts";
+import { emit } from "../events/outbox.ts";
 import { runMutation } from "../mutations/index.ts";
 import {
   type PostEditSummary,
@@ -257,6 +258,30 @@ export async function startTopic(
           createdAt: post.createdAt,
         });
 
+        // The topic and its first post are both new domain facts (ADR 0011).
+        await emit(tx, {
+          type: "topic.created",
+          aggregateId: BigInt(topicId),
+          aggregateVersion: 1n,
+          payloadIds: {
+            topicId: BigInt(topicId),
+            postId: BigInt(post.id),
+            forumId: BigInt(forum.id),
+            authorId: BigInt(input.actorId),
+          },
+        });
+        await emit(tx, {
+          type: "post.created",
+          aggregateId: BigInt(post.id),
+          aggregateVersion: 1n,
+          payloadIds: {
+            postId: BigInt(post.id),
+            topicId: BigInt(topicId),
+            forumId: BigInt(forum.id),
+            authorId: BigInt(input.actorId),
+          },
+        });
+
         return {
           topicId,
           postId: post.id,
@@ -401,6 +426,18 @@ export async function reply(
           postId: post.id,
           authorId: input.actorId,
           createdAt: post.createdAt,
+        });
+
+        await emit(tx, {
+          type: "post.created",
+          aggregateId: BigInt(post.id),
+          aggregateVersion: 1n,
+          payloadIds: {
+            postId: BigInt(post.id),
+            topicId: BigInt(current.id),
+            forumId: BigInt(current.forumId),
+            authorId: BigInt(input.actorId),
+          },
         });
 
         return {

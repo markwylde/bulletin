@@ -26,6 +26,7 @@ import { runBaseSeed } from "@bulletin/db/seed";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { createCoreEventHandler } from "./core-events.ts";
+import { createNotificationsEventHandler } from "./notifications.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "workers", level: config.logLevel });
@@ -57,8 +58,15 @@ const boss = await createPgBossQueue({
 const purgeUrl = Bun.env.BULLETIN_CDN_PURGE_URL;
 const purger = purgeUrl === undefined ? undefined : createCdnPurger({ url: purgeUrl });
 
-// The core subscriber handles cache invalidation events; later changes add their own handlers.
-const subscribers: EventSubscriber[] = [{ name: "core", types: "*" }];
+// The core subscriber handles cache invalidation; notifications reacts to content and member
+// facts. Later changes add their own handlers (ADR 0011).
+const subscribers: EventSubscriber[] = [
+  { name: "core", types: "*" },
+  {
+    name: "notifications",
+    types: ["topic.created", "post.created", "member.promoted"],
+  },
+];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
 const eventWorker = await createEventWorker({
   boss: boss.boss,
@@ -69,6 +77,7 @@ const eventWorker = await createEventWorker({
       ...(purger === undefined ? {} : { purger }),
       logger,
     }),
+    notifications: createNotificationsEventHandler({ sql, logger }),
   },
   logger,
 });
