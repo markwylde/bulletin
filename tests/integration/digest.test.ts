@@ -19,6 +19,7 @@ import {
   setNotificationPreference,
 } from "@bulletin/domain/notifications";
 import { bumpPermVersion, forumActionMask } from "@bulletin/domain/permissions";
+import { ignoreMember } from "@bulletin/domain/relationships";
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { createMailStore } from "@bulletin/mock-mail/message";
 import { startSmtpServer } from "@bulletin/mock-mail/smtp";
@@ -126,6 +127,35 @@ function expectOk<T>(
 }
 
 integrationDescribe("digests", () => {
+  test("activity from an ignored followed member stays out of the digest", async () => {
+    await withMailStack(async ({ database }) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+
+      await setNotificationPreference(database.sql, member, "topic.reply", "digest", true);
+      await follow(database.sql, { memberId: member, kind: "member", id: author });
+      await ignoreMember(database.sql, { memberId: member, ignoredId: author });
+
+      const since = new Date(Date.now() - 1_000);
+      expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Ignored member digest post",
+          bodyMd: "Body.",
+        }),
+      );
+
+      const items = await digestItems(database.sql, member, {
+        since,
+        until: new Date(Date.now() + 1_000),
+      });
+
+      expect(items.map((item) => item.title)).not.toContain("Ignored member digest post");
+    });
+  }, 60_000);
+
   test("a followed member's activity reaches the digest and stays permission-filtered", async () => {
     await withMailStack(async ({ database }) => {
       const member = await memberId(database, "member-2");

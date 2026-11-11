@@ -16,6 +16,7 @@ function target(): {
   readonly reactions: string[];
   readonly reputation: string[];
   readonly hideSignatures: boolean[];
+  readonly ignored: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
@@ -30,6 +31,7 @@ function target(): {
   const reactions: string[] = [];
   const reputation: string[] = [];
   const hideSignatures: boolean[] = [];
+  const ignored: string[] = [];
 
   return {
     unread,
@@ -45,6 +47,7 @@ function target(): {
     reactions,
     reputation,
     hideSignatures,
+    ignored,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -74,6 +77,7 @@ function target(): {
           ),
         ),
       setHideSignatures: (hidden) => hideSignatures.push(hidden),
+      setIgnoredMembers: (memberIds) => ignored.push(...memberIds),
     },
   };
 }
@@ -85,6 +89,14 @@ describe("overlay applier", () => {
     applyOverlay(fixture.target, { unread: ["201", "202"] });
 
     expect(fixture.unread).toEqual(["201", "201 (second slot)", "202", "202 (second slot)"]);
+  });
+
+  test("applies the viewer's ignored members and ignores unsafe ids", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, { ignored: ["12", "not-a-member", "0", "13"] });
+
+    expect(fixture.ignored).toEqual(["12", "13"]);
   });
 
   test("applies the hide-signatures preference from the member overlay", () => {

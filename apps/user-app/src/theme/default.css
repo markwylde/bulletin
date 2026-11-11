@@ -953,6 +953,25 @@ html[data-hide-signatures] [data-signature] {
   display: none;
 }
 
+/* Ignored members' posts are collapsed by the personal overlay (member-profiles 3.1). */
+.bl-post--ignored .bl-post__body,
+.bl-post--ignored .bl-post__attachments,
+.bl-post--ignored .bl-post__signature,
+.bl-post--ignored bl-post-reactions,
+.bl-post--ignored .bl-post__meta {
+  display: none;
+}
+
+.bl-post__ignored {
+  border: 1px dashed var(--bl-border);
+  border-radius: var(--bl-radius-small);
+  padding: var(--bl-space-small);
+}
+
+.bl-post__ignored p {
+  margin: 0 0 var(--bl-space-small);
+}
+
 .bl-attachment-image {
   display: grid;
   gap: var(--bl-space-tiny, 0.25rem);

@@ -60,6 +60,7 @@ export interface ProfileRecord {
   readonly hideOnline: boolean;
   readonly hideFromMemberList: boolean;
   readonly hideSignatures: boolean;
+  readonly hideFriends: boolean;
   readonly signatureMd: string;
   readonly signatureHtml: string;
   readonly groupTitle: string | null;

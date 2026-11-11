@@ -9,4 +9,5 @@ export const NOTIFICATION_TYPE_LABELS = {
   "member.promoted": { labelKey: "notification.type.member.promoted" },
   "reaction.added": { labelKey: "notification.type.reaction.added" },
   "reputation.given": { labelKey: "notification.type.reputation.given" },
+  "friend.accepted": { labelKey: "notification.type.friend.accepted" },
 } satisfies Record<NotificationType, { labelKey: string }>;

@@ -16,6 +16,15 @@
         {% if profile.groupTitle %}
           <p class="bl-profile__group" data-profile-group{% if profile.groupColour %} style="color: {{ profile.groupColour }}"{% endif %}>{{ profile.groupTitle }}</p>
         {% endif %}
+        <div class="bl-actions" data-member-actions data-member-id="{{ profile.id }}" hidden>
+          <button type="button" class="bl-button bl-button--small" data-friend-request hidden>{% t "profile.friends.add" %}</button>
+          <button type="button" class="bl-button bl-button--small" data-friend-pending hidden disabled>{% t "profile.friends.pending" %}</button>
+          <button type="button" class="bl-button bl-button--small" data-friend-accept hidden>{% t "profile.friends.accept" %}</button>
+          <button type="button" class="bl-button bl-button--quiet bl-button--small" data-friend-decline hidden>{% t "profile.friends.decline" %}</button>
+          <button type="button" class="bl-button bl-button--quiet bl-button--small" data-friend-remove hidden>{% t "profile.friends.remove" %}</button>
+          <button type="button" class="bl-button bl-button--quiet bl-button--small" data-ignore-toggle hidden>{% t "profile.ignore.add" %}</button>
+        </div>
+        <p class="bl-error-text" data-member-action-error hidden></p>
         <dl class="bl-profile__stats">
           <div>
             <dt>{% t "profile.stats.joined" %}</dt>
@@ -82,6 +91,19 @@
             {% if badge.description %}
               <span class="bl-muted">{{ badge.description }}</span>
             {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  {% if profile.friends.size > 0 %}
+    <section class="bl-card" data-profile-friends>
+      <h2 class="bl-card__title">{% t "profile.friends.title" %}</h2>
+      <ul class="bl-profile__friends">
+        {% for friend in profile.friends %}
+          <li data-profile-friend="{{ friend.id }}">
+            <a href="{{ friend.href }}">{{ friend.name }}</a>
           </li>
         {% endfor %}
       </ul>

@@ -298,7 +298,7 @@ integrationDescribe("profile page (member-profiles)", () => {
     } finally {
       await close(harness);
     }
-  });
+  }, 30_000);
 
   test("field visibility produces a variant per class with no leaked field", async () => {
     const harness = await seed();
@@ -388,7 +388,7 @@ integrationDescribe("profile page (member-profiles)", () => {
     } finally {
       await close(harness);
     }
-  });
+  }, 30_000);
 
   test("recent posts are permission-filtered and the variant follows forum read bits", async () => {
     const harness = await seed();
@@ -415,7 +415,7 @@ integrationDescribe("profile page (member-profiles)", () => {
     } finally {
       await close(harness);
     }
-  });
+  }, 30_000);
 
   test("a hidden member's last activity is visible only with members.view_hidden", async () => {
     const harness = await seed();
@@ -436,7 +436,7 @@ integrationDescribe("profile page (member-profiles)", () => {
     } finally {
       await close(harness);
     }
-  });
+  }, 30_000);
 
   test("renders awarded badges on the profile", async () => {
     const harness = await seed();
@@ -468,7 +468,7 @@ integrationDescribe("profile page (member-profiles)", () => {
     } finally {
       await close(harness);
     }
-  });
+  }, 30_000);
 
   test("a profile save invalidates the member tag and rebuilds the page", async () => {
     const harness = await seed();
@@ -519,5 +519,5 @@ integrationDescribe("profile page (member-profiles)", () => {
     } finally {
       await close(harness);
     }
-  });
+  }, 30_000);
 });

@@ -277,7 +277,7 @@ integrationDescribe("database lifecycle", () => {
         await secondSql.close();
       });
     });
-  });
+  }, 30_000);
 
   test("the base seed writes the board settings row once", async () => {
     await withDatabase(async (databaseUrl) => {

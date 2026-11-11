@@ -71,6 +71,8 @@ function subjectFor(translate: Translator, type: NotificationType, topic: string
       return translate("email.subject.reputation.given");
     case "member.promoted":
       return translate("email.subject.member.promoted");
+    case "friend.accepted":
+      return translate("email.subject.friend.accepted");
   }
 }
 
@@ -95,6 +97,8 @@ function bodyFor(
       return translate("email.body.reputation.given", { actor });
     case "member.promoted":
       return translate("email.body.member.promoted");
+    case "friend.accepted":
+      return translate("email.body.friend.accepted", { actor });
   }
 }
 

@@ -98,6 +98,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
   const hideOnline = form.querySelector<HTMLInputElement>("[data-profile-hide-online]");
   const hideFromList = form.querySelector<HTMLInputElement>("[data-profile-hide-from-list]");
   const hideSignatures = form.querySelector<HTMLInputElement>("[data-profile-hide-signatures]");
+  const hideFriends = form.querySelector<HTMLInputElement>("[data-profile-hide-friends]");
   const values = fieldValues();
 
   if (error !== null) {
@@ -140,6 +141,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
         hideOnline: hideOnline?.checked === true,
         hideFromMemberList: hideFromList?.checked === true,
         hideSignatures: hideSignatures?.checked === true,
+        hideFriends: hideFriends?.checked === true,
         values,
       }),
     });

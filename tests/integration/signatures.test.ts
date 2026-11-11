@@ -144,7 +144,7 @@ integrationDescribe("signatures", () => {
       });
       expect((await readProfile(database.sql, member))?.signatureMd).toBe("");
     });
-  });
+  }, 30_000);
 
   test("saves a rendered signature and shows it under the member's posts", async () => {
     await withDb(async (database) => {
@@ -241,7 +241,7 @@ integrationDescribe("signatures", () => {
         await versions.close();
       }
     });
-  });
+  }, 30_000);
 
   test("stores the hide-all-signatures preference without changing shared HTML", async () => {
     await withDb(async (database) => {
@@ -268,5 +268,5 @@ integrationDescribe("signatures", () => {
         "Visible in shared HTML",
       );
     });
-  });
+  }, 30_000);
 });

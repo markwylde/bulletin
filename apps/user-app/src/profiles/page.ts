@@ -16,6 +16,7 @@ import {
   readProfileFields,
   readRecentProfilePosts,
 } from "@bulletin/domain/profiles";
+import { friendsForMember } from "@bulletin/domain/relationships";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { type SafeHtml, safeHtml } from "@bulletin/templates";
@@ -49,6 +50,12 @@ export interface ProfileBadgeView {
   readonly imageUrl: string | null;
 }
 
+export interface ProfileFriendView {
+  readonly id: string;
+  readonly name: string;
+  readonly href: string;
+}
+
 export interface ProfilePostView {
   readonly id: string;
   readonly href: string;
@@ -72,6 +79,7 @@ export interface ProfileView {
   readonly aboutHtml: SafeHtml | null;
   readonly fields: readonly ProfileFieldView[];
   readonly badges: readonly ProfileBadgeView[];
+  readonly friends: readonly ProfileFriendView[];
   readonly posts: readonly ProfilePostView[];
 }
 
@@ -175,10 +183,11 @@ export async function buildProfilePage(input: ProfilePageInput): Promise<Profile
   }
 
   const fieldClass = await profileFieldVisibilityClass(input.sql, input.principal);
-  const [fields, values, badges, canViewHidden, recent] = await Promise.all([
+  const [fields, values, badges, friends, canViewHidden, recent] = await Promise.all([
     readProfileFields(input.sql, fieldClass.ids),
     readMemberFieldValues(input.sql, input.memberId),
     listMemberBadges(input.sql, input.memberId),
+    profile.hideFriends ? Promise.resolve([]) : friendsForMember(input.sql, input.memberId),
     can(input.sql, input.principal, "members.view_hidden"),
     readRecentProfilePosts(input.sql, {
       memberId: input.memberId,
@@ -248,6 +257,11 @@ export async function buildProfilePage(input: ProfilePageInput): Promise<Profile
           label: localizedText(badge.labels, input.locale),
           description: localizedText(badge.descriptionLabels, input.locale),
           imageUrl: badgeImageUrl(badge.imageKey),
+        })),
+        friends: friends.map((friend) => ({
+          id: friend.id,
+          name: friend.displayName,
+          href: canonicalUrl("profile", friend.id, friend.displayName),
         })),
         posts,
       },

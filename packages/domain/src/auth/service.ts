@@ -24,6 +24,7 @@ import { loadPermissionSnapshot } from "../permissions/snapshot.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
 import { pollVoteStateForTopic } from "../polls/repository.ts";
 import { readViewerReactions } from "../reactions/repository.ts";
+import { ignoredMemberIds } from "../relationships/index.ts";
 import { readViewerVotes } from "../reputation/repository.ts";
 import {
   firstUnreadForTopics,
@@ -488,7 +489,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         `,
       ]);
       void visits;
-      const [unreadIds, unreadForums, follows] = await Promise.all([
+      const [unreadIds, unreadForums, follows, ignored] = await Promise.all([
         unreadTopicIds(options.sql, {
           memberId: session.memberId,
           topicIds: readableTopics,
@@ -501,6 +502,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           snapshot,
         }),
         followedTargets(options.sql, session.memberId, followTargets),
+        ignoredMemberIds(options.sql, session.memberId),
       ]);
       const followed = new Set(follows);
       const firstUnreadRows = (
@@ -603,6 +605,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         },
         polls: poll === null ? [] : [poll],
         hideSignatures: signaturePrivacy[0]?.hide_signatures === true,
+        ignored,
         editablePosts,
         reactions: viewerReactions,
         reputation: viewerVotes,

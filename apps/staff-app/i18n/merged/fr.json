@@ -376,6 +376,7 @@
   "staff.groups.setting.signatureMaxImages": "Images maximales de la signature",
   "staff.groups.setting.signatureMaxLines": "Lignes maximales de la signature",
   "staff.groups.setting.signatureMaxLinks": "Liens maximaux de la signature",
+  "staff.groups.setting.unignorable": "Ne peut pas être ignoré",
   "staff.groups.setting.uploadDocuments": "Autoriser l’envoi de documents",
   "staff.groups.setting.uploadImages": "Autoriser l’envoi d’images",
   "staff.groups.setting.uploadPerFileKb": "Téléversement par fichier (Ko)",

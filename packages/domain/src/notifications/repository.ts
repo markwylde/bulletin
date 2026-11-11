@@ -4,6 +4,7 @@ import { can } from "../permissions/can.ts";
 import { loadPermissionSnapshot, type PermissionSnapshot } from "../permissions/snapshot.ts";
 import type { ForumTree } from "../permissions/tree.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
+import { listIgnoredIds } from "../relationships/repository.ts";
 import { isNotificationTypeValue, notificationPreferenceMatrix } from "./preferences.ts";
 
 /** Notification kinds the subscriber creates; the centre renders each with its own i18n key. */
@@ -15,6 +16,7 @@ export const NOTIFICATION_TYPES = [
   "member.promoted",
   "reaction.added",
   "reputation.given",
+  "friend.accepted",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -25,7 +27,8 @@ export type NotificationRecipientSource =
   | "quote"
   | "promotion"
   | "reaction"
-  | "reputation";
+  | "reputation"
+  | "friend";
 
 /** These types are about one post, so an unread entry coalesces per post, not per topic. */
 const POST_COALESCED_TYPES = ["reaction.added", "reputation.given"] as const;
@@ -275,6 +278,7 @@ export async function eventRecipients(
     "topic.reply": 3,
     "topic.created": 2,
     "member.promoted": 1,
+    "friend.accepted": 1,
     "reaction.added": 0,
     "reputation.given": 0,
   };
@@ -452,6 +456,26 @@ export async function eventRecipients(
           topicId: post.topicId,
           forumId: post.forumId,
           postId,
+        },
+      ];
+    }
+    case "friend.accepted": {
+      const requesterId = event.payloadIds.requesterId;
+      const accepterId = event.payloadIds.accepterId;
+
+      if (requesterId === undefined || accepterId === undefined || requesterId === accepterId) {
+        return [];
+      }
+
+      return [
+        {
+          memberId: requesterId,
+          type: "friend.accepted",
+          source: "friend",
+          actorId: accepterId,
+          topicId: null,
+          forumId: null,
+          postId: null,
         },
       ];
     }
@@ -721,6 +745,7 @@ export interface DigestItem {
   readonly slug: string | null;
   readonly forumId: string | null;
   readonly postId: string | null;
+  readonly actorId: string | null;
   readonly actorName: string | null;
   readonly createdAt: Date;
 }
@@ -731,6 +756,7 @@ interface DigestRow {
   readonly slug: string;
   readonly forum_id: string;
   readonly post_id: string | null;
+  readonly actor_id: string | null;
   readonly actor_name: string | null;
   readonly created_at: Date | string;
 }
@@ -739,6 +765,7 @@ interface DigestNotificationRow {
   readonly id: string;
   readonly type_from_notification: string;
   readonly created_at: Date | string;
+  readonly actor_id: string | null;
   readonly topic_id: string | null;
   readonly title: string | null;
   readonly slug: string | null;
@@ -782,7 +809,7 @@ export async function digestItems(
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
-        p.id::text AS post_id, a.display_name AS actor_name, p.created_at
+        p.id::text AS post_id, p.author_id::text AS actor_id, a.display_name AS actor_name, p.created_at
       FROM core.followed_topics ft
       JOIN core.topics t ON t.id = ft.topic_id
       JOIN core.posts p ON p.topic_id = t.id
@@ -796,7 +823,7 @@ export async function digestItems(
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
-        t.first_post_id::text AS post_id, a.display_name AS actor_name, t.created_at
+        t.first_post_id::text AS post_id, t.starter_id::text AS actor_id, a.display_name AS actor_name, t.created_at
       FROM core.followed_forums ff
       JOIN core.forums followed ON followed.id = ff.forum_id
       JOIN core.forums target ON target.path <@ followed.path
@@ -813,7 +840,7 @@ export async function digestItems(
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
-        p.id::text AS post_id, a.display_name AS actor_name, p.created_at
+        p.id::text AS post_id, p.author_id::text AS actor_id, a.display_name AS actor_name, p.created_at
       FROM core.followed_members fm
       JOIN core.posts p ON p.author_id = fm.followed_id
         AND p.visibility = 'visible'
@@ -827,7 +854,7 @@ export async function digestItems(
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
-        p.id::text AS post_id, a.display_name AS actor_name, p.created_at
+        p.id::text AS post_id, p.author_id::text AS actor_id, a.display_name AS actor_name, p.created_at
       FROM core.posts p
       JOIN core.members m ON m.id = ${memberId}
       JOIN core.topics t ON t.id = p.topic_id
@@ -841,7 +868,7 @@ export async function digestItems(
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
-        p.id::text AS post_id, a.display_name AS actor_name, p.created_at
+        p.id::text AS post_id, p.author_id::text AS actor_id, a.display_name AS actor_name, p.created_at
       FROM core.posts p
       JOIN core.topics t ON t.id = p.topic_id
       LEFT JOIN core.members a ON a.id = p.author_id
@@ -859,6 +886,7 @@ export async function digestItems(
         n.id::text AS id,
         n.type AS type_from_notification,
         n.created_at,
+        n.actor_id::text AS actor_id,
         t.id::text AS topic_id,
         t.title,
         t.slug,
@@ -910,6 +938,7 @@ export async function digestItems(
         slug: row.slug,
         forumId: row.forum_id,
         postId: row.post_id,
+        actorId: row.actor_id,
         actorName: row.actor_name,
         createdAt: new Date(row.created_at),
       });
@@ -951,14 +980,20 @@ export async function digestItems(
       slug: row.slug,
       forumId: row.forum_id,
       postId: null,
+      actorId: row.actor_id,
       actorName: row.actor_name,
       createdAt: new Date(row.created_at),
     });
   }
 
   const readable: DigestItem[] = [];
+  const ignored = new Set(await listIgnoredIds(sql, memberId));
 
   for (const item of byTopic.values()) {
+    if (item.actorId !== null && ignored.has(item.actorId)) {
+      continue;
+    }
+
     if (
       item.forumId !== null &&
       !(await can(sql, memberId, "read", { forumId: item.forumId, tree, snapshot }))

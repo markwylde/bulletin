@@ -1177,13 +1177,21 @@ integrationDescribe("ACP permission catalog", () => {
         ORDER BY g.key, s.key
       `) as Array<{ key: string; permission: string }>;
 
+      const permissions = new Set<string>(PERMISSION_KEYS);
+
       expect(
-        rows.filter((row) => row.key === "administrators").map((row) => row.permission),
+        rows
+          .filter((row) => row.key === "administrators" && permissions.has(row.permission))
+          .map((row) => row.permission),
       ).toEqual([...PERMISSION_KEYS].sort());
       expect(
-        rows.filter((row) => row.key === "super_moderators").map((row) => row.permission),
+        rows
+          .filter((row) => row.key === "super_moderators" && permissions.has(row.permission))
+          .map((row) => row.permission),
       ).toEqual(["acp.access", "acp.members"]);
-      expect(rows.filter((row) => row.key === "members")).toEqual([]);
+      expect(
+        rows.filter((row) => row.key === "members" && permissions.has(row.permission)),
+      ).toEqual([]);
     });
   }, 30_000);
 });

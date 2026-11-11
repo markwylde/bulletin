@@ -24,6 +24,7 @@ import {
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
+import { ignoreRecipientFilter } from "@bulletin/domain/relationships";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { createCoreEventHandler } from "./core-events.ts";
@@ -79,6 +80,7 @@ const subscribers: EventSubscriber[] = [
       "member.promoted",
       "reaction.added",
       "reputation.given",
+      "friend.accepted",
     ],
   },
   { name: "reputation", types: ["reputation.recount.requested"] },
@@ -131,6 +133,7 @@ const eventWorker = await createEventWorker({
       sql,
       logger,
       flags: workerFlags,
+      filters: [ignoreRecipientFilter],
       enqueueEmail,
       enqueueFanout,
     }),
@@ -142,6 +145,7 @@ const notificationFanout = await createNotificationsFanoutWorker({
   sql,
   logger,
   flags: workerFlags,
+  filters: [ignoreRecipientFilter],
   enqueueEmail,
 });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });

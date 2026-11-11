@@ -569,6 +569,15 @@ const VALUE_SETTING_DEFINITIONS = [
     labelKey: "staff.groups.setting.canChooseTheme",
   },
   {
+    key: "members.unignorable",
+    kind: "setting",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "members",
+    labelKey: "staff.groups.setting.unignorable",
+  },
+  {
     key: "restrictions.banned",
     kind: "setting",
     type: "bool",

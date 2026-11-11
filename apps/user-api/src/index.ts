@@ -38,6 +38,7 @@ import { profileSaveResponse } from "./profile.ts";
 import { reactionMembersResponse, reactionSetResponse } from "./reactions.ts";
 import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
+import { friendResponse, ignoreResponse, relationshipStateResponse } from "./relationships.ts";
 import { reputationGiveResponse } from "./reputation.ts";
 import { streamResponse } from "./stream.ts";
 import { createStreamHub } from "./stream-hub.ts";
@@ -289,6 +290,42 @@ await startService({
         }
 
         return profileSaveResponse(sql, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/relationships/state") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return relationshipStateResponse(sql, session, new URL(request.url));
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/ignores") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return ignoreResponse(sql, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/friends") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return friendResponse(sql, session, request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

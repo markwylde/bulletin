@@ -1,10 +1,14 @@
-        <li class="bl-post{% if post.deleted %} bl-post--deleted{% endif %}" id="post-{{ post.id }}" data-post="{{ post.id }}" data-post-position="{{ post.position }}"
+        <li class="bl-post{% if post.deleted %} bl-post--deleted{% endif %}" id="post-{{ post.id }}" data-post="{{ post.id }}" data-post-position="{{ post.position }}"{% if post.authorId %} data-author="{{ post.authorId }}"{% endif %}
           data-label-edit="{% t "post.edit" %}" data-label-body="{% t "post.body" %}"
           data-label-redact="{% t "post.redact" %}" data-label-save="{% t "post.save" %}"
           data-label-edit-failed="{% t "post.editFailed" %}" data-label-delete="{% t "post.delete" %}"
           data-label-confirm-delete="{% t "post.confirmDelete" %}">
           <div class="bl-post__author">{{ post.authorCard }}</div>
           <div class="bl-post__main">
+            <div class="bl-post__ignored" data-post-ignored hidden>
+              <p>{% t "profile.ignore.collapsed" %}</p>
+              <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-reveal>{% t "profile.ignore.reveal" %}</button>
+            </div>
             <div class="bl-post__meta">
               <span class="bl-muted" data-post-time>{{ post.createdAt }}</span>
               {% if post.unapproved %}<span class="bl-badge bl-badge--danger" data-post-unapproved>{% t "post.unapproved" %}</span>{% endif %}

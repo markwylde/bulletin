@@ -57,6 +57,12 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
 }
 
 Astro.response.status = result.status;
+const relationshipLabels = {
+  ignoreAdd: translate("profile.ignore.add"),
+  ignoreRemove: translate("profile.ignore.remove"),
+  error: translate("profile.ignore.error"),
+  unignorable: translate("profile.ignore.unignorable"),
+};
 ---
 
 <ThemeLayout
@@ -68,4 +74,7 @@ Astro.response.status = result.status;
   {...(Astro.locals.localeSource === undefined
     ? {}
     : { localeSource: Astro.locals.localeSource })}
-/>
+>
+  <script type="application/json" id="profile-relationship-labels" set:html={JSON.stringify(relationshipLabels)}></script>
+  <script>import "../../profiles/relationships-client.ts";</script>
+</ThemeLayout>

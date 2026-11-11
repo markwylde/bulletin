@@ -36,6 +36,7 @@ export async function profileSaveResponse(
     hideOnline: body.hideOnline === true,
     hideFromMemberList: body.hideFromMemberList === true,
     ...(typeof body.hideSignatures === "boolean" ? { hideSignatures: body.hideSignatures } : {}),
+    ...(typeof body.hideFriends === "boolean" ? { hideFriends: body.hideFriends } : {}),
     ...(typeof body.signatureMd === "string" ? { signatureMd: body.signatureMd } : {}),
     values: (body.values ?? {}) as Record<string, unknown>,
     fields,

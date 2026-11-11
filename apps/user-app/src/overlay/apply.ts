@@ -58,6 +58,8 @@ export interface OverlayPayload {
   readonly reputation?: readonly ReputationViewerState[];
   /** The member hides every signature under posts; applied client-side only (task 2.1). */
   readonly hideSignatures?: boolean;
+  /** Member ids the viewer ignores; their rendered posts collapse client-side (task 3.1). */
+  readonly ignored?: readonly string[];
 }
 
 export interface UnreadSlot {
@@ -82,6 +84,7 @@ export interface OverlayTarget {
   setReactions(states: readonly ReactionViewerState[]): void;
   setReputation(states: readonly ReputationViewerState[]): void;
   setHideSignatures(hidden: boolean): void;
+  setIgnoredMembers(memberIds: readonly string[]): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -209,6 +212,11 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
 
   target.setReputation(reputation);
   target.setHideSignatures(payload.hideSignatures === true);
+  target.setIgnoredMembers(
+    (payload.ignored ?? []).filter(
+      (id): id is string => typeof id === "string" && /^[1-9]\d{0,18}$/.test(id),
+    ),
+  );
 
   const draft = payload.draft;
 

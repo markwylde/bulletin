@@ -29,6 +29,7 @@ interface ProfileRow {
   readonly hide_online: boolean;
   readonly hide_from_member_list: boolean;
   readonly hide_signatures: boolean;
+  readonly hide_friends: boolean;
   readonly signature_md: string;
   readonly signature_html: string;
   readonly group_title: string | null;
@@ -49,6 +50,7 @@ function profileRecord(row: ProfileRow): ProfileRecord {
     hideOnline: row.hide_online,
     hideFromMemberList: row.hide_from_member_list,
     hideSignatures: row.hide_signatures,
+    hideFriends: row.hide_friends,
     signatureMd: row.signature_md,
     signatureHtml: row.signature_html,
     groupTitle: row.group_title,
@@ -71,6 +73,7 @@ export async function readProfile(sql: SQL, memberId: string): Promise<ProfileRe
       m.hide_online,
       m.hide_from_member_list,
       m.hide_signatures,
+      m.hide_friends,
       m.signature_md,
       m.signature_html,
       g.title AS group_title,
@@ -492,4 +495,9 @@ export async function updateHideSignatures(
   hide: boolean,
 ): Promise<void> {
   await tx`UPDATE core.members SET hide_signatures = ${hide} WHERE id = ${memberId}`;
+}
+
+/** Stores the member's "hide my friend list" privacy preference. */
+export async function updateHideFriends(tx: SQL, memberId: string, hide: boolean): Promise<void> {
+  await tx`UPDATE core.members SET hide_friends = ${hide} WHERE id = ${memberId}`;
 }

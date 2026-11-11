@@ -34,3 +34,12 @@ export const profileFieldMutation: Mutation<Record<string, never>, unknown> = {
   name: "member.profile_field.update",
   tags: () => [GLOBAL_CACHE_TAGS.profileFields],
 };
+
+/** Accepting or removing a friendship changes both members' profile friend lists. */
+export const friendshipMutation: Mutation<
+  { readonly memberIds: readonly string[] },
+  { readonly memberIds: readonly string[] }
+> = {
+  name: "member.friendship.update",
+  tags: (_input, result) => result.memberIds.map(memberTag),
+};

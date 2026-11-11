@@ -190,6 +190,37 @@ const overlayTarget: OverlayTarget = {
   setHideSignatures(hidden) {
     document.documentElement.toggleAttribute("data-hide-signatures", hidden);
   },
+
+  setIgnoredMembers(memberIds) {
+    const ignored = new Set(memberIds);
+
+    for (const post of document.querySelectorAll<HTMLElement>("[data-post][data-author]")) {
+      const author = post.getAttribute("data-author") ?? "";
+
+      if (!ignored.has(author)) {
+        continue;
+      }
+
+      post.classList.add("bl-post--ignored");
+      const notice = post.querySelector<HTMLElement>("[data-post-ignored]");
+
+      if (notice !== null) {
+        notice.hidden = false;
+      }
+
+      post.querySelector<HTMLButtonElement>("[data-post-reveal]")?.addEventListener(
+        "click",
+        () => {
+          post.classList.remove("bl-post--ignored");
+
+          if (notice !== null) {
+            notice.hidden = true;
+          }
+        },
+        { once: true },
+      );
+    }
+  },
 };
 
 function draftContext(): string | null {

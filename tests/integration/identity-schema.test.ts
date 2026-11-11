@@ -68,6 +68,7 @@ integrationDescribe("identity schema", () => {
           "avatar_updated_at",
           "board_marked_at",
           "display_name",
+          "hide_friends",
           "hide_from_member_list",
           "hide_online",
           "hide_signatures",

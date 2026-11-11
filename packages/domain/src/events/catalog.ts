@@ -48,6 +48,10 @@ export const EVENT_CATALOG = {
     aggregateType: "member",
     payloadIds: ["entryId", "postId", "giverId", "receiverId"],
   },
+  "friend.accepted": {
+    aggregateType: "member",
+    payloadIds: ["requesterId", "accepterId"],
+  },
   "reputation.recount.requested": {
     aggregateType: "board",
     payloadIds: ["requestedById"],

@@ -13,9 +13,9 @@
 
 ## 3. Relationships
 
-- [ ] 3.1 Ignore list (unignorable staff, collapsed posts via overlay, no-reveal), with tests for each scenario
-- [ ] 3.2 Hook the ignore check into the notification recipient filter, with a test that an ignored member's mention delivers no notification
-- [ ] 3.3 Friends (request, accept/decline, remove, list, hide list, notifications), with integration tests and an E2E at 360
+- [x] 3.1 Ignore list (unignorable staff, collapsed posts via overlay, no-reveal), with tests for each scenario
+- [x] 3.2 Hook the ignore check into the notification recipient filter, with a test that an ignored member's mention delivers no notification
+- [x] 3.3 Friends (request, accept/decline, remove, list, hide list, notifications), with integration tests and an E2E at 360
 
 ## 4. Directory
 

@@ -8,6 +8,7 @@ import {
   deleteProfileField,
   type ProfileFieldWrite,
   replaceFieldValues,
+  updateHideFriends,
   updateHideSignatures,
   updateMemberSignature,
   updateProfileRow,
@@ -398,6 +399,7 @@ export interface SaveMemberProfileInput {
   readonly hideFromMemberList: boolean;
   /** Only changed when present, so a staff edit never resets the member's preference. */
   readonly hideSignatures?: boolean;
+  readonly hideFriends?: boolean;
   /** Only changed when present (the member's own editor sends it, staff edits need not). */
   readonly signatureMd?: string;
   /** Raw JSON values keyed by field id; every key must be an editable field. */
@@ -495,6 +497,10 @@ export async function saveMemberProfile(
 
       if (input.hideSignatures !== undefined) {
         await updateHideSignatures(tx, input.memberId, input.hideSignatures);
+      }
+
+      if (input.hideFriends !== undefined) {
+        await updateHideFriends(tx, input.memberId, input.hideFriends);
       }
 
       return { memberId: input.memberId };

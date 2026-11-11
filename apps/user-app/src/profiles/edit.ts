@@ -35,6 +35,7 @@ export interface ProfileEditPageData {
     readonly hideOnline: boolean;
     readonly hideFromMemberList: boolean;
     readonly hideSignatures: boolean;
+    readonly hideFriends: boolean;
     readonly signature: {
       readonly value: string;
       readonly enabled: boolean;
@@ -124,6 +125,7 @@ export async function buildProfileEditPage(input: {
       hideOnline: editable.profile.hideOnline,
       hideFromMemberList: editable.profile.hideFromMemberList,
       hideSignatures: editable.profile.hideSignatures,
+      hideFriends: editable.profile.hideFriends,
       signature: {
         value: editable.profile.signatureMd,
         enabled: signatureLimits.maxChars > 0,
