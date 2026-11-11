@@ -619,6 +619,13 @@ input:focus-visible {
   gap: var(--bl-space-small);
 }
 
+fieldset.bl-editor {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
 .bl-editor__modes,
 .bl-editor__toolbar,
 .bl-editor__draft {
@@ -879,6 +886,67 @@ fieldset.bl-editor__modes {
 .bl-post__body img,
 .bl-post__body iframe {
   max-width: 100%;
+}
+
+.bl-attachment-image {
+  display: grid;
+  gap: var(--bl-space-tiny, 0.25rem);
+  margin: 0 0 var(--bl-space-small);
+}
+
+.bl-attachment-image img {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--bl-radius, 6px);
+}
+
+.bl-attachment-list,
+.bl-attachment-file {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bl-attachment-list {
+  display: grid;
+  gap: var(--bl-space-small);
+  margin-top: var(--bl-space-small);
+}
+
+.bl-attachment-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bl-space-small);
+  padding: var(--bl-space-small);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius, 6px);
+}
+
+.bl-attachment-file__name {
+  flex: 1 1 12rem;
+  overflow-wrap: anywhere;
+}
+
+.bl-attachment-file__meta {
+  color: var(--bl-muted);
+  font-size: 0.8125rem;
+}
+
+.bl-attachment-missing {
+  color: var(--bl-muted);
+  font-style: italic;
+}
+
+.bl-editor.is-dragging {
+  outline: 2px dashed var(--bl-accent, #3157c7);
+  outline-offset: 2px;
+}
+
+.bl-editor__attachments {
+  display: grid;
+  gap: var(--bl-space-tiny, 0.25rem);
 }
 
 .bl-post--deleted {
