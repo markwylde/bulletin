@@ -5,6 +5,7 @@ import { syncPostAttachments } from "../attachments/store.ts";
 import { redactQuoteSnapshotsInTransaction } from "../content/quotes.ts";
 import { loadContentRenderDependencies } from "../content/rendering.ts";
 import { emit } from "../events/outbox.ts";
+import { autoFollowTopic } from "../follows/repository.ts";
 import { runMutation } from "../mutations/index.ts";
 import {
   type PostEditSummary,
@@ -281,6 +282,8 @@ export async function startTopic(
             authorId: BigInt(input.actorId),
           },
         });
+        // Starting a topic follows it when the member left auto-follow on (follows spec).
+        await autoFollowTopic(tx, input.actorId, topicId);
 
         return {
           topicId,
@@ -439,6 +442,8 @@ export async function reply(
             authorId: BigInt(input.actorId),
           },
         });
+        // Replying follows the topic unless the member turned auto-follow off.
+        await autoFollowTopic(tx, input.actorId, current.id);
 
         return {
           topicId: current.id,

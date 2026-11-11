@@ -1,0 +1,78 @@
+{{ header }}
+<main id="main" class="bl-main" data-follows-page>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{{ title }}</h1>
+  <p class="bl-muted">{% t "account.follows.intro" %}</p>
+
+  <section class="bl-card" data-follow-settings>
+    <label class="bl-check">
+      <input type="checkbox" data-auto-follow{% if autoFollow %} checked{% endif %} />
+      {% t "account.follows.autoFollow" %}
+    </label>
+    <p class="bl-muted">{% t "account.follows.autoFollowHint" %}</p>
+    <p class="bl-muted" data-auto-follow-status hidden>{% t "account.follows.saved" %}</p>
+    <p class="bl-error-text" data-auto-follow-error hidden>{% t "account.follows.saveFailed" %}</p>
+  </section>
+
+  <section class="bl-card" data-follows-topics>
+    <h2 class="bl-card__title">{% t "account.follows.topics" %}</h2>
+    <div data-follow-list="topics">
+      <ul class="bl-follow-list">
+        {% for follow in topics %}
+          <li class="bl-follow-list__item" data-follow-row="topic:{{ follow.id }}">
+            {% if follow.available %}
+              <a class="bl-follow-list__title" href="{{ follow.href }}" data-follow-link="{{ follow.id }}">{{ follow.title }}</a>
+            {% else %}
+              <span class="bl-follow-list__title">{{ follow.title }}</span>
+              <span class="bl-badge" data-follow-unavailable>{% t "follow.unavailable" %}</span>
+            {% endif %}
+            <span class="bl-muted">{{ follow.meta }}</span>
+            <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-remove="topic:{{ follow.id }}">{% t "follow.unfollow" %}</button>
+            <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="bl-muted" data-follow-empty{% if hasTopics %} hidden{% endif %}>{% t "account.follows.emptyTopics" %}</p>
+    </div>
+  </section>
+
+  <section class="bl-card" data-follows-forums>
+    <h2 class="bl-card__title">{% t "account.follows.forums" %}</h2>
+    <div data-follow-list="forums">
+      <ul class="bl-follow-list">
+        {% for follow in forums %}
+          <li class="bl-follow-list__item" data-follow-row="forum:{{ follow.id }}">
+            {% if follow.available %}
+              <a class="bl-follow-list__title" href="{{ follow.href }}" data-follow-link="{{ follow.id }}">{{ follow.title }}</a>
+            {% else %}
+              <span class="bl-follow-list__title">{{ follow.title }}</span>
+              <span class="bl-badge" data-follow-unavailable>{% t "follow.unavailable" %}</span>
+            {% endif %}
+            <span class="bl-muted">{{ follow.meta }}</span>
+            <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-remove="forum:{{ follow.id }}">{% t "follow.unfollow" %}</button>
+            <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="bl-muted" data-follow-empty{% if hasForums %} hidden{% endif %}>{% t "account.follows.emptyForums" %}</p>
+    </div>
+  </section>
+
+  <section class="bl-card" data-follows-members>
+    <h2 class="bl-card__title">{% t "account.follows.members" %}</h2>
+    <div data-follow-list="members">
+      <ul class="bl-follow-list">
+        {% for follow in members %}
+          <li class="bl-follow-list__item" data-follow-row="member:{{ follow.id }}">
+            <a class="bl-follow-list__title" href="{{ follow.href }}" data-follow-link="{{ follow.id }}">{{ follow.title }}</a>
+            <span class="bl-muted">{{ follow.meta }}</span>
+            <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-remove="member:{{ follow.id }}">{% t "follow.unfollow" %}</button>
+            <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="bl-muted" data-follow-empty{% if hasMembers %} hidden{% endif %}>{% t "account.follows.emptyMembers" %}</p>
+    </div>
+  </section>
+</main>
+{{ footer }}

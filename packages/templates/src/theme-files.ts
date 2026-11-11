@@ -22,6 +22,8 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "demo",
   "display-name",
   "account",
+  "account-attachments",
+  "account-follows",
 ] as const;
 
 export type DefaultThemeTemplateName = (typeof DEFAULT_THEME_TEMPLATE_NAMES)[number];

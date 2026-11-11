@@ -1124,3 +1124,33 @@ fieldset.bl-editor__modes {
   gap: var(--bl-space-small);
   align-items: center;
 }
+
+.bl-follow {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bl-space-small);
+}
+
+.bl-follow-list {
+  display: grid;
+  gap: var(--bl-space-small);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bl-follow-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bl-space-small);
+  padding: var(--bl-space-small);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius, 6px);
+}
+
+.bl-follow-list__title {
+  flex: 1 1 12rem;
+  overflow-wrap: anywhere;
+}

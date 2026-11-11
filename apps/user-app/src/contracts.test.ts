@@ -7,6 +7,7 @@ import {
   callbackContract,
   demoContract,
   displayNameContract,
+  followsContract,
   forumContract,
   homeContract,
   loginContract,
@@ -34,6 +35,7 @@ describe("route contracts", () => {
         topicContract.route,
         displayNameContract.route,
         accountContract.route,
+        followsContract.route,
         attachmentsContract.route,
       ].sort(),
     );

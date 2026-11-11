@@ -17,6 +17,7 @@
     "./urls": "./src/urls/index.ts",
     "./board": "./src/board/index.ts",
     "./events": "./src/events/index.ts",
+    "./follows": "./src/follows/index.ts",
     "./notifications": "./src/notifications/index.ts",
     "./mutations": "./src/mutations/index.ts",
     "./visits": "./src/visits/index.ts",

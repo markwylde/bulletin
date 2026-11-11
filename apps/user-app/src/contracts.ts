@@ -146,6 +146,15 @@ export const accountContract = defineContract<AccountViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+export const followsContract = defineContract<AccountViewModel>({
+  route: "/account/follows",
+  templates: { page: "account-follows", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const attachmentsContract = defineContract<AccountViewModel>({
   route: "/account/attachments",
   templates: {
@@ -167,5 +176,6 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [topicContract.route]: topicContract,
   [displayNameContract.route]: displayNameContract,
   [accountContract.route]: accountContract,
+  [followsContract.route]: followsContract,
   [attachmentsContract.route]: attachmentsContract,
 };
