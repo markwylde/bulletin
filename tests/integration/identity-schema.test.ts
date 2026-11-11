@@ -61,6 +61,9 @@ integrationDescribe("identity schema", () => {
       );
       expect(byTable.get("members")?.sort()).toEqual(
         [
+          "avatar_blocked_until",
+          "avatar_hash",
+          "avatar_updated_at",
           "board_marked_at",
           "display_name",
           "id",
