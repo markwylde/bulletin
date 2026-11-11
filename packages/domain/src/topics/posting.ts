@@ -237,6 +237,10 @@ export async function startTopic(
           renderVersion: rendered.renderVersion,
           sanitiserVersion: rendered.sanitiserVersion,
           quotedForumIds: rendered.quotedForumIds,
+          mentionedMemberIds: rendered.mentionedMemberIds,
+          quotedPostIds: rendered.quoteSources
+            .filter((source) => source.kind === "post")
+            .map((source) => source.id),
         });
 
         await syncPostAttachments(tx, {
@@ -413,6 +417,10 @@ export async function reply(
           renderVersion: rendered.renderVersion,
           sanitiserVersion: rendered.sanitiserVersion,
           quotedForumIds: rendered.quotedForumIds,
+          mentionedMemberIds: rendered.mentionedMemberIds,
+          quotedPostIds: rendered.quoteSources
+            .filter((source) => source.kind === "post")
+            .map((source) => source.id),
         });
 
         await syncPostAttachments(tx, {
@@ -590,6 +598,10 @@ export async function editPost(
           renderVersion: rendered.renderVersion,
           sanitiserVersion: rendered.sanitiserVersion,
           quotedForumIds: rendered.quotedForumIds,
+          mentionedMemberIds: rendered.mentionedMemberIds,
+          quotedPostIds: rendered.quoteSources
+            .filter((source) => source.kind === "post")
+            .map((source) => source.id),
           editedBy: input.actorId,
         });
 

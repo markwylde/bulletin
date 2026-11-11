@@ -10,6 +10,7 @@ import {
   SeedRegistry,
 } from "@bulletin/db/seed";
 import { emit, loadEvent, type StoredEvent } from "@bulletin/domain/events";
+import { follow } from "@bulletin/domain/follows";
 import { bumpPermVersion, can, forumActionMask, loadForumTree } from "@bulletin/domain/permissions";
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -288,6 +289,274 @@ integrationDescribe("notifications subscriber", () => {
           read_at: null,
         },
       ]);
+    });
+  }, 30_000);
+
+  test("a mention notifies the mentioned member once with the mention type", async () => {
+    await withSeededDb("notifications_mention", async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const mentioned = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: mentioned,
+          forumId: forum,
+          title: "Mention topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: `Thanks @[Regular Member Two](member:${mentioned})!`,
+        }),
+      );
+
+      const [post] = (await database.sql`
+        SELECT mentioned_member_ids::text AS mentioned FROM core.posts ORDER BY id DESC LIMIT 1
+      `) as Array<{ mentioned: string }>;
+      expect(post?.mentioned).toContain(mentioned);
+
+      await createNotificationsEventHandler({ sql: database.sql })(
+        await latestEvent(database, "post.created"),
+      );
+
+      expect(await notifications(database)).toEqual([
+        {
+          member_id: mentioned,
+          type: "post.mention",
+          actor_id: author,
+          topic_id: topic.topicId,
+          forum_id: forum,
+          post_id: expect.any(String),
+          count: 1,
+          read_at: null,
+        },
+      ]);
+    });
+  }, 30_000);
+
+  test("a quote notifies the quoted post's author", async () => {
+    await withSeededDb("notifications_quote", async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const quoted = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: quoted,
+          forumId: forum,
+          title: "Quote topic",
+          bodyMd: "Original body.",
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: `:::quote{source="post:${topic.postId}"}\nquoted\n:::`,
+        }),
+      );
+
+      await createNotificationsEventHandler({ sql: database.sql })(
+        await latestEvent(database, "post.created"),
+      );
+
+      const rows = await notifications(database);
+      expect(rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            member_id: quoted,
+            type: "post.quote",
+            actor_id: author,
+            topic_id: topic.topicId,
+          }),
+        ]),
+      );
+    });
+  }, 30_000);
+
+  test("followers of a topic, forum and member receive their notifications", async () => {
+    await withSeededDb("notifications_followers", async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const follower = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const other = await memberId(database, "member-fr");
+
+      // Forum follow: a new topic notifies the forum follower.
+      await follow(database.sql, { memberId: follower, kind: "forum", id: forum });
+      await expectOk(
+        await startTopic(database.sql, {
+          actorId: other,
+          forumId: forum,
+          title: "Forum follower topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const handler = createNotificationsEventHandler({ sql: database.sql });
+      await handler(await latestEvent(database, "topic.created"));
+
+      const topicCreated = (await notifications(database)).find(
+        (row) => row.member_id === follower && row.type === "topic.created",
+      );
+      expect(topicCreated).toBeDefined();
+
+      // Topic follow: a reply notifies the topic follower.
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: other,
+          forumId: forum,
+          title: "Topic follower topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await follow(database.sql, { memberId: follower, kind: "topic", id: topic.topicId });
+      await expectOk(
+        await reply(database.sql, { actorId: author, topicId: topic.topicId, bodyMd: "Reply." }),
+      );
+      await handler(await latestEvent(database, "post.created"));
+
+      expect(
+        (await notifications(database)).some(
+          (row) =>
+            row.member_id === follower &&
+            row.type === "topic.reply" &&
+            row.topic_id === topic.topicId,
+        ),
+      ).toBe(true);
+
+      // Member follow: a post by the followed member notifies the follower.
+      await follow(database.sql, { memberId: follower, kind: "member", id: author });
+      const second = await expectOk(
+        await startTopic(database.sql, {
+          actorId: other,
+          forumId: forum,
+          title: "Member follower topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: second.topicId,
+          bodyMd: "Followed member reply.",
+        }),
+      );
+      await handler(await latestEvent(database, "post.created"));
+
+      expect(
+        (await notifications(database)).some(
+          (row) =>
+            row.member_id === follower &&
+            row.type === "topic.reply" &&
+            row.topic_id === second.topicId,
+        ),
+      ).toBe(true);
+    });
+  }, 30_000);
+
+  test("replies coalesce into one unread entry until it is read", async () => {
+    await withSeededDb("notifications_coalesce", async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const starter = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: starter,
+          forumId: forum,
+          title: "Coalescing topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const handler = createNotificationsEventHandler({ sql: database.sql });
+
+      for (let index = 0; index < 5; index += 1) {
+        await expectOk(
+          await reply(database.sql, {
+            actorId: author,
+            topicId: topic.topicId,
+            bodyMd: `Reply ${index + 1}.`,
+          }),
+        );
+        await handler(await latestEvent(database, "post.created"));
+      }
+
+      expect(await notifications(database)).toEqual([
+        expect.objectContaining({ member_id: starter, type: "topic.reply", count: 5 }),
+      ]);
+
+      await database.sql`UPDATE core.notifications SET read_at = now() WHERE member_id = ${starter}`;
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "Reply after reading.",
+        }),
+      );
+      await handler(await latestEvent(database, "post.created"));
+
+      const rows = await notifications(database);
+      expect(rows).toHaveLength(2);
+      expect(rows.map((row) => row.count).sort()).toEqual([1, 5]);
+    });
+  }, 30_000);
+
+  test("recipient filters can drop a member before delivery", async () => {
+    await withSeededDb("notifications_filter", async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const starter = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: starter,
+          forumId: forum,
+          title: "Filtered topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, { actorId: author, topicId: topic.topicId, bodyMd: "Reply." }),
+      );
+
+      const handler = createNotificationsEventHandler({
+        sql: database.sql,
+        filters: [async ({ recipient }) => recipient.memberId !== starter],
+      });
+      await handler(await latestEvent(database, "post.created"));
+
+      expect(await notifications(database)).toEqual([]);
+    });
+  }, 30_000);
+
+  test("a mention in content the recipient cannot read delivers nothing", async () => {
+    await withSeededDb("notifications_mention_lost", async (database) => {
+      const staffRoom = await forumId(database, "staff-room");
+      const outsider = await memberId(database, "member-1");
+      const starter = await memberId(database, "super-mod");
+      const author = await memberId(database, "admin");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: starter,
+          forumId: staffRoom,
+          title: "Staff mention",
+          bodyMd: "Body.",
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: `Secret @[Regular Member One](member:${outsider})`,
+        }),
+      );
+
+      await createNotificationsEventHandler({ sql: database.sql })(
+        await latestEvent(database, "post.created"),
+      );
+
+      expect((await notifications(database)).filter((row) => row.member_id === outsider)).toEqual(
+        [],
+      );
     });
   }, 30_000);
 

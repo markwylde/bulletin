@@ -1,11 +1,18 @@
 import type { Logger } from "@bulletin/config";
 import type { StoredEvent } from "@bulletin/domain/events";
-import { createNotification, eventRecipients } from "@bulletin/domain/notifications";
+import {
+  createNotification,
+  eventRecipients,
+  type NotificationRecipient,
+  type NotificationRecipientFilter,
+} from "@bulletin/domain/notifications";
 import type { SQL } from "bun";
 
 export interface NotificationsHandlerOptions {
   readonly sql: SQL;
   readonly logger?: Logger;
+  /** Extension point for later changes (ignore list, blocks): false drops the recipient. */
+  readonly filters?: readonly NotificationRecipientFilter[];
 }
 
 /**
@@ -17,7 +24,19 @@ export function createNotificationsEventHandler(
   options: NotificationsHandlerOptions,
 ): (event: StoredEvent) => Promise<void> {
   return async (event) => {
-    const recipients = await eventRecipients(options.sql, event);
+    let recipients = await eventRecipients(options.sql, event);
+
+    for (const filter of options.filters ?? []) {
+      const kept: NotificationRecipient[] = [];
+
+      for (const recipient of recipients) {
+        if (await filter({ sql: options.sql, event, recipient })) {
+          kept.push(recipient);
+        }
+      }
+
+      recipients = kept;
+    }
 
     if (recipients.length === 0) {
       return;

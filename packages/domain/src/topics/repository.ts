@@ -301,17 +301,27 @@ export async function insertPost(
     readonly renderVersion: number;
     readonly sanitiserVersion: number;
     readonly quotedForumIds: readonly string[];
+    /** Members mentioned in the content; the notification subscriber reads these directly. */
+    readonly mentionedMemberIds: readonly string[];
+    /** Posts this post quotes, for quote notifications. */
+    readonly quotedPostIds: readonly string[];
   },
 ): Promise<NewPostRecord> {
   const quoted = input.quotedForumIds.length === 0 ? "{}" : `{${input.quotedForumIds.join(",")}}`;
+  const mentioned =
+    input.mentionedMemberIds.length === 0 ? "{}" : `{${input.mentionedMemberIds.join(",")}}`;
+  const quotedPosts =
+    input.quotedPostIds.length === 0 ? "{}" : `{${input.quotedPostIds.join(",")}}`;
   const rows = (await tx`
     INSERT INTO core.posts (
       topic_id, author_id, body_md, body_html, body_text,
-      render_version, sanitiser_version, quoted_forum_ids, position
+      render_version, sanitiser_version, quoted_forum_ids, mentioned_member_ids,
+      quoted_post_ids, position
     )
     VALUES (
       ${input.topicId}, ${input.authorId}, ${input.bodyMd}, ${input.bodyHtml}, ${input.bodyText},
       ${input.renderVersion}, ${input.sanitiserVersion}, ${quoted}::bigint[],
+      ${mentioned}::bigint[], ${quotedPosts}::bigint[],
       (SELECT COALESCE(MAX(position), 0) + 1 FROM core.posts WHERE topic_id = ${input.topicId})
     )
     RETURNING id::text AS id, position, created_at
@@ -456,10 +466,16 @@ export async function updatePostRendering(
     readonly renderVersion: number;
     readonly sanitiserVersion: number;
     readonly quotedForumIds: readonly string[];
+    readonly mentionedMemberIds: readonly string[];
+    readonly quotedPostIds: readonly string[];
     readonly editedBy: string;
   },
 ): Promise<void> {
   const quoted = input.quotedForumIds.length === 0 ? "{}" : `{${input.quotedForumIds.join(",")}}`;
+  const mentioned =
+    input.mentionedMemberIds.length === 0 ? "{}" : `{${input.mentionedMemberIds.join(",")}}`;
+  const quotedPosts =
+    input.quotedPostIds.length === 0 ? "{}" : `{${input.quotedPostIds.join(",")}}`;
   await tx`
     UPDATE core.posts
     SET body_md = ${input.bodyMd},
@@ -468,6 +484,8 @@ export async function updatePostRendering(
         render_version = ${input.renderVersion},
         sanitiser_version = ${input.sanitiserVersion},
         quoted_forum_ids = ${quoted}::bigint[],
+        mentioned_member_ids = ${mentioned}::bigint[],
+        quoted_post_ids = ${quotedPosts}::bigint[],
         edited_at = now(),
         edited_by = ${input.editedBy}
     WHERE id = ${input.postId}

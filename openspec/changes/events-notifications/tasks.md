@@ -14,7 +14,7 @@
 
 ## 3. Notifications
 
-- [ ] 3.1 Notifications subscriber (recipient computation, `can()` check at delivery, a recipient-filter extension point used later by the ignore list, coalescing), with tests for the mention and access-lost scenarios
+- [x] 3.1 Notifications subscriber (recipient computation, `can()` check at delivery, a recipient-filter extension point used later by the ignore list, coalescing), with tests for the mention and access-lost scenarios
 - [ ] 3.2 Notification centre UI (bell, list, open, mark all read), with E2E at all viewports
 - [ ] 3.3 Preferences page per type and channel, with integration tests
 - [ ] 3.4 Email sending (SMTP client, localised templates, quote-free text, signed unsubscribe) with addresses obtained only via `pii.delivery_target` (workers-only grant, audited per call, refuses delivered or disabled notifications); tests against the mail mock, plus tests that workers cannot read `pii.identities` directly and cannot look up arbitrary members

@@ -151,6 +151,8 @@ integrationDescribe("topic posting API", () => {
         renderVersion: 1,
         sanitiserVersion: 1,
         quotedForumIds: [],
+        mentionedMemberIds: [],
+        quotedPostIds: [],
       });
       const secondReply = await insertPost(database.sql, {
         topicId: second.result.topicId,
@@ -161,6 +163,8 @@ integrationDescribe("topic posting API", () => {
         renderVersion: 1,
         sanitiserVersion: 1,
         quotedForumIds: [],
+        mentionedMemberIds: [],
+        quotedPostIds: [],
       });
       const newer = new Date(Date.now() + 1_000);
       const older = new Date(Date.now() + 500);
