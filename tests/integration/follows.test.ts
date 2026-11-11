@@ -511,4 +511,119 @@ integrationDescribe("follows", () => {
     });
   }, 30_000);
 
+  test("follow state is personal and never enters the shared topic HTML", async () => {
+    await withSeededDb(async (database) => {
+      const follower = await memberId(database, "member-1");
+      const author = await memberId(database, "member-fr");
+      const other = await memberId(database, "member-2");
+      const forum = await forumId(database, "off-topic");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Shared cached topic",
+          bodyMd: "Body.",
+        }),
+      );
+
+      await follow(database.sql, { memberId: follower, kind: "topic", id: topic.topicId });
+
+      const render = async (memberIdValue: string): Promise<string> => {
+        const versions = await createTagVersions({
+          sql: database.sql,
+          heartbeatMs: 100,
+          heartbeatTimeoutMs: 1_000,
+        });
+
+        try {
+          const result = await renderTopicRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: {
+              memberId: memberIdValue,
+              sessionId: "0",
+              reauthAt: new Date().toISOString(),
+              locale: "en",
+              displayName: null,
+            },
+            ref: `${topic.topicId}-shared-cached-topic`,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache: createRenderCache({ tags: versions }),
+            tagVersions: versions,
+          });
+
+          expect(result.kind).toBe("page");
+          return result.kind === "page" ? result.html : "";
+        } finally {
+          await versions.close();
+        }
+      };
+
+      const followerHtml = await render(follower);
+      const otherHtml = await render(other);
+
+      expect(followerHtml).toBe(otherHtml);
+      expect(followerHtml).toContain(`data-follow-context="topic:${topic.topicId}"`);
+      expect(followerHtml).not.toContain("data-following");
+
+      expect(
+        await followedTargets(database.sql, follower, [`topic:${topic.topicId}`, `forum:${forum}`]),
+      ).toEqual([`topic:${topic.topicId}`]);
+      expect(await followedTargets(database.sql, other, [`topic:${topic.topicId}`])).toEqual([]);
+    });
+  }, 30_000);
+
+  test("the overlay carries follow state for the current member only", async () => {
+    await withSeededDb(async (database) => {
+      const follower = await memberId(database, "member-1");
+      const author = await memberId(database, "member-fr");
+      const other = await memberId(database, "member-2");
+      const forum = await forumId(database, "off-topic");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Overlay follow topic",
+          bodyMd: "Body.",
+        }),
+      );
+
+      await follow(database.sql, { memberId: follower, kind: "topic", id: topic.topicId });
+
+      const harness = await overlayAuth(database);
+
+      try {
+        const payloadFor = async (memberIdValue: string) => {
+          const response = await harness.auth.handle(
+            new Request(`${userOrigin()}/api/me/overlay`, {
+              method: "POST",
+              headers: {
+                cookie: await sessionCookie(database, memberIdValue),
+                origin: userOrigin(),
+                "content-type": "application/json",
+                "x-bulletin-overlay": "1",
+              },
+              body: JSON.stringify({
+                ctx: `topic:${topic.topicId}`,
+                topics: [topic.topicId],
+                followTargets: [`topic:${topic.topicId}`],
+              }),
+            }),
+          );
+
+          expect(response?.status).toBe(200);
+          return (await response?.json()) as {
+            readonly follows?: Readonly<Record<string, boolean>>;
+          };
+        };
+
+        expect((await payloadFor(follower)).follows).toEqual({ [`topic:${topic.topicId}`]: true });
+        expect((await payloadFor(other)).follows).toEqual({ [`topic:${topic.topicId}`]: false });
+      } finally {
+        await harness.close();
+      }
+    });
+  }, 30_000);
 });

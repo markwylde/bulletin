@@ -12,6 +12,7 @@ function target(): {
   readonly unreadForums: string[];
   readonly firstUnread: string[];
   readonly editable: string[];
+  readonly follows: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
@@ -22,6 +23,7 @@ function target(): {
   const unreadForums: string[] = [];
   const firstUnread: string[] = [];
   const editable: string[] = [];
+  const follows: string[] = [];
 
   return {
     unread,
@@ -33,6 +35,7 @@ function target(): {
     unreadForums,
     firstUnread,
     editable,
+    follows,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -47,6 +50,7 @@ function target(): {
       setFirstUnread: (topicId, url) => firstUnread.push(`${topicId}:${url}`),
       setEditablePosts: (posts) =>
         editable.push(...posts.map((post) => `${post.postId}:${post.canEdit ? "edit" : "read"}`)),
+      setFollow: (context, following) => follows.push(`${context}:${following ? "yes" : "no"}`),
     },
   };
 }
@@ -147,6 +151,16 @@ describe("overlay applier", () => {
     applyOverlay(fixture.target, { draft: { contextKey: "x", bodyMd: 1 } } as never);
 
     expect(fixture.drafts).toEqual(["reply:topic:1:unsaved"]);
+  });
+
+  test("marks the follow targets the member follows and ignores malformed keys", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, {
+      follows: { "topic:12": true, "forum:3": false, "topic:x": true, "member:0": true },
+    });
+
+    expect(fixture.follows).toEqual(["topic:12:yes", "forum:3:no"]);
   });
 
   test("ignores unknown payload fields and keeps applying the rest", () => {

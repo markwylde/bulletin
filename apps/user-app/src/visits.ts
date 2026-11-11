@@ -5,6 +5,7 @@
  */
 
 import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
+import { setFollowState } from "./follows/dom.ts";
 import {
   applyOverlay,
   type OverlayCount,
@@ -58,6 +59,20 @@ function pagePostIds(): string[] {
   }
 
   return [...ids];
+}
+
+function pageFollowTargets(): string[] {
+  const targets = new Set<string>();
+
+  for (const element of document.querySelectorAll("[data-follow-context]")) {
+    const target = element.getAttribute("data-follow-context") ?? "";
+
+    if (/^(topic|forum|member):[1-9]\d{0,18}$/.test(target)) {
+      targets.add(target);
+    }
+  }
+
+  return [...targets];
 }
 
 function pageTopicIds(): string[] {
@@ -157,6 +172,10 @@ const overlayTarget: OverlayTarget = {
   setEditablePosts(posts) {
     window.dispatchEvent(new CustomEvent("bulletin:editable-posts", { detail: posts }));
   },
+
+  setFollow(context, following) {
+    setFollowState(context, following);
+  },
 };
 
 function draftContext(): string | null {
@@ -173,6 +192,7 @@ async function loadOverlay(ctx: string): Promise<void> {
         topics: pageTopicIds(),
         forums: pageForumIds(),
         posts: pagePostIds(),
+        followTargets: pageFollowTargets(),
         ...overlayReadMarker(),
         ...(draftContext() === null ? {} : { draftContext: draftContext() }),
       }),

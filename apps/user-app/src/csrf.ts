@@ -1,3 +1,5 @@
+import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
+
 export interface ClientSession {
   readonly authenticated: boolean;
   readonly csrfToken: string | null;
@@ -21,6 +23,34 @@ export async function readClientSession(): Promise<ClientSession> {
   } catch {
     return { authenticated: false, csrfToken: null };
   }
+}
+
+/**
+ * The CSRF token for a member write: the overlay stores it, with a session-endpoint fallback
+ * for pages opened before any overlay ran (ADR 0018).
+ */
+export async function clientCsrfToken(): Promise<string | null> {
+  try {
+    const stored = sessionStorage.getItem(CSRF_STORAGE_KEY);
+
+    if (stored !== null) {
+      return stored;
+    }
+  } catch {
+    // Private mode: fall through to the session endpoint.
+  }
+
+  const session = await readClientSession();
+
+  if (session.csrfToken !== null) {
+    try {
+      sessionStorage.setItem(CSRF_STORAGE_KEY, session.csrfToken);
+    } catch {
+      // The request still carries the token.
+    }
+  }
+
+  return session.csrfToken;
 }
 
 /** Reads a server-rendered JSON label block by element id. */

@@ -1,4 +1,4 @@
-import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
+import { clientCsrfToken } from "../csrf.ts";
 
 interface PollResultsPayload {
   readonly totalVoters: number;
@@ -8,40 +8,8 @@ interface PollResultsPayload {
   }[];
 }
 
-async function csrfToken(): Promise<string | null> {
-  try {
-    const stored = sessionStorage.getItem(CSRF_STORAGE_KEY);
-
-    if (stored !== null) {
-      return stored;
-    }
-  } catch {
-    // Fall through to the session endpoint.
-  }
-
-  try {
-    const response = await fetch("/api/auth/session", {
-      headers: { accept: "application/json" },
-    });
-    const body = (await response.json()) as { csrfToken?: string | null };
-    const token = body.csrfToken ?? null;
-
-    if (token !== null) {
-      try {
-        sessionStorage.setItem(CSRF_STORAGE_KEY, token);
-      } catch {
-        // The request still carries the token.
-      }
-    }
-
-    return token;
-  } catch {
-    return null;
-  }
-}
-
 async function postJson(url: string, body: unknown): Promise<Response> {
-  const token = await csrfToken();
+  const token = await clientCsrfToken();
 
   return fetch(url, {
     method: "POST",

@@ -47,6 +47,8 @@ export interface OverlayPayload {
   readonly firstUnread?: readonly OverlayFirstUnread[];
   /** Ownership-dependent post controls and raw Markdown (reviewer finding 5). */
   readonly editablePosts?: readonly OverlayEditablePost[];
+  /** Follow state for every follow target the page rendered, e.g. `topic:12`. */
+  readonly follows?: Readonly<Record<string, boolean>>;
 }
 
 export interface UnreadSlot {
@@ -67,6 +69,7 @@ export interface OverlayTarget {
   setPollVoted(pollId: string, hasVoted: boolean): void;
   setFirstUnread(topicId: string, url: string): void;
   setEditablePosts(posts: readonly OverlayEditablePost[]): void;
+  setFollow(context: string, following: boolean): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -148,6 +151,12 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
       typeof poll.hasVoted === "boolean"
     ) {
       target.setPollVoted(poll.pollId, poll.hasVoted);
+    }
+  }
+
+  for (const [context, following] of Object.entries(payload.follows ?? {})) {
+    if (/^(topic|forum|member):[1-9]\d{0,18}$/.test(context) && typeof following === "boolean") {
+      target.setFollow(context, following);
     }
   }
 

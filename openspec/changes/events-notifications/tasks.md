@@ -10,7 +10,7 @@
 ## 2. Follows
 
 - [x] 2.1 Migrations and API for follows (topic, forum, member), auto-follow preference, and follows page; integration tests including the inaccessible-content scenario
-- [ ] 2.2 Follow buttons via the overlay, with a test that shared HTML contains no follow state; E2E at 360 and 1440
+- [x] 2.2 Follow buttons via the overlay, with a test that shared HTML contains no follow state; E2E at 360 and 1440
 
 ## 3. Notifications
 

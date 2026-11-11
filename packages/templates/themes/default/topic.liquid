@@ -18,6 +18,11 @@
     {% if isModerator %}
       <p class="bl-note" data-topic-mod-note>{% t "topic.modNote" %}</p>
     {% endif %}
+    <span class="bl-follow" data-overlay-member-only hidden data-follow-context="topic:{{ topicId }}">
+      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-action="follow">{% t "follow.followTopic" %}</button>
+      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-action="unfollow" hidden>{% t "follow.unfollowTopic" %}</button>
+      <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
+    </span>
     {% if canHardDeleteTopic %}
       <button class="bl-button bl-button--quiet bl-button--small" type="button" data-topic-action="hard" data-topic-id="{{ topicId }}" data-confirm="{% t "topic.confirmDelete" %}">{% t "topic.delete" %}</button>
     {% endif %}

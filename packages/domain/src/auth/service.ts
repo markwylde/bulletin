@@ -2,6 +2,7 @@ import { isLocale, type Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { readBoardSettings } from "../board/index.ts";
 import { readDraft, validDraftContext } from "../content/drafts.ts";
+import { followedTargets, parseFollowTargets } from "../follows/repository.ts";
 import { validateDisplayName } from "../member/names.ts";
 import {
   readMember,
@@ -390,6 +391,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
       }
 
       const topics = parseTopicIds(body?.topics);
+      const followTargets = parseFollowTargets(body?.followTargets);
       const draftContext = validDraftContext(body?.draftContext) ? body.draftContext : null;
       const lastReadAt =
         typeof body?.lastReadAt === "string" && !Number.isNaN(Date.parse(body.lastReadAt))
@@ -480,13 +482,15 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           : Promise.resolve(null),
       ]);
       void visits;
-      const [unreadIds, unreadForums] = await Promise.all([
+      const [unreadIds, unreadForums, follows] = await Promise.all([
         unreadTopicIds(options.sql, {
           memberId: session.memberId,
           topicIds: readableTopics,
         }),
         unreadForumIds(options.sql, { memberId: session.memberId, forumIds: readableForums }),
+        followedTargets(options.sql, session.memberId, followTargets),
       ]);
+      const followed = new Set(follows);
       const firstUnreadRows = (
         await Promise.all(
           readableTopics.map(async (topicId) => {
@@ -561,6 +565,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
         unread: readableTopics.filter((topicId) => unreadSet.has(topicId)),
         unreadForums,
+        follows: Object.fromEntries(followTargets.map((target) => [target, followed.has(target)])),
         firstUnread: firstUnreadRows.map((row) => ({
           topicId: row.topicId,
           // The permalink re-resolves the viewer's page after their own visibility ordering.
