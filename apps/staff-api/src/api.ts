@@ -1,5 +1,6 @@
 import type { CdnPurger } from "@bulletin/cache";
 import type { HealthCheck } from "@bulletin/config/server";
+import { isJobId, listDeadLetters, retryDeadLetter } from "@bulletin/db/events";
 import { type AuthService, type SessionRecord, STEP_UP_WINDOW_MS } from "@bulletin/domain/auth";
 import {
   type AcpPermission,
@@ -705,6 +706,68 @@ async function promotionsMutate(context: StaffRouteContext): Promise<Response> {
   }
 }
 
+function intParameter(
+  value: string | null,
+  fallback: number,
+  min: number,
+  max: number,
+): number | null {
+  if (value === null) {
+    return fallback;
+  }
+
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max ? parsed : null;
+}
+
+async function deadLettersList(context: StaffRouteContext): Promise<Response> {
+  const limit = intParameter(context.url.searchParams.get("limit"), 50, 1, 100);
+  const offset = intParameter(context.url.searchParams.get("offset"), 0, 0, 10_000);
+
+  if (limit === null || offset === null) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  return json(await listDeadLetters(context.sql, { limit, offset }));
+}
+
+async function deadLettersRetry(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+
+  if (!isRecord(body) || typeof body.id !== "string" || !isJobId(body.id)) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const id = body.id;
+  const queue = await context.sql.begin(async (tx) => {
+    const name = await retryDeadLetter(tx, id);
+
+    if (name === null) {
+      return null;
+    }
+
+    await writeAdminLog(tx, {
+      actorMemberId: context.session.memberId,
+      action: "events.dead_letter.retry",
+      targetType: "job",
+      targetId: null,
+      summary: { queue: name, jobId: id },
+    });
+
+    return name;
+  });
+
+  if (queue === null) {
+    return json({ code: "not_found" }, 404);
+  }
+
+  return json({ ok: true, queue });
+}
+
 export const STAFF_ROUTES: readonly StaffRoute[] = [
   {
     id: "dashboard.members",
@@ -1024,6 +1087,20 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     permission: "acp.groups",
     requiresStepUp: true,
     handler: promotionsMutate,
+  },
+  {
+    id: "events.deadLetters.list",
+    method: "GET",
+    path: "/api/staff/events/dead-letters",
+    permission: "acp.system",
+    handler: deadLettersList,
+  },
+  {
+    id: "events.deadLetters.retry",
+    method: "POST",
+    path: "/api/staff/events/dead-letters",
+    permission: "acp.system",
+    handler: deadLettersRetry,
   },
 ];
 
