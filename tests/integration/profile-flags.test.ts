@@ -114,10 +114,14 @@ integrationDescribe("member-profiles feature flags", () => {
         ).toBe(404);
 
         await setFlags(database, ["whos_online"], false);
-        expect((await renderOnlineRoute(common)).html).toContain("data-theme-error");
+        const onlineOff = await renderOnlineRoute(common);
+        expect(onlineOff.status).toBe(404);
+        expect(onlineOff.html).toContain("data-theme-error");
 
         await setFlags(database, ["leaderboards"], false);
-        expect((await renderLeaderboardRoute(common)).html).toContain("data-theme-error");
+        const leaderboardOff = await renderLeaderboardRoute(common);
+        expect(leaderboardOff.status).toBe(404);
+        expect(leaderboardOff.html).toContain("data-theme-error");
       } finally {
         await versions.close();
       }

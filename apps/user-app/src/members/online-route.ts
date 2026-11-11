@@ -45,6 +45,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
   readonly tags: readonly string[];
   readonly etag: string | null;
   readonly hasUnlockGrant: boolean;
+  readonly status: number;
   readonly errors: readonly string[];
 }> {
   const flags = await loadViewerFlags(input.sql, input.session);
@@ -64,6 +65,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
       tags: [],
       etag: null,
       hasUnlockGrant: false,
+      status: 404,
     };
   }
 
@@ -83,6 +85,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
 
   const rendered = await renderCachedPage<OnlineData>({
     tags: contractTags(onlineContract, {}),
+    contentValidator: true,
     cache: input.cache,
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
@@ -139,5 +142,5 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
     },
   });
 
-  return { ...rendered, title, boardName, hasUnlockGrant };
+  return { ...rendered, title, boardName, hasUnlockGrant, status: 200 };
 }

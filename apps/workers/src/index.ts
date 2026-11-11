@@ -90,7 +90,7 @@ const subscribers: EventSubscriber[] = [
   },
   {
     name: "badges",
-    types: ["post.approved", "topic.created", "reaction.added", "reputation.given"],
+    types: ["post.approved", "post.created", "topic.created", "reaction.added", "reputation.given"],
   },
   { name: "reputation", types: ["reputation.recount.requested"] },
 ];

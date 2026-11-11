@@ -14,6 +14,7 @@ import {
 } from "@bulletin/db/seed";
 import { createAuthService, hashToken, sessionCookieName } from "@bulletin/domain/auth";
 import { setReaction } from "@bulletin/domain/reactions";
+import { ignoreMember } from "@bulletin/domain/relationships";
 import { markBoardRead, reply, startTopic } from "@bulletin/domain/topics";
 import { memberViewerKey, recordVisit } from "@bulletin/domain/visits";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -72,7 +73,10 @@ async function forumId(database: TestDatabase, slug: string): Promise<string> {
   return row.id;
 }
 
-async function overlayAuth(database: TestDatabase) {
+async function overlayAuth(
+  database: TestDatabase,
+  featureEnabled?: (key: string, memberId: string | null) => Promise<boolean>,
+) {
   const url = new URL(database.url);
   url.username = "user_api";
   url.password = "";
@@ -87,6 +91,7 @@ async function overlayAuth(database: TestDatabase) {
     sessionSecret: SESSION_SECRET,
     nodeEnv: "test",
     cacheTtlMs: 0,
+    ...(featureEnabled === undefined ? {} : { featureEnabled }),
   });
 
   return {
@@ -363,6 +368,34 @@ integrationDescribe("overlay security and unread state", () => {
         expect(((await read.json()) as { unread: string[] }).unread).toEqual([]);
       } finally {
         await auth.close();
+      }
+    });
+  }, 30_000);
+
+  test("the overlay honours disabled ignore-list and signature flags", async () => {
+    await withSeededDb(async (database) => {
+      const viewer = await memberId(database, "member-1");
+      const ignored = await memberId(database, "member-2");
+      await ignoreMember(database.sql, { memberId: viewer, ignoredId: ignored });
+      await database.sql`UPDATE core.members SET hide_signatures = true WHERE id = ${viewer}`;
+
+      const { auth, close } = await overlayAuth(database, async (key) => {
+        return key !== "ignore_list" && key !== "signatures";
+      });
+
+      try {
+        const cookie = await sessionCookie(database, viewer);
+        const response = await overlay(auth, cookie, { ctx: "board" });
+
+        expect(response.status).toBe(200);
+        const payload = (await response.json()) as {
+          readonly ignored?: readonly string[];
+          readonly hideSignatures?: boolean;
+        };
+        expect(payload.ignored).toEqual([]);
+        expect(payload.hideSignatures).toBe(false);
+      } finally {
+        await close();
       }
     });
   }, 30_000);

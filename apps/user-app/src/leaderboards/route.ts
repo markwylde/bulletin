@@ -37,6 +37,7 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
   readonly variant: string;
   readonly tags: readonly string[];
   readonly etag: string | null;
+  readonly status: number;
   readonly errors: readonly string[];
 }> {
   const viewerFlags = await loadViewerFlags(input.sql, input.session);
@@ -55,6 +56,7 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
       variant: "flag-off",
       tags: [],
       etag: null,
+      status: 404,
     };
   }
 
@@ -112,5 +114,5 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
     },
   });
 
-  return { ...rendered, title, boardName };
+  return { ...rendered, title, boardName, status: 200 };
 }

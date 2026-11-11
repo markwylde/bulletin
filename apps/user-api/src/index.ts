@@ -84,6 +84,7 @@ const auth = await createAuthService({
   nodeEnv: config.nodeEnv,
   bootstrapAdmins: config.bootstrapAdmins,
   testEndpoints: config.nodeEnv !== "production",
+  featureEnabled: (key, memberId) => flags.enabled(key, memberId),
 });
 
 await startService({

@@ -249,6 +249,11 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
     tree,
     sessionId: null,
   });
+  const guestView = new CapabilityView({
+    ...guestSnapshot,
+    deps: tree.ids.map((forumId) => ({ forumId, bit: "read" as const })),
+    view: "home-guest",
+  });
   const canViewHidden = await can(input.sql, principal, "members.view_hidden");
   const [online, statistics, todayTopPoster] = await Promise.all([
     readOnlineOverview(input.sql, {
@@ -259,7 +264,12 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
       snapshot,
       canViewHidden,
     }),
-    readBoardStatistics(input.sql),
+    readBoardStatistics(input.sql, {
+      principal,
+      sessionId,
+      tree,
+      snapshot,
+    }),
     readTodayTopPoster(input.sql, { tree, snapshot: guestSnapshot }),
   ]);
   const onlineMember = (member: {
@@ -342,7 +352,9 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
             }),
       flags: { announcements: announcementsEnabled },
     },
-    visibilityKey: `${view.visibilityKey()}|audience:${audience}|hidden:${canViewHidden ? 1 : 0}`,
+    visibilityKey: `${view.visibilityKey()}|audience:${audience}|hidden:${
+      canViewHidden ? 1 : 0
+    }|guest:${guestView.visibilityKey()}`,
     hasUnlockGrant: view.hasUnlockGrant,
     ttlMs: 60_000,
   };

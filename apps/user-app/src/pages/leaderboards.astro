@@ -46,6 +46,8 @@ for (const [name, value] of headers) {
 if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
   return new Response(null, { status: 304, headers });
 }
+
+Astro.response.status = result.status;
 ---
 
 <ThemeLayout

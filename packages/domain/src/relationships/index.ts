@@ -146,10 +146,9 @@ export async function sendFriendRequest(
     return { ok: false, code: "not_found" };
   }
 
-  if (
-    (await isIgnoring(sql, input.memberId, input.targetId)) ||
-    (await isIgnoring(sql, input.targetId, input.memberId))
-  ) {
+  // Only the caller's own ignore list may reject the request; consulting the target's list
+  // would reveal their private choice. A target who ignores silently receives a pending row.
+  if (await isIgnoring(sql, input.memberId, input.targetId)) {
     return { ok: false, code: "blocked" };
   }
 

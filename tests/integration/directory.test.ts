@@ -22,7 +22,6 @@ import {
 import { listMembers } from "@bulletin/domain/member";
 import {
   bumpPermVersion,
-  can,
   GUEST_PRINCIPAL,
   loadForumTree,
   loadPermissionSnapshot,
@@ -34,6 +33,8 @@ import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
+import { isNotModified } from "../../apps/user-app/src/http/cache.ts";
 import { renderLeaderboardRoute } from "../../apps/user-app/src/leaderboards/route.ts";
 import { renderOnlineRoute } from "../../apps/user-app/src/members/online-route.ts";
 import { renderMemberListRoute } from "../../apps/user-app/src/members/route.ts";
@@ -879,6 +880,167 @@ integrationDescribe("member directory", () => {
       } finally {
         await versions.close();
       }
+    });
+  }, 30_000);
+
+  test("presence changes produce fresh ETags after the 60s TTL", async () => {
+    await withDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+      let clock = Date.now();
+
+      try {
+        const cache = createRenderCache({ tags: versions, now: () => clock });
+        const common = {
+          sql: database.sql,
+          locale: "en" as const,
+          translate,
+          session: null,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          cache,
+          tagVersions: versions,
+        };
+        const firstOnline = await renderOnlineRoute(common);
+        const firstHome = await renderHomeRoute(common);
+
+        await database.sql`
+          INSERT INTO core.presence (viewer_key, location, last_seen)
+          VALUES ('guest:00000000-0000-4000-8000-0000000000aa', 'board', now())
+        `;
+        clock += 61_000;
+
+        const secondOnline = await renderOnlineRoute(common);
+        const secondHome = await renderHomeRoute(common);
+
+        expect(secondOnline.etag).not.toBe(firstOnline.etag);
+        expect(secondHome.etag).not.toBe(firstHome.etag);
+        expect(isNotModified(firstOnline.etag, secondOnline.etag)).toBe(false);
+        expect(isNotModified(firstHome.etag, secondHome.etag)).toBe(false);
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("home variants follow Guests' read bits for the top poster", async () => {
+    await withDb(async (database) => {
+      const community = await forumId(database, "community");
+      const offTopic = await forumId(database, "off-topic");
+      const viewer = await session(database, "member-1");
+      const [poster] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton)
+        VALUES ('Home Top Poster', 'home top poster')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (poster === undefined) {
+        throw new Error("Could not create the top poster");
+      }
+
+      // Keep them out of the "newest member" line, which would otherwise also contain the name.
+      await database.sql`
+        UPDATE core.members SET joined_at = now() - interval '1 year' WHERE id = ${poster.id}
+      `;
+
+      for (let index = 0; index < 30; index += 1) {
+        const [topic] = (await database.sql`
+          INSERT INTO core.topics (forum_id, title, slug, starter_id)
+          VALUES (${offTopic}, ${`Home top topic ${index}`}, ${`home-top-topic-${index}`}, ${poster.id})
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+
+        if (topic !== undefined) {
+          await database.sql`
+            INSERT INTO core.posts (
+              topic_id, author_id, body_md, body_html, body_text, render_version, sanitiser_version, position
+            )
+            VALUES (${topic.id}, ${poster.id}, 'Body.', '<p>Body.</p>', 'Body.', 1, 1, 1)
+          `;
+        }
+      }
+
+      await recomputeLeaderboards(database.sql);
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const common = {
+          sql: database.sql,
+          locale: "en" as const,
+          translate,
+          session: viewer,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          cache,
+          tagVersions: versions,
+        };
+        const before = await renderHomeRoute(common);
+        expect(before.html).toContain("Home Top Poster");
+
+        await database.sql`
+          DELETE FROM core.forum_permissions
+          WHERE forum_id = ${community}
+            AND mask_id = (SELECT id FROM core.masks WHERE key = 'guest')
+        `;
+        await bumpPermVersion(database.sql);
+        await versions.refresh();
+
+        const after = await renderHomeRoute(common);
+        expect(after.variant).not.toBe(before.variant);
+        expect(after.html).not.toContain("Home Top Poster");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("board totals exclude forums the viewer cannot read", async () => {
+    await withDb(async (database) => {
+      const staffRoom = await forumId(database, "staff-room");
+      const tree = await loadForumTree(database.sql);
+      const guestSnapshot = await loadPermissionSnapshot(database.sql, GUEST_PRINCIPAL, {
+        tree,
+        sessionId: null,
+      });
+      const admin = await session(database, "admin");
+      const adminSnapshot = await loadPermissionSnapshot(database.sql, admin.memberId, {
+        tree,
+        sessionId: admin.sessionId,
+      });
+      const guestScope = {
+        principal: GUEST_PRINCIPAL,
+        sessionId: null,
+        tree,
+        snapshot: guestSnapshot,
+      };
+      const adminScope = {
+        principal: admin.memberId,
+        sessionId: admin.sessionId,
+        tree,
+        snapshot: adminSnapshot,
+      };
+      const guestBefore = await readBoardStatistics(database.sql, guestScope);
+      const adminBefore = await readBoardStatistics(database.sql, adminScope);
+
+      await database.sql`
+        UPDATE core.forums SET topic_count = topic_count + 5, post_count = post_count + 5
+        WHERE id = ${staffRoom}
+      `;
+
+      const guestAfter = await readBoardStatistics(database.sql, guestScope);
+      const adminAfter = await readBoardStatistics(database.sql, adminScope);
+      expect(guestAfter.topics).toBe(guestBefore.topics);
+      expect(guestAfter.posts).toBe(guestBefore.posts);
+      expect(adminAfter.topics).toBe(adminBefore.topics + 5);
+      expect(adminAfter.posts).toBe(adminBefore.posts + 5);
     });
   }, 30_000);
 });

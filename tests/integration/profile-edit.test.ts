@@ -315,6 +315,10 @@ integrationDescribe("profile editing", () => {
         ]),
       );
 
+      await database.sql`
+        UPDATE core.members SET hide_signatures = true WHERE id = ${member}
+      `;
+
       const off = await profileSaveResponse(
         database.sql,
         session(member),
@@ -343,6 +347,7 @@ integrationDescribe("profile editing", () => {
         ORDER BY field_id
       `) as Array<{ field_id: string; value: string }>;
       expect(afterOffSave).toEqual(afterMemberSave);
+      expect((await readProfile(database.sql, member))?.hideSignatures).toBe(true);
     });
   });
 });

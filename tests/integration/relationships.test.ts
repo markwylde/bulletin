@@ -29,6 +29,7 @@ import {
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { friendResponse } from "../../apps/user-api/src/relationships.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { buildProfilePage } from "../../apps/user-app/src/profiles/page.ts";
 import {
@@ -272,6 +273,34 @@ integrationDescribe("member relationships", () => {
         translate,
       });
       expect(hidden?.viewModel.profile.friends).toEqual([]);
+    });
+  }, 30_000);
+
+  test("a target's private ignore list is not revealed by a friend request", async () => {
+    await withDb(async (database) => {
+      const caller = await memberId(database, "member-1");
+      const target = await memberId(database, "member-2");
+      await ignoreMember(database.sql, { memberId: target, ignoredId: caller });
+
+      const response = await friendResponse(
+        database.sql,
+        { memberId: caller, id: "0" } as never,
+        new Request("http://bulletin.localhost/api/friends", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "request", memberId: target }),
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(await readMemberRelationshipState(database.sql, caller, target)).toMatchObject({
+        friendState: "pending_out",
+      });
+      // The target still sees the request; ignore remains private.
+      expect(await readMemberRelationshipState(database.sql, target, caller)).toMatchObject({
+        friendState: "pending_in",
+        ignoring: true,
+      });
     });
   }, 30_000);
 });

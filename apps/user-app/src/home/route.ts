@@ -47,6 +47,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
 
   const rendered = await renderCachedPage<HomeData>({
     tags: contractTags(homeContract, {}),
+    contentValidator: true,
     cache: input.cache,
     tagVersions: input.tagVersions ?? null,
     ...(input.shell === undefined ? {} : { shell: input.shell }),

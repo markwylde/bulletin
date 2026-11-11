@@ -50,7 +50,9 @@ export async function profileSaveResponse(
     aboutMd: body.about,
     hideOnline: body.hideOnline === true,
     hideFromMemberList: body.hideFromMemberList === true,
-    ...(typeof body.hideSignatures === "boolean" ? { hideSignatures: body.hideSignatures } : {}),
+    ...(features.signatures && typeof body.hideSignatures === "boolean"
+      ? { hideSignatures: body.hideSignatures }
+      : {}),
     ...(typeof body.hideFriends === "boolean" ? { hideFriends: body.hideFriends } : {}),
     ...(features.signatures && typeof body.signatureMd === "string"
       ? { signatureMd: body.signatureMd }

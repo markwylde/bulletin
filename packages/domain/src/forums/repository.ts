@@ -1,5 +1,9 @@
 import type { SQL } from "bun";
+import { can } from "../permissions/can.ts";
 import type { CapabilityView } from "../permissions/capability.ts";
+import type { ViewerPrincipal } from "../permissions/principal.ts";
+import type { PermissionSnapshot } from "../permissions/snapshot.ts";
+import type { ForumTree } from "../permissions/tree.ts";
 
 export const FORUM_TYPES = ["category", "forum", "redirect"] as const;
 export type ForumType = (typeof FORUM_TYPES)[number];
@@ -421,13 +425,46 @@ export interface BoardStatistics {
   readonly recordOnline: { readonly count: number; readonly at: Date | null };
 }
 
-/** Counts and the online record for the board index (task 4.3); no viewer content is read. */
-export async function readBoardStatistics(sql: SQL): Promise<BoardStatistics> {
+export interface BoardStatisticsScope {
+  readonly principal: ViewerPrincipal;
+  readonly sessionId: string | null;
+  readonly tree: ForumTree;
+  readonly snapshot: PermissionSnapshot;
+}
+
+/**
+ * Counts and the online record for the board index (task 4.3). Forum counters are summed only
+ * over forums the viewer may read, so private-forum activity never leaks through totals.
+ */
+export async function readBoardStatistics(
+  sql: SQL,
+  scope?: BoardStatisticsScope,
+): Promise<BoardStatistics> {
+  let readableForums: string[] | null = null;
+
+  if (scope !== undefined) {
+    readableForums = [];
+
+    for (const forumId of scope.tree.ids) {
+      if (
+        await can(sql, scope.principal, "read", {
+          forumId,
+          tree: scope.tree,
+          sessionId: scope.sessionId,
+          snapshot: scope.snapshot,
+        })
+      ) {
+        readableForums.push(forumId);
+      }
+    }
+  }
+
   const [counts] = (await sql`
     SELECT
       COALESCE(sum(topic_count), 0)::int AS topics,
       COALESCE(sum(post_count), 0)::int AS posts
     FROM core.forums
+    WHERE ${readableForums === null ? sql`true` : sql`id = ANY(${`{${readableForums.join(",")}}`}::bigint[])`}
   `) as Array<{ topics: number; posts: number }>;
   const [members] = (await sql`
     SELECT count(*)::int AS count

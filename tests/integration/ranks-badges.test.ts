@@ -24,7 +24,7 @@ import {
 import { loadEvent } from "@bulletin/domain/events";
 import { readProfile, saveMemberProfile } from "@bulletin/domain/profiles";
 import { saveRank } from "@bulletin/domain/ranks";
-import { loadMemberCards } from "@bulletin/domain/topics";
+import { loadMemberCards, reply, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { safeHtml } from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -631,6 +631,67 @@ integrationDescribe("ranks and badges", () => {
       } finally {
         await versions.close();
       }
+    });
+  }, 30_000);
+
+  test("a normal visible reply triggers a post-count badge", async () => {
+    await withDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const replier = await memberId(database, "member-2");
+      const [forum] = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE slug = 'off-topic'
+      `) as Array<{ id: string }>;
+      const [member] = (await database.sql`
+        SELECT post_count FROM core.members WHERE id = ${replier}
+      `) as Array<{ post_count: number }>;
+
+      if (forum === undefined || member === undefined) {
+        throw new Error("Missing reply fixture");
+      }
+
+      const badgeId = await saveBadge(database.sql, {
+        id: null,
+        key: "reply_threshold",
+        labels: { en: "Replier", es: "Respondón", fr: "Répondeur" },
+        descriptionLabels: { en: "Replied", es: "Respondió", fr: "A répondu" },
+        imageKey: null,
+        position: 0,
+        rule: { type: "post_count", threshold: member.post_count + 1, forumId: null },
+      });
+      const topic = await startTopic(database.sql, {
+        actorId: author,
+        forumId: forum.id,
+        title: "Badge reply threshold",
+        bodyMd: "Body.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the threshold topic");
+      }
+
+      expect(
+        (
+          await reply(database.sql, {
+            actorId: replier,
+            topicId: topic.result.topicId,
+            bodyMd: "A normal visible reply.",
+          })
+        ).ok,
+      ).toBe(true);
+
+      const [eventRow] = (await database.sql`
+        SELECT id FROM core.events WHERE type = 'post.created' ORDER BY id DESC LIMIT 1
+      `) as Array<{ id: string }>;
+      const event = await loadEvent(database.sql, BigInt(eventRow?.id ?? "0"));
+
+      if (event === null) {
+        throw new Error("The reply event is missing");
+      }
+
+      expect(await evaluateBadgeRulesForEvent(database.sql, event)).toBe(1);
+      expect((await readMemberBadges(database.sql, replier)).map((badge) => badge.id)).toContain(
+        badgeId,
+      );
     });
   }, 30_000);
 });

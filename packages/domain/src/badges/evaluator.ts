@@ -128,6 +128,7 @@ export async function evaluateBadgeRulesForEvent(
 
   switch (event.type) {
     case "post.approved":
+    case "post.created":
       memberId = event.payloadIds.authorId ?? null;
       break;
     case "topic.created":

@@ -153,7 +153,7 @@ async function submit(form: HTMLFormElement): Promise<void> {
         ...(signature === null ? {} : { signatureMd: signature.value }),
         hideOnline: hideOnline?.checked === true,
         hideFromMemberList: hideFromList?.checked === true,
-        hideSignatures: hideSignatures?.checked === true,
+        ...(hideSignatures === null ? {} : { hideSignatures: hideSignatures.checked }),
         hideFriends: hideFriends?.checked === true,
         ...(customTitle === null ? {} : { customTitle: customTitle.value }),
         ...(form.querySelector("[data-profile-featured-badge]") === null ? {} : { featuredBadges }),

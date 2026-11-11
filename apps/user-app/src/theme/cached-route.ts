@@ -62,6 +62,8 @@ export interface CachedPageInput<T> {
   readonly tagVersions: TagVersionSource | null;
   /** Per-response shell dimensions; they change the ETag, never the shared fragment key. */
   readonly shell?: ShellVariant;
+  /** Include the rendered HTML in the ETag for content that can change inside a TTL. */
+  readonly contentValidator?: boolean;
   /** Loads the view model and computes the variant; runs after the cache's tag snapshot. */
   readonly prepare: () => Promise<PreparedPage<T>>;
   readonly render: (data: T) => Promise<PageRender>;
@@ -115,9 +117,15 @@ export async function renderCachedPage<T>(input: CachedPageInput<T>): Promise<Ca
       return page.html;
     },
   });
+  const etagSeed =
+    input.contentValidator === true
+      ? `${shellKey(input.shell)}|${new Bun.CryptoHasher("sha256")
+          .update(rendered.html)
+          .digest("hex")}`
+      : shellKey(input.shell);
   const etag =
     input.tagVersions?.isTrusted() === true
-      ? etagFor(rendered.key, rendered.versions, shellKey(input.shell))
+      ? etagFor(rendered.key, rendered.versions, etagSeed)
       : null;
 
   return {
