@@ -387,7 +387,8 @@ interface NotificationListRow {
 /**
  * The member's notifications, newest first. Entries whose content the member can no longer read
  * are omitted: a notification never reveals a topic title after access is lost (notifications
- * spec, ADR 0006).
+ * spec, ADR 0006). `limit` and `offset` count *visible* entries: batches are read until a full
+ * page is collected or the table ends, so one inaccessible row can never end paging early.
  */
 export async function listNotifications(
   sql: SQL,
@@ -399,62 +400,94 @@ export async function listNotifications(
     readonly snapshot?: PermissionSnapshot;
   } = {},
 ): Promise<readonly NotificationEntry[]> {
+  const limit = options.limit ?? 100;
+  const offset = options.offset ?? 0;
+  const batchSize = Math.max(limit, 50);
   const tree = options.tree ?? (await loadForumTree(sql));
   const snapshot =
     options.snapshot ?? (await loadPermissionSnapshot(sql, memberId, { tree, sessionId: null }));
-  const rows = (await sql`
-    SELECT
-      n.id::text AS id,
-      n.type,
-      n.actor_id::text AS actor_id,
-      a.display_name AS actor_name,
-      n.topic_id::text AS topic_id,
-      t.title AS topic_title,
-      t.slug AS topic_slug,
-      t.forum_id::text AS forum_id,
-      n.post_id::text AS post_id,
-      n.count,
-      n.read_at,
-      n.created_at,
-      n.updated_at
-    FROM core.notifications n
-    LEFT JOIN core.members a ON a.id = n.actor_id
-    LEFT JOIN core.topics t ON t.id = n.topic_id
-    LEFT JOIN core.posts p ON p.id = n.post_id
-    WHERE n.member_id = ${memberId}
-      AND (n.post_id IS NULL OR p.visibility = 'visible')
-      AND (n.topic_id IS NULL OR t.id IS NOT NULL)
-      AND coalesce((
-        SELECT p.enabled FROM core.notification_preferences p
-        WHERE p.member_id = n.member_id AND p.type = n.type AND p.channel = 'in_app'
-      ), true)
-    ORDER BY n.updated_at DESC, n.id DESC
-    LIMIT ${options.limit ?? 100} OFFSET ${options.offset ?? 0}
-  `) as NotificationListRow[];
+  const forumAccess = new Map<string, boolean>();
   const entries: NotificationEntry[] = [];
+  let rawOffset = 0;
+  let skipped = 0;
+  let hasRows = true;
 
-  for (const row of rows) {
-    if (
-      row.forum_id !== null &&
-      !(await can(sql, memberId, "read", { forumId: row.forum_id, tree, snapshot }))
-    ) {
-      continue;
+  while (hasRows && entries.length < limit) {
+    const rows = (await sql`
+      SELECT
+        n.id::text AS id,
+        n.type,
+        n.actor_id::text AS actor_id,
+        a.display_name AS actor_name,
+        n.topic_id::text AS topic_id,
+        t.title AS topic_title,
+        t.slug AS topic_slug,
+        t.forum_id::text AS forum_id,
+        n.post_id::text AS post_id,
+        n.count,
+        n.read_at,
+        n.created_at,
+        n.updated_at
+      FROM core.notifications n
+      LEFT JOIN core.members a ON a.id = n.actor_id
+      LEFT JOIN core.topics t ON t.id = n.topic_id
+      LEFT JOIN core.posts p ON p.id = n.post_id
+      WHERE n.member_id = ${memberId}
+        AND (n.post_id IS NULL OR p.visibility = 'visible')
+        AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+        AND coalesce((
+          SELECT p.enabled FROM core.notification_preferences p
+          WHERE p.member_id = n.member_id AND p.type = n.type AND p.channel = 'in_app'
+        ), true)
+      ORDER BY n.updated_at DESC, n.id DESC
+      LIMIT ${batchSize} OFFSET ${rawOffset}
+    `) as NotificationListRow[];
+
+    rawOffset += rows.length;
+    hasRows = rows.length === batchSize;
+
+    for (const row of rows) {
+      if (row.forum_id !== null) {
+        let readable = forumAccess.get(row.forum_id);
+
+        if (readable === undefined) {
+          readable = await can(sql, memberId, "read", {
+            forumId: row.forum_id,
+            tree,
+            snapshot,
+          });
+          forumAccess.set(row.forum_id, readable);
+        }
+
+        if (!readable) {
+          continue;
+        }
+      }
+
+      if (skipped < offset) {
+        skipped += 1;
+        continue;
+      }
+
+      entries.push({
+        id: row.id,
+        type: row.type as NotificationType,
+        actorId: row.actor_id,
+        actorName: row.actor_name,
+        topicId: row.topic_id,
+        topicTitle: row.topic_title,
+        topicSlug: row.topic_slug,
+        postId: row.post_id,
+        count: row.count,
+        read: row.read_at !== null,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+      });
+
+      if (entries.length >= limit) {
+        break;
+      }
     }
-
-    entries.push({
-      id: row.id,
-      type: row.type as NotificationType,
-      actorId: row.actor_id,
-      actorName: row.actor_name,
-      topicId: row.topic_id,
-      topicTitle: row.topic_title,
-      topicSlug: row.topic_slug,
-      postId: row.post_id,
-      count: row.count,
-      read: row.read_at !== null,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
-    });
   }
 
   return entries;

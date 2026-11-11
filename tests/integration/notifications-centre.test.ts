@@ -564,6 +564,61 @@ integrationDescribe("notification centre", () => {
     });
   }, 30_000);
 
+  test("an unreadable entry cannot end pagination before older visible entries", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const visible = await topicFixture(database);
+      const hidden = await topicFixture(database, "staff-room", "super-mod", "admin");
+
+      await database.sql`
+        INSERT INTO core.notifications (
+          member_id, type, topic_id, forum_id, post_id, count, read_at, created_at, updated_at
+        )
+        SELECT ${member}, 'topic.reply', ${visible.topicId}, ${visible.forumId},
+          ${visible.postId}, 1, now(), now() - interval '1 hour', now() - interval '1 hour'
+        FROM generate_series(1, 60)
+      `;
+      // Newest row points at a forum this member cannot read.
+      await database.sql`
+        INSERT INTO core.notifications (
+          member_id, type, topic_id, forum_id, post_id, count, read_at, created_at, updated_at
+        )
+        VALUES (
+          ${member}, 'topic.reply', ${hidden.topicId}, ${hidden.forumId},
+          ${hidden.postId}, 1, now(), now(), now()
+        )
+      `;
+
+      const first = await buildNotificationsPage({
+        sql: database.sql,
+        memberId: member,
+        sessionId: null,
+        locale: "en",
+        translate,
+        page: 1,
+      });
+      expect(first.viewModel.pagination).toMatchObject({ page: 1, hasNext: true });
+      expect(first.viewModel.sections.flatMap((section) => section.entries)).toHaveLength(50);
+
+      const second = await buildNotificationsPage({
+        sql: database.sql,
+        memberId: member,
+        sessionId: null,
+        locale: "en",
+        translate,
+        page: 2,
+      });
+      expect(second.viewModel.pagination).toMatchObject({
+        page: 2,
+        hasPrevious: true,
+        hasNext: false,
+      });
+      const entries = second.viewModel.sections.flatMap((section) => section.entries);
+      expect(entries).toHaveLength(10);
+      expect(entries.every((entry) => entry.href?.startsWith("/topic/") === true)).toBe(true);
+    });
+  }, 30_000);
+
   test("the preferences page lists every type and channel", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");
