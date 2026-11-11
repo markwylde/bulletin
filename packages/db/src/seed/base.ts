@@ -11,6 +11,7 @@ import { runSeeds, type SeedModule, SeedRegistry, type SeedResult } from "./fram
 import { groupsSeedModule } from "./groups.ts";
 import { membersSeedModule } from "./members.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
+import { notificationsSeedModule } from "./notifications.ts";
 import { themesSeedModule } from "./themes.ts";
 import { topicsSeedModule } from "./topics.ts";
 
@@ -58,6 +59,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         membersSeedModule,
         moderatorAssignmentsSeedModule,
         topicsSeedModule,
+        notificationsSeedModule,
         attachmentSeedModule,
         adminLogSeedModule,
         flagsSeedModule,

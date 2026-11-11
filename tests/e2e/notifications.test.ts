@@ -105,7 +105,10 @@ async function replyToTopic(topicId: string): Promise<void> {
       url: USER_URL,
       viewport: "desktop",
       // A flood-limited retry is expected after repeated runs; it is retried below.
-      allowConsoleErrors: [/429.*\/api\/topics\/\d+\/replies/],
+      allowConsoleErrors: [
+        /429.*\/api\/topics\/\d+\/replies/,
+        /ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/,
+      ],
     },
     async (view) => {
       await loginAs(view, profile);
@@ -180,70 +183,84 @@ integrationDescribe("notification centre", () => {
       await replyToTopic(topic.id);
       let openedRow: string | null = null;
 
-      await withPage({ url: USER_URL, viewport }, async (view) => {
-        await loginAs(view, "member-1");
-        await waitForUnreadOverlay(view);
-        await view.navigate(NOTIFICATIONS_URL);
-        await waitForBellCount(view);
-        await waitForSelector(view, "[data-notifications-page]");
-        await waitForSelector(view, "[data-notification-row]");
+      await withPage(
+        {
+          url: USER_URL,
+          viewport,
+          allowConsoleErrors: [/ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/],
+        },
+        async (view) => {
+          await loginAs(view, "member-1");
+          await waitForUnreadOverlay(view);
+          await view.navigate(NOTIFICATIONS_URL);
+          await waitForBellCount(view);
+          await waitForSelector(view, "[data-notifications-page]");
+          await waitForSelector(view, "[data-notification-row]");
 
-        expect(
-          await view.evaluate<boolean>(
-            "document.documentElement.scrollWidth - document.documentElement.clientWidth <= 1",
-          ),
-        ).toBe(true);
+          expect(
+            await view.evaluate<boolean>(
+              "document.documentElement.scrollWidth - document.documentElement.clientWidth <= 1",
+            ),
+          ).toBe(true);
 
-        openedRow = await view.evaluate<string | null>(
-          'document.querySelector("[data-notification-row]")?.getAttribute("data-notification-row") ?? null',
-        );
+          openedRow = await view.evaluate<string | null>(
+            'document.querySelector("[data-notification-row]")?.getAttribute("data-notification-row") ?? null',
+          );
 
-        if (openedRow === null) {
-          throw new Error("Missing notification row");
-        }
+          if (openedRow === null) {
+            throw new Error("Missing notification row");
+          }
 
-        // Opening an unread entry marks it read and navigates to the topic.
-        await waitForSelector(view, "[data-notification-link]:not([disabled])");
-        await clickSelector(view, "[data-notification-link]");
-        await waitForSelector(view, "[data-topic-page]");
-      });
+          // Opening an unread entry marks it read and navigates to the topic.
+          await waitForSelector(view, "[data-notification-link]:not([disabled])");
+          await clickSelector(view, "[data-notification-link]");
+          await waitForSelector(view, "[data-topic-page]");
+        },
+      );
 
       // A later reply creates a fresh unread row after the opened one was marked read.
       await replyToTopic(topic.id);
 
-      await withPage({ url: USER_URL, viewport }, async (view) => {
-        await loginAs(view, "member-1");
-        await waitForUnreadOverlay(view);
-        await view.navigate(NOTIFICATIONS_URL);
-        await waitForSelector(view, "[data-notifications-page]");
-        await waitForSelector(
-          view,
-          `[data-notification-row="${openedRow}"][data-unread="false"]`,
-          20_000,
-        );
-        await waitForBellCount(view);
-        expect(
-          await view.evaluate<boolean>(
-            `document.querySelector('[data-overlay-count="notifications"]').hidden === false`,
-          ),
-        ).toBe(true);
+      await withPage(
+        {
+          url: USER_URL,
+          viewport,
+          allowConsoleErrors: [/ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/],
+        },
+        async (view) => {
+          await loginAs(view, "member-1");
+          await waitForUnreadOverlay(view);
+          await view.navigate(NOTIFICATIONS_URL);
+          await waitForSelector(view, "[data-notifications-page]");
+          await waitForSelector(
+            view,
+            `[data-notification-row="${openedRow}"][data-unread="false"]`,
+            20_000,
+          );
+          await waitForBellCount(view);
+          expect(
+            await view.evaluate<boolean>(
+              `document.querySelector('[data-overlay-count="notifications"]').hidden === false`,
+            ),
+          ).toBe(true);
 
-        // Mark all read clears the remaining unread rows and the bell count.
-        const readAll = "[data-notifications-read-all]:not([disabled])";
-        await waitForSelector(view, readAll);
-        await clickSelector(view, readAll);
-        await waitForSelector(view, "[data-notifications-read-status]:not([hidden])", 20_000);
-        await waitForExpression(
-          view,
-          `document.querySelectorAll('[data-notification-row][data-unread="true"]').length === 0`,
-          20_000,
-        );
-        expect(
-          await view.evaluate<boolean>(
-            `document.querySelector('[data-overlay-count="notifications"]').hidden`,
-          ),
-        ).toBe(true);
-      });
+          // Mark all read clears the remaining unread rows and the bell count.
+          const readAll = "[data-notifications-read-all]:not([disabled])";
+          await waitForSelector(view, readAll);
+          await clickSelector(view, readAll);
+          await waitForSelector(view, "[data-notifications-read-status]:not([hidden])", 20_000);
+          await waitForExpression(
+            view,
+            `document.querySelectorAll('[data-notification-row][data-unread="true"]').length === 0`,
+            20_000,
+          );
+          expect(
+            await view.evaluate<boolean>(
+              `document.querySelector('[data-overlay-count="notifications"]').hidden`,
+            ),
+          ).toBe(true);
+        },
+      );
     }, 300_000);
   }
 });

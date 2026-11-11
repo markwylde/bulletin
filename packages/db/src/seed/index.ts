@@ -9,6 +9,7 @@ export * from "./framework.ts";
 export * from "./groups.ts";
 export * from "./members.ts";
 export * from "./moderator-assignments.ts";
+export * from "./notifications.ts";
 export * from "./permission-fixtures.ts";
 export * from "./rng.ts";
 export * from "./themes.ts";
