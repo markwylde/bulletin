@@ -150,6 +150,16 @@ export async function deliverDigestEmail(
     const lines = [greeting, "", intro];
 
     for (const item of items) {
+      if (
+        item.kind === "conversation" &&
+        item.conversationId !== null &&
+        item.conversationId !== undefined
+      ) {
+        const url = `${options.userOrigin}/conversations/${item.conversationId}`;
+        lines.push(translate("digest.conversation", { conversation: item.title, url }));
+        continue;
+      }
+
       if (item.topicId === null || item.slug === null) {
         if (item.kind === "promotion") {
           lines.push(translate("digest.promotion", {}));
@@ -172,6 +182,17 @@ export async function deliverDigestEmail(
       intro,
     )}</p><ul>${items
       .map((item) => {
+        if (
+          item.kind === "conversation" &&
+          item.conversationId !== null &&
+          item.conversationId !== undefined
+        ) {
+          const url = `${options.userOrigin}/conversations/${item.conversationId}`;
+          return `<li><a href="${escapeHtml(url)}">${escapeHtml(
+            translate("digest.conversation", { conversation: item.title, url }),
+          )}</a></li>`;
+        }
+
         if (item.topicId === null || item.slug === null) {
           return item.kind === "promotion"
             ? `<li>${escapeHtml(translate("digest.promotion", {}))}</li>`

@@ -15,6 +15,7 @@ import {
 } from "@bulletin/domain/conversations";
 import { loadEvent, type StoredEvent } from "@bulletin/domain/events";
 import {
+  digestItems,
   listNotifications,
   notificationEmailContext,
   setNotificationPreference,
@@ -143,6 +144,21 @@ integrationDescribe("conversation notifications", () => {
       const email = await notificationEmailContext(database.sql, intent?.id ?? "0");
       expect(email?.conversationId).toBe(conversationId);
       expect(email?.conversationTitle).toBe("Notification conversation");
+
+      await setNotificationPreference(
+        database.sql,
+        recipient,
+        "conversation.message",
+        "digest",
+        true,
+      );
+      const digest = await digestItems(database.sql, recipient, {
+        since: new Date(Date.now() - 60_000),
+        until: new Date(Date.now() + 60_000),
+      });
+      expect(digest.find((item) => item.kind === "conversation")?.conversationId).toBe(
+        conversationId,
+      );
 
       const reply = await replyToConversation(database.sql, {
         actorId: recipient,

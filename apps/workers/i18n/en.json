@@ -1,4 +1,5 @@
 {
+  "digest.conversation": "New message in {conversation}: {url}",
   "digest.greeting": "Hi {name},",
   "digest.intro.daily": "New activity since yesterday:",
   "digest.intro.weekly": "New activity this week:",

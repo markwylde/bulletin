@@ -849,7 +849,16 @@ export async function notificationIdForEvent(
 }
 
 export interface DigestItem {
-  readonly kind: "topic" | "reply" | "mention" | "quote" | "promotion" | "reaction" | "reputation";
+  readonly kind:
+    | "topic"
+    | "reply"
+    | "mention"
+    | "quote"
+    | "promotion"
+    | "reaction"
+    | "reputation"
+    | "conversation";
+  readonly conversationId?: string | null;
   readonly topicId: string | null;
   readonly title: string;
   readonly slug: string | null;
@@ -880,6 +889,8 @@ interface DigestNotificationRow {
   readonly title: string | null;
   readonly slug: string | null;
   readonly forum_id: string | null;
+  readonly conversation_id: string | null;
+  readonly conversation_title: string | null;
   readonly actor_name: string | null;
 }
 
@@ -891,6 +902,7 @@ const DIGEST_TYPE_BY_KIND = {
   promotion: "member.promoted",
   reaction: "reaction.added",
   reputation: "reputation.given",
+  conversation: "conversation.message",
 } as const;
 
 /**
@@ -1001,12 +1013,27 @@ export async function digestItems(
         t.title,
         t.slug,
         t.forum_id::text AS forum_id,
+        n.conversation_id::text AS conversation_id,
+        c.title AS conversation_title,
         a.display_name AS actor_name
       FROM core.notifications n
       LEFT JOIN core.topics t ON t.id = n.topic_id
+      LEFT JOIN core.conversations c ON c.id = n.conversation_id
       LEFT JOIN core.members a ON a.id = n.actor_id
       WHERE n.member_id = ${memberId}
-        AND n.type IN ('member.promoted', 'reaction.added', 'reputation.given')
+        AND n.type IN (
+          'member.promoted', 'reaction.added', 'reputation.given', 'conversation.message'
+        )
+        AND (
+          n.conversation_id IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM core.conversation_participants cp
+            WHERE cp.conversation_id = n.conversation_id
+              AND cp.member_id = n.member_id
+              AND cp.state = 'active'
+          )
+        )
         AND n.created_at > ${options.since}
         AND n.created_at <= ${until}
       ORDER BY n.created_at DESC
@@ -1021,6 +1048,7 @@ export async function digestItems(
     quote: 4,
     mention: 5,
     promotion: 6,
+    conversation: 7,
   } as const;
 
   for (const [kind, rows] of [
@@ -1065,7 +1093,9 @@ export async function digestItems(
         ? "promotion"
         : row.type_from_notification === "reputation.given"
           ? "reputation"
-          : "reaction";
+          : row.type_from_notification === "conversation.message"
+            ? "conversation"
+            : "reaction";
 
     if (preferences[DIGEST_TYPE_BY_KIND[kind]].digest !== true) {
       continue;
@@ -1074,9 +1104,11 @@ export async function digestItems(
     const key =
       kind === "promotion"
         ? `promotion:${row.id}`
-        : kind === "reputation"
-          ? (row.topic_id ?? `reputation:${row.id}`)
-          : (row.topic_id ?? `reaction:${row.id}`);
+        : kind === "conversation"
+          ? `conversation:${row.conversation_id ?? row.id}`
+          : kind === "reputation"
+            ? (row.topic_id ?? `reputation:${row.id}`)
+            : (row.topic_id ?? `reaction:${row.id}`);
     const existing = byTopic.get(key);
 
     if (existing !== undefined && rank[existing.kind] >= rank[kind]) {
@@ -1085,8 +1117,9 @@ export async function digestItems(
 
     byTopic.set(key, {
       kind,
+      conversationId: row.conversation_id,
       topicId: row.topic_id,
-      title: row.title ?? "",
+      title: kind === "conversation" ? (row.conversation_title ?? "") : (row.title ?? ""),
       slug: row.slug,
       forumId: row.forum_id,
       postId: null,

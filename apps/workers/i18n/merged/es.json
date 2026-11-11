@@ -3,6 +3,7 @@
   "content.quote.redacted": "Esta cita fue editada por un moderador",
   "content.quote.unavailable": "Contenido citado no disponible",
   "content.quote.viewSource": "Ver publicación",
+  "digest.conversation": "Nuevo mensaje en {conversation}: {url}",
   "digest.greeting": "Hola {name}:",
   "digest.intro.daily": "Actividad nueva desde ayer:",
   "digest.intro.weekly": "Actividad nueva esta semana:",

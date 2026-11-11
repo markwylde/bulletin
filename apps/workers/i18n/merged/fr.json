@@ -3,6 +3,7 @@
   "content.quote.redacted": "Cette citation a été modifiée par un modérateur",
   "content.quote.unavailable": "Contenu cité indisponible",
   "content.quote.viewSource": "Voir le message",
+  "digest.conversation": "Nouveau message dans {conversation} : {url}",
   "digest.greeting": "Bonjour {name},",
   "digest.intro.daily": "Nouveauté depuis hier :",
   "digest.intro.weekly": "Nouveauté cette semaine :",
