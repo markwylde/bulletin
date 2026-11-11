@@ -74,3 +74,48 @@ describe("notification catalogs", () => {
     }
   });
 });
+
+const REQUIRED_REACTION_REPUTATION_KEYS = [
+  "reaction.bar",
+  "reaction.pick",
+  "reaction.remove",
+  "reaction.whoReacted",
+  "reaction.close",
+  "reaction.loading",
+  "reaction.empty",
+  "reaction.failed",
+  "reaction.label.like",
+  "reaction.label.thanks",
+  "reaction.label.love",
+  "reaction.label.laugh",
+  "reaction.label.wow",
+  "reaction.label.sad",
+  "reaction.label.confused",
+  "reaction.label.angry",
+  "reputation.label.notorious",
+  "reputation.label.disliked",
+  "reputation.label.neutral",
+  "reputation.label.respected",
+  "reputation.label.revered",
+  "reputation.giveUp",
+  "reputation.giveDown",
+  "reputation.givenUp",
+  "reputation.givenDown",
+  "reputation.failed",
+  "reputation.dailyLimit",
+  "reputation.minPosts",
+  "reputation.negativeNotAllowed",
+  "reputation.cannotReceive",
+  "reputation.alreadyGiven",
+  "reputation.ownPost",
+] as const;
+
+describe("reaction and reputation catalogs", () => {
+  test("translate every reaction and reputation label and control string", () => {
+    for (const locale of LOCALES) {
+      for (const key of REQUIRED_REACTION_REPUTATION_KEYS) {
+        expect(USER_CATALOGS[locale][key]?.trim().length ?? 0).toBeGreaterThan(0);
+      }
+    }
+  });
+});

@@ -20,8 +20,8 @@
 
 ## 4. Strings and seed
 
-- [ ] 4.1 Add en/es/fr strings for reaction labels, reputation labels and UI; verify completeness
-- [ ] 4.2 Seed a default reaction set, reactions and reputation across seeded posts, and verify totals display after `docker compose up --watch`
+- [x] 4.1 Add en/es/fr strings for reaction labels, reputation labels and UI; verify completeness
+- [x] 4.2 Seed a default reaction set, reactions and reputation across seeded posts, and verify totals display after `docker compose up --watch`
 
 ## 5. Feature flag
 

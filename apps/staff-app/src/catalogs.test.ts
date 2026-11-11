@@ -123,3 +123,36 @@ describe("staff catalogs", () => {
     }
   });
 });
+
+const REQUIRED_REACTION_REPUTATION_KEYS = [
+  "staff.nav.reactions",
+  "staff.nav.memberReputation",
+  "staff.reactions.title",
+  "staff.reactions.edit",
+  "staff.reactions.save",
+  "staff.reactions.duplicate",
+  "staff.reactions.inUse",
+  "staff.reactions.invalid",
+  "staff.reputation.title",
+  "staff.reputation.entries.title",
+  "staff.reputation.total",
+  "staff.reputation.recount",
+  "staff.reputation.remove",
+  "staff.reputation.confirm.title",
+  "staff.settings.board.section.reputation",
+  "staff.settings.board.reactionsAffectReputation",
+  "staff.settings.board.reputationDisplay",
+  "staff.settings.board.reputationLabel.respected",
+  "reaction.label.like",
+  "reaction.label.angry",
+] as const;
+
+describe("reaction and reputation staff catalogs", () => {
+  test("translate every reaction and reputation manager string", () => {
+    for (const locale of LOCALES) {
+      for (const key of REQUIRED_REACTION_REPUTATION_KEYS) {
+        expect(STAFF_CATALOGS[locale][key]?.trim().length ?? 0).toBeGreaterThan(0);
+      }
+    }
+  });
+});

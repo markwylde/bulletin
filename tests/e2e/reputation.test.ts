@@ -47,6 +47,39 @@ async function topicHrefs(view: Bun.WebView): Promise<readonly string[]> {
   return [...new Set(hrefs)];
 }
 
+/** Finds a seeded topic by title across the off-topic pages. */
+async function findTopicHrefByTitle(view: Bun.WebView, title: string): Promise<string> {
+  await view.navigate(FORUM_URL);
+
+  for (let page = 0; page < 10; page += 1) {
+    await waitForSelector(view, "[data-topic-list]", 20_000);
+    const href = await view.evaluate<string | null>(
+      `(() => {
+        const link = [...document.querySelectorAll('[data-topic-list] [data-topic-link]')].find(
+          (element) => element.textContent?.includes(${JSON.stringify(title)})
+        );
+        return link?.getAttribute('href') ?? null;
+      })()`,
+    );
+
+    if (href !== null) {
+      return href;
+    }
+
+    const next = await view.evaluate<string | null>(
+      'document.querySelector("[data-page-next]")?.getAttribute("href") ?? null',
+    );
+
+    if (next === null) {
+      break;
+    }
+
+    await view.navigate(new URL(next, USER_URL).toString());
+  }
+
+  throw new Error(`Missing the topic ${title}`);
+}
+
 /**
  * Gives +1 to the first post this member can rate. Candidates that hydrate away (already
  * rated or the member's own post) are skipped, so repeated local runs stay deterministic.
@@ -175,6 +208,28 @@ integrationDescribe("reputation", () => {
       );
     }, 240_000);
   }
+
+  test("seeded reputation totals render on a topic page at 360 px", async () => {
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await view.navigate(FORUM_URL);
+      const href = await findTopicHrefByTitle(view, "Show us your desk setup");
+      await view.navigate(new URL(href, USER_URL).toString());
+      await waitForSelector(view, "[data-topic-page]", 20_000);
+
+      const totals = await view.evaluate<
+        number[]
+      >(`[...document.querySelectorAll('[data-reputation-count]')]
+        .map((element) => Number(element.textContent ?? "0"))`);
+
+      expect(totals.length).toBeGreaterThan(0);
+      expect(Math.max(...totals)).toBeGreaterThan(0);
+      expect(
+        await view.evaluate<boolean>(
+          "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
+        ),
+      ).toBe(true);
+    });
+  }, 120_000);
 
   test("the staff reputation tools stay usable at 360 px", async () => {
     await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
