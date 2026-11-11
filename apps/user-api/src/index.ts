@@ -23,10 +23,12 @@ import { avatarRemoveRoute, avatarUploadRoute } from "./avatars.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import {
+  archiveConversationResponse,
   conversationResponse,
   createConversationResponse,
   leaveConversationResponse,
   participantResponse,
+  readConversationResponse,
   replyConversationResponse,
 } from "./conversations.ts";
 import { draftsRoute } from "./drafts.ts";
@@ -480,6 +482,39 @@ await startService({
         }
 
         return conversationResponse(sql, session, conversationMatch[1] ?? "");
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const conversationArchiveMatch = /^\/api\/conversations\/(\d+)\/archive$/.exec(pathname);
+
+    if (request.method === "POST" && conversationArchiveMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return archiveConversationResponse(
+          sql,
+          session,
+          conversationArchiveMatch[1] ?? "",
+          request,
+        );
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const conversationReadMatch = /^\/api\/conversations\/(\d+)\/read$/.exec(pathname);
+
+    if (request.method === "POST" && conversationReadMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return readConversationResponse(sql, session, conversationReadMatch[1] ?? "");
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

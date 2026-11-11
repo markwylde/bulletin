@@ -618,3 +618,126 @@ export function createConversationQuotePipeline(sql: SQL, conversationId: string
     },
   };
 }
+
+export type ConversationFolder = "inbox" | "sent" | "archive";
+
+export interface ConversationSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly starterId: string;
+  readonly folder: ConversationFolder;
+  readonly lastMessageAt: Date;
+  readonly unreadCount: number;
+  readonly participants: readonly ConversationParticipant[];
+}
+
+export interface ConversationLists {
+  readonly inbox: readonly ConversationSummary[];
+  readonly sent: readonly ConversationSummary[];
+  readonly archive: readonly ConversationSummary[];
+}
+
+interface SummaryRow {
+  readonly id: string;
+  readonly title: string;
+  readonly starter_id: string;
+  readonly folder: "inbox" | "archive";
+  readonly last_message_at: Date;
+  readonly unread_count: number;
+  readonly participant_rows: readonly {
+    readonly id: string;
+    readonly displayName: string | null;
+    readonly avatarHash: string | null;
+  }[];
+}
+
+function summaryFolder(row: SummaryRow, memberId: string): ConversationFolder {
+  if (row.folder === "archive") {
+    return "archive";
+  }
+
+  return row.starter_id === memberId ? "sent" : "inbox";
+}
+
+/**
+ * The member's three folders. `Sent` is the conversations they started; `Archive` is their
+ * own archived bucket. Only active participations are listed (design).
+ */
+export async function listConversations(sql: SQL, memberId: string): Promise<ConversationLists> {
+  if (!MEMBER_ID.test(memberId)) {
+    return { inbox: [], sent: [], archive: [] };
+  }
+
+  const rows = (await sql`
+    SELECT
+      c.id::text AS id,
+      c.title,
+      c.starter_id::text AS starter_id,
+      p.folder,
+      c.last_message_at,
+      (
+        SELECT count(*)::int
+        FROM core.conversation_messages msg
+        WHERE msg.conversation_id = c.id
+          AND (p.last_read_message_id IS NULL OR msg.id > p.last_read_message_id)
+      ) AS unread_count,
+      COALESCE(
+        (
+          SELECT json_agg(
+            json_build_object(
+              'id', m.id::text,
+              'displayName', m.display_name,
+              'avatarHash', m.avatar_hash
+            )
+            ORDER BY lower(m.display_name), m.id
+          )
+          FROM core.conversation_participants cp
+          JOIN core.members m ON m.id = cp.member_id
+          WHERE cp.conversation_id = c.id AND cp.state = 'active'
+        ),
+        '[]'::json
+      ) AS participant_rows
+    FROM core.conversations c
+    JOIN core.conversation_participants p
+      ON p.conversation_id = c.id
+     AND p.member_id = ${memberId}
+     AND p.state = 'active'
+    ORDER BY c.last_message_at DESC, c.id DESC
+  `) as SummaryRow[];
+
+  const lists: {
+    inbox: ConversationSummary[];
+    sent: ConversationSummary[];
+    archive: ConversationSummary[];
+  } = { inbox: [], sent: [], archive: [] };
+
+  for (const row of rows) {
+    const summary: ConversationSummary = {
+      id: row.id,
+      title: row.title,
+      starterId: row.starter_id,
+      folder: summaryFolder(row, memberId),
+      lastMessageAt: new Date(row.last_message_at),
+      unreadCount: row.unread_count,
+      participants: row.participant_rows.map((participant) => ({
+        id: participant.id,
+        displayName: participant.displayName,
+        avatarHash: participant.avatarHash,
+      })),
+    };
+
+    if (summary.folder === "archive") {
+      lists.archive.push(summary);
+    } else {
+      // Inbox is every non-archived conversation; Sent is the starter's view of the same
+      // conversations (design has one `folder` column, so Sent cannot be a fourth state).
+      lists.inbox.push(summary);
+
+      if (summary.folder === "sent") {
+        lists.sent.push(summary);
+      }
+    }
+  }
+
+  return lists;
+}

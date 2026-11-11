@@ -1,0 +1,81 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import type { ConversationFolder } from "@bulletin/domain/conversations";
+import { buildInboxPage } from "../../conversations/page.ts";
+import { USER_CATALOGS } from "../../catalogs.ts";
+import { conversationsContract } from "../../contracts.ts";
+import { readSql } from "../../db.ts";
+import { loadViewerFlags } from "../../flags.ts";
+import ThemeLayout from "../../layouts/ThemeLayout.astro";
+import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
+import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
+
+const session = Astro.locals.session ?? null;
+
+if (session === null) {
+  return Astro.redirect(`/auth/login?return_to=${encodeURIComponent("/conversations")}`, 303);
+}
+
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const sql = readSql();
+const flags = await loadViewerFlags(sql, session);
+const folderParam = Astro.url.searchParams.get("folder");
+const folder: ConversationFolder =
+  folderParam === "sent" || folderParam === "archive" ? folderParam : "inbox";
+const query = (Astro.url.searchParams.get("q") ?? "").trim();
+const page = await buildInboxPage({
+  sql,
+  memberId: session.memberId,
+  locale,
+  translate,
+  folder,
+  ...(query === "" ? {} : { query }),
+});
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+
+const rendered = await renderCachedPage({
+  tags: [`member:${session.memberId}`],
+  cache: null,
+  tagVersions: null,
+  shell: { visitor: "member", authState: "authenticated" },
+  prepare: async () => ({
+    variant: pageVariant({
+      route: conversationsContract.route,
+      visibilityKey: "member",
+      theme: null,
+      pluginsGeneration: PLUGIN_GENERATION,
+      locale,
+      colourScheme: "system",
+      renderFlagsHash: flags.hash,
+    }),
+    data: undefined,
+  }),
+  render: async () => {
+    const themed = await renderThemedPage({
+      sql,
+      boardName,
+      locale,
+      translate,
+      template: "conversations",
+      viewModel: { title: page.title, ...page.viewModel, flags: flags.values },
+      breadcrumbs: page.breadcrumbs,
+      route: conversationsContract,
+    });
+
+    return { html: themed.html, errors: themed.errors };
+  },
+});
+
+Astro.response.headers.set("cache-control", "private, no-store");
+---
+
+<ThemeLayout
+  title={`${page.title} · ${boardName}`}
+  locale={locale}
+  body={rendered.html}
+  authState="authenticated"
+  visitor="member"
+>
+  <script>import "../../conversations/client.ts";</script>
+</ThemeLayout>

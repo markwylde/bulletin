@@ -1,0 +1,58 @@
+{{ header }}
+<main id="main" class="bl-main" data-conversations-page data-folder="{{ folder }}">
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{{ title }}</h1>
+  <p class="bl-muted">{% t "conversation.intro" %}</p>
+
+  <nav class="bl-tabs" data-conversation-folders aria-label="{% t "conversation.folders" %}">
+    {% for tab in folders %}
+      <a class="bl-tab{% if tab.active %} is-active{% endif %}" href="{{ tab.href }}" data-conversation-folder="{{ tab.key }}">{{ tab.label }} <span class="bl-tab__count" data-folder-count>{{ tab.count }}</span></a>
+    {% endfor %}
+  </nav>
+
+  <form class="bl-form bl-conversation-search" method="get" action="/conversations" data-conversation-search>
+    <label class="bl-label" for="conversation-search">{% t "conversation.search.label" %}</label>
+    <input class="bl-input" id="conversation-search" type="search" name="q" value="{{ searchQuery }}" placeholder="{% t "conversation.search.placeholder" %}" />
+    <button class="bl-button" type="submit" data-conversation-search-submit>{% t "conversation.search.submit" %}</button>
+  </form>
+
+  {% if canStart %}
+    <details class="bl-card" data-new-conversation>
+      <summary class="bl-card__title">{% t "conversation.new" %}</summary>
+      <form class="bl-form" data-new-conversation-form>
+        <label class="bl-label" for="conversation-title">{% t "conversation.titleLabel" %}</label>
+        <input class="bl-input" id="conversation-title" name="title" type="text" minlength="3" maxlength="150" required />
+        <div class="bl-recipient-picker" data-recipient-picker
+          data-suggest-url="/api/members/suggest"
+          data-label-empty="{% t "conversation.recipient.empty" %}"
+          data-label-remove="{% t "conversation.recipient.remove" %}"
+          data-label-selected="{% t "conversation.recipient.selected" %}">
+          <label class="bl-label" for="new-conversation-recipient">{% t "conversation.recipients" %}</label>
+          <input class="bl-input" id="new-conversation-recipient" type="search" data-recipient-search placeholder="{% t "conversation.recipient.placeholder" %}" autocomplete="off" />
+          <ul class="bl-recipient-results" data-recipient-results hidden></ul>
+          <div class="bl-recipient-selected" data-recipient-selected></div>
+          <p class="bl-muted" data-recipient-empty hidden></p>
+        </div>
+        {% island "Editor" editor %}
+        <button class="bl-button" type="submit" data-new-conversation-submit>{% t "conversation.start" %}</button>
+        <p class="bl-error-text" data-form-error hidden>{% t "conversation.startFailed" %}</p>
+      </form>
+    </details>
+  {% endif %}
+
+  {% if hasConversations %}
+    <ul class="bl-conversation-list" data-conversation-list>
+      {% for row in conversations %}
+        <li class="bl-conversation{% if row.unread %} is-unread{% endif %}" data-conversation-row="{{ row.id }}" data-unread="{{ row.unreadAttr }}">
+          <a class="bl-conversation__title" href="{{ row.href }}" data-conversation-link="{{ row.id }}">{{ row.title }}</a>
+          <span class="bl-conversation__participants" data-conversation-participants>{{ row.participants }}</span>
+          <time class="bl-muted" datetime="{{ row.iso }}" data-conversation-time>{{ row.time }}</time>
+          {% if row.unread %}<span class="bl-badge" data-conversation-unread>{{ row.unreadText }}</span>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="bl-muted" data-conversation-empty>{{ emptyText }}</p>
+  {% endif %}
+</main>
+{{ footer }}

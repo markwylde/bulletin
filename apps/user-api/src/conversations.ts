@@ -2,10 +2,12 @@ import {
   type ConversationParticipantFailure,
   inviteConversationParticipant,
   leaveConversation,
+  markConversationRead,
   readConversationForParticipant,
   removeConversationParticipant,
   replyToConversation,
   type StartConversationFailure,
+  setParticipantFolder,
   startConversation,
 } from "@bulletin/domain/conversations";
 import type { SQL } from "bun";
@@ -190,4 +192,34 @@ export async function leaveConversationResponse(
   });
 
   return outcome.ok ? json({ ok: true }) : participantFailure(outcome);
+}
+
+/** `POST /api/conversations/<id>/archive` with `{archived: boolean}` (task 2.2). */
+export async function archiveConversationResponse(
+  sql: SQL,
+  session: Session,
+  conversationId: string,
+  request: Request,
+): Promise<Response> {
+  const body = await bodyRecord(request);
+
+  if (body === null || typeof body.archived !== "boolean") {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const folder = body.archived ? "archive" : "inbox";
+  const updated = await setParticipantFolder(sql, conversationId, session.memberId, folder);
+
+  return updated ? json({ ok: true, folder }) : json({ code: "not_found" }, 404);
+}
+
+/** `POST /api/conversations/<id>/read`: advances the member's read marker (task 2.2). */
+export async function readConversationResponse(
+  sql: SQL,
+  session: Session,
+  conversationId: string,
+): Promise<Response> {
+  const updated = await markConversationRead(sql, conversationId, session.memberId);
+
+  return updated ? json({ ok: true }) : json({ code: "not_found" }, 404);
 }

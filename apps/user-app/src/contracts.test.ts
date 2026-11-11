@@ -5,6 +5,8 @@ import {
   accountContract,
   attachmentsContract,
   callbackContract,
+  conversationContract,
+  conversationsContract,
   demoContract,
   displayNameContract,
   followsContract,
@@ -55,6 +57,8 @@ describe("route contracts", () => {
         notificationsContract.route,
         followsContract.route,
         attachmentsContract.route,
+        conversationsContract.route,
+        conversationContract.route,
       ].sort(),
     );
   });

@@ -251,6 +251,25 @@ export const attachmentsContract = defineContract<AccountViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/** Personal conversation lists and pages are never shared or stored (design). */
+export const conversationsContract = defineContract<AccountViewModel>({
+  route: "/conversations",
+  templates: { page: "conversations", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+export const conversationContract = defineContract<AccountViewModel>({
+  route: "/conversations/[ref]",
+  templates: { page: "conversation", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 /** The member directory (task 4.1); hidden members change the variant by permission. */
 export const memberListContract = defineContract({
   route: "/members",
@@ -301,4 +320,6 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [notificationsContract.route]: notificationsContract,
   [followsContract.route]: followsContract,
   [attachmentsContract.route]: attachmentsContract,
+  [conversationsContract.route]: conversationsContract,
+  [conversationContract.route]: conversationContract,
 };

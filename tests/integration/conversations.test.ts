@@ -11,6 +11,7 @@ import {
 import {
   inviteConversationParticipant,
   leaveConversation,
+  listConversations,
   readConversationForParticipant,
   readStartUsage,
   startConversation,
@@ -18,10 +19,12 @@ import {
 import { insertIgnore } from "@bulletin/domain/relationships";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import {
+  archiveConversationResponse,
   conversationResponse,
   createConversationResponse,
   leaveConversationResponse,
   participantResponse,
+  readConversationResponse,
   replyConversationResponse,
 } from "../../apps/user-api/src/conversations.ts";
 
@@ -756,6 +759,110 @@ integrationDescribe("conversation replies and participants", () => {
       expect(
         (await readConversationForParticipant(database.sql, secondConversation, second))?.messages,
       ).toHaveLength(1);
+    });
+  }, 30_000);
+});
+
+integrationDescribe("conversation folders and unread tracking", () => {
+  test("lists inbox, sent and archive with unread counts", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+
+      const sentId = await startFixture(database, {
+        starter,
+        recipients: [recipient],
+        title: "Started by member one",
+      });
+      const receivedId = await startFixture(database, {
+        starter: recipient,
+        recipients: [starter],
+        title: "Started by member two",
+      });
+
+      const lists = await listConversations(database.sql, starter);
+      expect(lists.inbox.map((row) => row.id).sort()).toEqual([sentId, receivedId].sort());
+      expect(lists.sent.map((row) => row.id)).toEqual([sentId]);
+      expect(lists.archive).toHaveLength(0);
+      expect(lists.inbox.find((row) => row.id === receivedId)?.unreadCount).toBe(1);
+      expect(lists.inbox.find((row) => row.id === sentId)?.unreadCount).toBe(0);
+
+      const recipientLists = await listConversations(database.sql, recipient);
+      expect(recipientLists.sent.map((row) => row.id)).toEqual([receivedId]);
+      expect(recipientLists.inbox.map((row) => row.id).sort()).toEqual([sentId, receivedId].sort());
+    });
+  }, 30_000);
+
+  test("archive hides a conversation from the inbox and a reply returns it unread", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      const archived = await archiveConversationResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ archived: true }),
+      );
+      expect(archived.status).toBe(200);
+      expect(await archived.json()).toEqual({ ok: true, folder: "archive" });
+
+      let lists = await listConversations(database.sql, starter);
+      expect(lists.inbox.map((row) => row.id)).not.toContain(conversationId);
+      expect(lists.archive.map((row) => row.id)).toEqual([conversationId]);
+
+      const reply = await replyConversationResponse(
+        database.sql,
+        session(recipient),
+        conversationId,
+        postRequest({ bodyMd: "A new reply." }),
+      );
+      expect(reply.status).toBe(200);
+
+      lists = await listConversations(database.sql, starter);
+      expect(lists.archive.map((row) => row.id)).not.toContain(conversationId);
+      expect(lists.inbox.find((row) => row.id === conversationId)?.unreadCount).toBe(1);
+
+      const read = await readConversationResponse(database.sql, session(starter), conversationId);
+      expect(read.status).toBe(200);
+
+      lists = await listConversations(database.sql, starter);
+      expect(lists.inbox.find((row) => row.id === conversationId)?.unreadCount).toBe(0);
+      expect(
+        (await readConversationForParticipant(database.sql, conversationId, starter))?.viewer
+          .unreadCount,
+      ).toBe(0);
+
+      const unarchive = await archiveConversationResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ archived: false }),
+      );
+      expect(unarchive.status).toBe(200);
+    });
+  }, 30_000);
+
+  test("archive and read refuse non-participants", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const outsider = await memberId(database, "new-member");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      for (const response of [
+        await archiveConversationResponse(
+          database.sql,
+          session(outsider),
+          conversationId,
+          postRequest({ archived: true }),
+        ),
+        await readConversationResponse(database.sql, session(outsider), conversationId),
+      ]) {
+        expect(response.status).toBe(404);
+        expect(await response.json()).toEqual({ code: "not_found" });
+      }
     });
   }, 30_000);
 });
