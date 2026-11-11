@@ -329,6 +329,14 @@
   "ui.table.sortBy": "Sort by {column}",
   "ui.table.sortNone": "No sorting",
   "ui.toast.dismiss": "Dismiss notification",
+  "unsubscribe.confirm": "Unsubscribe",
+  "unsubscribe.confirmedBody": "Email for that notification type has been turned off.",
+  "unsubscribe.confirmedTitle": "You have been unsubscribed",
+  "unsubscribe.digestType": "digest emails",
+  "unsubscribe.intro": "Stop receiving {type} emails for this account?",
+  "unsubscribe.invalidBody": "The unsubscribe link is no longer valid. Sign in to change your notification preferences.",
+  "unsubscribe.invalidTitle": "This link is invalid or expired",
+  "unsubscribe.title": "Unsubscribe",
   "user.placeholder.body": "The Bulletin community is being prepared.",
   "user.placeholder.title": "Bulletin"
 }

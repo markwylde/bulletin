@@ -124,14 +124,15 @@ export function buildNotificationEmail(input: {
     type,
     expiresAt: Date.now() + UNSUBSCRIBE_TOKEN_TTL_MS,
   });
-  const unsubscribeUrl = `${input.options.userOrigin}/unsubscribe?token=${encodeURIComponent(token)}`;
+  const pageUrl = `${input.options.userOrigin}/unsubscribe?token=${encodeURIComponent(token)}`;
+  const oneClickUrl = `${input.options.userOrigin}/api/notifications/unsubscribe?token=${encodeURIComponent(token)}`;
   const lines = [greeting, "", summary];
 
   if (openUrl !== null) {
     lines.push("", translate("email.open", { url: openUrl }));
   }
 
-  lines.push("", translate("email.unsubscribe", { url: unsubscribeUrl }));
+  lines.push("", translate("email.unsubscribe", { url: pageUrl }));
   const text = lines.join("\n");
   const htmlLines = [
     `<p>${escapeHtml(greeting)}</p>`,
@@ -141,8 +142,8 @@ export function buildNotificationEmail(input: {
       : [
           `<p><a href="${escapeHtml(openUrl)}">${escapeHtml(translate("email.open", { url: openUrl }))}</a></p>`,
         ]),
-    `<p class="muted"><a href="${escapeHtml(unsubscribeUrl)}">${escapeHtml(
-      translate("email.unsubscribe", { url: unsubscribeUrl }),
+    `<p class="muted"><a href="${escapeHtml(pageUrl)}">${escapeHtml(
+      translate("email.unsubscribe", { url: pageUrl }),
     )}</a></p>`,
   ];
 
@@ -152,6 +153,11 @@ export function buildNotificationEmail(input: {
     subject: subjectFor(translate, type, topic),
     text,
     html: `<!doctype html><html><body>${htmlLines.join("")}</body></html>`,
+    headers: {
+      // RFC 8058: the one-click endpoint accepts a POST with this body, no browser needed.
+      "List-Unsubscribe": `<${oneClickUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    },
   };
 }
 

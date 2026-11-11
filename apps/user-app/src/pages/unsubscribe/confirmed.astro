@@ -1,0 +1,68 @@
+---
+import { DEVELOPMENT_DEFAULTS } from "@bulletin/config/env";
+import { createServerT } from "@bulletin/i18n";
+import { USER_CATALOGS } from "../../catalogs.ts";
+import { unsubscribeConfirmedContract } from "../../contracts.ts";
+import { readSql } from "../../db.ts";
+import ThemeLayout from "../../layouts/ThemeLayout.astro";
+import { boardNameFrom, PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
+import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
+import { renderThemedPage } from "../../theme/render.ts";
+import { buildUnsubscribePage } from "../../unsubscribe/page.ts";
+
+const sql = readSql();
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const session = Astro.locals.session ?? null;
+const page = buildUnsubscribePage({
+  token: null,
+  secret: process.env.SESSION_SECRET ?? DEVELOPMENT_DEFAULTS.SESSION_SECRET,
+  translate,
+  confirmed: true,
+});
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+
+const rendered = await renderCachedPage({
+  tags: [],
+  cache: null,
+  tagVersions: null,
+  shell: { visitor: session === null ? "guest" : "member" },
+  prepare: async () => ({
+    variant: pageVariant({
+      route: unsubscribeConfirmedContract.route,
+      visibilityKey: "public",
+      theme: null,
+      pluginsGeneration: PLUGIN_GENERATION,
+      locale,
+      colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+      renderFlagsHash: "",
+    }),
+    data: undefined,
+  }),
+  render: async () => {
+    const themed = await renderThemedPage({
+      sql,
+      boardName,
+      locale,
+      translate,
+      template: "unsubscribe",
+      viewModel: { ...page },
+      breadcrumbs: [],
+      route: unsubscribeConfirmedContract,
+    });
+
+    return { html: themed.html, errors: themed.errors };
+  },
+});
+
+Astro.response.headers.set("cache-control", "private, no-store");
+Astro.response.headers.set("referrer-policy", "no-referrer");
+---
+
+<ThemeLayout
+  title={`${page.title} · ${boardName}`}
+  locale={locale}
+  body={rendered.html}
+  visitor={session === null ? "guest" : "member"}
+  robots="noindex"
+/>

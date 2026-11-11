@@ -244,6 +244,14 @@
   "topic.previousPage": "Página anterior",
   "topic.title": "Título",
   "topic.views": "{count, plural, =1 {1 vista} other {# vistas}}",
+  "unsubscribe.confirm": "Cancelar suscripción",
+  "unsubscribe.confirmedBody": "Se ha desactivado el correo para ese tipo de notificación.",
+  "unsubscribe.confirmedTitle": "Te has dado de baja",
+  "unsubscribe.digestType": "resúmenes por correo",
+  "unsubscribe.intro": "¿Dejar de recibir correos de {type} en esta cuenta?",
+  "unsubscribe.invalidBody": "El enlace de cancelación ya no es válido. Inicia sesión para cambiar tus preferencias de notificaciones.",
+  "unsubscribe.invalidTitle": "Este enlace no es válido o ha caducado",
+  "unsubscribe.title": "Cancelar suscripción",
   "user.placeholder.body": "La comunidad de Bulletin se está preparando.",
   "user.placeholder.title": "Bulletin"
 }

@@ -1,0 +1,14 @@
+{{ header }}
+<main id="main" class="bl-main" data-unsubscribe-page data-unsubscribe-state="{{ state }}">
+  <section class="bl-card">
+    <h1 class="bl-page__title">{{ title }}</h1>
+    <p class="bl-muted">{{ body }}</p>
+    {% if showForm %}
+      <form method="post" action="/api/notifications/unsubscribe">
+        <input type="hidden" name="token" value="{{ token }}" />
+        <button class="bl-button" type="submit" data-unsubscribe-confirm>{{ confirmLabel }}</button>
+      </form>
+    {% endif %}
+  </section>
+</main>
+{{ footer }}

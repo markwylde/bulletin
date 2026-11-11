@@ -26,6 +26,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "account-follows",
   "account-notifications",
   "account-notification-preferences",
+  "unsubscribe",
 ] as const;
 
 export type DefaultThemeTemplateName = (typeof DEFAULT_THEME_TEMPLATE_NAMES)[number];

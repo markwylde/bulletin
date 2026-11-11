@@ -244,6 +244,14 @@
   "topic.previousPage": "Previous page",
   "topic.title": "Title",
   "topic.views": "{count, plural, =1 {1 view} other {# views}}",
+  "unsubscribe.confirm": "Unsubscribe",
+  "unsubscribe.confirmedBody": "Email for that notification type has been turned off.",
+  "unsubscribe.confirmedTitle": "You have been unsubscribed",
+  "unsubscribe.digestType": "digest emails",
+  "unsubscribe.intro": "Stop receiving {type} emails for this account?",
+  "unsubscribe.invalidBody": "The unsubscribe link is no longer valid. Sign in to change your notification preferences.",
+  "unsubscribe.invalidTitle": "This link is invalid or expired",
+  "unsubscribe.title": "Unsubscribe",
   "user.placeholder.body": "The Bulletin community is being prepared.",
   "user.placeholder.title": "Bulletin"
 }

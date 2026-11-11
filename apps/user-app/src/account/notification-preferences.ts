@@ -10,15 +10,7 @@ import {
 import type { Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import type { BreadcrumbItem } from "../theme/render.ts";
-
-const TYPE_LABELS = {
-  "topic.reply": { labelKey: "notification.type.topic.reply" },
-  "topic.created": { labelKey: "notification.type.topic.created" },
-  "post.mention": { labelKey: "notification.type.post.mention" },
-  "post.quote": { labelKey: "notification.type.post.quote" },
-  "member.promoted": { labelKey: "notification.type.member.promoted" },
-  "reaction.added": { labelKey: "notification.type.reaction.added" },
-} satisfies Record<NotificationType, { labelKey: string }>;
+import { NOTIFICATION_TYPE_LABELS } from "./notification-labels.ts";
 
 const DIGEST_LABELS = {
   off: { labelKey: "notification.preferences.digestOff" },
@@ -84,7 +76,7 @@ export async function buildNotificationPreferencesPage(
         label: input.translate(DIGEST_LABELS[frequency].labelKey),
         selected: frequency === currentDigest,
       })),
-      types: Object.entries(TYPE_LABELS).map(([type, entry]) => ({
+      types: Object.entries(NOTIFICATION_TYPE_LABELS).map(([type, entry]) => ({
         type: type as NotificationType,
         label: input.translate(entry.labelKey),
         channels: NOTIFICATION_CHANNELS.map((channel) => ({

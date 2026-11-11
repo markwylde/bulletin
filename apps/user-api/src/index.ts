@@ -47,6 +47,7 @@ import {
   replyResponse,
   topicDeleteResponse,
 } from "./topics.ts";
+import { unsubscribeResponse } from "./unsubscribe.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
@@ -103,6 +104,20 @@ await startService({
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    // Authenticated by the signed token, not a session (ADR 0018 exemption); a mail client's
+    // RFC 8058 one-click POST has no Origin header.
+    if (pathname === "/api/notifications/unsubscribe") {
+      if (request.method !== "POST") {
+        return Response.json({ code: "method_not_allowed" }, { status: 405 });
+      }
+
+      return unsubscribeResponse(
+        sql,
+        { secret: config.sessionSecret, userOrigin: config.userOrigin },
+        request,
+      );
     }
 
     if (request.method === "GET" && pathname === "/api/forums/redirect-counts") {

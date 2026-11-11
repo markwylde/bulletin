@@ -244,6 +244,14 @@
   "topic.previousPage": "Page précédente",
   "topic.title": "Titre",
   "topic.views": "{count, plural, =1 {1 vue} other {# vues}}",
+  "unsubscribe.confirm": "Se désabonner",
+  "unsubscribe.confirmedBody": "L’e-mail pour ce type de notification a été désactivé.",
+  "unsubscribe.confirmedTitle": "Vous êtes désabonné",
+  "unsubscribe.digestType": "résumés par e-mail",
+  "unsubscribe.intro": "Arrêter de recevoir les e-mails « {type} » pour ce compte ?",
+  "unsubscribe.invalidBody": "Le lien de désabonnement n’est plus valide. Connectez-vous pour modifier vos préférences de notification.",
+  "unsubscribe.invalidTitle": "Ce lien est invalide ou expiré",
+  "unsubscribe.title": "Se désabonner",
   "user.placeholder.body": "La communauté Bulletin est en préparation.",
   "user.placeholder.title": "Bulletin"
 }

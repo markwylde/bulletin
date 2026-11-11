@@ -158,6 +158,24 @@ export const notificationPreferencesContract = defineContract<AccountViewModel>(
   requiredIslands: ["LanguageSwitcher"],
 });
 
+export const unsubscribeContract = defineContract({
+  route: "/unsubscribe",
+  templates: { page: "unsubscribe", regions: ["header", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+export const unsubscribeConfirmedContract = defineContract({
+  route: "/unsubscribe/confirmed",
+  templates: { page: "unsubscribe", regions: ["header", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const notificationsContract = defineContract<AccountViewModel>({
   route: "/account/notifications",
   templates: {
@@ -200,6 +218,8 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [topicContract.route]: topicContract,
   [displayNameContract.route]: displayNameContract,
   [accountContract.route]: accountContract,
+  [unsubscribeContract.route]: unsubscribeContract,
+  [unsubscribeConfirmedContract.route]: unsubscribeConfirmedContract,
   [notificationPreferencesContract.route]: notificationPreferencesContract,
   [notificationsContract.route]: notificationsContract,
   [followsContract.route]: followsContract,

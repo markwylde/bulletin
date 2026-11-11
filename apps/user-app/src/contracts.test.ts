@@ -15,6 +15,8 @@ import {
   notificationsContract,
   ROUTE_CONTRACTS,
   topicContract,
+  unsubscribeConfirmedContract,
+  unsubscribeContract,
 } from "./contracts.ts";
 
 describe("route contracts", () => {
@@ -37,6 +39,8 @@ describe("route contracts", () => {
         topicContract.route,
         displayNameContract.route,
         accountContract.route,
+        unsubscribeContract.route,
+        unsubscribeConfirmedContract.route,
         notificationPreferencesContract.route,
         notificationsContract.route,
         followsContract.route,
