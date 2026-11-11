@@ -11,7 +11,7 @@
               {% if post.editedMarker %}<span class="bl-muted" data-post-edited>{{ post.editedMarker }}</span>{% endif %}
               <a class="bl-muted" href="{{ post.href }}" data-post-link="{{ post.id }}">{% t "post.permalink" %}</a>
               <button class="bl-button bl-button--quiet bl-button--small" type="button" data-quote-post="{{ post.id }}" aria-pressed="false">{% t "post.quote" %}</button>
-              <bl-post-reputation data-post="{{ post.id }}"></bl-post-reputation>
+              {% if flags.reputation %}<bl-post-reputation data-post="{{ post.id }}"></bl-post-reputation>{% endif %}
               {% if post.canViewHistory %}
                 <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-history="{{ post.id }}">{% t "post.history" %}</button>
               {% endif %}
@@ -53,6 +53,6 @@
             {% if flags.attachments and post.files %}
               <div class="bl-post__attachments" data-post-files="{{ post.id }}">{{ post.files }}</div>
             {% endif %}
-            <bl-post-reactions data-post="{{ post.id }}"></bl-post-reactions>
+            {% if flags.reactions %}<bl-post-reactions data-post="{{ post.id }}"></bl-post-reactions>{% endif %}
           </div>
         </li>

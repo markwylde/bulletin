@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from "react";
+import { FlagsProvider, useFlag } from "../flags.tsx";
 import { subscribeReputationStates, viewerReputationState } from "./reputation/store.ts";
 
 export interface ReputationLabels {
@@ -22,6 +23,8 @@ export interface PostReputationProps {
   readonly canNegative: boolean;
   readonly locale: string;
   readonly labels: ReputationLabels;
+  /** The render flag evaluated for this viewer, so the server HTML matches the client. */
+  readonly flags: { readonly reputation: boolean };
 }
 
 interface GivePayload {
@@ -76,7 +79,16 @@ async function csrfToken(): Promise<string | null> {
  * marks the vote already given (ADR 0006).
  */
 export function PostReputation(props: PostReputationProps) {
+  return (
+    <FlagsProvider value={props.flags}>
+      <PostReputationBody {...props} />
+    </FlagsProvider>
+  );
+}
+
+function PostReputationBody(props: PostReputationProps) {
   const { postId, receiverId, canGive, canNegative, locale, labels } = props;
+  const enabled = useFlag("reputation");
   const viewer = useSyncExternalStore(
     subscribeReputationStates,
     () => viewerReputationState(postId),
@@ -87,7 +99,7 @@ export function PostReputation(props: PostReputationProps) {
   const [error, setError] = useState<string | null>(null);
   const given = chosen === undefined ? (viewer?.points ?? null) : chosen;
 
-  if (!canGive || viewer?.own === true) {
+  if (!enabled || !canGive || viewer?.own === true) {
     return null;
   }
 

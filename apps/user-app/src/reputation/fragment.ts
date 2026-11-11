@@ -33,6 +33,8 @@ export function renderReputationControls(input: ReputationControlInput): string 
     canGive: true,
     canNegative: input.canNegative,
     locale: input.locale,
+    // Only rendered when the viewer's `reputation` flag is on; the island still checks it.
+    flags: { reputation: true },
     labels: {
       giveUp: input.translate("reputation.giveUp"),
       giveDown: input.translate("reputation.giveDown"),

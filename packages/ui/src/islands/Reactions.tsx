@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { FlagsProvider, useFlag } from "../flags.tsx";
 import { subscribeReactionStates, viewerReactionState } from "./reactions/store.ts";
 
 export interface ReactionOption {
@@ -26,6 +27,8 @@ export interface ReactionsProps {
   readonly canReact: boolean;
   readonly reactions: readonly ReactionOption[];
   readonly labels: ReactionLabels;
+  /** The render flag evaluated for this viewer, so the server HTML matches the client. */
+  readonly flags: { readonly reactions: boolean };
 }
 
 interface ReactionMember {
@@ -60,7 +63,16 @@ async function csrfToken(): Promise<string | null> {
  * The shared HTML never carries the member's own reaction (ADR 0006): that arrives from the
  * overlay through `subscribeReactionStates`.
  */
-export function Reactions({ postId, canReact, reactions, labels }: ReactionsProps) {
+export function Reactions(props: ReactionsProps) {
+  return (
+    <FlagsProvider value={props.flags}>
+      <ReactionsBody {...props} />
+    </FlagsProvider>
+  );
+}
+
+function ReactionsBody({ postId, canReact, reactions, labels }: ReactionsProps) {
+  const enabled = useFlag("reactions");
   const viewer = useSyncExternalStore(
     subscribeReactionStates,
     () => viewerReactionState(postId),
@@ -155,6 +167,10 @@ export function Reactions({ postId, canReact, reactions, labels }: ReactionsProp
       active = false;
     };
   }, [listOpen, postId, tally]);
+
+  if (!enabled) {
+    return null;
+  }
 
   const pick = async (reactionId: string): Promise<void> => {
     if (!canPick || saving) {

@@ -152,6 +152,26 @@ export const realtimeFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Post reactions, the reaction bar and the who-reacted list (change `reactions-reputation`). */
+export const reactionsFlag = defineFlag({
+  key: "reactions",
+  description: "Post reactions, reaction totals and the who-reacted list.",
+  owner: "reactions",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** Member reputation, giving feedback and the label scale (change `reactions-reputation`). */
+export const reputationFlag = defineFlag({
+  key: "reputation",
+  description: "Member reputation totals, labels and giving feedback on posts.",
+  owner: "reactions",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
@@ -164,4 +184,6 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   followsFlag,
   digestsFlag,
   realtimeFlag,
+  reactionsFlag,
+  reputationFlag,
 ]);

@@ -113,7 +113,9 @@ integrationDescribe("flags seed", () => {
         "notifications",
         "polls",
         "quickReply",
+        "reactions",
         "realtime",
+        "reputation",
         "unfurls",
       ]);
 

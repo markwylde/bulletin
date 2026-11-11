@@ -332,7 +332,9 @@ await startService({
 
       if (request.method === "GET") {
         const response = await auth.handle(request, async ({ session }) =>
-          reactionMembersResponse(sql, session, postId, new URL(request.url)),
+          flags.guard("reactions", session?.memberId ?? null)(request, () =>
+            reactionMembersResponse(sql, session, postId, new URL(request.url)),
+          ),
         );
 
         return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -344,7 +346,9 @@ await startService({
             return Response.json({ code: "unauthenticated" }, { status: 401 });
           }
 
-          return reactionSetResponse(sql, session, postId, request);
+          return flags.guard("reactions", session.memberId)(request, () =>
+            reactionSetResponse(sql, session, postId, request),
+          );
         });
 
         return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -365,7 +369,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return reputationGiveResponse(sql, session, reputationMatch[1] ?? "", request);
+        return flags.guard("reputation", session.memberId)(request, () =>
+          reputationGiveResponse(sql, session, reputationMatch[1] ?? "", request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

@@ -52,6 +52,8 @@ export async function renderReactionBar(input: ReactionBarInput): Promise<string
             count: summary[reaction.id] ?? 0,
             enabled: reaction.enabled,
           })),
+        // Only rendered when the viewer's `reactions` flag is on; the island still checks it.
+        flags: { reactions: true },
         labels: {
           bar: input.translate("reaction.bar"),
           pick: input.translate("reaction.pick"),

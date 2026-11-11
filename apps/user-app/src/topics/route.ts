@@ -481,6 +481,8 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
         postBlocks.set(post.id, html);
       }),
     );
+    const reactionsEnabled = latest?.flags.values.reactions === true;
+    const reputationEnabled = latest?.flags.values.reputation === true;
     const [views, cards, poll] = await Promise.all([
       renderTopicViewsFragment(input.sql, input.cache, topic.id, input.locale, input.translate),
       renderMemberCards(
@@ -490,10 +492,12 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
         input.locale,
         input.translate,
         latest?.flags.clientFlags.avatar_upload === true,
-        {
-          display: latest?.settings.reputationDisplay ?? false,
-          scale: latest?.settings.reputationLabelScale ?? [],
-        },
+        reputationEnabled
+          ? {
+              display: latest?.settings.reputationDisplay ?? false,
+              scale: latest?.settings.reputationLabelScale ?? [],
+            }
+          : null,
       ),
       pageData.pollId === null
         ? Promise.resolve(null)
@@ -509,7 +513,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     const reputationControls = new Map<string, string>();
     await Promise.all(
       pageData.viewModel.posts.map(async (post) => {
-        if (post.authorId !== null) {
+        if (reputationEnabled && post.authorId !== null) {
           reputationControls.set(
             post.id,
             renderReputationControls({
@@ -523,17 +527,19 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
           );
         }
 
-        reactionBars.set(
-          post.id,
-          await renderReactionBar({
-            sql: input.sql,
-            cache: input.cache,
-            postId: post.id,
-            locale: input.locale,
-            translate: input.translate,
-            canReact: pageData.canReact,
-          }),
-        );
+        if (reactionsEnabled) {
+          reactionBars.set(
+            post.id,
+            await renderReactionBar({
+              sql: input.sql,
+              cache: input.cache,
+              postId: post.id,
+              locale: input.locale,
+              translate: input.translate,
+              canReact: pageData.canReact,
+            }),
+          );
+        }
       }),
     );
 

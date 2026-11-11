@@ -117,6 +117,7 @@ export const reactionsSchema = v.strictObject({
   canReact: v.boolean(),
   reactions: v.array(reactionOptionSchema),
   labels: reactionLabelsSchema,
+  flags: v.strictObject({ reactions: v.boolean() }),
 });
 
 const reputationLabelsSchema = v.strictObject({
@@ -141,6 +142,7 @@ export const postReputationSchema = v.strictObject({
   canNegative: v.boolean(),
   locale: v.picklist(LOCALE_VALUES),
   labels: reputationLabelsSchema,
+  flags: v.strictObject({ reputation: v.boolean() }),
 });
 
 /** The canonical island names; the template registry and the client runtime must match. */
