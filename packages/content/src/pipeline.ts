@@ -16,6 +16,7 @@ import {
   type SaveCheckContext,
 } from "./before-save.ts";
 import { expandEmbedPlaceholders } from "./embeds.ts";
+import { applyAttachmentLinks } from "./extensions/attachments.ts";
 import { applyInlineExtensions } from "./extensions/inline.ts";
 import { applyLinkExtensions } from "./extensions/links.ts";
 import { applyQuoteDirectives, type QuoteDirectiveResult } from "./extensions/quotes.ts";
@@ -199,6 +200,7 @@ async function renderMarkdown(
   });
 
   if (options.profile === "post" || options.profile === "rules") {
+    applyAttachmentLinks(tree);
     applyLinkExtensions(tree, {
       ...(options.embeds === undefined ? {} : { embeds: options.embeds }),
       ...(options.unfurls === undefined ? {} : { unfurls: options.unfurls }),

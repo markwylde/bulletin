@@ -69,7 +69,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
     applySecurityHeaders(response, {
       nonce,
       nodeEnv,
-      connectSrc: [authIssuer],
+      // Presigned uploads go directly to the files origin (ADR 0019), so it is also a connect
+      // target; downloaded images come back through the same origin's redirect.
+      connectSrc: [authIssuer, filesOrigin],
       frameSrc,
       imgSrc: [filesOrigin],
     });

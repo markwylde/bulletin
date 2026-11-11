@@ -18,7 +18,7 @@
 
 ## 4. Editor and posts
 
-- [ ] 4.1 Editor upload UI (pick, drag, paste, mobile picker, progress) and the attachment extension in the content pipeline; E2E paste and upload at 360 and 1440
+- [x] 4.1 Editor upload UI (pick, drag, paste, mobile picker, progress) and the attachment extension in the content pipeline; E2E paste and upload at 360 and 1440
 - [ ] 4.2 Post rendering of inline images and the file list with download counts, with the cache variant harness applied; integration tests
 - [ ] 4.3 "My attachments" page with quota usage and deletion, plus moderator removal; tests including permission denial
 - [ ] 4.4 Attachment deletion (member or moderator) bumps the tags of referencing posts in the same transaction; integration test that the post stops showing it and its cached page is invalidated

@@ -13,7 +13,11 @@ import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
-import { attachmentFinaliseResponse, attachmentRequestResponse } from "./attachments.ts";
+import {
+  attachmentDeleteResponse,
+  attachmentFinaliseResponse,
+  attachmentRequestResponse,
+} from "./attachments.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { draftsRoute } from "./drafts.ts";
@@ -308,6 +312,20 @@ await startService({
         }
 
         return attachmentFinaliseResponse(sql, storage, session, attachmentFinaliseMatch[1] ?? "");
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const attachmentDeleteMatch = /^\/api\/attachments\/(\d+)\/delete$/.exec(pathname);
+
+    if (request.method === "POST" && attachmentDeleteMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return attachmentDeleteResponse(sql, session, attachmentDeleteMatch[1] ?? "", request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

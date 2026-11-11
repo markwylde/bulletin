@@ -1,5 +1,6 @@
 import { forumTag, GLOBAL_CACHE_TAGS, postSnapshotsTag, postTag, topicTag } from "@bulletin/cache";
 import { ensureCurrentRendering, resolveQuotePlaceholders } from "@bulletin/content";
+import { type PostAttachmentRecord, readPostAttachments } from "@bulletin/domain/attachments";
 import { listEmbedProviders, loadQuoteSnapshot } from "@bulletin/domain/content";
 import { listVisibleForums } from "@bulletin/domain/forums";
 import {
@@ -24,6 +25,7 @@ import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { buildEditorView, type EditorView } from "../editor.ts";
+import { renderPostAttachments } from "./attachments.ts";
 import { topicCapabilityDeps } from "./capability.ts";
 
 export interface TopicPagePost {
@@ -32,6 +34,7 @@ export interface TopicPagePost {
   readonly href: string;
   readonly authorCard: SafeHtml;
   readonly body: SafeHtml;
+  readonly files: SafeHtml | null;
   readonly deleted: boolean;
   readonly unapproved: boolean;
   readonly createdAt: string;
@@ -314,38 +317,58 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
       }),
     ),
   );
-  const buildPostView = (post: TopicPostRow, bodyHtml: string): TopicPagePost => ({
-    id: post.id,
-    position: post.position,
-    href: canonicalUrl("topic", input.topic.id, input.topic.slug, { postId: post.id }),
-    authorCard:
-      post.authorId === null
-        ? safeHtml(
-            `<span class="bl-author-card bl-author-card--deleted">${escapeHtml(
-              input.translate("member.deletedName"),
-            )}</span>`,
-          )
-        : safeHtml(`<bl-member-card data-member="${post.authorId}"></bl-member-card>`),
-    body: safeHtml(bodyHtml),
-    deleted: post.visibility === "soft_deleted",
-    unapproved: post.visibility === "unapproved",
-    createdAt: formatDate(input.locale, post.createdAt),
-    editedMarker: editedMarker(input, post),
-    ...postActions({
-      post,
-      viewerId,
-      canEditMod,
-      canSoftDelete,
-      canRestore,
-      canHardDelete,
-      canViewHistory,
-      publicEditHistory: input.publicEditHistory === true,
-      editWindow,
-      canDeleteOwn,
-    }),
-  });
+  const attachmentsByPost = await readPostAttachments(
+    input.sql,
+    posts.rows.map((post) => post.id),
+  );
+  const buildPostView = (
+    post: TopicPostRow,
+    bodyHtml: string,
+    attachments: readonly PostAttachmentRecord[],
+  ): TopicPagePost => {
+    const renderedAttachments = renderPostAttachments({
+      postId: post.id,
+      html: bodyHtml,
+      attachments,
+      locale: input.locale,
+      translate: input.translate,
+      canRemove: canEditMod,
+    });
+
+    return {
+      id: post.id,
+      position: post.position,
+      href: canonicalUrl("topic", input.topic.id, input.topic.slug, { postId: post.id }),
+      authorCard:
+        post.authorId === null
+          ? safeHtml(
+              `<span class="bl-author-card bl-author-card--deleted">${escapeHtml(
+                input.translate("member.deletedName"),
+              )}</span>`,
+            )
+          : safeHtml(`<bl-member-card data-member="${post.authorId}"></bl-member-card>`),
+      body: safeHtml(renderedAttachments.bodyHtml),
+      files: renderedAttachments.files,
+      deleted: post.visibility === "soft_deleted",
+      unapproved: post.visibility === "unapproved",
+      createdAt: formatDate(input.locale, post.createdAt),
+      editedMarker: editedMarker(input, post),
+      ...postActions({
+        post,
+        viewerId,
+        canEditMod,
+        canSoftDelete,
+        canRestore,
+        canHardDelete,
+        canViewHistory,
+        publicEditHistory: input.publicEditHistory === true,
+        editWindow,
+        canDeleteOwn,
+      }),
+    };
+  };
   const postViews = posts.rows.map((post, index) =>
-    buildPostView(post, bodies[index] ?? post.bodyHtml),
+    buildPostView(post, bodies[index] ?? post.bodyHtml, attachmentsByPost.get(post.id) ?? []),
   );
   const loadPost = async (postId: string): Promise<TopicPagePost | null> => {
     const fresh = await readTopicPostById(input.sql, {
@@ -383,8 +406,9 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
       viewerId: principalMemberId(input.principal),
       translate: input.translate,
     });
+    const attachments = await readPostAttachments(input.sql, [fresh.id]);
 
-    return buildPostView(fresh, bodyHtml);
+    return buildPostView(fresh, bodyHtml, attachments.get(fresh.id) ?? []);
   };
 
   const visibleForums = await listVisibleForums(input.sql, view);
@@ -480,6 +504,8 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
               contextKey: `reply:topic:${input.topic.id}`,
               mentions: mentionsEnabled,
               name: "bodyMd",
+              forumId: input.topic.forumId,
+              canUpload: upload,
             })
           : null,
       flags: { mentions: mentionsEnabled, polls: pollsEnabled },

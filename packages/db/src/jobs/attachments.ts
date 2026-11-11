@@ -1,5 +1,6 @@
 import type { Logger } from "@bulletin/config";
 import {
+  ATTACHMENT_PROCESS_CHANNEL,
   type AttachmentScan,
   deleteAttachments,
   isAttachmentContentType,
@@ -28,9 +29,9 @@ import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
 import { listUnfurlImageKeys } from "./unfurl-images.ts";
 
-/** Every ten seconds: publish snapshotted uploads so the editor sees them promptly. */
+/** Every minute: publish snapshotted uploads. A five-field cron is what pg-boss schedules. */
 export const ATTACHMENT_PROCESS_QUEUE = "attachment.process";
-export const ATTACHMENT_PROCESS_CRON = "*/10 * * * * *";
+export const ATTACHMENT_PROCESS_CRON = "* * * * *";
 /** Hourly: delete uploads nobody attached within 24 hours, releasing their quota. */
 export const ATTACHMENT_ORPHAN_QUEUE = "attachment.orphans";
 export const ATTACHMENT_ORPHAN_CRON = "41 * * * *";
@@ -400,8 +401,31 @@ export async function createAttachmentJobs(
   await options.boss.schedule(ATTACHMENT_ORPHAN_QUEUE, ATTACHMENT_ORPHAN_CRON, {});
   await options.boss.schedule(ATTACHMENT_RECONCILE_QUEUE, ATTACHMENT_RECONCILE_CRON, {});
 
+  // Finalise wakes the worker immediately; the cron above is the durable recovery path.
+  let running: Promise<void> | null = null;
+  const listener = await options.sql.listen(ATTACHMENT_PROCESS_CHANNEL, () => {
+    if (running !== null) {
+      return;
+    }
+
+    running = runAttachmentProcessing(options.sql, options.storage, {
+      ...(options.scan === undefined ? {} : { scan: options.scan }),
+      ...(options.logger === undefined ? {} : { logger: options.logger }),
+    })
+      .then((result) => {
+        options.logger?.info("attachment.process_wake", { ...result });
+      })
+      .catch((error: unknown) => {
+        options.logger?.error("attachment.process_wake_failed", { error });
+      })
+      .finally(() => {
+        running = null;
+      });
+  });
+
   return {
     async stop() {
+      await listener.unlisten();
       await options.boss.offWork(ATTACHMENT_PROCESS_QUEUE);
       await options.boss.offWork(ATTACHMENT_ORPHAN_QUEUE);
       await options.boss.offWork(ATTACHMENT_RECONCILE_QUEUE);

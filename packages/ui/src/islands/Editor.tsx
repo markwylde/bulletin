@@ -18,6 +18,47 @@ interface SuggestedMember {
 }
 
 type SaveStatus = "idle" | "saving" | "saved" | "failed";
+type UploadState = "uploading" | "processing" | "ready" | "failed";
+
+interface PendingUpload {
+  readonly key: string;
+  readonly name: string;
+  readonly state: UploadState;
+  readonly progress: number;
+  readonly message: string;
+}
+
+const ATTACHMENT_ACCEPT =
+  "image/png,image/jpeg,image/gif,image/webp,image/avif,image/svg+xml,application/pdf,application/zip,text/plain,text/html,text/csv";
+const INLINE_IMAGE = /^image\/(?:png|jpeg|gif|webp|avif)$/i;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/** Uploads one file with progress; XHR is the only browser API with upload events. */
+function putFile(url: string, file: File, onProgress: (percent: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("PUT", url);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`upload ${request.status}`));
+      }
+    };
+    request.onerror = () => reject(new Error("upload network error"));
+    request.send(file);
+  });
+}
 
 const MENTION_AT_CURSOR = /(?:^|\s)@([\p{L}\p{N}_.-]{2,32})$/u;
 
@@ -61,7 +102,15 @@ export function Editor(props: EditorProps) {
   );
 }
 
-function EditorContent({ contextKey, name, initialMarkdown, emoticons, labels }: EditorProps) {
+function EditorContent({
+  contextKey,
+  name,
+  initialMarkdown,
+  forumId,
+  canUpload,
+  emoticons,
+  labels,
+}: EditorProps) {
   const mentionsEnabled = useFlag("mentions");
   const [mode, setMode] = useState<EditorMode>("source");
   const [markdown, setMarkdown] = useState(initialMarkdown);
@@ -75,6 +124,8 @@ function EditorContent({ contextKey, name, initialMarkdown, emoticons, labels }:
   const [mentions, setMentions] = useState<readonly SuggestedMember[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionLoading, setMentionLoading] = useState(false);
+  const [uploads, setUploads] = useState<readonly PendingUpload[]>([]);
+  const [dragging, setDragging] = useState(false);
   const initialRef = useRef(initialMarkdown);
   const baseSource = useRef(initialMarkdown);
   const markdownRef = useRef(initialMarkdown);
@@ -82,6 +133,7 @@ function EditorContent({ contextKey, name, initialMarkdown, emoticons, labels }:
   const restoringRef = useRef(false);
   const editorElement = useRef<HTMLDivElement>(null);
   const sourceElement = useRef<HTMLTextAreaElement>(null);
+  const fileElement = useRef<HTMLInputElement>(null);
   const controller = useRef<EditorController | null>(null);
 
   const markDirty = (): void => {
@@ -487,6 +539,137 @@ function EditorContent({ contextKey, name, initialMarkdown, emoticons, labels }:
     setEmoticonOpen(false);
   }
 
+  function updateUpload(key: string, patch: Partial<PendingUpload>): void {
+    setUploads((current) =>
+      current.map((upload) => (upload.key === key ? { ...upload, ...patch } : upload)),
+    );
+  }
+
+  function uploadErrorLabel(code: string | undefined): string {
+    switch (code) {
+      case "quota_exceeded":
+        return labels.uploadQuota;
+      case "file_too_large":
+        return labels.uploadTooLarge;
+      case "type_not_allowed":
+        return labels.uploadType;
+      default:
+        return labels.uploadFailed;
+    }
+  }
+
+  async function finaliseUpload(id: string): Promise<void> {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const response = await fetch(`/api/attachments/${id}/finalise`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-bulletin-csrf": csrfToken ?? "",
+        },
+        body: "{}",
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        readonly state?: string;
+        readonly code?: string;
+      };
+
+      if (!response.ok) {
+        if (body.code === "attachment_rejected") {
+          throw new Error(labels.uploadRejected);
+        }
+
+        throw new Error(uploadErrorLabel(body.code));
+      }
+
+      if (body.state === "ready") {
+        return;
+      }
+
+      if (body.state === "rejected") {
+        throw new Error(labels.uploadRejected);
+      }
+
+      await sleep(1_000);
+    }
+
+    throw new Error(labels.uploadFailed);
+  }
+
+  async function uploadFiles(files: readonly File[]): Promise<void> {
+    if (!canUpload || csrfToken === null || forumId === "") {
+      return;
+    }
+
+    for (const file of files) {
+      const key = crypto.randomUUID();
+      setUploads((current) => [
+        ...current,
+        { key, name: file.name, state: "uploading", progress: 0, message: "" },
+      ]);
+
+      try {
+        const response = await fetch("/api/attachments", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-bulletin-csrf": csrfToken,
+          },
+          body: JSON.stringify({
+            forumId,
+            filename: file.name,
+            contentType: file.type,
+            sizeBytes: file.size,
+          }),
+        });
+
+        if (!response.ok) {
+          const body = (await response.json().catch(() => ({}))) as { readonly code?: string };
+          throw new Error(uploadErrorLabel(body.code));
+        }
+
+        const created = (await response.json()) as {
+          readonly id: string;
+          readonly upload: { readonly url: string };
+        };
+
+        await putFile(created.upload.url, file, (progress) => {
+          updateUpload(key, { progress });
+        });
+        updateUpload(key, { state: "processing", progress: 100 });
+        await finaliseUpload(created.id);
+
+        const name = file.name.replace(/[[\]()]/g, "_").slice(0, 120) || "file";
+        insertMarkup(
+          INLINE_IMAGE.test(file.type)
+            ? `![${name}](attachment:${created.id})`
+            : `[${name}](attachment:${created.id})`,
+        );
+        updateUpload(key, { state: "ready", message: labels.uploadReady });
+        window.setTimeout(() => {
+          setUploads((current) => current.filter((upload) => upload.key !== key));
+        }, 3_000);
+      } catch (error) {
+        updateUpload(key, {
+          state: "failed",
+          message: error instanceof Error ? error.message : labels.uploadFailed,
+        });
+      }
+    }
+  }
+
+  function uploadStatusLabel(upload: PendingUpload): string {
+    switch (upload.state) {
+      case "uploading":
+        return `${labels.uploading} ${upload.progress}%`;
+      case "processing":
+        return labels.processing;
+      case "ready":
+        return labels.uploadReady;
+      case "failed":
+        return upload.message;
+    }
+  }
+
   const statusText =
     status === "saving"
       ? labels.saving
@@ -497,11 +680,42 @@ function EditorContent({ contextKey, name, initialMarkdown, emoticons, labels }:
           : "";
 
   return (
-    <div
-      className="bl-editor"
+    <fieldset
+      className={`bl-editor${dragging ? " is-dragging" : ""}`}
       data-editor
       data-draft-context={contextKey}
+      data-editor-can-upload={canUpload ? "true" : "false"}
       {...(ready ? { "data-editor-ready": "true" } : {})}
+      onDragOver={(event) => {
+        if (!canUpload) {
+          return;
+        }
+
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        if (!canUpload) {
+          return;
+        }
+
+        event.preventDefault();
+        setDragging(false);
+        void uploadFiles([...event.dataTransfer.files]);
+      }}
+      onPaste={(event) => {
+        if (!canUpload) {
+          return;
+        }
+
+        const files = [...(event.clipboardData?.files ?? [])];
+
+        if (files.length > 0) {
+          event.preventDefault();
+          void uploadFiles(files);
+        }
+      }}
     >
       {name === undefined ? null : <input type="hidden" name={name} value={markdown} />}
       <fieldset className="bl-editor__modes" aria-label={labels.editor}>
@@ -639,7 +853,51 @@ function EditorContent({ contextKey, name, initialMarkdown, emoticons, labels }:
             @
           </button>
         ) : null}
+        {canUpload ? (
+          <>
+            <button
+              type="button"
+              aria-label={labels.attach}
+              data-editor-attach
+              disabled={csrfToken === null}
+              onClick={() => fileElement.current?.click()}
+            >
+              📎
+            </button>
+            <input
+              ref={fileElement}
+              type="file"
+              multiple
+              hidden
+              accept={ATTACHMENT_ACCEPT}
+              data-editor-file-input
+              onChange={(event) => {
+                const files = [...(event.currentTarget.files ?? [])];
+                event.currentTarget.value = "";
+                void uploadFiles(files);
+              }}
+            />
+          </>
+        ) : null}
       </div>
+
+      {canUpload ? (
+        <div className="bl-editor__attachments" data-editor-attachments>
+          <p className="bl-muted" data-editor-attach-hint>
+            {labels.attachHint}
+          </p>
+          {uploads.map((upload) => (
+            <p
+              key={upload.key}
+              className={upload.state === "failed" ? "bl-error-text" : "bl-muted"}
+              data-upload-status={upload.state}
+              data-upload-name={upload.name}
+            >
+              <span>{upload.name}</span> <span>{uploadStatusLabel(upload)}</span>
+            </p>
+          ))}
+        </div>
+      ) : null}
 
       {emoticonOpen ? (
         <div
@@ -715,6 +973,6 @@ function EditorContent({ contextKey, name, initialMarkdown, emoticons, labels }:
       >
         {statusText}
       </p>
-    </div>
+    </fieldset>
   );
 }

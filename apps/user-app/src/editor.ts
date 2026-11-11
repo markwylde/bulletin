@@ -6,6 +6,8 @@ export interface EditorView {
   readonly name?: string;
   readonly contextKey: string;
   readonly initialMarkdown: string;
+  readonly forumId: string;
+  readonly canUpload: boolean;
   readonly emoticons: readonly {
     readonly code: string;
     readonly src: string;
@@ -24,6 +26,8 @@ export async function buildEditorView(
     readonly initialMarkdown?: string;
     readonly mentions: boolean;
     readonly name?: string;
+    readonly forumId: string;
+    readonly canUpload: boolean;
   },
 ): Promise<EditorView> {
   const sets = await listEditorEmoticons(sql);
@@ -32,6 +36,8 @@ export async function buildEditorView(
     ...(input.name === undefined ? {} : { name: input.name }),
     contextKey: input.contextKey,
     initialMarkdown: input.initialMarkdown ?? "",
+    forumId: input.forumId,
+    canUpload: input.canUpload,
     emoticons: sets.flatMap((set) =>
       set.emoticons.map((emoticon) => ({
         code: emoticon.code,
@@ -62,6 +68,16 @@ export async function buildEditorView(
       saveFailed: translate("editor.draft.failed"),
       mentionEmpty: translate("editor.mention.empty"),
       mentionLoading: translate("editor.mention.loading"),
+      attach: translate("editor.attach"),
+      attachHint: translate("editor.attachHint"),
+      uploading: translate("editor.upload.uploading"),
+      processing: translate("editor.upload.processing"),
+      uploadReady: translate("editor.upload.ready"),
+      uploadFailed: translate("editor.upload.failed"),
+      uploadQuota: translate("editor.upload.quota"),
+      uploadTooLarge: translate("editor.upload.tooLarge"),
+      uploadType: translate("editor.upload.type"),
+      uploadRejected: translate("editor.upload.rejected"),
     },
     flags: { mentions: input.mentions },
   };

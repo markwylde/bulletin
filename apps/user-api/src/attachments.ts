@@ -1,4 +1,6 @@
 import {
+  ATTACHMENT_PROCESS_CHANNEL,
+  deleteAttachment,
   parseUploadRequest,
   readAttachment,
   readUploadLimits,
@@ -204,6 +206,40 @@ export async function attachmentFinaliseResponse(
   }
 
   await storage.delete(record.quarantineKey).catch(() => undefined);
+  // Wake the processing worker; the state row is the durable source of truth.
+  await sql.notify(ATTACHMENT_PROCESS_CHANNEL, updated.id).catch(() => undefined);
 
   return json(attachmentView(updated));
+}
+
+/**
+ * `POST /api/attachments/<id>/delete` (tasks 4.3, 4.4). Owners delete their file everywhere;
+ * a moderator with `edit` passes `postId` to remove it from that post only.
+ */
+export async function attachmentDeleteResponse(
+  sql: SQL,
+  session: Session,
+  id: string,
+  request: Request,
+): Promise<Response> {
+  const body = await bodyRecord(request);
+  const rawPostId = body?.postId;
+  const postId = typeof rawPostId === "string" && /^\d+$/.test(rawPostId) ? rawPostId : undefined;
+
+  if (rawPostId !== undefined && postId === undefined) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const outcome = await deleteAttachment(sql, {
+    actorId: session.memberId,
+    sessionId: session.id ?? session.sessionId ?? null,
+    attachmentId: id,
+    ...(postId === undefined ? {} : { postId }),
+  });
+
+  if (!outcome.ok) {
+    return json({ code: outcome.code }, outcome.code === "forbidden" ? 403 : 404);
+  }
+
+  return json({ ok: true });
 }

@@ -8,6 +8,9 @@ import type { SQL } from "bun";
 import type { ViewerPrincipal } from "../permissions/principal.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
 
+/** Wake-up channel for a freshly snapshotted upload (ADR 0003: NOTIFY is only a wake-up). */
+export const ATTACHMENT_PROCESS_CHANNEL = "bulletin_attachments";
+
 /** Unattached uploads expire 24 hours after the request (ADR 0019). */
 export const ATTACHMENT_ORPHAN_AFTER_MS = 24 * 60 * 60 * 1_000;
 /** A worker that dies mid-processing is reclaimable after ten minutes. */
@@ -165,7 +168,6 @@ export interface DownloadableAttachment {
   /** Forums whose visible posts reference the attachment; permission is checked on each. */
   readonly forumIds: readonly string[];
 }
-
 /**
  * A published attachment plus the forums it appears in. Unreferenced, hidden or rejected
  * attachments are not downloadable; the caller re-checks `can(download)` per request.
@@ -359,13 +361,16 @@ export async function listExpiredAttachments(
   const rows = (await sql`
     SELECT a.*
     FROM core.attachments a
-    WHERE a.expires_at IS NOT NULL
-      AND a.expires_at <= ${now}
-      AND a.deleted_at IS NULL
-      AND NOT EXISTS (
-        SELECT 1 FROM core.post_attachments pa WHERE pa.attachment_id = a.id
-      )
-    ORDER BY a.expires_at, a.id
+    WHERE a.deleted_at <= ${new Date(now.getTime() - 7 * 24 * 60 * 60 * 1_000)}
+       OR (
+         a.expires_at IS NOT NULL
+         AND a.expires_at <= ${now}
+         AND a.deleted_at IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM core.post_attachments pa WHERE pa.attachment_id = a.id
+         )
+       )
+    ORDER BY a.expires_at NULLS LAST, a.id
     LIMIT ${limit}
   `) as AttachmentRow[];
 
@@ -400,13 +405,14 @@ export async function refreshMemberStorage(sql: SQL, memberIds: readonly string[
       used_bytes = COALESCE((
         SELECT sum(a.size_bytes)::bigint
         FROM core.attachments a
-        WHERE a.member_id = ms.member_id AND a.state = 'ready'
+        WHERE a.member_id = ms.member_id AND a.state = 'ready' AND a.deleted_at IS NULL
       ), 0),
       reserved_bytes = COALESCE((
         SELECT sum(a.declared_bytes)::bigint
         FROM core.attachments a
         WHERE a.member_id = ms.member_id
           AND a.state IN ('pending', 'snapshotted', 'processing')
+          AND a.deleted_at IS NULL
       ), 0),
       updated_at = now()
     WHERE ms.member_id = ANY(${array}::bigint[])
@@ -435,4 +441,314 @@ export async function deleteAttachments(sql: SQL, ids: readonly string[]): Promi
 
     return rows.length;
   });
+}
+
+export interface PostAttachmentRecord {
+  readonly id: string;
+  readonly postId: string;
+  readonly filename: string;
+  readonly sizeBytes: number;
+  readonly contentType: string;
+  readonly downloadCount: number;
+  readonly inline: boolean;
+  readonly position: number;
+}
+
+interface PostAttachmentRow {
+  readonly id: string;
+  readonly post_id: string;
+  readonly filename: string;
+  readonly size_bytes: string;
+  readonly verified_type: string;
+  readonly download_count: string;
+  readonly inline: boolean;
+  readonly position: number;
+}
+
+/** Published attachments linked to each post, in body order. */
+export async function readPostAttachments(
+  sql: SQL,
+  postIds: readonly string[],
+): Promise<ReadonlyMap<string, readonly PostAttachmentRecord[]>> {
+  const unique = [...new Set(postIds)];
+  const result = new Map<string, PostAttachmentRecord[]>();
+
+  if (unique.length === 0) {
+    return result;
+  }
+
+  const rows = (await sql`
+    SELECT
+      a.id::text AS id,
+      pa.post_id::text AS post_id,
+      a.filename,
+      a.size_bytes::text AS size_bytes,
+      a.verified_type,
+      a.download_count::text AS download_count,
+      pa.inline,
+      pa.position
+    FROM core.post_attachments pa
+    JOIN core.attachments a ON a.id = pa.attachment_id
+    WHERE pa.post_id = ANY(${`{${unique.join(",")}}`}::bigint[])
+      AND a.state = 'ready'
+      AND a.deleted_at IS NULL
+      AND a.verified_type IS NOT NULL
+      AND a.size_bytes IS NOT NULL
+    ORDER BY pa.post_id, pa.position, a.id
+  `) as PostAttachmentRow[];
+
+  for (const row of rows) {
+    const list = result.get(row.post_id) ?? [];
+    list.push({
+      id: row.id,
+      postId: row.post_id,
+      filename: row.filename,
+      sizeBytes: Number(row.size_bytes),
+      contentType: row.verified_type,
+      downloadCount: Number(row.download_count),
+      inline: row.inline,
+      position: row.position,
+    });
+    result.set(row.post_id, list);
+  }
+
+  return result;
+}
+
+const ATTACHMENT_TAG = /<bl-attachment\b([^>]*)>/gi;
+
+function tagAttribute(attributes: string, name: string): string | null {
+  return new RegExp(`\\b${name}="([^"]*)"`).exec(attributes)?.[1] ?? null;
+}
+
+/** Attachment ids in body order, with whether the author placed each one inline. */
+export function attachmentPlaceholders(bodyHtml: string): ReadonlyMap<string, boolean> {
+  const found = new Map<string, boolean>();
+
+  for (const match of bodyHtml.matchAll(ATTACHMENT_TAG)) {
+    const attributes = match[1] ?? "";
+    const id = tagAttribute(attributes, "data-id");
+
+    if (id === null || !/^\d+$/.test(id) || found.has(id)) {
+      continue;
+    }
+
+    found.set(id, tagAttribute(attributes, "data-inline") === "true");
+  }
+
+  return found;
+}
+
+export interface SyncPostAttachmentsInput {
+  readonly postId: string;
+  readonly authorId: string;
+  readonly bodyHtml: string;
+}
+
+/**
+ * Synchronises `post_attachments` with the placeholders in the saved body (ADR 0019). Only
+ * the author's own ready uploads may be linked; removing a reference restarts the orphan
+ * clock when no other post uses the attachment.
+ */
+export async function syncPostAttachments(
+  tx: SQL,
+  input: SyncPostAttachmentsInput,
+): Promise<number> {
+  const placeholders = attachmentPlaceholders(input.bodyHtml);
+  const ids = [...placeholders.keys()];
+  const previous = (await tx`
+    DELETE FROM core.post_attachments
+    WHERE post_id = ${input.postId}
+    RETURNING attachment_id::text AS attachment_id
+  `) as Array<{ attachment_id: string }>;
+  const removed = previous.map((row) => row.attachment_id);
+
+  if (ids.length === 0) {
+    if (removed.length > 0) {
+      await restartOrphanClock(tx, removed);
+    }
+
+    return 0;
+  }
+
+  const owned = (await tx`
+    SELECT id::text AS id
+    FROM core.attachments
+    WHERE id = ANY(${`{${ids.join(",")}}`}::bigint[])
+      AND state = 'ready'
+      AND deleted_at IS NULL
+      AND (
+        member_id = ${input.authorId}
+        OR id = ANY(${`{${removed.join(",") || "0"}}`}::bigint[])
+      )
+  `) as Array<{ id: string }>;
+  const ownedIds = new Set(owned.map((row) => row.id));
+  let position = 0;
+
+  for (const [id, inline] of placeholders) {
+    if (!ownedIds.has(id)) {
+      continue;
+    }
+
+    await tx`
+      INSERT INTO core.post_attachments (post_id, attachment_id, position, inline)
+      VALUES (${input.postId}, ${id}, ${position}, ${inline})
+      ON CONFLICT (post_id, attachment_id) DO UPDATE
+        SET position = EXCLUDED.position, inline = EXCLUDED.inline
+    `;
+    await tx`
+      UPDATE core.attachments
+      SET expires_at = NULL, updated_at = now()
+      WHERE id = ${id}
+    `;
+    position += 1;
+  }
+
+  const linked = new Set([...ownedIds]);
+  const stillRemoved = removed.filter((id) => !linked.has(id));
+
+  if (stillRemoved.length > 0) {
+    await restartOrphanClock(tx, stillRemoved);
+  }
+
+  return position;
+}
+
+async function restartOrphanClock(tx: SQL, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+
+  await tx`
+    UPDATE core.attachments a
+    SET expires_at = now() + interval '24 hours', updated_at = now()
+    WHERE a.id = ANY(${`{${ids.join(",")}}`}::bigint[])
+      AND NOT EXISTS (
+        SELECT 1 FROM core.post_attachments pa WHERE pa.attachment_id = a.id
+      )
+  `;
+}
+
+export interface MemberAttachmentRecord {
+  readonly id: string;
+  readonly filename: string;
+  readonly sizeBytes: number;
+  readonly contentType: string;
+  readonly downloadCount: number;
+  readonly createdAt: Date;
+}
+
+/** The member's own published attachments, newest first ("My attachments"). */
+export async function listMemberAttachments(
+  sql: SQL,
+  memberId: string,
+): Promise<readonly MemberAttachmentRecord[]> {
+  const rows = (await sql`
+    SELECT
+      id::text AS id,
+      filename,
+      size_bytes::text AS size_bytes,
+      verified_type,
+      download_count::text AS download_count,
+      created_at
+    FROM core.attachments
+    WHERE member_id = ${memberId}
+      AND state = 'ready'
+      AND deleted_at IS NULL
+    ORDER BY created_at DESC, id DESC
+  `) as Array<{
+    id: string;
+    filename: string;
+    size_bytes: string;
+    verified_type: string;
+    download_count: string;
+    created_at: Date;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    filename: row.filename,
+    sizeBytes: Number(row.size_bytes),
+    contentType: row.verified_type,
+    downloadCount: Number(row.download_count),
+    createdAt: row.created_at,
+  }));
+}
+
+export interface StorageUsage {
+  readonly usedBytes: number;
+  readonly reservedBytes: number;
+}
+
+export async function readStorageUsage(sql: SQL, memberId: string): Promise<StorageUsage> {
+  const rows = (await sql`
+    SELECT used_bytes::text AS used_bytes, reserved_bytes::text AS reserved_bytes
+    FROM core.member_storage
+    WHERE member_id = ${memberId}
+  `) as Array<{ used_bytes: string; reserved_bytes: string }>;
+  const row = rows[0];
+
+  return {
+    usedBytes: row === undefined ? 0 : Number(row.used_bytes),
+    reservedBytes: row === undefined ? 0 : Number(row.reserved_bytes),
+  };
+}
+
+export interface AttachmentReference {
+  readonly postId: string;
+  readonly topicId: string;
+  readonly forumId: string;
+}
+
+export async function readAttachmentReferences(
+  sql: SQL,
+  attachmentId: string,
+): Promise<readonly AttachmentReference[]> {
+  const rows = (await sql`
+    SELECT
+      p.id::text AS post_id,
+      t.id::text AS topic_id,
+      t.forum_id::text AS forum_id
+    FROM core.post_attachments pa
+    JOIN core.posts p ON p.id = pa.post_id
+    JOIN core.topics t ON t.id = p.topic_id
+    WHERE pa.attachment_id = ${attachmentId}
+    ORDER BY p.id
+  `) as Array<{ readonly post_id: string; readonly topic_id: string; readonly forum_id: string }>;
+
+  return rows.map((row) => ({
+    postId: row.post_id,
+    topicId: row.topic_id,
+    forumId: row.forum_id,
+  }));
+}
+
+/** Soft-deletes one member's attachment and releases its quota. */
+export async function softDeleteAttachment(
+  tx: SQL,
+  attachmentId: string,
+  memberId: string,
+): Promise<void> {
+  await tx`
+    UPDATE core.attachments
+    SET deleted_at = now(), updated_at = now()
+    WHERE id = ${attachmentId} AND member_id = ${memberId} AND deleted_at IS NULL
+  `;
+  await tx`
+    DELETE FROM core.post_attachments WHERE attachment_id = ${attachmentId}
+  `;
+  await refreshMemberStorage(tx, [memberId]);
+}
+
+/** Removes an attachment from one post; the attachment stays usable elsewhere. */
+export async function unlinkAttachmentFromPost(
+  tx: SQL,
+  postId: string,
+  attachmentId: string,
+): Promise<void> {
+  await tx`
+    DELETE FROM core.post_attachments
+    WHERE post_id = ${postId} AND attachment_id = ${attachmentId}
+  `;
+  await restartOrphanClock(tx, [attachmentId]);
 }

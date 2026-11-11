@@ -28,6 +28,16 @@ export interface EditorLabels {
   readonly saveFailed: string;
   readonly mentionEmpty: string;
   readonly mentionLoading: string;
+  readonly attach: string;
+  readonly attachHint: string;
+  readonly uploading: string;
+  readonly processing: string;
+  readonly uploadReady: string;
+  readonly uploadFailed: string;
+  readonly uploadQuota: string;
+  readonly uploadTooLarge: string;
+  readonly uploadType: string;
+  readonly uploadRejected: string;
 }
 
 export interface EditorProps {
@@ -35,6 +45,9 @@ export interface EditorProps {
   /** Form field name for the hidden markdown input, when the editor is inside a form. */
   readonly name?: string | undefined;
   readonly initialMarkdown: string;
+  /** Upload target; empty when the viewer may not upload here. */
+  readonly forumId: string;
+  readonly canUpload: boolean;
   readonly emoticons: readonly EditorEmoticon[];
   readonly labels: EditorLabels;
   readonly flags: { readonly mentions: boolean };

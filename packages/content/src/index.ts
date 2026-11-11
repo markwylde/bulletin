@@ -1,6 +1,7 @@
 /** Markdown to sanitised HTML pipeline (ADR 0007). */
 export * from "./before-save.ts";
 export * from "./embeds.ts";
+export * from "./extensions/attachments.ts";
 export * from "./extensions/inline.ts";
 export * from "./extensions/quotes.ts";
 export * from "./mentions.ts";

@@ -26,6 +26,16 @@ const labels: EditorLabels = {
   saveFailed: "Could not save the draft.",
   mentionEmpty: "No members found.",
   mentionLoading: "Searching members…",
+  attach: "Attach files",
+  attachHint: "Drop files here or paste an image.",
+  uploading: "Uploading…",
+  processing: "Processing…",
+  uploadReady: "Attached",
+  uploadFailed: "Upload failed. Try again.",
+  uploadQuota: "There is not enough storage space left.",
+  uploadTooLarge: "That file is too large.",
+  uploadType: "That file type is not allowed.",
+  uploadRejected: "That file could not be accepted.",
 };
 
 describe("Editor server markup", () => {
@@ -33,6 +43,8 @@ describe("Editor server markup", () => {
     const props = {
       contextKey: "reply:topic:1",
       initialMarkdown: "",
+      forumId: "1",
+      canUpload: true,
       emoticons: [],
       labels,
     };
@@ -48,6 +60,8 @@ describe("Editor server markup", () => {
       <Editor
         contextKey="reply:topic:1"
         initialMarkdown="Hello **world**"
+        forumId="1"
+        canUpload
         emoticons={[{ code: "smile", src: "/files/smile.svg", alt: "Smile" }]}
         labels={labels}
         flags={{ mentions: true }}
@@ -63,5 +77,26 @@ describe("Editor server markup", () => {
     expect(html).toContain('aria-label="Bold"');
     expect(html).toContain('role="toolbar"');
     expect(html).toContain('aria-live="polite"');
+  });
+});
+
+describe("Editor attachment controls", () => {
+  test("shows the attach control only when the viewer may upload", () => {
+    const common = {
+      contextKey: "reply:topic:1",
+      initialMarkdown: "",
+      forumId: "1",
+      emoticons: [],
+      labels,
+      flags: { mentions: true },
+    } as const;
+    const allowed = renderToStaticMarkup(<Editor {...common} canUpload />);
+    const denied = renderToStaticMarkup(<Editor {...common} canUpload={false} />);
+
+    expect(allowed).toContain("data-editor-attach");
+    expect(allowed).toContain("data-editor-file-input");
+    expect(allowed).toContain("Drop files here or paste an image.");
+    expect(denied).not.toContain("data-editor-attach");
+    expect(denied).not.toContain("data-editor-file-input");
   });
 });

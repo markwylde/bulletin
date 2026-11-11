@@ -271,11 +271,20 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     snapshot: input.snapshot,
   });
   view.track(input.forum.id, "start", canStart);
+  const canUpload = await can(input.sql, input.principal, "upload", {
+    forumId: input.forum.id,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.forum.id, "upload", canUpload);
   const editor = canStart
     ? await buildEditorView(input.sql, input.translate, {
         contextKey: `topic:new:${input.forum.id}`,
         mentions: mentionsEnabled,
         name: "bodyMd",
+        forumId: input.forum.id,
+        canUpload,
       })
     : null;
 

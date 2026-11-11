@@ -267,6 +267,34 @@ export const groupsSeedModule: SeedModule = {
       `;
     }
 
+    // Upload limits make the editor usable on a fresh board (attachments-avatars, task 6.1
+    // exposes them in the ACP). Quota is total bytes, per-file is one file.
+    for (const [groupKey, quotaMb, perFileKb] of [
+      ["members", 50, 10_240],
+      ["regulars", 100, 10_240],
+      ["vip", 200, 20_480],
+      ["moderators", 200, 20_480],
+      ["super_moderators", 500, 51_200],
+      ["administrators", 500, 51_200],
+    ] as const) {
+      const groupId = ids.get(groupKey);
+
+      if (groupId === undefined) {
+        continue;
+      }
+
+      for (const [key, value] of [
+        ["posting.upload_quota_mb", quotaMb],
+        ["posting.upload_per_file_kb", perFileKb],
+      ] as const) {
+        await sql`
+          INSERT INTO core.group_settings (group_id, key, value)
+          VALUES (${groupId}, ${key}, to_jsonb(${value}::int))
+          ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        `;
+      }
+    }
+
     const members = ids.get("members");
     const regulars = ids.get("regulars");
     const vip = ids.get("vip");

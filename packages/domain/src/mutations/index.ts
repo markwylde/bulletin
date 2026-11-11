@@ -26,6 +26,7 @@ export interface RunMutationOptions<TInput, TResult> {
   readonly apply: (tx: SQL, input: TInput) => Promise<TResult>;
 }
 
+export * from "./attachments.ts";
 /**
  * Runs a write and bumps every tag it declared in the same transaction, so a rollback also
  * rolls back the invalidation and a commit is followed by the NOTIFY (ADR 0006).

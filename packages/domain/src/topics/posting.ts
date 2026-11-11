@@ -1,6 +1,7 @@
 import type { RenderResult, ReplaceWords } from "@bulletin/content";
 import { saveContent } from "@bulletin/content";
 import type { SQL } from "bun";
+import { syncPostAttachments } from "../attachments/store.ts";
 import { redactQuoteSnapshotsInTransaction } from "../content/quotes.ts";
 import { loadContentRenderDependencies } from "../content/rendering.ts";
 import { runMutation } from "../mutations/index.ts";
@@ -236,6 +237,12 @@ export async function startTopic(
           quotedForumIds: rendered.quotedForumIds,
         });
 
+        await syncPostAttachments(tx, {
+          postId: post.id,
+          authorId: input.actorId,
+          bodyHtml: rendered.bodyHtml,
+        });
+
         if (input.poll !== undefined) {
           await insertPoll(tx, topicId, input.poll);
         }
@@ -376,6 +383,12 @@ export async function reply(
           renderVersion: rendered.renderVersion,
           sanitiserVersion: rendered.sanitiserVersion,
           quotedForumIds: rendered.quotedForumIds,
+        });
+
+        await syncPostAttachments(tx, {
+          postId: post.id,
+          authorId: input.actorId,
+          bodyHtml: rendered.bodyHtml,
         });
 
         await recordReply(tx, {
@@ -532,6 +545,12 @@ export async function editPost(
           sanitiserVersion: rendered.sanitiserVersion,
           quotedForumIds: rendered.quotedForumIds,
           editedBy: input.actorId,
+        });
+
+        await syncPostAttachments(tx, {
+          postId: current.id,
+          authorId: input.actorId,
+          bodyHtml: rendered.bodyHtml,
         });
 
         const currentRedact =
