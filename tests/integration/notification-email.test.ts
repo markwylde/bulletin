@@ -347,6 +347,32 @@ integrationDescribe("notification email", () => {
     });
   }, 60_000);
 
+  test("delivers a reputation email built from the giver and no post body", async () => {
+    await withMailStack(async ({ database, store, options }) => {
+      const fixture = await replyFixture(database);
+      const { intentId } = await createIntent(
+        database,
+        fixture,
+        fixture.starter,
+        "reputation.given",
+      );
+
+      expect(await deliverNotificationEmail(database.sql, options, intentId.toString())).toBe(
+        "sent",
+      );
+
+      const message = store.list()[0];
+      const encoded = /=\?UTF-8\?B\?([^?]+)\?=/.exec(message?.subject ?? "")?.[1];
+      const subject =
+        encoded === undefined
+          ? (message?.subject ?? "")
+          : Buffer.from(encoded, "base64").toString("utf8");
+      expect(subject).toContain("New reputation");
+      expect(message?.text).toContain("gave you reputation");
+      expect(message?.text).not.toContain("The first post");
+    });
+  }, 60_000);
+
   test("an email-disabled notification stays in the app and sends nothing", async () => {
     await withMailStack(async ({ database, store, options }) => {
       const fixture = await replyFixture(database);

@@ -6,12 +6,15 @@ import {
   groupsSeedModule,
   membersSeedModule,
   permissionFixtureSeedModule,
+  reactionsSeedModule,
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
 import { emit, loadEvent, type StoredEvent } from "@bulletin/domain/events";
 import { follow, unfollow } from "@bulletin/domain/follows";
 import { bumpPermVersion, can, forumActionMask, loadForumTree } from "@bulletin/domain/permissions";
+import { listReactions, setReaction } from "@bulletin/domain/reactions";
+import { giveReputation } from "@bulletin/domain/reputation";
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import {
@@ -38,6 +41,7 @@ async function withSeededDb(
         baseSeedModule,
         flagsSeedModule,
         permissionFixtureSeedModule,
+        reactionsSeedModule,
         groupsSeedModule,
         forumExtrasSeedModule,
         membersSeedModule,
@@ -785,4 +789,192 @@ integrationDescribe("notifications subscriber", () => {
       });
     });
   }, 30_000);
+
+  test("reactions on one post coalesce per post and never notify on a different post", async () => {
+    await withSeededDb("notifications_reactions", async (database) => {
+      const general = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-2");
+      const giver = await memberId(database, "member-1");
+      const other = await memberId(database, "member-fr");
+      const third = await memberId(database, "member-es");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: general,
+          title: "Reaction notifications",
+          bodyMd: "React to me.",
+        }),
+      );
+      const second = await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "A second post by the same author.",
+        }),
+      );
+      const like = (await listReactions(database.sql)).find((reaction) => reaction.key === "like");
+
+      if (like === undefined) {
+        throw new Error("Missing the like reaction");
+      }
+
+      const react = (actorId: string, postId: string) =>
+        setReaction(database.sql, { actorId, postId, reactionId: like.id });
+      await react(giver, topic.postId);
+      await react(other, topic.postId);
+      await react(third, topic.postId);
+      await react(giver, second.postId);
+
+      const events = (await database.sql`
+        SELECT id FROM core.events WHERE type = 'reaction.added' ORDER BY id
+      `) as Array<{ id: bigint | string }>;
+      expect(events).toHaveLength(4);
+      const handler = createNotificationsEventHandler({ sql: database.sql });
+
+      for (const row of events.slice(0, 3)) {
+        const event = await loadEvent(database.sql, BigInt(row.id));
+
+        if (event === null) {
+          throw new Error("Missing reaction event");
+        }
+
+        await handler(event);
+        // At-least-once: a redelivered event must not inflate the count.
+        await handler(event);
+      }
+
+      const first = await loadEvent(database.sql, BigInt(events[3]?.id ?? "0"));
+
+      if (first === null) {
+        throw new Error("Missing the third reaction event");
+      }
+
+      await handler(first);
+
+      expect(await notifications(database)).toEqual([
+        {
+          member_id: author,
+          type: "reaction.added",
+          actor_id: third,
+          topic_id: topic.topicId,
+          forum_id: general,
+          post_id: topic.postId,
+          count: 3,
+          read_at: null,
+        },
+        {
+          member_id: author,
+          type: "reaction.added",
+          actor_id: giver,
+          topic_id: topic.topicId,
+          forum_id: general,
+          post_id: second.postId,
+          count: 1,
+          read_at: null,
+        },
+      ]);
+    });
+  }, 45_000);
+
+  test("reputation notifications coalesce per post", async () => {
+    await withSeededDb("notifications_reputation", async (database) => {
+      const general = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-2");
+      const giver = await memberId(database, "member-1");
+      const other = await memberId(database, "member-fr");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: general,
+          title: "Reputation notifications",
+          bodyMd: "Rate me.",
+        }),
+      );
+
+      await expectOk(
+        await giveReputation(database.sql, {
+          actorId: giver,
+          postId: topic.postId,
+          points: 1,
+        }),
+      );
+      await expectOk(
+        await giveReputation(database.sql, {
+          actorId: other,
+          postId: topic.postId,
+          points: 1,
+        }),
+      );
+
+      const events = (await database.sql`
+        SELECT id FROM core.events WHERE type = 'reputation.given' ORDER BY id
+      `) as Array<{ id: bigint | string }>;
+      const handler = createNotificationsEventHandler({ sql: database.sql });
+
+      for (const row of events) {
+        const event = await loadEvent(database.sql, BigInt(row.id));
+
+        if (event === null) {
+          throw new Error("Missing reputation event");
+        }
+
+        await handler(event);
+      }
+
+      expect(await notifications(database)).toEqual([
+        {
+          member_id: author,
+          type: "reputation.given",
+          actor_id: other,
+          topic_id: topic.topicId,
+          forum_id: general,
+          post_id: topic.postId,
+          count: 2,
+          read_at: null,
+        },
+      ]);
+    });
+  }, 45_000);
+
+  test("a reaction notification is dropped when the author loses access", async () => {
+    await withSeededDb("notifications_reaction_lost", async (database) => {
+      const staffRoom = await forumId(database, "staff-room");
+      const author = await memberId(database, "super-mod");
+      const giver = await memberId(database, "admin");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: staffRoom,
+          title: "Private reaction",
+          bodyMd: "React in private.",
+        }),
+      );
+      const like = (await listReactions(database.sql)).find((reaction) => reaction.key === "like");
+
+      if (like === undefined) {
+        throw new Error("Missing the like reaction");
+      }
+
+      await setReaction(database.sql, {
+        actorId: giver,
+        postId: topic.postId,
+        reactionId: like.id,
+      });
+      await database.sql`
+        UPDATE core.forum_permissions fp
+        SET actions = ${forumActionMask(["show"])}
+        FROM core.forums f, core.masks m
+        WHERE fp.forum_id = f.id
+          AND fp.mask_id = m.id
+          AND f.slug = 'staff-area'
+          AND m.key = 'staff'
+      `;
+      await bumpPermVersion(database.sql);
+
+      const event = await latestEvent(database, "reaction.added");
+      await createNotificationsEventHandler({ sql: database.sql })(event);
+
+      expect(await notifications(database)).toEqual([]);
+    });
+  }, 45_000);
 });

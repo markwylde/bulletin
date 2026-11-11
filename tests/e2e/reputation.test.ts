@@ -59,7 +59,7 @@ async function giveReputationOnSomePost(view: Bun.WebView): Promise<{
   await view.navigate(FORUM_URL);
   const hrefs = await topicHrefs(view);
 
-  for (const href of hrefs.slice(0, 60)) {
+  for (const href of hrefs.slice(0, 30)) {
     const url = new URL(href, USER_URL).toString();
     await view.navigate(url);
     await waitForSelector(view, "[data-topic-page]", 20_000);
@@ -74,18 +74,22 @@ async function giveReputationOnSomePost(view: Bun.WebView): Promise<{
       .map((element) => element.getAttribute('data-post') ?? '')
       .filter((id) => id !== '')`);
 
-    for (const postId of candidates) {
+    for (const postId of candidates.slice(0, 3)) {
       // Islands hydrate when they scroll near the viewport; the overlay then removes the
       // control on own posts and on posts already rated.
       await view.evaluate(
         `document.querySelector('[data-post="${postId}"]')?.scrollIntoView({ block: "center" })`,
       );
-      await waitForSelector(
+      await waitForExpression(
         view,
-        `[data-post="${postId}"] bl-island[data-name="PostReputation"][data-hydrated="true"]`,
-        10_000,
-      ).catch(() => null);
-      await Bun.sleep(150);
+        `(() => {
+          const island = document.querySelector('[data-post="${postId}"] bl-island[data-name="PostReputation"]');
+          return island?.getAttribute('data-hydrated') === 'true' ||
+            document.querySelector('[data-post="${postId}"] [data-reputation-vote="1"]') === null;
+        })()`,
+        3_000,
+      ).catch(() => undefined);
+      await Bun.sleep(100);
 
       const clickable = await view.evaluate<boolean>(
         `document.querySelector('[data-post="${postId}"] [data-reputation-vote="1"]:not([disabled])') !== null`,

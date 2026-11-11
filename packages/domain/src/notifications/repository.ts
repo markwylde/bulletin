@@ -14,11 +14,25 @@ export const NOTIFICATION_TYPES = [
   "post.quote",
   "member.promoted",
   "reaction.added",
+  "reputation.given",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-export type NotificationRecipientSource = "follow" | "mention" | "quote" | "promotion";
+export type NotificationRecipientSource =
+  | "follow"
+  | "mention"
+  | "quote"
+  | "promotion"
+  | "reaction"
+  | "reputation";
+
+/** These types are about one post, so an unread entry coalesces per post, not per topic. */
+const POST_COALESCED_TYPES = ["reaction.added", "reputation.given"] as const;
+
+function isPostCoalesced(type: NotificationType): boolean {
+  return (POST_COALESCED_TYPES as readonly string[]).includes(type);
+}
 
 export interface NotificationRecipient {
   readonly memberId: string;
@@ -71,8 +85,32 @@ export async function createNotification(
     return null;
   }
 
-  const rows = (await (input.topicId === null || input.topicId === undefined
+  if (isPostCoalesced(input.type) && (input.postId === null || input.postId === undefined)) {
+    throw new Error(`A ${input.type} notification needs a post`);
+  }
+
+  const rows = (await (isPostCoalesced(input.type)
     ? sql`
+        INSERT INTO core.notifications (
+          member_id, type, event_id, actor_id, topic_id, forum_id, post_id, count
+        ) VALUES (
+          ${input.memberId}, ${input.type}, ${input.eventId}, ${input.actorId ?? null},
+          ${input.topicId ?? null}, ${input.forumId ?? null}, ${input.postId ?? null}, 1
+        )
+        ON CONFLICT (member_id, type, post_id)
+        WHERE read_at IS NULL AND post_id IS NOT NULL
+          AND type IN ('reaction.added', 'reputation.given')
+        DO UPDATE SET
+          count = core.notifications.count + 1,
+          event_id = EXCLUDED.event_id,
+          actor_id = EXCLUDED.actor_id,
+          topic_id = EXCLUDED.topic_id,
+          forum_id = EXCLUDED.forum_id,
+          updated_at = now()
+        RETURNING id
+      `
+    : input.topicId === null || input.topicId === undefined
+      ? sql`
         INSERT INTO core.notifications (
           member_id, type, event_id, actor_id, topic_id, forum_id, post_id
         ) VALUES (
@@ -81,7 +119,7 @@ export async function createNotification(
         )
         RETURNING id
       `
-    : sql`
+      : sql`
         INSERT INTO core.notifications (
           member_id, type, event_id, actor_id, topic_id, forum_id, post_id, count
         ) VALUES (
@@ -90,6 +128,7 @@ export async function createNotification(
         )
         ON CONFLICT (member_id, type, topic_id)
         WHERE read_at IS NULL AND topic_id IS NOT NULL
+          AND type NOT IN ('reaction.added', 'reputation.given')
         DO UPDATE SET
           count = core.notifications.count + 1,
           event_id = EXCLUDED.event_id,
@@ -211,6 +250,7 @@ export async function eventRecipients(
     "topic.created": 2,
     "member.promoted": 1,
     "reaction.added": 0,
+    "reputation.given": 0,
   };
   let tree: ForumTree | null = null;
 
@@ -320,6 +360,72 @@ export async function eventRecipients(
       }
 
       return recipients;
+    }
+    case "reaction.added": {
+      const postId = event.payloadIds.postId;
+      const giverId = event.payloadIds.memberId;
+
+      if (postId === undefined || giverId === undefined) {
+        return [];
+      }
+
+      const post = await readPost(sql, postId);
+
+      if (post === null || post.authorId === giverId) {
+        return [];
+      }
+
+      // Authorisation is rechecked now: a topic moved somewhere unreadable stops the notice.
+      if (!(await readable(post.authorId, post.forumId))) {
+        return [];
+      }
+
+      return [
+        {
+          memberId: post.authorId,
+          type: "reaction.added",
+          source: "reaction",
+          actorId: giverId,
+          topicId: post.topicId,
+          forumId: post.forumId,
+          postId,
+        },
+      ];
+    }
+    case "reputation.given": {
+      const postId = event.payloadIds.postId;
+      const giverId = event.payloadIds.giverId;
+      const receiverId = event.payloadIds.receiverId;
+
+      if (postId === undefined || giverId === undefined || receiverId === undefined) {
+        return [];
+      }
+
+      if (receiverId === giverId) {
+        return [];
+      }
+
+      const post = await readPost(sql, postId);
+
+      if (post === null || post.authorId !== receiverId) {
+        return [];
+      }
+
+      if (!(await readable(receiverId, post.forumId))) {
+        return [];
+      }
+
+      return [
+        {
+          memberId: receiverId,
+          type: "reputation.given",
+          source: "reputation",
+          actorId: giverId,
+          topicId: post.topicId,
+          forumId: post.forumId,
+          postId,
+        },
+      ];
     }
     case "member.promoted": {
       const memberId = event.payloadIds.memberId;
@@ -581,7 +687,7 @@ export async function notificationIdForEvent(
 }
 
 export interface DigestItem {
-  readonly kind: "topic" | "reply" | "mention" | "quote" | "promotion" | "reaction";
+  readonly kind: "topic" | "reply" | "mention" | "quote" | "promotion" | "reaction" | "reputation";
   readonly topicId: string | null;
   readonly title: string;
   readonly slug: string | null;
@@ -619,6 +725,7 @@ const DIGEST_TYPE_BY_KIND = {
   quote: "post.quote",
   promotion: "member.promoted",
   reaction: "reaction.added",
+  reputation: "reputation.given",
 } as const;
 
 /**
@@ -718,14 +825,22 @@ export async function digestItems(
       LEFT JOIN core.topics t ON t.id = n.topic_id
       LEFT JOIN core.members a ON a.id = n.actor_id
       WHERE n.member_id = ${memberId}
-        AND n.type IN ('member.promoted', 'reaction.added')
+        AND n.type IN ('member.promoted', 'reaction.added', 'reputation.given')
         AND n.created_at > ${options.since}
         AND n.created_at <= ${until}
       ORDER BY n.created_at DESC
     `,
   ])) as [DigestRow[], DigestRow[], DigestRow[], DigestRow[], DigestNotificationRow[]];
   const byTopic = new Map<string, DigestItem>();
-  const rank = { topic: 1, reaction: 2, reply: 3, quote: 4, mention: 5, promotion: 6 } as const;
+  const rank = {
+    topic: 1,
+    reaction: 2,
+    reputation: 2,
+    reply: 3,
+    quote: 4,
+    mention: 5,
+    promotion: 6,
+  } as const;
 
   for (const [kind, rows] of [
     ["topic", topics],
@@ -762,14 +877,23 @@ export async function digestItems(
       continue;
     }
 
-    const kind = row.type_from_notification === "member.promoted" ? "promotion" : "reaction";
+    const kind =
+      row.type_from_notification === "member.promoted"
+        ? "promotion"
+        : row.type_from_notification === "reputation.given"
+          ? "reputation"
+          : "reaction";
 
     if (preferences[DIGEST_TYPE_BY_KIND[kind]].digest !== true) {
       continue;
     }
 
     const key =
-      kind === "promotion" ? `promotion:${row.id}` : (row.topic_id ?? `reaction:${row.id}`);
+      kind === "promotion"
+        ? `promotion:${row.id}`
+        : kind === "reputation"
+          ? (row.topic_id ?? `reputation:${row.id}`)
+          : (row.topic_id ?? `reaction:${row.id}`);
     const existing = byTopic.get(key);
 
     if (existing !== undefined && rank[existing.kind] >= rank[kind]) {

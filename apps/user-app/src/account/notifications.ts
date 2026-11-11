@@ -94,6 +94,10 @@ function notificationText(translate: Translator, entry: NotificationEntry): stri
       return entry.count > 1
         ? translate("notification.text.reaction.addedMany", { count: entry.count })
         : translate("notification.text.reaction.added", { actor });
+    case "reputation.given":
+      return entry.count > 1
+        ? translate("notification.text.reputation.givenMany", { count: entry.count })
+        : translate("notification.text.reputation.given", { actor });
     case "member.promoted":
       return translate("notification.text.member.promoted");
   }

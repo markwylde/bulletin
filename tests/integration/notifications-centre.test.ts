@@ -11,7 +11,7 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import { createAuthService, hashToken, sessionCookieName } from "@bulletin/domain/auth";
-import { loadEvent } from "@bulletin/domain/events";
+import { emit, loadEvent } from "@bulletin/domain/events";
 import {
   createNotification,
   createNotificationEmailIntent,
@@ -619,6 +619,53 @@ integrationDescribe("notification centre", () => {
     });
   }, 30_000);
 
+  test("coalesces reputation notifications per post and renders the plural text", async () => {
+    await withSeededDb(async (database) => {
+      const fixture = await topicFixture(database);
+      const other = await memberId(database, "member-fr");
+
+      for (const giver of [fixture.actor, other]) {
+        const eventId = await database.sql.begin(async (tx) => {
+          const id = await emit(tx, {
+            type: "reputation.given",
+            aggregateId: BigInt(fixture.starter),
+            aggregateVersion: 1n,
+            payloadIds: {
+              entryId: BigInt(1),
+              postId: BigInt(fixture.postId),
+              giverId: BigInt(giver),
+              receiverId: BigInt(fixture.starter),
+            },
+          });
+          return id;
+        });
+
+        await createNotification(database.sql, {
+          memberId: fixture.starter,
+          type: "reputation.given",
+          eventId,
+          actorId: giver,
+          topicId: fixture.topicId,
+          forumId: fixture.forumId,
+          postId: fixture.postId,
+        });
+      }
+
+      const page = await buildNotificationsPage({
+        sql: database.sql,
+        memberId: fixture.starter,
+        sessionId: null,
+        locale: "en",
+        translate,
+      });
+      const entries = page.viewModel.sections.flatMap((section) => section.entries);
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.text).toContain("2 reputation points received");
+      expect(entries[0]?.href).toContain(`/post/${fixture.postId}`);
+    });
+  }, 30_000);
+
   test("the preferences page lists every type and channel", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");
@@ -628,7 +675,7 @@ integrationDescribe("notification centre", () => {
         translate,
       });
 
-      expect(page.viewModel.types).toHaveLength(6);
+      expect(page.viewModel.types).toHaveLength(7);
       expect(page.viewModel.types.every((type) => type.channels.length === 3)).toBe(true);
       expect(page.viewModel.digestOptions.map((option) => option.value)).toEqual([
         "off",

@@ -73,7 +73,13 @@ const subscribers: EventSubscriber[] = [
   { name: "core", types: "*" },
   {
     name: "notifications",
-    types: ["topic.created", "post.created", "member.promoted"],
+    types: [
+      "topic.created",
+      "post.created",
+      "member.promoted",
+      "reaction.added",
+      "reputation.given",
+    ],
   },
   { name: "reputation", types: ["reputation.recount.requested"] },
 ];

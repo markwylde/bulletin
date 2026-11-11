@@ -67,6 +67,8 @@ function subjectFor(translate: Translator, type: NotificationType, topic: string
       return translate("email.subject.post.quote", { topic });
     case "reaction.added":
       return translate("email.subject.reaction.added");
+    case "reputation.given":
+      return translate("email.subject.reputation.given");
     case "member.promoted":
       return translate("email.subject.member.promoted");
   }
@@ -89,6 +91,8 @@ function bodyFor(
       return translate("email.body.post.quote", { actor, topic });
     case "reaction.added":
       return translate("email.body.reaction.added", { actor });
+    case "reputation.given":
+      return translate("email.body.reputation.given", { actor });
     case "member.promoted":
       return translate("email.body.member.promoted");
   }

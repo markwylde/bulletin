@@ -16,7 +16,7 @@
 
 ## 3. Notifications
 
-- [ ] 3.1 Add reaction and reputation notification types with coalescing, with integration tests
+- [x] 3.1 Add reaction and reputation notification types with coalescing, with integration tests
 
 ## 4. Strings and seed
 
