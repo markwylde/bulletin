@@ -61,11 +61,15 @@ integrationDescribe("identity schema", () => {
       );
       expect(byTable.get("members")?.sort()).toEqual(
         [
+          "about_html",
+          "about_md",
           "avatar_blocked_until",
           "avatar_hash",
           "avatar_updated_at",
           "board_marked_at",
           "display_name",
+          "hide_from_member_list",
+          "hide_online",
           "id",
           "is_service",
           "joined_at",
@@ -76,6 +80,9 @@ integrationDescribe("identity schema", () => {
           "previous_visit_at",
           "promotion_version",
           "reputation",
+          "signature_html",
+          "signature_md",
+          "signature_updated_at",
           "state",
         ].sort(),
       );

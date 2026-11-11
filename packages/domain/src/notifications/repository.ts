@@ -778,7 +778,7 @@ export async function digestItems(
   const snapshot =
     options.snapshot ?? (await loadPermissionSnapshot(sql, memberId, { tree, sessionId: null }));
   const preferences = await notificationPreferenceMatrix(sql, memberId);
-  const [replies, topics, mentions, quotes, notificationRows] = (await Promise.all([
+  const [replies, topics, memberActivity, mentions, quotes, notificationRows] = (await Promise.all([
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
@@ -808,6 +808,21 @@ export async function digestItems(
       LEFT JOIN core.members a ON a.id = t.starter_id
       WHERE ff.member_id = ${memberId}
       ORDER BY t.id, t.created_at DESC
+    `,
+    // A followed member's new activity, whether or not the follower also follows the forum.
+    sql`
+      SELECT DISTINCT ON (t.id)
+        t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
+        p.id::text AS post_id, a.display_name AS actor_name, p.created_at
+      FROM core.followed_members fm
+      JOIN core.posts p ON p.author_id = fm.followed_id
+        AND p.visibility = 'visible'
+        AND p.created_at > ${options.since}
+        AND p.created_at <= ${until}
+      JOIN core.topics t ON t.id = p.topic_id
+      LEFT JOIN core.members a ON a.id = p.author_id
+      WHERE fm.follower_id = ${memberId}
+      ORDER BY t.id, p.created_at DESC
     `,
     sql`
       SELECT DISTINCT ON (t.id)
@@ -858,7 +873,7 @@ export async function digestItems(
         AND n.created_at <= ${until}
       ORDER BY n.created_at DESC
     `,
-  ])) as [DigestRow[], DigestRow[], DigestRow[], DigestRow[], DigestNotificationRow[]];
+  ])) as [DigestRow[], DigestRow[], DigestRow[], DigestRow[], DigestRow[], DigestNotificationRow[]];
   const byTopic = new Map<string, DigestItem>();
   const rank = {
     topic: 1,
@@ -873,6 +888,7 @@ export async function digestItems(
   for (const [kind, rows] of [
     ["topic", topics],
     ["reply", replies],
+    ["reply", memberActivity],
     ["mention", mentions],
     ["quote", quotes],
   ] as const) {

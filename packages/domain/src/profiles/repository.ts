@@ -1,0 +1,441 @@
+import type { SQL } from "bun";
+import { can } from "../permissions/can.ts";
+import type { ViewerPrincipal } from "../permissions/principal.ts";
+import type { PermissionSnapshot } from "../permissions/snapshot.ts";
+import type { ForumTree } from "../permissions/tree.ts";
+import type {
+  LocalizedText,
+  MemberBadge,
+  ProfileField,
+  ProfileFieldAdmin,
+  ProfileFieldGroupRule,
+  ProfileFieldOption,
+  ProfileFieldType,
+  ProfileFieldValue,
+  ProfileRecord,
+  RecentProfilePost,
+} from "./types.ts";
+
+interface ProfileRow {
+  readonly id: string;
+  readonly display_name: string | null;
+  readonly avatar_hash: string | null;
+  readonly joined_at: Date;
+  readonly last_active_at: Date | null;
+  readonly post_count: number;
+  readonly reputation: number;
+  readonly about_md: string;
+  readonly about_html: string;
+  readonly hide_online: boolean;
+  readonly hide_from_member_list: boolean;
+  readonly group_title: string | null;
+  readonly group_colour: string | null;
+}
+
+function profileRecord(row: ProfileRow): ProfileRecord {
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    avatarHash: row.avatar_hash,
+    joinedAt: new Date(row.joined_at),
+    lastActiveAt: row.last_active_at === null ? null : new Date(row.last_active_at),
+    postCount: row.post_count,
+    reputation: row.reputation,
+    aboutMd: row.about_md,
+    aboutHtml: row.about_html,
+    hideOnline: row.hide_online,
+    hideFromMemberList: row.hide_from_member_list,
+    groupTitle: row.group_title,
+    groupColour: row.group_colour,
+  };
+}
+
+export async function readProfile(sql: SQL, memberId: string): Promise<ProfileRecord | null> {
+  const [row] = (await sql`
+    SELECT
+      m.id::text AS id,
+      m.display_name,
+      m.avatar_hash,
+      m.joined_at,
+      m.last_active_at,
+      m.post_count,
+      m.reputation,
+      m.about_md,
+      m.about_html,
+      m.hide_online,
+      m.hide_from_member_list,
+      g.title AS group_title,
+      g.name_colour AS group_colour
+    FROM core.members m
+    LEFT JOIN core.member_groups mg ON mg.member_id = m.id AND mg.is_primary
+    LEFT JOIN core.groups g ON g.id = mg.group_id
+    WHERE m.id = ${memberId}
+  `) as ProfileRow[];
+
+  return row === undefined ? null : profileRecord(row);
+}
+
+interface FieldRow {
+  readonly id: string;
+  readonly type: ProfileFieldType;
+  readonly required: boolean;
+  readonly labels: LocalizedText;
+  readonly options: readonly ProfileFieldOption[];
+  readonly position: number;
+}
+
+function fieldRecord(row: FieldRow): ProfileField {
+  return {
+    id: row.id,
+    type: row.type,
+    required: row.required,
+    labels: row.labels,
+    options: row.options,
+    position: row.position,
+  };
+}
+
+export async function listProfileFields(sql: SQL): Promise<readonly ProfileField[]> {
+  const rows = (await sql`
+    SELECT id::text AS id, type, required, labels, options, position
+    FROM core.profile_fields
+    ORDER BY position, id
+  `) as FieldRow[];
+
+  return rows.map(fieldRecord);
+}
+
+export async function readProfileFields(
+  sql: SQL,
+  fieldIds: ReadonlySet<string>,
+): Promise<readonly ProfileField[]> {
+  if (fieldIds.size === 0) {
+    return [];
+  }
+
+  const ids = [...fieldIds].sort();
+  const rows = (await sql`
+    SELECT id::text AS id, type, required, labels, options, position
+    FROM core.profile_fields
+    WHERE id = ANY(${`{${ids.join(",")}}`}::bigint[])
+    ORDER BY position, id
+  `) as FieldRow[];
+
+  return rows.map(fieldRecord);
+}
+
+export async function readMemberFieldValues(
+  sql: SQL,
+  memberId: string,
+): Promise<ReadonlyMap<string, ProfileFieldValue>> {
+  const rows = (await sql`
+    SELECT field_id::text AS field_id, value
+    FROM core.member_field_values
+    WHERE member_id = ${memberId}
+  `) as Array<{ field_id: string; value: ProfileFieldValue }>;
+
+  return new Map(rows.map((row) => [row.field_id, row.value]));
+}
+
+export async function listMemberBadges(
+  sql: SQL,
+  memberId: string,
+): Promise<readonly MemberBadge[]> {
+  const rows = (await sql`
+    SELECT
+      b.id::text AS id,
+      b.key,
+      b.labels,
+      b.description_labels,
+      b.image_key,
+      b.position
+    FROM core.member_badges mb
+    JOIN core.badges b ON b.id = mb.badge_id
+    WHERE mb.member_id = ${memberId}
+      AND mb.revoked_at IS NULL
+    ORDER BY b.position, b.id
+  `) as Array<{
+    id: string;
+    key: string;
+    labels: LocalizedText;
+    description_labels: Readonly<Partial<Record<string, string>>>;
+    image_key: string | null;
+    position: number;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    key: row.key,
+    labels: row.labels,
+    descriptionLabels: row.description_labels,
+    imageKey: row.image_key,
+    position: row.position,
+  }));
+}
+
+export interface RecentProfilePostsInput {
+  readonly memberId: string;
+  readonly limit: number;
+  readonly principal: ViewerPrincipal;
+  readonly sessionId: string | null;
+  readonly tree: ForumTree;
+  readonly snapshot: PermissionSnapshot;
+}
+
+export interface RecentProfilePosts {
+  readonly posts: readonly RecentProfilePost[];
+  /** Every candidate forum and whether this viewer may read it, for the variant key. */
+  readonly forums: readonly { readonly forumId: string; readonly readable: boolean }[];
+}
+
+/**
+ * The member's latest visible posts, permission-filtered through `can()` (ADR 0005). Every
+ * candidate forum's answer is returned so the route can put it in the profile variant key.
+ */
+export async function readRecentProfilePosts(
+  sql: SQL,
+  input: RecentProfilePostsInput,
+): Promise<RecentProfilePosts> {
+  const rows = (await sql`
+    SELECT
+      p.id::text AS id,
+      t.id::text AS topic_id,
+      t.title AS topic_title,
+      t.slug AS topic_slug,
+      t.forum_id::text AS forum_id,
+      f.title AS forum_title,
+      p.created_at
+    FROM core.posts p
+    JOIN core.topics t ON t.id = p.topic_id
+    JOIN core.forums f ON f.id = t.forum_id
+    WHERE p.author_id = ${input.memberId}
+      AND p.visibility = 'visible'
+      AND t.moved_to IS NULL
+    ORDER BY p.created_at DESC, p.id DESC
+    LIMIT ${Math.max(input.limit * 4, input.limit)}
+  `) as Array<{
+    id: string;
+    topic_id: string;
+    topic_title: string;
+    topic_slug: string;
+    forum_id: string;
+    forum_title: string;
+    created_at: Date;
+  }>;
+
+  const readableForums = new Map<string, boolean>();
+
+  for (const forumId of new Set(rows.map((row) => row.forum_id))) {
+    readableForums.set(
+      forumId,
+      await can(sql, input.principal, "read", {
+        forumId,
+        tree: input.tree,
+        sessionId: input.sessionId,
+        snapshot: input.snapshot,
+      }),
+    );
+  }
+
+  const posts = rows
+    .filter((row) => readableForums.get(row.forum_id) === true)
+    .slice(0, input.limit)
+    .map((row) => ({
+      id: row.id,
+      topicId: row.topic_id,
+      topicTitle: row.topic_title,
+      topicSlug: row.topic_slug,
+      forumId: row.forum_id,
+      forumTitle: row.forum_title,
+      createdAt: new Date(row.created_at),
+    }));
+
+  return {
+    posts,
+    forums: [...readableForums.entries()]
+      .map(([forumId, readable]) => ({ forumId, readable }))
+      .sort((left, right) => left.forumId.localeCompare(right.forumId)),
+  };
+}
+
+interface FieldGroupRow {
+  readonly field_id: string;
+  readonly group_id: string;
+  readonly group_title: string;
+  readonly can_view: boolean;
+  readonly can_edit: boolean;
+}
+
+function groupRules(rows: readonly FieldGroupRow[]): ReadonlyMap<string, ProfileFieldGroupRule[]> {
+  const rules = new Map<string, ProfileFieldGroupRule[]>();
+
+  for (const row of rows) {
+    const list = rules.get(row.field_id) ?? [];
+    list.push({
+      groupId: row.group_id,
+      groupTitle: row.group_title,
+      canView: row.can_view,
+      canEdit: row.can_edit,
+    });
+    rules.set(row.field_id, list);
+  }
+
+  return rules;
+}
+
+export async function listProfileFieldsAdmin(sql: SQL): Promise<readonly ProfileFieldAdmin[]> {
+  const fields = await listProfileFields(sql);
+  const rows = (await sql`
+    SELECT
+      r.field_id::text AS field_id,
+      r.group_id::text AS group_id,
+      g.title AS group_title,
+      r.can_view,
+      r.can_edit
+    FROM core.profile_field_groups r
+    JOIN core.groups g ON g.id = r.group_id
+    ORDER BY g.display_order, g.id
+  `) as FieldGroupRow[];
+  const rules = groupRules(rows);
+
+  return fields.map((field) => ({ ...field, groups: rules.get(field.id) ?? [] }));
+}
+
+export async function listProfileGroups(
+  sql: SQL,
+): Promise<readonly { readonly id: string; readonly title: string }[]> {
+  return (await sql`
+    SELECT id::text AS id, title FROM core.groups ORDER BY display_order, id
+  `) as Array<{ id: string; title: string }>;
+}
+
+export interface ProfileFieldWrite {
+  readonly id: string | null;
+  readonly type: ProfileFieldType;
+  readonly required: boolean;
+  readonly labels: LocalizedText;
+  readonly options: readonly ProfileFieldOption[];
+  readonly position: number;
+  readonly groups: readonly {
+    readonly groupId: string;
+    readonly canView: boolean;
+    readonly canEdit: boolean;
+  }[];
+}
+
+/** Inserts or updates one definition and replaces its group rules. Call from a transaction. */
+export async function writeProfileField(tx: SQL, input: ProfileFieldWrite): Promise<string> {
+  const labels = input.labels;
+  const options = input.options;
+
+  const [field] =
+    input.id === null
+      ? ((await tx`
+          INSERT INTO core.profile_fields (type, required, labels, options, position)
+          VALUES (${input.type}, ${input.required}, ${labels}::jsonb, ${options}::jsonb, ${input.position})
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>)
+      : ((await tx`
+          UPDATE core.profile_fields
+          SET type = ${input.type},
+              required = ${input.required},
+              labels = ${labels}::jsonb,
+              options = ${options}::jsonb,
+              position = ${input.position},
+              updated_at = now()
+          WHERE id = ${input.id}
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>);
+
+  if (field === undefined) {
+    throw new Error("Profile field disappeared while saving");
+  }
+
+  await tx`DELETE FROM core.profile_field_groups WHERE field_id = ${field.id}`;
+
+  for (const rule of input.groups) {
+    await tx`
+      INSERT INTO core.profile_field_groups (field_id, group_id, can_view, can_edit)
+      VALUES (${field.id}, ${rule.groupId}, ${rule.canView}, ${rule.canEdit})
+    `;
+  }
+
+  return field.id;
+}
+
+export async function deleteProfileField(sql: SQL, fieldId: string): Promise<boolean> {
+  const rows = (await sql`
+    DELETE FROM core.profile_fields WHERE id = ${fieldId} RETURNING id
+  `) as unknown[];
+
+  return rows.length > 0;
+}
+
+/** The profile row and all stored values, for the member's own edit form. */
+export interface EditableProfile {
+  readonly profile: ProfileRecord;
+  readonly values: ReadonlyMap<string, ProfileFieldValue>;
+}
+
+export async function readEditableProfile(
+  sql: SQL,
+  memberId: string,
+): Promise<EditableProfile | null> {
+  const profile = await readProfile(sql, memberId);
+
+  if (profile === null) {
+    return null;
+  }
+
+  return { profile, values: await readMemberFieldValues(sql, memberId) };
+}
+
+export interface ProfileRowUpdate {
+  readonly aboutMd: string;
+  readonly aboutHtml: string;
+  readonly hideOnline: boolean;
+  readonly hideFromMemberList: boolean;
+}
+
+export async function updateProfileRow(
+  tx: SQL,
+  memberId: string,
+  input: ProfileRowUpdate,
+): Promise<void> {
+  await tx`
+    UPDATE core.members
+    SET about_md = ${input.aboutMd},
+        about_html = ${input.aboutHtml},
+        hide_online = ${input.hideOnline},
+        hide_from_member_list = ${input.hideFromMemberList}
+    WHERE id = ${memberId}
+  `;
+}
+
+export async function replaceFieldValues(
+  tx: SQL,
+  memberId: string,
+  values: ReadonlyMap<string, ProfileFieldValue>,
+): Promise<void> {
+  const ids = [...values.keys()];
+
+  if (ids.length === 0) {
+    await tx`DELETE FROM core.member_field_values WHERE member_id = ${memberId}`;
+    return;
+  }
+
+  await tx`
+    DELETE FROM core.member_field_values
+    WHERE member_id = ${memberId}
+      AND NOT (field_id = ANY(${`{${ids.join(",")}}`}::bigint[]))
+  `;
+
+  for (const [fieldId, value] of values) {
+    await tx`
+      INSERT INTO core.member_field_values (member_id, field_id, value, updated_at)
+      VALUES (${memberId}, ${fieldId}, ${value}::jsonb, now())
+      ON CONFLICT (member_id, field_id) DO UPDATE
+        SET value = EXCLUDED.value, updated_at = now()
+    `;
+  }
+}

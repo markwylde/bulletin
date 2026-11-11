@@ -2,7 +2,7 @@
 export const MENTION_ATTRIBUTE = "dataMention";
 
 /** Profile selectors for the sanitised HTML schema (ADR 0007). */
-export const CONTENT_PROFILES = ["post", "signature", "profile_field", "rules"] as const;
+export const CONTENT_PROFILES = ["post", "signature", "profile_field", "rules", "about"] as const;
 export type ContentProfile = (typeof CONTENT_PROFILES)[number];
 
 /** Where the saved content will live; quote sources are checked against it (ADR 0007). */

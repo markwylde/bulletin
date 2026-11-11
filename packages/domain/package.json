@@ -24,6 +24,7 @@
     "./content": "./src/content/index.ts",
     "./topics": "./src/topics/index.ts",
     "./polls": "./src/polls/index.ts",
+    "./profiles": "./src/profiles/index.ts",
     "./reactions": "./src/reactions/index.ts",
     "./reputation": "./src/reputation/index.ts",
     "./attachments": "./src/attachments/index.ts",

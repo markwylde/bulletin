@@ -39,6 +39,8 @@ describe("cache tags", () => {
       announcements: "announcements",
       emoticons: "emoticons",
       ranks: "ranks",
+      badges: "badges",
+      profileFields: "profile_fields",
       reactions: "reactions",
       board: "board",
     });

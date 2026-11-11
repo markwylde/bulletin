@@ -126,6 +126,61 @@ function expectOk<T>(
 }
 
 integrationDescribe("digests", () => {
+  test("a followed member's activity reaches the digest and stays permission-filtered", async () => {
+    await withMailStack(async ({ database }) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const publicForum = await forumId(database, "off-topic");
+      const staffForum = await forumId(database, "staff-room");
+
+      await setNotificationPreference(database.sql, member, "topic.reply", "digest", true);
+      await follow(database.sql, { memberId: member, kind: "member", id: author });
+
+      const since = new Date(Date.now() - 1_000);
+      expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: publicForum,
+          title: "Followed member public post",
+          bodyMd: "Body.",
+        }),
+      );
+
+      const [hiddenTopic] = (await database.sql`
+        INSERT INTO core.topics (forum_id, title, slug, starter_id)
+        VALUES (${staffForum}, 'Followed member hidden post', 'followed-member-hidden-post', ${author})
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (hiddenTopic === undefined) {
+        throw new Error("Could not create the hidden topic");
+      }
+
+      const [hiddenPost] = (await database.sql`
+        INSERT INTO core.posts (
+          topic_id, author_id, body_md, body_html, body_text, render_version, sanitiser_version, position
+        )
+        VALUES (${hiddenTopic.id}, ${author}, 'Body.', '<p>Body.</p>', 'Body.', 1, 1, 1)
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      await database.sql`
+        UPDATE core.topics
+        SET first_post_id = ${hiddenPost?.id ?? null}, last_post_id = ${hiddenPost?.id ?? null}, last_post_at = now()
+        WHERE id = ${hiddenTopic.id}
+      `;
+
+      const items = await digestItems(database.sql, member, {
+        since,
+        until: new Date(Date.now() + 1_000),
+      });
+      const titles = items.map((item) => item.title);
+
+      expect(titles).toContain("Followed member public post");
+      expect(titles).not.toContain("Followed member hidden post");
+    });
+  }, 60_000);
+
   test("a weekly digest lists followed activity the member can read", async () => {
     await withMailStack(async ({ database, worker, store, options }) => {
       const member = await memberId(database, "member-2");

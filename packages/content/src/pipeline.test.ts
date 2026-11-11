@@ -64,6 +64,17 @@ describe("markdown pipeline", () => {
     expect(result.bodyHtml).not.toContain("<table>");
   });
 
+  test("about sections keep structural Markdown without embeds", async () => {
+    const result = await renderContent(
+      "## About\n\n- one\n- two\n\n[link](https://example.com)",
+      options("about"),
+    );
+
+    expect(result.bodyHtml).toContain("<h2>About</h2>");
+    expect(result.bodyHtml).toContain("<li>one</li>");
+    expect(result.bodyHtml).toContain('rel="nofollow ugc noopener"');
+  });
+
   test("profile fields keep inline formatting only", async () => {
     const result = await renderContent(
       "# Bio\n\n**bold** [link](https://example.com)\n\n![pic](https://example.com/x.png)",
@@ -92,7 +103,13 @@ describe("markdown pipeline", () => {
   });
 
   test("the XSS corpus never emits executable markup for any profile", async () => {
-    const profiles: readonly ContentProfile[] = ["post", "signature", "profile_field", "rules"];
+    const profiles: readonly ContentProfile[] = [
+      "post",
+      "signature",
+      "profile_field",
+      "rules",
+      "about",
+    ];
 
     for (const profile of profiles) {
       for (const payload of XSS_CORPUS) {

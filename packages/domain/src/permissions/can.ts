@@ -6,6 +6,7 @@ import {
   type ModeratorPower,
 } from "./actions.ts";
 import { isGuestPrincipal, type ViewerPrincipal } from "./principal.ts";
+import { canEditProfileField, canViewProfileField } from "./profile-fields.ts";
 import { isPermissionKey, type PermissionKey } from "./registry.ts";
 import { capabilityAnswer, loadPermissionSnapshot, type PermissionSnapshot } from "./snapshot.ts";
 import { loadMemberGroups, loadMergedGroupSettings } from "./store.ts";
@@ -51,6 +52,11 @@ export interface PermissionScope {
 /** A prefix restriction is evaluated against the same compiled group set as forum actions. */
 export interface PrefixScope {
   readonly prefixId: string;
+}
+
+/** One staff-defined custom profile field. */
+export interface ProfileFieldScope {
+  readonly fieldId: string;
 }
 
 /** Announcement visibility combines its target groups with at least one visible target forum. */
@@ -135,14 +141,25 @@ export function can(
 export function can(
   sql: SQL,
   principal: ViewerPrincipal,
+  action: "view_profile_field" | "edit_profile_field",
+  scope: ProfileFieldScope,
+): Promise<boolean>;
+export function can(
+  sql: SQL,
+  principal: ViewerPrincipal,
   action: PermissionAction,
   scope?: PermissionScope,
 ): Promise<boolean>;
 export async function can(
   sql: SQL,
   principal: ViewerPrincipal,
-  action: PermissionAction | "view_prefix" | "view_announcement",
-  scope?: PermissionScope | PrefixScope | AnnouncementPermissionScope,
+  action:
+    | PermissionAction
+    | "view_prefix"
+    | "view_announcement"
+    | "view_profile_field"
+    | "edit_profile_field",
+  scope?: PermissionScope | PrefixScope | AnnouncementPermissionScope | ProfileFieldScope,
 ): Promise<boolean> {
   if (action === "view_announcement") {
     if (scope === undefined || !("announcementId" in scope)) {
@@ -150,6 +167,16 @@ export async function can(
     }
 
     return canViewAnnouncement(sql, principal, scope);
+  }
+
+  if (action === "view_profile_field" || action === "edit_profile_field") {
+    if (scope === undefined || !("fieldId" in scope)) {
+      return false;
+    }
+
+    return action === "view_profile_field"
+      ? canViewProfileField(sql, principal, scope.fieldId)
+      : canEditProfileField(sql, principal, scope.fieldId);
   }
 
   if (action === "view_prefix") {

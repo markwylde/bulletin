@@ -17,6 +17,10 @@ export const GLOBAL_CACHE_TAGS = {
   emoticons: "emoticons",
   /** Rank titles/pips: author cards rebuild when a rank rule changes (member-profiles). */
   ranks: "ranks",
+  /** Badge definitions: profile and author-card badges rebuild when one changes. */
+  badges: "badges",
+  /** Custom profile fields: definitions and per-group visibility change every profile. */
+  profileFields: "profile_fields",
   /** The staff-managed reaction set: every reaction bar rebuilds when it changes. */
   reactions: "reactions",
   /** Board name, description, locale and offline state: the shared home shell. */

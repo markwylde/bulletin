@@ -7,6 +7,7 @@ export * from "./forum-tags.ts";
 export * from "./moderator.ts";
 export * from "./perm-version.ts";
 export * from "./principal.ts";
+export * from "./profile-fields.ts";
 export * from "./promotion-criteria.ts";
 export * from "./registry.ts";
 export * from "./service.ts";

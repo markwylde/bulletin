@@ -24,6 +24,7 @@ const PROFILE_ATTRIBUTES: Record<ContentProfile, NonNullable<Schema["attributes"
   rules: COMMON_ATTRIBUTES,
   signature: COMMON_ATTRIBUTES,
   profile_field: COMMON_ATTRIBUTES,
+  about: COMMON_ATTRIBUTES,
 };
 
 const MARKDOWN_TAGS = [
@@ -73,6 +74,8 @@ const PROFILE_TAGS: Record<ContentProfile, readonly string[]> = {
   signature: MARKDOWN_TAGS,
   // Profile fields are single lines of formatting, nothing structural.
   profile_field: ["a", "br", "code", "del", "em", "s", "span", "strong"],
+  // The profile's about section is long-form Markdown like a post, without embeds.
+  about: MARKDOWN_TAGS,
 };
 
 function mergeAttributes(
