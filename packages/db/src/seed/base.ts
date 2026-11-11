@@ -2,6 +2,7 @@ import type { SeedSize } from "@bulletin/config";
 import type { StorageClient } from "@bulletin/storage";
 import { SQL } from "bun";
 import { adminLogSeedModule } from "./admin-log.ts";
+import { attachmentSeedModule } from "./attachments.ts";
 import { emoticonSeedModule } from "./emoticons.ts";
 import { flagsSeedModule } from "./flags.ts";
 import { forumExtrasSeedModule } from "./forum-extras.ts";
@@ -57,6 +58,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         membersSeedModule,
         moderatorAssignmentsSeedModule,
         topicsSeedModule,
+        attachmentSeedModule,
         adminLogSeedModule,
         flagsSeedModule,
         themesSeedModule,

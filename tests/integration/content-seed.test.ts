@@ -38,7 +38,7 @@ integrationDescribe("content seed", () => {
       const storage = fakeStorage();
       await runBaseSeed({ databaseUrl: database.url, storage });
 
-      expect(storage.puts).toEqual([
+      expect(storage.puts.filter((key) => key.startsWith("emoticon/"))).toEqual([
         "emoticon/seed-smile",
         "emoticon/seed-wink",
         "emoticon/seed-sad",
