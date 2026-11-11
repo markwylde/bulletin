@@ -50,6 +50,20 @@ export function attachmentKey(id: string): string {
   return `att/${segment(id)}`;
 }
 
+/** Display thumbnail derived from a published attachment; WebP for every image type. */
+export function attachmentThumbnailKey(id: string): string {
+  return `att/${segment(id)}.thumb.webp`;
+}
+
+/** Thumbnail key for an already-published attachment object. */
+export function thumbnailKeyFor(storageKey: string): string {
+  if (!isManagedKey(storageKey) || !storageKey.startsWith("att/")) {
+    throw new Error(`Not an attachment key: ${storageKey}`);
+  }
+
+  return `${storageKey}.thumb.webp`;
+}
+
 /**
  * Public, content-hashed avatar object (`av/<member>/<sha256>-<variant>.webp`). A new avatar
  * changes the hash, so old URLs stay cacheable forever (ADR 0019).

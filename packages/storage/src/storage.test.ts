@@ -3,6 +3,7 @@ import { createS3Handler } from "@bulletin/mock-s3/app";
 import { createMemoryStore } from "@bulletin/mock-s3/memory";
 import {
   attachmentKey,
+  attachmentThumbnailKey,
   avatarKey,
   createStorage,
   isManagedKey,
@@ -11,6 +12,7 @@ import {
   processingKey,
   quarantineKey,
   type StorageClient,
+  thumbnailKeyFor,
   unfurlImageKey,
 } from "./index.ts";
 
@@ -217,6 +219,9 @@ describe("key conventions", () => {
     expect(quarantineKey("abc")).toBe("quarantine/abc");
     expect(processingKey("abc")).toBe("processing/abc");
     expect(attachmentKey("abc")).toBe("att/abc");
+    expect(attachmentThumbnailKey("abc")).toBe("att/abc.thumb.webp");
+    expect(thumbnailKeyFor("att/abc")).toBe("att/abc.thumb.webp");
+    expect(() => thumbnailKeyFor("av/42/hash.webp")).toThrow();
     expect(isManagedKey(quarantineKey("abc"))).toBe(true);
     expect(isManagedKey(processingKey("abc"))).toBe(true);
   });

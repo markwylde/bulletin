@@ -36,6 +36,10 @@ function isAllowed(file: SourceFile): boolean {
     // The attachment state machine updates lifecycle state by ID; it never reads content for
     // a viewer, and every download still goes through the permission repository (ADR 0019).
     file.path === "packages/storage/src/attachments.ts" ||
+    // Attachment quota/lifecycle writes and their worker sweeps are not viewer reads; the
+    // download path re-authorises per request (ADR 0019).
+    file.path === "packages/domain/src/attachments/store.ts" ||
+    file.path === "packages/db/src/jobs/attachments.ts" ||
     isPermissionRepository(file)
   );
 }

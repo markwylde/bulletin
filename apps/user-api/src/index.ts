@@ -13,6 +13,7 @@ import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
+import { attachmentFinaliseResponse, attachmentRequestResponse } from "./attachments.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { draftsRoute } from "./drafts.ts";
@@ -281,6 +282,32 @@ await startService({
         }
 
         return postDeleteResponse(sql, session, postDeleteMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/attachments") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return attachmentRequestResponse(sql, storage, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const attachmentFinaliseMatch = /^\/api\/attachments\/(\d+)\/finalise$/.exec(pathname);
+
+    if (request.method === "POST" && attachmentFinaliseMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return attachmentFinaliseResponse(sql, storage, session, attachmentFinaliseMatch[1] ?? "");
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

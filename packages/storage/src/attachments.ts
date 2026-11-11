@@ -64,7 +64,7 @@ export interface TransitionAttachmentInput {
   readonly rejectionCode?: string;
 }
 
-interface AttachmentRow {
+export interface AttachmentRow {
   readonly id: string;
   readonly member_id: string;
   readonly state: AttachmentState;
@@ -133,7 +133,7 @@ function requireFields(input: TransitionAttachmentInput): void {
   }
 }
 
-function toRecord(row: AttachmentRow): AttachmentRecord {
+export function attachmentFromRow(row: AttachmentRow): AttachmentRecord {
   return {
     id: row.id,
     memberId: row.member_id,
@@ -182,5 +182,5 @@ export async function transitionAttachment(
   `) as AttachmentRow[];
 
   const row = rows[0];
-  return row === undefined ? null : toRecord(row);
+  return row === undefined ? null : attachmentFromRow(row);
 }

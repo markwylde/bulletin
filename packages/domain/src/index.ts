@@ -1,3 +1,4 @@
+export * from "./attachments/index.ts";
 export * from "./audit/index.ts";
 export * from "./board/index.ts";
 export * from "./content/index.ts";

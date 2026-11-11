@@ -35,12 +35,14 @@
     "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
+    "@bulletin/mock-s3": "workspace:*",
     "@bulletin/storage": "workspace:*",
     "@bulletin/templates": "workspace:*",
     "@bulletin/test-utils": "workspace:*",
     "@bulletin/ui": "workspace:*",
     "@types/bun": "1.4.4",
     "jose": "6.2.16",
+    "sharp": "0.35.5",
     "typescript": "5.9.3",
     "@bulletin/content": "workspace:*"
   }

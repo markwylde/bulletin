@@ -14,6 +14,7 @@ import {
 } from "@bulletin/db/events";
 import { syncFlagDefinitions } from "@bulletin/db/flags";
 import {
+  createAttachmentJobs,
   createContentJobs,
   createForumJobs,
   createMaintenanceJobs,
@@ -76,6 +77,12 @@ const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logg
 const forumJobs = await createForumJobs({ boss: boss.boss, sql, logger });
 const contentJobs = await createContentJobs({ boss: boss.boss, sql, logger });
 const unfurlJobs = await createUnfurlJobs({ boss: boss.boss, sql, logger });
+const attachmentJobs = await createAttachmentJobs({
+  boss: boss.boss,
+  sql,
+  storage,
+  logger,
+});
 
 let relayInFlight: Promise<void> | undefined;
 const relayTimer = setInterval(() => {
@@ -119,6 +126,7 @@ await startService({
     await forumJobs.stop();
     await contentJobs.stop();
     await unfurlJobs.stop();
+    await attachmentJobs.stop();
     await promotionJobs.stop();
     await eventWorker.stop();
     await boss.stop();
@@ -130,6 +138,7 @@ await startService({
   await forumJobs.stop();
   await contentJobs.stop();
   await unfurlJobs.stop();
+  await attachmentJobs.stop();
   await promotionJobs.stop();
   await boss.stop();
   throw error;

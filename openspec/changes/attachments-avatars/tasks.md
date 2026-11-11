@@ -7,9 +7,9 @@
 
 ## 2. Upload pipeline
 
-- [ ] 2.1 Upload request endpoint (permission, quota reservation, type and size checks, presigned PUT) with integration tests for over-quota, disallowed type and permission denial
-- [ ] 2.2 Finalise endpoint (server-side snapshot, checksum, delete quarantine) and the processing worker (type sniffing, sharp re-encode, EXIF strip, thumbnails, SVG rasterise, scan hook); tests for the disguised-executable, GPS and replaced-after-finalise scenarios
-- [ ] 2.3 Orphan cleanup and reconciliation jobs, with integration tests
+- [x] 2.1 Upload request endpoint (permission, quota reservation, type and size checks, presigned PUT) with integration tests for over-quota, disallowed type and permission denial
+- [x] 2.2 Finalise endpoint (server-side snapshot, checksum, delete quarantine) and the processing worker (type sniffing, sharp re-encode, EXIF strip, thumbnails, SVG rasterise, scan hook); tests for the disguised-executable, GPS and replaced-after-finalise scenarios
+- [x] 2.3 Orphan cleanup and reconciliation jobs, with integration tests
 
 ## 3. Delivery
 
