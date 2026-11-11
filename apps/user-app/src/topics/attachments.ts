@@ -10,6 +10,8 @@ export interface PostAttachmentRenderInput {
   readonly translate: Translator;
   /** Moderators with `edit` get a remove control on every attachment. */
   readonly canRemove: boolean;
+  /** Off removes placeholders and the file list entirely (the `attachments` flag). */
+  readonly enabled?: boolean;
 }
 
 export interface PostAttachmentRender {
@@ -72,6 +74,10 @@ function removeButton(id: string, translate: Translator, canRemove: boolean): st
  * translated "attachment removed" marker, including after a cached block was invalidated.
  */
 export function renderPostAttachments(input: PostAttachmentRenderInput): PostAttachmentRender {
+  if (input.enabled === false) {
+    return { bodyHtml: input.html.replace(ATTACHMENT_TAG, ""), files: null };
+  }
+
   const byId = new Map(input.attachments.map((attachment) => [attachment.id, attachment]));
   const inline = new Set<string>();
   const bodyHtml = input.html.replace(ATTACHMENT_TAG, (_match, rawAttributes: string) => {

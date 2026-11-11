@@ -89,6 +89,7 @@ export interface TopicPageInput {
   readonly quotedForumIds: readonly string[];
   readonly mentionsEnabled?: boolean;
   readonly pollsEnabled?: boolean;
+  readonly attachmentsEnabled?: boolean;
   readonly publicEditHistory?: boolean;
 }
 
@@ -125,6 +126,7 @@ function quoteSourceIds(html: string): readonly string[] {
 }
 
 export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageData> {
+  const attachmentsEnabled = input.attachmentsEnabled !== false;
   const tree = input.snapshot.tree;
   const view = new CapabilityView({
     ...input.snapshot,
@@ -333,6 +335,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
       locale: input.locale,
       translate: input.translate,
       canRemove: canEditMod,
+      enabled: attachmentsEnabled,
     });
 
     return {
@@ -503,12 +506,17 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
           ? await buildEditorView(input.sql, input.translate, {
               contextKey: `reply:topic:${input.topic.id}`,
               mentions: mentionsEnabled,
+              attachments: attachmentsEnabled,
               name: "bodyMd",
               forumId: input.topic.forumId,
               canUpload: upload,
             })
           : null,
-      flags: { mentions: mentionsEnabled, polls: pollsEnabled },
+      flags: {
+        mentions: mentionsEnabled,
+        polls: pollsEnabled,
+        attachments: attachmentsEnabled,
+      },
     },
   };
 }

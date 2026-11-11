@@ -164,7 +164,7 @@ async function editorPage(input: DemoPageInput): Promise<DemoForumPage> {
         forumId: "1",
         canUpload: false,
         emoticons,
-        flags: { mentions: true },
+        flags: { mentions: true, attachments: false },
         labels: {
           editor: translate("editor.label"),
           toolbar: translate("editor.toolbar"),

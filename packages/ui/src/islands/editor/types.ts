@@ -50,7 +50,7 @@ export interface EditorProps {
   readonly canUpload: boolean;
   readonly emoticons: readonly EditorEmoticon[];
   readonly labels: EditorLabels;
-  readonly flags: { readonly mentions: boolean };
+  readonly flags: { readonly mentions: boolean; readonly attachments: boolean };
 }
 
 export type EditorMode = "wysiwyg" | "source";

@@ -14,7 +14,7 @@ export interface EditorView {
     readonly alt: string;
   }[];
   readonly labels: Readonly<Record<string, string>>;
-  readonly flags: { readonly mentions: boolean };
+  readonly flags: { readonly mentions: boolean; readonly attachments: boolean };
 }
 
 /** Builds the translated Editor island props shared by the new-topic and reply forms. */
@@ -25,6 +25,7 @@ export async function buildEditorView(
     readonly contextKey: string;
     readonly initialMarkdown?: string;
     readonly mentions: boolean;
+    readonly attachments: boolean;
     readonly name?: string;
     readonly forumId: string;
     readonly canUpload: boolean;
@@ -79,6 +80,6 @@ export async function buildEditorView(
       uploadType: translate("editor.upload.type"),
       uploadRejected: translate("editor.upload.rejected"),
     },
-    flags: { mentions: input.mentions },
+    flags: { mentions: input.mentions, attachments: input.attachments },
   };
 }

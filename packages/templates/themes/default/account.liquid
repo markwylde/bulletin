@@ -14,6 +14,7 @@
     </form>
   </section>
 
+  {% if flags.avatar_upload %}
   <section class="bl-card" data-account-avatar>
     <h2 class="bl-card__title">{% t "account.avatar.title" %}</h2>
     <p class="bl-muted">{% t "account.avatar.body" %}</p>
@@ -36,6 +37,7 @@
       <p class="bl-error-text" data-avatar-error hidden></p>
     </div>
   </section>
+  {% endif %}
 
   <section class="bl-card" data-account-history>
     <h2 class="bl-card__title">{% t "account.history.title" %}</h2>

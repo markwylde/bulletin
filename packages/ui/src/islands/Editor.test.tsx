@@ -48,8 +48,12 @@ describe("Editor server markup", () => {
       emoticons: [],
       labels,
     };
-    const off = renderToStaticMarkup(<Editor {...props} flags={{ mentions: false }} />);
-    const on = renderToStaticMarkup(<Editor {...props} flags={{ mentions: true }} />);
+    const off = renderToStaticMarkup(
+      <Editor {...props} flags={{ mentions: false, attachments: true }} />,
+    );
+    const on = renderToStaticMarkup(
+      <Editor {...props} flags={{ mentions: true, attachments: true }} />,
+    );
 
     expect(off).not.toContain('aria-label="Mention a member"');
     expect(on).toContain('aria-label="Mention a member"');
@@ -64,7 +68,7 @@ describe("Editor server markup", () => {
         canUpload
         emoticons={[{ code: "smile", src: "/files/smile.svg", alt: "Smile" }]}
         labels={labels}
-        flags={{ mentions: true }}
+        flags={{ mentions: true, attachments: true }}
       />,
     );
 
@@ -88,15 +92,20 @@ describe("Editor attachment controls", () => {
       forumId: "1",
       emoticons: [],
       labels,
-      flags: { mentions: true },
+      flags: { mentions: true, attachments: true },
     } as const;
     const allowed = renderToStaticMarkup(<Editor {...common} canUpload />);
     const denied = renderToStaticMarkup(<Editor {...common} canUpload={false} />);
+    const flagOff = renderToStaticMarkup(
+      <Editor {...common} canUpload flags={{ mentions: true, attachments: false }} />,
+    );
 
     expect(allowed).toContain("data-editor-attach");
     expect(allowed).toContain("data-editor-file-input");
     expect(allowed).toContain("Drop files here or paste an image.");
     expect(denied).not.toContain("data-editor-attach");
     expect(denied).not.toContain("data-editor-file-input");
+    expect(flagOff).not.toContain("data-editor-attach");
+    expect(flagOff).toContain('data-editor-can-upload="false"');
   });
 });

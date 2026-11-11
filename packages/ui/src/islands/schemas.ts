@@ -79,7 +79,7 @@ export const editorSchema = v.strictObject({
   canUpload: v.optional(v.boolean(), false),
   emoticons: v.array(editorEmoticonSchema),
   labels: editorLabelsSchema,
-  flags: v.strictObject({ mentions: v.boolean() }),
+  flags: v.strictObject({ mentions: v.boolean(), attachments: v.boolean() }),
 });
 
 export const localeSuggestionSchema = v.strictObject({

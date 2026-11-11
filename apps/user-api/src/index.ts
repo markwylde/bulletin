@@ -298,7 +298,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return attachmentRequestResponse(sql, storage, session, request);
+        return flags.guard("attachments", session.memberId)(request, () =>
+          attachmentRequestResponse(sql, storage, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -312,7 +314,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return attachmentFinaliseResponse(sql, storage, session, attachmentFinaliseMatch[1] ?? "");
+        return flags.guard("attachments", session.memberId)(request, () =>
+          attachmentFinaliseResponse(sql, storage, session, attachmentFinaliseMatch[1] ?? ""),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -326,7 +330,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return attachmentDeleteResponse(sql, session, attachmentDeleteMatch[1] ?? "", request);
+        return flags.guard("attachments", session.memberId)(request, () =>
+          attachmentDeleteResponse(sql, session, attachmentDeleteMatch[1] ?? "", request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -338,7 +344,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return avatarUploadResponse(sql, storage, session, request);
+        return flags.guard("avatar_upload", session.memberId)(request, () =>
+          avatarUploadResponse(sql, storage, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -350,7 +358,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return avatarRemoveResponse(sql, storage, session);
+        return flags.guard("avatar_upload", session.memberId)(request, () =>
+          avatarRemoveResponse(sql, storage, session),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

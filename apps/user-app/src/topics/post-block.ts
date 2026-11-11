@@ -19,6 +19,8 @@ export interface PostBlockInput {
   readonly pluginsGeneration: number;
   readonly colourScheme: string;
   readonly flagsHash: string;
+  /** Evaluated render flags exposed to the post template (e.g. `flags.attachments`). */
+  readonly flags: Readonly<Record<string, boolean>>;
   readonly tags: readonly string[];
 }
 
@@ -46,7 +48,7 @@ export async function renderPostBlock(input: PostBlockInput): Promise<string> {
         locale: input.locale,
         translate: input.translate,
         template: "post",
-        viewModel: { post },
+        viewModel: { post, flags: input.flags },
         breadcrumbs: [],
         route: { route: "/topic/[ref]", requiredIslands: [] },
         pluginsGeneration: input.pluginsGeneration,

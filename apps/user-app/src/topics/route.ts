@@ -377,6 +377,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
             quotedForumIds,
             mentionsEnabled: flags.values.mentions === true,
             pollsEnabled: flags.values.polls === true,
+            attachmentsEnabled: flags.values.attachments === true,
             publicEditHistory: freshSettings.publicEditHistory,
           });
         }
@@ -463,6 +464,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
           pluginsGeneration: input.pluginsGeneration,
           colourScheme: input.colourScheme,
           flagsHash: latest?.flags.hash ?? "",
+          flags: latest?.flags.values ?? {},
           tags: [
             ...(latest?.page?.postTags.get(post.id) ?? []),
             ...(latest?.page?.allPostTags ?? []),

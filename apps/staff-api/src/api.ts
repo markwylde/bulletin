@@ -719,6 +719,10 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/members/avatar",
     permission: "acp.members",
     handler: async ({ request, sql, session, storage }) => {
+      if (!(await staffFlagEnabled(sql, session.memberId, "avatar_upload"))) {
+        return json({ code: "not_found" }, 404);
+      }
+
       const body: unknown = await request.json().catch(() => null);
       const record =
         typeof body === "object" && body !== null && !Array.isArray(body)

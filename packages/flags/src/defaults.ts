@@ -92,10 +92,32 @@ export const pollsFlag = defineFlag({
   clientVisible: false,
 });
 
+/** Post and message attachments, the editor upload controls and delivery routes (ADR 0019). */
+export const attachmentsFlag = defineFlag({
+  key: "attachments",
+  description: "Post attachments, uploads and the editor attachment controls.",
+  owner: "attachments",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** Member avatar uploads and removal; public avatar display is always available (ADR 0019). */
+export const avatarUploadFlag = defineFlag({
+  key: "avatar_upload",
+  description: "Member avatar upload, crop and removal.",
+  owner: "attachments",
+  default: false,
+  affectsRender: false,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
   unfurlsFlag,
   mentionsFlag,
   pollsFlag,
+  attachmentsFlag,
+  avatarUploadFlag,
 ]);

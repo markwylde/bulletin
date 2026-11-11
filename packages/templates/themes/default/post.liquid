@@ -49,7 +49,7 @@
             {% else %}
               <div class="bl-post__body" data-post-body>{{ post.body }}</div>
             {% endif %}
-            {% if post.files %}
+            {% if flags.attachments and post.files %}
               <div class="bl-post__attachments" data-post-files="{{ post.id }}">{{ post.files }}</div>
             {% endif %}
           </div>

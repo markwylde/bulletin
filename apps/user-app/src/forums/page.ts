@@ -114,6 +114,8 @@ export interface ForumPageInput {
   readonly mentionsEnabled?: boolean;
   /** The viewer's evaluated `polls` flag; off hides the poll builder (ADR 0010). */
   readonly pollsEnabled?: boolean;
+  /** The viewer's evaluated `attachments` flag; off hides uploads and attachment UI. */
+  readonly attachmentsEnabled?: boolean;
 }
 
 export interface ForumPageBreadcrumb {
@@ -135,6 +137,7 @@ export interface ForumPageData {
  * declared capability answers plus the announcement audience class (ADR 0005, 0006).
  */
 export async function buildForumPage(input: ForumPageInput): Promise<ForumPageData> {
+  const attachmentsEnabled = input.attachmentsEnabled !== false;
   const tree = input.snapshot.tree;
   const groupIds = input.snapshot.groupIds;
   const view = new CapabilityView({
@@ -235,7 +238,11 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         canStart: false,
         prefixRequired: false,
         editor: null,
-        flags: { announcements: announcementsEnabled, polls: pollsEnabled },
+        flags: {
+          announcements: announcementsEnabled,
+          polls: pollsEnabled,
+          attachments: attachmentsEnabled,
+        },
       },
       visibilityKey,
       hasUnlockGrant: view.hasUnlockGrant,
@@ -282,6 +289,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     ? await buildEditorView(input.sql, input.translate, {
         contextKey: `topic:new:${input.forum.id}`,
         mentions: mentionsEnabled,
+        attachments: attachmentsEnabled,
         name: "bodyMd",
         forumId: input.forum.id,
         canUpload,
@@ -454,7 +462,11 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
       canStart: canStart && !locked,
       prefixRequired: input.forum.prefixMode === "required",
       editor,
-      flags: { announcements: announcementsEnabled, polls: pollsEnabled },
+      flags: {
+        announcements: announcementsEnabled,
+        polls: pollsEnabled,
+        attachments: attachmentsEnabled,
+      },
     },
     visibilityKey,
     hasUnlockGrant: view.hasUnlockGrant,

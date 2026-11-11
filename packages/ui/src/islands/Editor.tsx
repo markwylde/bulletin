@@ -96,7 +96,7 @@ function wrapSelection(
 /** The editor island (ADR 0007): WYSIWYG/source, toolbar, emoticons, mentions and drafts. */
 export function Editor(props: EditorProps) {
   return (
-    <FlagsProvider value={{ mentions: props.flags.mentions }}>
+    <FlagsProvider value={{ mentions: props.flags.mentions, attachments: props.flags.attachments }}>
       <EditorContent {...props} />
     </FlagsProvider>
   );
@@ -112,6 +112,8 @@ function EditorContent({
   labels,
 }: EditorProps) {
   const mentionsEnabled = useFlag("mentions");
+  const attachmentsEnabled = useFlag("attachments");
+  const canAttach = canUpload && attachmentsEnabled;
   const [mode, setMode] = useState<EditorMode>("source");
   const [markdown, setMarkdown] = useState(initialMarkdown);
   const [dirty, setDirty] = useState(false);
@@ -596,7 +598,7 @@ function EditorContent({
   }
 
   async function uploadFiles(files: readonly File[]): Promise<void> {
-    if (!canUpload || csrfToken === null || forumId === "") {
+    if (!canAttach || csrfToken === null || forumId === "") {
       return;
     }
 
@@ -684,10 +686,10 @@ function EditorContent({
       className={`bl-editor${dragging ? " is-dragging" : ""}`}
       data-editor
       data-draft-context={contextKey}
-      data-editor-can-upload={canUpload ? "true" : "false"}
+      data-editor-can-upload={canAttach ? "true" : "false"}
       {...(ready ? { "data-editor-ready": "true" } : {})}
       onDragOver={(event) => {
-        if (!canUpload) {
+        if (!canAttach) {
           return;
         }
 
@@ -696,7 +698,7 @@ function EditorContent({
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={(event) => {
-        if (!canUpload) {
+        if (!canAttach) {
           return;
         }
 
@@ -705,7 +707,7 @@ function EditorContent({
         void uploadFiles([...event.dataTransfer.files]);
       }}
       onPaste={(event) => {
-        if (!canUpload) {
+        if (!canAttach) {
           return;
         }
 
@@ -853,7 +855,7 @@ function EditorContent({
             @
           </button>
         ) : null}
-        {canUpload ? (
+        {canAttach ? (
           <>
             <button
               type="button"
@@ -881,7 +883,7 @@ function EditorContent({
         ) : null}
       </div>
 
-      {canUpload ? (
+      {canAttach ? (
         <div className="bl-editor__attachments" data-editor-attachments>
           <p className="bl-muted" data-editor-attach-hint>
             {labels.attachHint}

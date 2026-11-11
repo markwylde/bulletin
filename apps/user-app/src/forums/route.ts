@@ -241,6 +241,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
             announcementsEnabled: flags.values.announcements === true,
             mentionsEnabled: flags.values.mentions === true,
             pollsEnabled: flags.values.polls === true,
+            attachmentsEnabled: flags.values.attachments === true,
           });
         }
       }

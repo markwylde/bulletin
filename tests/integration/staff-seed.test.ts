@@ -103,6 +103,8 @@ integrationDescribe("flags seed", () => {
 
       expect([...byKey.keys()]).toEqual([
         "announcements",
+        "attachments",
+        "avatar_upload",
         "compactTopicList",
         "mentions",
         "newEditor",

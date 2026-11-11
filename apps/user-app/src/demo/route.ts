@@ -108,6 +108,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
       compactTopicList: data.flags.values.compactTopicList === true,
       mentions: data.flags.values.mentions === true,
       unfurls: data.flags.values.unfurls === true,
+      attachments: data.flags.values.attachments === true,
     };
 
     const viewModel: Record<string, unknown> = { ...data.outcome.viewModel, flags };
@@ -116,7 +117,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
     if (typeof editor === "object" && editor !== null && !Array.isArray(editor)) {
       viewModel.editor = {
         ...editor,
-        flags: { mentions: flags.mentions },
+        flags: { mentions: flags.mentions, attachments: flags.attachments },
       };
     }
 

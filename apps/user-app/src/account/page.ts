@@ -11,6 +11,8 @@ export interface AccountPageInput {
   readonly memberId: string;
   readonly locale: Locale;
   readonly translate: Translator;
+  /** The viewer's evaluated `avatar_upload` flag. */
+  readonly avatarUploadEnabled?: boolean;
 }
 
 export interface AccountPageData {
@@ -110,6 +112,7 @@ export async function buildAccountPage(input: AccountPageInput): Promise<Account
         label: formatter.format(entry.changedAt),
       })),
       language,
+      flags: { avatar_upload: input.avatarUploadEnabled === true },
     },
   };
 }
