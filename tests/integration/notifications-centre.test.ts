@@ -14,10 +14,12 @@ import { createAuthService, hashToken, sessionCookieName } from "@bulletin/domai
 import { loadEvent } from "@bulletin/domain/events";
 import {
   createNotification,
+  createNotificationEmailIntent,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   notificationChannels,
+  notificationEmailContext,
   notificationPreferenceMatrix,
   setNotificationPreference,
   unreadNotificationCount,
@@ -313,6 +315,49 @@ integrationDescribe("notification centre", () => {
 
       expect(await listNotifications(database.sql, member)).toEqual([]);
       expect(await unreadNotificationCount(database.sql, member)).toBe(0);
+    });
+  }, 30_000);
+
+  test("moving a topic into a hidden forum hides its notifications and email", async () => {
+    await withSeededDb(async (database) => {
+      const fixture = await topicFixture(database);
+      const notificationId = await notify(database, fixture, fixture.starter);
+      const intentId = await createNotificationEmailIntent(
+        database.sql,
+        fixture.starter,
+        notificationId,
+      );
+      const staffRoom = await forumId(database, "staff-room");
+
+      expect(
+        await notificationEmailContext(database.sql, intentId?.toString() ?? "0"),
+      ).not.toBeNull();
+      await database.sql`
+        UPDATE core.topics SET forum_id = ${staffRoom} WHERE id = ${fixture.topicId}
+      `;
+
+      expect(await listNotifications(database.sql, fixture.starter)).toEqual([]);
+      expect(await unreadNotificationCount(database.sql, fixture.starter)).toBe(0);
+      expect(await notificationEmailContext(database.sql, intentId?.toString() ?? "0")).toBeNull();
+    });
+  }, 30_000);
+
+  test("a soft-deleted post disappears from the list, count and email", async () => {
+    await withSeededDb(async (database) => {
+      const fixture = await topicFixture(database);
+      const notificationId = await notify(database, fixture, fixture.starter);
+      const intentId = await createNotificationEmailIntent(
+        database.sql,
+        fixture.starter,
+        notificationId,
+      );
+      await database.sql`
+        UPDATE core.posts SET visibility = 'soft_deleted' WHERE id = ${fixture.postId}
+      `;
+
+      expect(await listNotifications(database.sql, fixture.starter)).toEqual([]);
+      expect(await unreadNotificationCount(database.sql, fixture.starter)).toBe(0);
+      expect(await notificationEmailContext(database.sql, intentId?.toString() ?? "0")).toBeNull();
     });
   }, 30_000);
 

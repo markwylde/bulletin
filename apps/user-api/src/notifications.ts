@@ -33,7 +33,9 @@ export async function notificationReadResponse(
   }
 
   if (body.all === true) {
-    return json({ ok: true, updated: await markAllNotificationsRead(sql, memberId) });
+    const updated = await markAllNotificationsRead(sql, memberId);
+    await sql`SELECT pg_notify('notify_member', ${memberId})`;
+    return json({ ok: true, updated });
   }
 
   if (typeof body.id !== "string" || !ID.test(body.id)) {
@@ -41,7 +43,14 @@ export async function notificationReadResponse(
   }
 
   const updated = await markNotificationRead(sql, memberId, body.id);
-  return updated ? json({ ok: true, updated: 1 }) : json({ code: "not_found" }, 404);
+
+  if (!updated) {
+    return json({ code: "not_found" }, 404);
+  }
+
+  // Other tabs (and this page's stream) refresh the bell count from durable state.
+  await sql`SELECT pg_notify('notify_member', ${memberId})`;
+  return json({ ok: true, updated: 1 });
 }
 
 /** `POST /api/notifications/preferences`: one type/channel cell for the session member. */

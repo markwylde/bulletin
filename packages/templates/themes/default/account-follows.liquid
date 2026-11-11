@@ -23,8 +23,7 @@
             {% if follow.available %}
               <a class="bl-follow-list__title" href="{{ follow.href }}" data-follow-link="{{ follow.id }}">{{ follow.title }}</a>
             {% else %}
-              <span class="bl-follow-list__title">{{ follow.title }}</span>
-              <span class="bl-badge" data-follow-unavailable>{% t "follow.unavailable" %}</span>
+              <span class="bl-follow-list__title" data-follow-unavailable>{% t "follow.unavailable" %}</span>
             {% endif %}
             <span class="bl-muted">{{ follow.meta }}</span>
             <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-remove="topic:{{ follow.id }}">{% t "follow.unfollow" %}</button>
@@ -45,8 +44,7 @@
             {% if follow.available %}
               <a class="bl-follow-list__title" href="{{ follow.href }}" data-follow-link="{{ follow.id }}">{{ follow.title }}</a>
             {% else %}
-              <span class="bl-follow-list__title">{{ follow.title }}</span>
-              <span class="bl-badge" data-follow-unavailable>{% t "follow.unavailable" %}</span>
+              <span class="bl-follow-list__title" data-follow-unavailable>{% t "follow.unavailable" %}</span>
             {% endif %}
             <span class="bl-muted">{{ follow.meta }}</span>
             <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-remove="forum:{{ follow.id }}">{% t "follow.unfollow" %}</button>

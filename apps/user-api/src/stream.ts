@@ -19,6 +19,7 @@ import type { StreamHub } from "./stream-hub.ts";
 
 const DEFAULT_HEARTBEAT_MS = 25_000;
 const DEFAULT_REVALIDATE_MS = 60_000;
+const DEFAULT_RECONCILE_MS = 5_000;
 const DEFAULT_REPLAY_LIMIT = 200;
 const DEFAULT_REPLAY_WINDOW_MS = 60 * 60 * 1_000;
 const ID = /^[1-9]\d{0,18}$/;
@@ -32,6 +33,7 @@ export interface StreamOptions {
   readonly revalidateMs?: number;
   readonly replayLimit?: number;
   readonly replayWindowMs?: number;
+  readonly reconcileMs?: number;
   readonly now?: () => Date;
   /** The process-wide LISTEN hub; without it the stream subscribes directly (tests). */
   readonly hub?: StreamHub;
@@ -117,6 +119,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
     async start(controller) {
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       let revalidate: ReturnType<typeof setInterval> | undefined;
+      let reconcile: ReturnType<typeof setInterval> | undefined;
       const unsubscribers: Array<() => void> = [];
 
       const send = (event: string, data: unknown): void => {
@@ -150,6 +153,10 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
           clearInterval(revalidate);
         }
 
+        if (reconcile !== undefined) {
+          clearInterval(reconcile);
+        }
+
         for (const unsubscribe of unsubscribers) {
           unsubscribe();
         }
@@ -161,12 +168,24 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
         }
       };
 
-      const mayReadScope = async (): Promise<boolean> =>
-        scope !== null &&
-        can(sql, session.memberId, "read", {
-          forumId: scope.forumId,
+      // Re-read the topic for every delivery: a move into a hidden forum must revoke the
+      // subscription immediately, not only at connect time.
+      const mayReadScope = async (): Promise<boolean> => {
+        if (scope === null) {
+          return false;
+        }
+
+        const current = await readTopic(sql, scope.id);
+
+        if (current === null) {
+          return false;
+        }
+
+        return can(sql, session.memberId, "read", {
+          forumId: current.forumId,
           tree: await loadForumTree(sql),
         });
+      };
 
       const readNotifications = async (): Promise<void> => {
         const [count, latest] = await Promise.all([
@@ -189,6 +208,11 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
         const rows = await visiblePostIdsAfter(sql, scope.id, cursor.postId ?? 0n, replayLimit + 1);
 
         if (rows.length === 0) {
+          return;
+        }
+
+        // A move can land between the first check and the read; never emit a hidden topic's posts.
+        if (!(await mayReadScope())) {
           return;
         }
 
@@ -232,7 +256,9 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
 
         await readNotifications();
 
-        if (scope !== null && restored !== null) {
+        // Catch up replies after the page's last rendered post too: a reply that landed
+        // between the page render and this connection (or a dropped NOTIFY) must still banner.
+        if (scope !== null && (restored !== null || initialPostId !== null)) {
           await readReplies();
         }
       };
@@ -333,6 +359,12 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
           void checkSession().catch(close);
         }
       }, options.revalidateMs ?? DEFAULT_REVALIDATE_MS);
+      // The five-second backstop for missed NOTIFYs (counts and new-reply wakes).
+      reconcile = setInterval(() => {
+        if (!closed) {
+          schedule();
+        }
+      }, options.reconcileMs ?? DEFAULT_RECONCILE_MS);
 
       options.request.signal.addEventListener("abort", close);
 

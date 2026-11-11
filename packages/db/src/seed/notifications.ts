@@ -208,5 +208,19 @@ export const notificationsSeedModule: SeedModule = {
       VALUES (${memberOne}, 'post.mention', 'email', false)
       ON CONFLICT (member_id, type, channel) DO UPDATE SET enabled = EXCLUDED.enabled
     `;
+
+    // The digest channel is opt-in per type; seed a few so the digest emails have content.
+    for (const [member, type] of [
+      [memberOne, "topic.reply"],
+      [memberOne, "post.mention"],
+      [memberTwo, "topic.reply"],
+      [memberFr, "topic.created"],
+    ] as const) {
+      await sql`
+        INSERT INTO core.notification_preferences (member_id, type, channel, enabled)
+        VALUES (${member}, ${type}, 'digest', true)
+        ON CONFLICT (member_id, type, channel) DO UPDATE SET enabled = EXCLUDED.enabled
+      `;
+    }
   },
 };

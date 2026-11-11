@@ -4,7 +4,7 @@ import { can } from "../permissions/can.ts";
 import { loadPermissionSnapshot, type PermissionSnapshot } from "../permissions/snapshot.ts";
 import type { ForumTree } from "../permissions/tree.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
-import { isNotificationTypeValue } from "./preferences.ts";
+import { isNotificationTypeValue, notificationPreferenceMatrix } from "./preferences.ts";
 
 /** Notification kinds the subscriber creates; the centre renders each with its own i18n key. */
 export const NOTIFICATION_TYPES = [
@@ -131,7 +131,7 @@ async function readPost(sql: SQL, postId: string): Promise<PostContext | null> {
       p.author_id::text AS author_id, p.position
     FROM core.posts p
     JOIN core.topics t ON t.id = p.topic_id
-    WHERE p.id = ${postId}
+    WHERE p.id = ${postId} AND p.visibility = 'visible'
   `) as Array<{
     topic_id: string;
     forum_id: string;
@@ -147,13 +147,6 @@ async function readPost(sql: SQL, postId: string): Promise<PostContext | null> {
         authorId: row.author_id,
         position: row.position,
       };
-}
-
-async function topicStarter(sql: SQL, topicId: string): Promise<string | null> {
-  const [row] = (await sql`
-    SELECT starter_id::text AS starter_id FROM core.topics WHERE id = ${topicId}
-  `) as Array<{ starter_id: string | null }>;
-  return row?.starter_id ?? null;
 }
 
 async function topicFollowers(sql: SQL, topicId: string): Promise<readonly string[]> {
@@ -248,17 +241,12 @@ export async function eventRecipients(
         return [];
       }
 
-      const starter = await topicStarter(sql, post.topicId);
       const base = {
         actorId: post.authorId,
         topicId: post.topicId,
         forumId: post.forumId,
         postId,
       } as const;
-
-      if (post.position > 1 && starter !== null && starter !== post.authorId) {
-        add({ ...base, memberId: starter, type: "topic.reply", source: "follow" });
-      }
 
       if (post.position > 1) {
         for (const follower of await topicFollowers(sql, post.topicId)) {
@@ -300,10 +288,16 @@ export async function eventRecipients(
         return [];
       }
 
+      const firstPost = postId === undefined ? null : await readPost(sql, postId);
+
+      if (firstPost === null) {
+        return [];
+      }
+
       const base = {
         actorId: authorId,
         topicId,
-        forumId,
+        forumId: firstPost.forumId,
         postId: postId ?? null,
       } as const;
 
@@ -320,7 +314,7 @@ export async function eventRecipients(
       const recipients: NotificationRecipient[] = [];
 
       for (const recipient of candidates.values()) {
-        if (await readable(recipient.memberId, forumId)) {
+        if (await readable(recipient.memberId, firstPost.forumId)) {
           recipients.push(recipient);
         }
       }
@@ -417,7 +411,7 @@ export async function listNotifications(
       n.topic_id::text AS topic_id,
       t.title AS topic_title,
       t.slug AS topic_slug,
-      n.forum_id::text AS forum_id,
+      t.forum_id::text AS forum_id,
       n.post_id::text AS post_id,
       n.count,
       n.read_at,
@@ -426,7 +420,10 @@ export async function listNotifications(
     FROM core.notifications n
     LEFT JOIN core.members a ON a.id = n.actor_id
     LEFT JOIN core.topics t ON t.id = n.topic_id
+    LEFT JOIN core.posts p ON p.id = n.post_id
     WHERE n.member_id = ${memberId}
+      AND (n.post_id IS NULL OR p.visibility = 'visible')
+      AND (n.topic_id IS NULL OR t.id IS NOT NULL)
       AND coalesce((
         SELECT p.enabled FROM core.notification_preferences p
         WHERE p.member_id = n.member_id AND p.type = n.type AND p.channel = 'in_app'
@@ -473,15 +470,19 @@ export async function unreadNotificationCount(
   options: { readonly tree?: ForumTree; readonly snapshot?: PermissionSnapshot } = {},
 ): Promise<number> {
   const rows = (await sql`
-    SELECT n.forum_id::text AS forum_id, count(*)::int AS count
+    SELECT t.forum_id::text AS forum_id, count(*)::int AS count
     FROM core.notifications n
+    LEFT JOIN core.topics t ON t.id = n.topic_id
+    LEFT JOIN core.posts p ON p.id = n.post_id
     WHERE n.member_id = ${memberId}
       AND n.read_at IS NULL
+      AND (n.post_id IS NULL OR p.visibility = 'visible')
+      AND (n.topic_id IS NULL OR t.id IS NOT NULL)
       AND coalesce((
-        SELECT p.enabled FROM core.notification_preferences p
-        WHERE p.member_id = n.member_id AND p.type = n.type AND p.channel = 'in_app'
+        SELECT pref.enabled FROM core.notification_preferences pref
+        WHERE pref.member_id = n.member_id AND pref.type = n.type AND pref.channel = 'in_app'
       ), true)
-    GROUP BY n.forum_id
+    GROUP BY t.forum_id
   `) as Array<{ forum_id: string | null; count: number }>;
 
   if (rows.length === 0) {
@@ -547,7 +548,7 @@ export async function notificationIdForEvent(
 }
 
 export interface DigestItem {
-  readonly kind: "topic" | "reply";
+  readonly kind: "topic" | "reply" | "mention";
   readonly topicId: string;
   readonly title: string;
   readonly slug: string;
@@ -567,10 +568,17 @@ interface DigestRow {
   readonly created_at: Date | string;
 }
 
+const DIGEST_TYPE_BY_KIND = {
+  topic: "topic.created",
+  reply: "topic.reply",
+  mention: "post.mention",
+} as const;
+
 /**
- * New activity since the window in followed topics and followed forums (including their
- * descendants), with `can()` applied at build time. One entry per topic: a new reply wins over
- * the topic row when both apply.
+ * New activity since the window in followed topics, followed forums (including descendants) and
+ * posts that mention the member, with `can()` applied at build time. Only the types whose digest
+ * channel is enabled are included (default off). One entry per topic: a mention wins over a
+ * reply, and a reply wins over the topic row.
  */
 export async function digestItems(
   sql: SQL,
@@ -587,7 +595,8 @@ export async function digestItems(
   const tree = options.tree ?? (await loadForumTree(sql));
   const snapshot =
     options.snapshot ?? (await loadPermissionSnapshot(sql, memberId, { tree, sessionId: null }));
-  const [replies, topics] = (await Promise.all([
+  const preferences = await notificationPreferenceMatrix(sql, memberId);
+  const [replies, topics, mentions] = (await Promise.all([
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
@@ -605,49 +614,69 @@ export async function digestItems(
     sql`
       SELECT DISTINCT ON (t.id)
         t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
-        NULL::text AS post_id, a.display_name AS actor_name, t.created_at
+        t.first_post_id::text AS post_id, a.display_name AS actor_name, t.created_at
       FROM core.followed_forums ff
       JOIN core.forums followed ON followed.id = ff.forum_id
       JOIN core.forums target ON target.path <@ followed.path
       JOIN core.topics t ON t.forum_id = target.id
         AND t.created_at > ${options.since}
         AND t.created_at <= ${until}
+      JOIN core.posts first_post ON first_post.id = t.first_post_id
+        AND first_post.visibility = 'visible'
       LEFT JOIN core.members a ON a.id = t.starter_id
       WHERE ff.member_id = ${memberId}
       ORDER BY t.id, t.created_at DESC
     `,
-  ])) as [DigestRow[], DigestRow[]];
+    sql`
+      SELECT DISTINCT ON (t.id)
+        t.id::text AS topic_id, t.title, t.slug, t.forum_id::text AS forum_id,
+        p.id::text AS post_id, a.display_name AS actor_name, p.created_at
+      FROM core.posts p
+      JOIN core.members m ON m.id = ${memberId}
+      JOIN core.topics t ON t.id = p.topic_id
+      LEFT JOIN core.members a ON a.id = p.author_id
+      WHERE m.id = ANY(p.mentioned_member_ids)
+        AND p.visibility = 'visible'
+        AND p.created_at > ${options.since}
+        AND p.created_at <= ${until}
+      ORDER BY t.id, p.created_at DESC
+    `,
+  ])) as [DigestRow[], DigestRow[], DigestRow[]];
   const byTopic = new Map<string, DigestItem>();
 
-  for (const row of topics) {
-    byTopic.set(row.topic_id, {
-      kind: "topic",
-      topicId: row.topic_id,
-      title: row.title,
-      slug: row.slug,
-      forumId: row.forum_id,
-      postId: row.post_id,
-      actorName: row.actor_name,
-      createdAt: new Date(row.created_at),
-    });
-  }
+  for (const [kind, rows] of [
+    ["topic", topics],
+    ["reply", replies],
+    ["mention", mentions],
+  ] as const) {
+    for (const row of rows) {
+      const existing = byTopic.get(row.topic_id);
+      const rank = { topic: 1, reply: 2, mention: 3 } as const;
 
-  for (const row of replies) {
-    byTopic.set(row.topic_id, {
-      kind: "reply",
-      topicId: row.topic_id,
-      title: row.title,
-      slug: row.slug,
-      forumId: row.forum_id,
-      postId: row.post_id,
-      actorName: row.actor_name,
-      createdAt: new Date(row.created_at),
-    });
+      if (existing !== undefined && rank[existing.kind] >= rank[kind]) {
+        continue;
+      }
+
+      byTopic.set(row.topic_id, {
+        kind,
+        topicId: row.topic_id,
+        title: row.title,
+        slug: row.slug,
+        forumId: row.forum_id,
+        postId: row.post_id,
+        actorName: row.actor_name,
+        createdAt: new Date(row.created_at),
+      });
+    }
   }
 
   const readable: DigestItem[] = [];
 
   for (const item of byTopic.values()) {
+    if (preferences[DIGEST_TYPE_BY_KIND[item.kind]].digest !== true) {
+      continue;
+    }
+
     if (await can(sql, memberId, "read", { forumId: item.forumId, tree, snapshot })) {
       readable.push(item);
     }
@@ -685,7 +714,7 @@ export async function notificationEmailContext(
       m.display_name AS recipient_name,
       n.type,
       a.display_name AS actor_name,
-      n.forum_id::text AS forum_id,
+      t.forum_id::text AS forum_id,
       n.topic_id::text AS topic_id,
       t.title AS topic_title,
       t.slug AS topic_slug,
@@ -695,10 +724,13 @@ export async function notificationEmailContext(
     JOIN core.members m ON m.id = i.member_id
     LEFT JOIN core.members a ON a.id = n.actor_id
     LEFT JOIN core.topics t ON t.id = n.topic_id
+    LEFT JOIN core.posts p ON p.id = n.post_id
     WHERE i.id = ${intentId}
       AND i.kind = 'notification'
       AND i.channel = 'email'
       AND i.delivered_at IS NULL
+      AND (n.post_id IS NULL OR p.visibility = 'visible')
+      AND (n.topic_id IS NULL OR t.id IS NOT NULL)
   `) as Array<{
     member_id: string;
     locale: string | null;

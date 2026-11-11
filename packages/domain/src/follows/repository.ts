@@ -284,23 +284,32 @@ export async function listFollows(
 
   return {
     topics: await Promise.all(
-      topicRows.map(async (row) => ({
-        id: row.id,
-        title: row.title,
-        slug: row.slug,
-        forumId: row.forum_id,
-        followedAt: new Date(row.followed_at),
-        available: await readableForum(sql, memberId, row.forum_id, tree, snapshot),
-      })),
+      topicRows.map(async (row) => {
+        const available = await readableForum(sql, memberId, row.forum_id, tree, snapshot);
+
+        return {
+          id: row.id,
+          // An inaccessible follow must not disclose the current (possibly renamed) title.
+          title: available ? row.title : "",
+          slug: available ? row.slug : "",
+          forumId: row.forum_id,
+          followedAt: new Date(row.followed_at),
+          available,
+        };
+      }),
     ),
     forums: await Promise.all(
-      forumRows.map(async (row) => ({
-        id: row.id,
-        title: row.title,
-        slug: row.slug,
-        followedAt: new Date(row.followed_at),
-        available: await readableForum(sql, memberId, row.id, tree, snapshot),
-      })),
+      forumRows.map(async (row) => {
+        const available = await readableForum(sql, memberId, row.id, tree, snapshot);
+
+        return {
+          id: row.id,
+          title: available ? row.title : "",
+          slug: available ? row.slug : "",
+          followedAt: new Date(row.followed_at),
+          available,
+        };
+      }),
     ),
     members: memberRows.map((row) => ({
       id: row.id,

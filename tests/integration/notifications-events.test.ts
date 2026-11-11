@@ -10,11 +10,15 @@ import {
   SeedRegistry,
 } from "@bulletin/db/seed";
 import { emit, loadEvent, type StoredEvent } from "@bulletin/domain/events";
-import { follow } from "@bulletin/domain/follows";
+import { follow, unfollow } from "@bulletin/domain/follows";
 import { bumpPermVersion, can, forumActionMask, loadForumTree } from "@bulletin/domain/permissions";
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
-import { createNotificationsEventHandler } from "../../apps/workers/src/notifications.ts";
+import {
+  createNotificationsEventHandler,
+  eligibleRecipients,
+  processNotificationRecipients,
+} from "../../apps/workers/src/notifications.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -559,6 +563,181 @@ integrationDescribe("notifications subscriber", () => {
       );
     });
   }, 30_000);
+
+  test("a soft-deleted post and a held topic produce no notifications", async () => {
+    await withSeededDb("notifications_visibility", async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const starter = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: starter,
+          forumId: forum,
+          title: "Visibility topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const post = await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "Soon deleted.",
+        }),
+      );
+      await database.sql`UPDATE core.posts SET visibility = 'soft_deleted' WHERE id = ${post.postId}`;
+      await createNotificationsEventHandler({ sql: database.sql })(
+        await latestEvent(database, "post.created"),
+      );
+      expect(await notifications(database)).toEqual([]);
+
+      // The first post of a held topic is unapproved: no topic.created notification either.
+      const held = await expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Held topic",
+          bodyMd: "Awaiting approval.",
+        }),
+      );
+      await database.sql`
+        UPDATE core.posts SET visibility = 'unapproved' WHERE id = ${held.postId}
+      `;
+      await createNotificationsEventHandler({ sql: database.sql })(
+        await latestEvent(database, "topic.created"),
+      );
+      expect(await notifications(database)).toEqual([]);
+    });
+  }, 30_000);
+
+  test("a starter who disabled auto-follow or unfollowed gets no reply notifications", async () => {
+    await withSeededDb("notifications_starter_follows", async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const starter = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+
+      const detached = await expectOk(
+        await startTopic(database.sql, {
+          actorId: starter,
+          forumId: forum,
+          title: "No auto-follow topic",
+          bodyMd: "Body.",
+          autoFollow: false,
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: detached.topicId,
+          bodyMd: "A reply.",
+        }),
+      );
+      await createNotificationsEventHandler({ sql: database.sql })(
+        await latestEvent(database, "post.created"),
+      );
+      expect(await notifications(database)).toEqual([]);
+
+      const unfollowed = await expectOk(
+        await startTopic(database.sql, {
+          actorId: starter,
+          forumId: forum,
+          title: "Unfollowed topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await unfollow(database.sql, {
+        memberId: starter,
+        kind: "topic",
+        id: unfollowed.topicId,
+      });
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: unfollowed.topicId,
+          bodyMd: "Another reply.",
+        }),
+      );
+      await createNotificationsEventHandler({ sql: database.sql })(
+        await latestEvent(database, "post.created"),
+      );
+      expect(await notifications(database)).toEqual([]);
+    });
+  }, 30_000);
+
+  test("large recipient sets fan out in bounded chunks", async () => {
+    await withSeededDb("notifications_fanout", async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const starter = await memberId(database, "member-2");
+      const topic = await expectOk(
+        await startTopic(database.sql, {
+          actorId: starter,
+          forumId: forum,
+          title: "Fan-out topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton)
+        SELECT 'Bulk Member ' || lpad(value::text, 3, '0'),
+               'bulk member ' || lpad(value::text, 3, '0')
+        FROM generate_series(1, 505) AS value
+        ON CONFLICT DO NOTHING
+      `;
+      await database.sql`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        SELECT m.id, g.id, true
+        FROM core.members m, core.groups g
+        WHERE m.display_name LIKE 'Bulk Member %' AND g.key = 'members'
+        ON CONFLICT DO NOTHING
+      `;
+      await database.sql`
+        INSERT INTO core.followed_topics (member_id, topic_id)
+        SELECT m.id, ${topic.topicId}
+        FROM core.members m
+        WHERE m.display_name LIKE 'Bulk Member %'
+        ON CONFLICT DO NOTHING
+      `;
+      const [followCount] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.followed_topics WHERE topic_id = ${topic.topicId}
+      `) as Array<{ count: number }>;
+      expect(followCount?.count).toBeGreaterThan(500);
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "Fan-out reply.",
+        }),
+      );
+      const event = await latestEvent(database, "post.created");
+      const jobs: Array<{ eventId: string; chunk: number }> = [];
+      const options = {
+        sql: database.sql,
+        async enqueueFanout(job: { eventId: string; chunk: number }) {
+          jobs.push(job);
+        },
+      };
+
+      await createNotificationsEventHandler(options)(event);
+      expect(jobs).toHaveLength(2);
+
+      const eligible = await eligibleRecipients(options, event);
+      expect(eligible.length).toBeGreaterThan(500);
+
+      for (const job of jobs) {
+        await processNotificationRecipients(
+          options,
+          event,
+          eligible.slice(job.chunk * 500, (job.chunk + 1) * 500),
+        );
+      }
+
+      const [count] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.notifications
+        WHERE type = 'topic.reply' AND topic_id = ${topic.topicId}
+      `) as Array<{ count: number }>;
+      expect(count?.count).toBe(eligible.length);
+    });
+  }, 120_000);
 
   test("granted roles can read, write and mark notifications read", async () => {
     await withSeededDb("notifications_grants", async ({ sql }) => {

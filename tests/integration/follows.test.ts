@@ -381,6 +381,54 @@ integrationDescribe("follows", () => {
     });
   }, 30_000);
 
+  test("an unavailable follow never reveals current titles after a rename", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "super-mod");
+      const admin = await memberId(database, "admin");
+      const staffRoom = await forumId(database, "staff-room");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: admin,
+          forumId: staffRoom,
+          title: "Original secret topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await follow(database.sql, { memberId: member, kind: "forum", id: staffRoom });
+      await follow(database.sql, { memberId: member, kind: "topic", id: topic.topicId });
+
+      await database.sql`
+        UPDATE core.forum_permissions fp
+        SET actions = ${forumActionMask(["show"])}
+        FROM core.forums f, core.masks m
+        WHERE fp.forum_id = f.id AND fp.mask_id = m.id
+          AND f.slug = 'staff-area' AND m.key = 'staff'
+      `;
+      await bumpPermVersion(database.sql);
+      await database.sql`
+        UPDATE core.forums SET title = 'Renamed secret forum' WHERE id = ${staffRoom}
+      `;
+      await database.sql`
+        UPDATE core.topics SET title = 'Renamed secret topic' WHERE id = ${topic.topicId}
+      `;
+
+      const list = await listFollows(database.sql, member);
+      expect(list.forums[0]).toMatchObject({ id: staffRoom, available: false, title: "" });
+      expect(list.topics[0]).toMatchObject({ id: topic.topicId, available: false, title: "" });
+      expect(JSON.stringify(list)).not.toContain("Renamed secret");
+
+      const page = await buildFollowsPage({
+        sql: database.sql,
+        memberId: member,
+        sessionId: null,
+        locale: "en",
+        translate,
+      });
+      expect(JSON.stringify(page.viewModel)).not.toContain("Renamed secret");
+      expect(page.viewModel.forums[0]).toMatchObject({ available: false, title: "", href: "" });
+    });
+  }, 30_000);
+
   test("only the follower's rows are listed", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");

@@ -2,6 +2,7 @@ import { ensurePgBossQueue } from "@bulletin/db/events";
 import {
   createUnsubscribeToken,
   digestItems,
+  pendingDigestDeliveries,
   queueDigests,
   sendSmtpMail,
 } from "@bulletin/domain/notifications";
@@ -94,7 +95,22 @@ export async function deliverDigestEmail(
       return "skipped";
     }
 
+    const finish = async (): Promise<void> => {
+      await tx`
+        UPDATE core.delivery_intents
+        SET delivered_at = now()
+        WHERE id = ${job.intentId} AND delivered_at IS NULL
+      `;
+      await tx`
+        UPDATE core.digest_subscriptions
+        SET last_sent_at = GREATEST(coalesce(last_sent_at, ${row.period_end}), ${row.period_end}),
+            updated_at = now()
+        WHERE member_id = ${row.member_id}
+      `;
+    };
+
     if (options.flags !== undefined && !(await options.flags.enabled("digests", row.member_id))) {
+      await finish();
       return "skipped";
     }
 
@@ -103,6 +119,7 @@ export async function deliverDigestEmail(
     `) as Array<{ email: string | null }>;
 
     if (target?.email === null || target?.email === undefined || target.email.trim() === "") {
+      await finish();
       return "skipped";
     }
 
@@ -115,9 +132,7 @@ export async function deliverDigestEmail(
     });
 
     if (items.length === 0) {
-      await tx`
-        UPDATE core.delivery_intents SET delivered_at = now() WHERE id = ${job.intentId}
-      `;
+      await finish();
       return "skipped";
     }
 
@@ -177,12 +192,7 @@ export async function deliverDigestEmail(
       },
     });
 
-    await tx`
-      UPDATE core.delivery_intents
-      SET delivered_at = now()
-      WHERE id = ${job.intentId} AND delivered_at IS NULL
-    `;
-
+    await finish();
     return "sent";
   });
 }
@@ -216,14 +226,24 @@ export async function createDigestJobs(options: DigestJobsOptions): Promise<Dige
                 options.flags === undefined ? true : options.flags.enabled("digests", memberId),
             }),
       });
-      options.logger?.info("digest.queued", { frequency, members: queued.length });
-
-      for (const digest of queued) {
-        await options.boss.send(
-          DIGEST_EMAIL_QUEUE,
+      // Recover deliveries whose enqueue was lost after the delivery/intent committed.
+      const pending = await pendingDigestDeliveries(options.sql);
+      const deliveries = new Map(
+        [...queued, ...pending].map((digest) => [
+          digest.deliveryId,
           { intentId: digest.intentId, deliveryId: digest.deliveryId },
-          { singletonKey: `digest:${digest.deliveryId}` },
-        );
+        ]),
+      );
+      options.logger?.info("digest.queued", {
+        frequency,
+        members: queued.length,
+        recovered: pending.length,
+      });
+
+      for (const digest of deliveries.values()) {
+        await options.boss.send(DIGEST_EMAIL_QUEUE, digest, {
+          singletonKey: `digest:${digest.deliveryId}`,
+        });
       }
     });
   }

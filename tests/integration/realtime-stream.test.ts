@@ -14,6 +14,7 @@ import { emit } from "@bulletin/domain/events";
 import { createNotification } from "@bulletin/domain/notifications";
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { notificationReadResponse } from "../../apps/user-api/src/notifications.ts";
 import { streamResponse } from "../../apps/user-api/src/stream.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -195,6 +196,7 @@ async function openStream(
     readonly lastEventId?: string;
     readonly heartbeatMs?: number;
     readonly revalidateMs?: number;
+    readonly reconcileMs?: number;
   } = {},
 ): Promise<{ response: Response; reader: StreamReader }> {
   const headers = new Headers();
@@ -209,6 +211,7 @@ async function openStream(
     request: new Request(`http://user.test/api/stream${query}`, { headers }),
     heartbeatMs: options.heartbeatMs ?? 20,
     revalidateMs: options.revalidateMs ?? 60_000,
+    reconcileMs: options.reconcileMs ?? 60_000,
   });
 
   if (response.body === null) {
@@ -442,6 +445,173 @@ integrationDescribe("realtime stream", () => {
         `;
         expect((await reader.event("reauth_required", 2_000))?.event).toBe("reauth_required");
         expect(await reader.next(500)).toBeNull();
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("reconciles a dropped wake-up, the initial gap and a cross-tab mark-read", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-2");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Reconcile topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const { record } = await createSession(database, member);
+      const { response, reader } = await openStream(
+        database,
+        record,
+        `?topic=${topic.topicId}&post=${topic.postId}`,
+        { reconcileMs: 100 },
+      );
+
+      try {
+        await reader.event("notifications");
+
+        // Neither a NOTIFY nor a normal publish path is used here.
+        await database.sql`
+          INSERT INTO core.posts (
+            topic_id, author_id, body_md, body_html, body_text, render_version,
+            sanitiser_version, position
+          ) VALUES (
+            ${topic.topicId}, ${author}, 'Missed wake-up.', '<p>Missed wake-up.</p>',
+            'Missed wake-up.', 1, 1,
+            (SELECT COALESCE(MAX(position), 0) + 1 FROM core.posts WHERE topic_id = ${topic.topicId})
+          )
+        `;
+        await database.sql`
+          INSERT INTO core.notifications (member_id, type, count)
+          VALUES (${member}, 'member.promoted', 1)
+        `;
+
+        let sawReplies = false;
+        let sawCount = false;
+
+        for (let attempt = 0; attempt < 10 && !(sawReplies && sawCount); attempt += 1) {
+          const event = await reader.next(1_000);
+
+          if (event?.event === "new_replies") {
+            sawReplies = true;
+          } else if (event?.event === "notifications") {
+            sawCount = JSON.parse(event.data ?? "{}").count === 1 || sawCount;
+          }
+        }
+
+        expect({ sawReplies, sawCount }).toEqual({ sawReplies: true, sawCount: true });
+
+        const marked = await notificationReadResponse(
+          database.sql,
+          member,
+          new Request("http://user.test/api/notifications/read", {
+            method: "POST",
+            body: JSON.stringify({ all: true }),
+          }),
+        );
+        expect(marked.status).toBe(200);
+        const cleared = await reader.event("notifications");
+        expect(JSON.parse(cleared?.data ?? "{}")).toMatchObject({ count: 0 });
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("catches up a reply posted before the stream opened", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-2");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Initial gap topic",
+          bodyMd: "Body.",
+        }),
+      );
+      // The page rendered the first post; a reply lands before the stream connects.
+      const post = expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "Reply before connect.",
+        }),
+      );
+      const { record } = await createSession(database, member);
+      const { response, reader } = await openStream(
+        database,
+        record,
+        `?topic=${topic.topicId}&post=${topic.postId}`,
+      );
+
+      try {
+        const update = await reader.event("new_replies");
+        expect(JSON.parse(update?.data ?? "{}")).toMatchObject({
+          topicId: topic.topicId,
+          postId: post.postId,
+        });
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("a topic moved into a hidden forum stops sending replies", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const staffRoom = await forumId(database, "staff-room");
+      const author = await memberId(database, "member-2");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Moved topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const { record } = await createSession(database, member);
+      const { response, reader } = await openStream(
+        database,
+        record,
+        `?topic=${topic.topicId}&post=${topic.postId}`,
+        { reconcileMs: 100 },
+      );
+
+      try {
+        await reader.event("notifications");
+        await database.sql`
+          UPDATE core.topics SET forum_id = ${staffRoom} WHERE id = ${topic.topicId}
+        `;
+        await database.sql`
+          INSERT INTO core.posts (
+            topic_id, author_id, body_md, body_html, body_text, render_version,
+            sanitiser_version, position
+          ) VALUES (
+            ${topic.topicId}, ${author}, 'Hidden reply.', '<p>Hidden reply.</p>',
+            'Hidden reply.', 1, 1,
+            (SELECT COALESCE(MAX(position), 0) + 1 FROM core.posts WHERE topic_id = ${topic.topicId})
+          )
+        `;
+
+        let sawReplies = false;
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const event = await reader.next(200);
+
+          if (event?.event === "new_replies") {
+            sawReplies = true;
+          }
+        }
+
+        expect(sawReplies).toBe(false);
       } finally {
         await response.body?.cancel().catch(() => undefined);
       }

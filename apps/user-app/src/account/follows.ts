@@ -59,7 +59,7 @@ export async function buildFollowsPage(input: FollowsPageInput): Promise<Follows
       topics: follows.topics.map((topic) => ({
         id: topic.id,
         title: topic.title,
-        href: canonicalUrl("topic", topic.id, topic.slug),
+        href: topic.available ? canonicalUrl("topic", topic.id, topic.slug) : "",
         available: topic.available,
         meta: meta(topic.followedAt),
       })),
@@ -67,7 +67,7 @@ export async function buildFollowsPage(input: FollowsPageInput): Promise<Follows
       forums: follows.forums.map((forum) => ({
         id: forum.id,
         title: forum.title,
-        href: canonicalUrl("forum", forum.id, forum.slug),
+        href: forum.available ? canonicalUrl("forum", forum.id, forum.slug) : "",
         available: forum.available,
         meta: meta(forum.followedAt),
       })),

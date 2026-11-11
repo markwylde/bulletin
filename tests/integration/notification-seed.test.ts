@@ -38,7 +38,7 @@ integrationDescribe("notification seed", () => {
         forums: 2,
         members: 3,
         digests: 3,
-        preferences: 1,
+        preferences: 5,
         notifications: 6,
       });
 

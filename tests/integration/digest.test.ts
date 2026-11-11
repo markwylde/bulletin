@@ -10,7 +10,13 @@ import {
   SeedRegistry,
 } from "@bulletin/db/seed";
 import { follow } from "@bulletin/domain/follows";
-import { digestFrequency, queueDigests, setDigestFrequency } from "@bulletin/domain/notifications";
+import {
+  digestFrequency,
+  pendingDigestDeliveries,
+  queueDigests,
+  setDigestFrequency,
+  setNotificationPreference,
+} from "@bulletin/domain/notifications";
 import { bumpPermVersion, forumActionMask } from "@bulletin/domain/permissions";
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { createMailStore } from "@bulletin/mock-mail/message";
@@ -114,6 +120,7 @@ integrationDescribe("digests", () => {
       const forum = await forumId(database, "off-topic");
 
       await setDigestFrequency(database.sql, member, "weekly");
+      await setNotificationPreference(database.sql, member, "topic.created", "digest", true);
       await follow(database.sql, { memberId: member, kind: "forum", id: forum });
 
       const newTopic = expectOk(
@@ -164,6 +171,7 @@ integrationDescribe("digests", () => {
       `;
 
       await setDigestFrequency(database.sql, member, "weekly");
+      await setNotificationPreference(database.sql, member, "topic.created", "digest", true);
       await follow(database.sql, { memberId: member, kind: "forum", id: forum });
       expectOk(
         await startTopic(database.sql, {
@@ -194,6 +202,7 @@ integrationDescribe("digests", () => {
       const forum = await forumId(database, "off-topic");
 
       await setDigestFrequency(database.sql, member, "weekly");
+      await setNotificationPreference(database.sql, member, "topic.created", "digest", true);
       await follow(database.sql, { memberId: member, kind: "forum", id: forum });
       expectOk(
         await startTopic(database.sql, {
@@ -225,6 +234,188 @@ integrationDescribe("digests", () => {
             intentId: "0",
             deliveryId: "0",
           },
+        ),
+      ).toBe("skipped");
+      expect(store.list()).toEqual([]);
+    });
+  }, 60_000);
+
+  test("digest content follows per-type digest preferences and includes mentions", async () => {
+    await withMailStack(async ({ database, store, options }) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+
+      await setDigestFrequency(database.sql, member, "weekly");
+      await setNotificationPreference(database.sql, member, "topic.reply", "digest", true);
+      await setNotificationPreference(database.sql, member, "post.mention", "digest", true);
+      await setNotificationPreference(database.sql, member, "topic.created", "digest", false);
+      await follow(database.sql, { memberId: member, kind: "forum", id: forum });
+
+      const followed = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Digest followed topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await follow(database.sql, { memberId: member, kind: "topic", id: followed.topicId });
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: followed.topicId,
+          bodyMd: "A reply.",
+        }),
+      );
+      expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Digest excluded topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const mentionTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Digest mention topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: mentionTopic.topicId,
+          bodyMd: `Hello @[Regular Member Two](member:${member})`,
+        }),
+      );
+
+      const queued = await queueDigests(database.sql, "weekly");
+      expect(queued).toHaveLength(1);
+      expect(
+        await deliverDigestEmail(
+          database.sql,
+          options,
+          queued[0] ?? { intentId: "0", deliveryId: "0" },
+        ),
+      ).toBe("sent");
+
+      const text = store.list()[0]?.text ?? "";
+      expect(text).toContain("Digest followed topic");
+      expect(text).toContain("Digest mention topic");
+      expect(text).not.toContain("Digest excluded topic");
+    });
+  }, 60_000);
+
+  test("a delivery whose enqueue was lost is recovered with its original window", async () => {
+    await withMailStack(async ({ database, store, options }) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+
+      await setDigestFrequency(database.sql, member, "weekly");
+      await setNotificationPreference(database.sql, member, "topic.created", "digest", true);
+      await follow(database.sql, { memberId: member, kind: "forum", id: forum });
+      expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Recovered digest topic",
+          bodyMd: "Body.",
+        }),
+      );
+
+      // The delivery and intent commit, then the process "crashes" before enqueueing.
+      const queued = await queueDigests(database.sql, "weekly");
+      expect(queued).toHaveLength(1);
+      const pending = await pendingDigestDeliveries(database.sql);
+      expect(pending).toEqual([
+        expect.objectContaining({
+          deliveryId: queued[0]?.deliveryId,
+          intentId: queued[0]?.intentId,
+        }),
+      ]);
+
+      // A second cron run must not start a new window while the first is still pending.
+      expect(await queueDigests(database.sql, "weekly")).toEqual([]);
+
+      expect(
+        await deliverDigestEmail(
+          database.sql,
+          options,
+          queued[0] ?? { intentId: "0", deliveryId: "0" },
+        ),
+      ).toBe("sent");
+      expect(store.list()[0]?.text).toContain("Recovered digest topic");
+
+      const [delivery] = (await database.sql`
+        SELECT period_end FROM core.digest_deliveries WHERE id = ${queued[0]?.deliveryId ?? "0"}
+      `) as Array<{ period_end: Date }>;
+      const [subscription] = (await database.sql`
+        SELECT last_sent_at FROM core.digest_subscriptions WHERE member_id = ${member}
+      `) as Array<{ last_sent_at: Date }>;
+      expect(new Date(subscription?.last_sent_at ?? 0).toISOString()).toBe(
+        new Date(delivery?.period_end ?? 0).toISOString(),
+      );
+      expect(await pendingDigestDeliveries(database.sql)).toEqual([]);
+    });
+  }, 60_000);
+
+  test("soft-deleted replies and held topics stay out of the digest", async () => {
+    await withMailStack(async ({ database, store, options }) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+
+      await setDigestFrequency(database.sql, member, "weekly");
+      await setNotificationPreference(database.sql, member, "topic.reply", "digest", true);
+      await follow(database.sql, { memberId: member, kind: "forum", id: forum });
+
+      const followed = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Deleted digest reply topic",
+          bodyMd: "Body.",
+        }),
+      );
+      await follow(database.sql, { memberId: member, kind: "topic", id: followed.topicId });
+      // The topic's first post predates the digest window, so only the deleted reply could count.
+      await database.sql`
+        UPDATE core.posts SET created_at = now() - interval '10 days' WHERE id = ${followed.postId}
+      `;
+      const replyResult = expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: followed.topicId,
+          bodyMd: "Deleted later.",
+        }),
+      );
+      await database.sql`
+        UPDATE core.posts SET visibility = 'soft_deleted' WHERE id = ${replyResult.postId}
+      `;
+
+      const held = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Held digest topic",
+          bodyMd: "Awaiting approval.",
+        }),
+      );
+      await database.sql`
+        UPDATE core.posts SET visibility = 'unapproved' WHERE id = ${held.postId}
+      `;
+
+      const queued = await queueDigests(database.sql, "weekly");
+      expect(queued).toHaveLength(1);
+      expect(
+        await deliverDigestEmail(
+          database.sql,
+          options,
+          queued[0] ?? { intentId: "0", deliveryId: "0" },
         ),
       ).toBe("skipped");
       expect(store.list()).toEqual([]);

@@ -62,6 +62,13 @@ export async function queueDigests(
     FROM core.digest_subscriptions s
     JOIN core.members m ON m.id = s.member_id AND m.state = 'active'
     WHERE s.frequency = ${frequency}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM core.digest_deliveries d
+        JOIN core.delivery_intents i
+          ON i.kind = 'digest' AND i.ref_id = d.id AND i.channel = 'email' AND i.delivered_at IS NULL
+        WHERE d.member_id = s.member_id AND d.frequency = s.frequency
+      )
   `) as Array<{ member_id: string; last_sent_at: Date | string | null }>;
   const queued: QueuedDigest[] = [];
 
@@ -93,12 +100,6 @@ export async function queueDigests(
           RETURNING id::text AS id
         `) as Array<{ id: string }>;
 
-        await tx`
-          UPDATE core.digest_subscriptions
-          SET last_sent_at = ${now}, updated_at = now()
-          WHERE member_id = ${row.member_id}
-        `;
-
         return intent === undefined ? null : { deliveryId: delivery.id, intentId: intent.id };
       },
     );
@@ -109,4 +110,39 @@ export async function queueDigests(
   }
 
   return queued;
+}
+
+export interface PendingDigestDelivery {
+  readonly memberId: string;
+  readonly deliveryId: string;
+  readonly intentId: string;
+}
+
+/**
+ * Digest deliveries whose intent was committed but whose email job may never have been
+ * enqueued (a crash or queue failure between commit and enqueue). The cron re-enqueues these
+ * with the delivery's original window; `delivery_target` refuses an already delivered intent.
+ */
+export async function pendingDigestDeliveries(
+  sql: SQL,
+  limit = 1_000,
+): Promise<readonly PendingDigestDelivery[]> {
+  const rows = (await sql`
+    SELECT
+      d.id::text AS delivery_id,
+      d.member_id::text AS member_id,
+      i.id::text AS intent_id
+    FROM core.digest_deliveries d
+    JOIN core.delivery_intents i
+      ON i.kind = 'digest' AND i.ref_id = d.id AND i.channel = 'email'
+    WHERE i.delivered_at IS NULL
+    ORDER BY d.id
+    LIMIT ${limit}
+  `) as Array<{ delivery_id: string; member_id: string; intent_id: string }>;
+
+  return rows.map((row) => ({
+    memberId: row.member_id,
+    deliveryId: row.delivery_id,
+    intentId: row.intent_id,
+  }));
 }

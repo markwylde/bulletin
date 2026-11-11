@@ -29,7 +29,11 @@ import { createCoreEventHandler } from "./core-events.ts";
 import { createDigestJobs } from "./digest.ts";
 import { createEmailJobs } from "./email.ts";
 import { createWorkerFlags } from "./flags.ts";
-import { createNotificationsEventHandler } from "./notifications.ts";
+import {
+  createNotificationsEventHandler,
+  createNotificationsFanoutWorker,
+  NOTIFICATION_FANOUT_QUEUE,
+} from "./notifications.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "workers", level: config.logLevel });
@@ -71,6 +75,14 @@ const subscribers: EventSubscriber[] = [
   },
 ];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
+const enqueueEmail = async (intentId: string): Promise<void> => {
+  await boss.boss.send("email", { intentId }, { singletonKey: `email:${intentId}` });
+};
+const enqueueFanout = async (job: { eventId: string; chunk: number }): Promise<void> => {
+  await boss.boss.send(NOTIFICATION_FANOUT_QUEUE, job, {
+    singletonKey: `fanout:${job.eventId}:${job.chunk}`,
+  });
+};
 const workerFlags = createWorkerFlags(sql);
 const digestJobs = await createDigestJobs({
   boss: boss.boss,
@@ -105,12 +117,18 @@ const eventWorker = await createEventWorker({
       sql,
       logger,
       flags: workerFlags,
-      async enqueueEmail(intentId) {
-        await boss.boss.send("email", { intentId }, { singletonKey: `email:${intentId}` });
-      },
+      enqueueEmail,
+      enqueueFanout,
     }),
   },
   logger,
+});
+const notificationFanout = await createNotificationsFanoutWorker({
+  boss: boss.boss,
+  sql,
+  logger,
+  flags: workerFlags,
+  enqueueEmail,
 });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
@@ -162,6 +180,7 @@ await startService({
     clearInterval(relayTimer);
     await relayInFlight;
     await listener.close();
+    await notificationFanout.stop();
     await digestJobs.stop();
     await emailJobs.stop();
     await maintenanceJobs.stop();
@@ -176,6 +195,7 @@ await startService({
 }).catch(async (error: unknown) => {
   clearInterval(relayTimer);
   await listener.close();
+  await notificationFanout.stop();
   await digestJobs.stop();
   await emailJobs.stop();
   await maintenanceJobs.stop();
