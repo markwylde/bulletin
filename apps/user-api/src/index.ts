@@ -22,7 +22,13 @@ import {
 import { avatarRemoveRoute, avatarUploadRoute } from "./avatars.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
-import { conversationResponse, createConversationResponse } from "./conversations.ts";
+import {
+  conversationResponse,
+  createConversationResponse,
+  leaveConversationResponse,
+  participantResponse,
+  replyConversationResponse,
+} from "./conversations.ts";
 import { draftsRoute } from "./drafts.ts";
 import { emoticonImageResponse, listEmoticonsResponse } from "./emoticons.ts";
 import { createUserApiFlags } from "./flag-guard.ts";
@@ -474,6 +480,50 @@ await startService({
         }
 
         return conversationResponse(sql, session, conversationMatch[1] ?? "");
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const conversationReplyMatch = /^\/api\/conversations\/(\d+)\/replies$/.exec(pathname);
+
+    if (request.method === "POST" && conversationReplyMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return replyConversationResponse(sql, session, conversationReplyMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const conversationParticipantsMatch = /^\/api\/conversations\/(\d+)\/participants$/.exec(
+      pathname,
+    );
+
+    if (request.method === "POST" && conversationParticipantsMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return participantResponse(sql, session, conversationParticipantsMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const conversationLeaveMatch = /^\/api\/conversations\/(\d+)\/leave$/.exec(pathname);
+
+    if (request.method === "POST" && conversationLeaveMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return leaveConversationResponse(sql, session, conversationLeaveMatch[1] ?? "", request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

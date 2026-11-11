@@ -1,4 +1,6 @@
+import type { QuotePipeline } from "@bulletin/content";
 import type { SQL } from "bun";
+import { insertQuoteSnapshot } from "../content/quotes.ts";
 import { can } from "../permissions/can.ts";
 import { memberBanned } from "../permissions/moderator.ts";
 import { type GroupSettingValue, mergeGroupSettings } from "../permissions/registry.ts";
@@ -37,6 +39,14 @@ export interface ConversationMessage {
   readonly createdAt: Date;
 }
 
+/** The viewer's own row in a conversation: folder, read marker and starter flag. */
+export interface ConversationViewer {
+  readonly isStarter: boolean;
+  readonly folder: "inbox" | "archive";
+  readonly lastReadMessageId: string | null;
+  readonly unreadCount: number;
+}
+
 /** A conversation as one current participant sees it, including the full history. */
 export interface ConversationDetail {
   readonly id: string;
@@ -44,8 +54,18 @@ export interface ConversationDetail {
   readonly starterId: string;
   readonly createdAt: Date;
   readonly lastMessageAt: Date;
+  readonly viewer: ConversationViewer;
   readonly participants: readonly ConversationParticipant[];
   readonly messages: readonly ConversationMessage[];
+}
+
+/** One active participation, used by every participant action. */
+export interface ConversationParticipation {
+  readonly conversationId: string;
+  readonly memberId: string;
+  readonly isStarter: boolean;
+  readonly folder: "inbox" | "archive";
+  readonly lastReadMessageId: string | null;
 }
 
 export interface NewConversation {
@@ -237,7 +257,9 @@ export async function readConversationForParticipant(
       c.title,
       c.starter_id::text AS starter_id,
       c.created_at,
-      c.last_message_at
+      c.last_message_at,
+      viewer.folder,
+      viewer.last_read_message_id::text AS last_read_message_id
     FROM core.conversations c
     JOIN core.conversation_participants viewer
       ON viewer.conversation_id = c.id
@@ -250,6 +272,8 @@ export async function readConversationForParticipant(
     starter_id: string;
     created_at: Date;
     last_message_at: Date;
+    folder: "inbox" | "archive";
+    last_read_message_id: string | null;
   }>;
 
   if (conversation === undefined) {
@@ -295,12 +319,24 @@ export async function readConversationForParticipant(
     created_at: Date;
   }>;
 
+  const lastRead = conversation.last_read_message_id;
+  const unreadCount =
+    lastRead === null
+      ? messages.length
+      : messages.filter((row) => BigInt(row.id) > BigInt(lastRead)).length;
+
   return {
     id: conversation.id,
     title: conversation.title,
     starterId: conversation.starter_id,
     createdAt: new Date(conversation.created_at),
     lastMessageAt: new Date(conversation.last_message_at),
+    viewer: {
+      isStarter: conversation.starter_id === memberId,
+      folder: conversation.folder,
+      lastReadMessageId: lastRead,
+      unreadCount,
+    },
     participants: participants.map((row) => ({
       id: row.id,
       displayName: row.display_name,
@@ -313,5 +349,272 @@ export async function readConversationForParticipant(
       bodyHtml: row.body_html,
       createdAt: new Date(row.created_at),
     })),
+  };
+}
+
+/** Locks the conversation row so a reply, invite and removal cannot interleave. */
+export async function lockConversationForWrite(sql: SQL, conversationId: string): Promise<boolean> {
+  const rows = (await sql`
+    SELECT id FROM core.conversations WHERE id = ${conversationId} FOR UPDATE
+  `) as unknown[];
+
+  return rows.length > 0;
+}
+
+export async function readParticipation(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+): Promise<ConversationParticipation | null> {
+  const [row] = (await sql`
+    SELECT
+      c.id::text AS conversation_id,
+      c.starter_id::text AS starter_id,
+      p.member_id::text AS member_id,
+      p.folder,
+      p.last_read_message_id::text AS last_read_message_id
+    FROM core.conversations c
+    JOIN core.conversation_participants p
+      ON p.conversation_id = c.id
+     AND p.member_id = ${memberId}
+     AND p.state = 'active'
+    WHERE c.id = ${conversationId}
+  `) as Array<{
+    conversation_id: string;
+    starter_id: string;
+    member_id: string;
+    folder: "inbox" | "archive";
+    last_read_message_id: string | null;
+  }>;
+
+  return row === undefined
+    ? null
+    : {
+        conversationId: row.conversation_id,
+        memberId: row.member_id,
+        isStarter: row.starter_id === row.member_id,
+        folder: row.folder,
+        lastReadMessageId: row.last_read_message_id,
+      };
+}
+
+/** The row's current state, including a former participant's block flag. */
+export async function readParticipantState(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+): Promise<{
+  readonly state: "active" | "left" | "removed";
+  readonly blockReinvite: boolean;
+} | null> {
+  const [row] = (await sql`
+    SELECT state, block_reinvite
+    FROM core.conversation_participants
+    WHERE conversation_id = ${conversationId} AND member_id = ${memberId}
+  `) as Array<{ state: "active" | "left" | "removed"; block_reinvite: boolean }>;
+
+  return row === undefined ? null : { state: row.state, blockReinvite: row.block_reinvite };
+}
+
+export async function countActiveParticipants(sql: SQL, conversationId: string): Promise<number> {
+  const [row] = (await sql`
+    SELECT count(*)::int AS count
+    FROM core.conversation_participants
+    WHERE conversation_id = ${conversationId} AND state = 'active'
+  `) as Array<{ count: number }>;
+
+  return row?.count ?? 0;
+}
+
+export async function countConversationMessages(sql: SQL, conversationId: string): Promise<bigint> {
+  const [row] = (await sql`
+    SELECT count(*)::bigint AS count
+    FROM core.conversation_messages
+    WHERE conversation_id = ${conversationId}
+  `) as Array<{ count: bigint | string }>;
+
+  return row === undefined ? 0n : BigInt(row.count);
+}
+
+/**
+ * Records a new message: the conversation moves to the top, archived participants return to
+ * the inbox (spec: archive + auto-unarchive on reply) and the author has read their own copy.
+ */
+export async function recordConversationReply(
+  sql: SQL,
+  input: {
+    readonly conversationId: string;
+    readonly messageId: string;
+    readonly authorId: string;
+    readonly at: Date;
+  },
+): Promise<void> {
+  await touchConversation(sql, input.conversationId, input.at);
+  await sql`
+    UPDATE core.conversation_participants
+    SET folder = 'inbox'
+    WHERE conversation_id = ${input.conversationId}
+      AND state = 'active'
+      AND folder = 'archive'
+  `;
+  await sql`
+    UPDATE core.conversation_participants
+    SET last_read_message_id = ${input.messageId}, folder = 'inbox'
+    WHERE conversation_id = ${input.conversationId}
+      AND member_id = ${input.authorId}
+      AND state = 'active'
+  `;
+}
+
+/** Marks every current message read; the page renders the whole history. */
+export async function markConversationRead(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+): Promise<boolean> {
+  const rows = (await sql`
+    UPDATE core.conversation_participants p
+    SET last_read_message_id = COALESCE(
+      (SELECT max(id) FROM core.conversation_messages WHERE conversation_id = ${conversationId}),
+      p.last_read_message_id
+    )
+    WHERE p.conversation_id = ${conversationId}
+      AND p.member_id = ${memberId}
+      AND p.state = 'active'
+    RETURNING 1
+  `) as unknown[];
+
+  return rows.length > 0;
+}
+
+export async function setParticipantFolder(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+  folder: "inbox" | "archive",
+): Promise<boolean> {
+  const rows = (await sql`
+    UPDATE core.conversation_participants
+    SET folder = ${folder}
+    WHERE conversation_id = ${conversationId}
+      AND member_id = ${memberId}
+      AND state = 'active'
+    RETURNING 1
+  `) as unknown[];
+
+  return rows.length > 0;
+}
+
+/** Re-activates a former participant (or inserts one) with the full history unread. */
+export async function inviteParticipant(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+): Promise<void> {
+  await sql`
+    INSERT INTO core.conversation_participants (conversation_id, member_id)
+    VALUES (${conversationId}, ${memberId})
+    ON CONFLICT (conversation_id, member_id) DO UPDATE
+      SET state = 'active',
+          joined_at = now(),
+          left_at = NULL,
+          last_read_message_id = NULL,
+          folder = 'inbox',
+          block_reinvite = false
+  `;
+}
+
+export async function markParticipantRemoved(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+): Promise<boolean> {
+  const rows = (await sql`
+    UPDATE core.conversation_participants
+    SET state = 'removed', left_at = now()
+    WHERE conversation_id = ${conversationId}
+      AND member_id = ${memberId}
+      AND state = 'active'
+    RETURNING 1
+  `) as unknown[];
+
+  return rows.length > 0;
+}
+
+export async function markParticipantLeft(
+  sql: SQL,
+  conversationId: string,
+  memberId: string,
+  blockReinvite: boolean,
+): Promise<boolean> {
+  const rows = (await sql`
+    UPDATE core.conversation_participants
+    SET state = 'left', left_at = now(), block_reinvite = ${blockReinvite}
+    WHERE conversation_id = ${conversationId}
+      AND member_id = ${memberId}
+      AND state = 'active'
+    RETURNING 1
+  `) as unknown[];
+
+  return rows.length > 0;
+}
+
+/** Messages can quote only messages from the same conversation the author still participates in. */
+export function createConversationQuotePipeline(sql: SQL, conversationId: string): QuotePipeline {
+  return {
+    resolver: {
+      async canRead(ref, authorId): Promise<boolean> {
+        if (ref.kind !== "message") {
+          return false;
+        }
+
+        const rows = (await sql`
+          SELECT 1
+          FROM core.conversation_messages msg
+          JOIN core.conversation_participants p
+            ON p.conversation_id = msg.conversation_id
+           AND p.member_id = ${authorId}
+           AND p.state = 'active'
+          WHERE msg.id = ${ref.id}
+            AND msg.conversation_id = ${conversationId}
+          LIMIT 1
+        `) as unknown[];
+
+        return rows.length > 0;
+      },
+      async load(ref) {
+        if (ref.kind !== "message") {
+          return null;
+        }
+
+        const [row] = (await sql`
+          SELECT
+            msg.id::text AS id,
+            msg.author_id::text AS author_id,
+            msg.body_md,
+            msg.conversation_id::text AS conversation_id
+          FROM core.conversation_messages msg
+          WHERE msg.id = ${ref.id}
+            AND msg.conversation_id = ${conversationId}
+        `) as Array<{
+          id: string;
+          author_id: string;
+          body_md: string;
+          conversation_id: string;
+        }>;
+
+        return row === undefined
+          ? null
+          : {
+              ref: { kind: "message", id: row.id },
+              sourceAuthorId: row.author_id,
+              bodyMd: row.body_md,
+              contextId: row.conversation_id,
+            };
+      },
+    },
+    snapshots: {
+      create: (draft) => insertQuoteSnapshot(sql, draft),
+    },
   };
 }

@@ -14,9 +14,10 @@ import {
   readPmPolicy,
   readStartUsage,
   recipientIgnores,
-  touchConversation,
+  recordConversationReply,
 } from "./repository.ts";
 
+export * from "./manage.ts";
 export * from "./repository.ts";
 
 const MEMBER_ID = /^[1-9]\d{0,18}$/;
@@ -181,7 +182,12 @@ export async function startConversation(
         bodyText: rendered.bodyText,
       });
 
-      await touchConversation(tx, conversation.id, message.createdAt);
+      await recordConversationReply(tx, {
+        conversationId: conversation.id,
+        messageId: message.id,
+        authorId: input.actorId,
+        at: message.createdAt,
+      });
 
       await emit(tx, {
         type: "pm.sent",

@@ -1,5 +1,10 @@
 import {
+  type ConversationParticipantFailure,
+  inviteConversationParticipant,
+  leaveConversation,
   readConversationForParticipant,
+  removeConversationParticipant,
+  replyToConversation,
   type StartConversationFailure,
   startConversation,
 } from "@bulletin/domain/conversations";
@@ -88,4 +93,101 @@ export async function conversationResponse(
   const conversation = await readConversationForParticipant(sql, conversationId, session.memberId);
 
   return conversation === null ? json({ code: "not_found" }, 404) : json(conversation);
+}
+
+function participantFailure(outcome: ConversationParticipantFailure): Response {
+  switch (outcome.code) {
+    case "recipient_limit":
+      return json({ code: outcome.code, limit: outcome.limit }, 400);
+    case "not_found":
+      return json({ code: outcome.code }, 404);
+    case "already_participant":
+      return json({ code: outcome.code }, 409);
+    case "forbidden":
+    case "pm_disabled":
+    case "recipient_unavailable":
+    case "invite_blocked":
+      return json({ code: outcome.code }, 403);
+    default:
+      return json({ code: outcome.code }, 400);
+  }
+}
+
+/** `POST /api/conversations/<id>/replies` (task 2.1). */
+export async function replyConversationResponse(
+  sql: SQL,
+  session: Session,
+  conversationId: string,
+  request: Request,
+): Promise<Response> {
+  const body = await bodyRecord(request);
+
+  if (body === null || typeof body.bodyMd !== "string") {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const outcome = await replyToConversation(sql, {
+    actorId: session.memberId,
+    conversationId,
+    bodyMd: body.bodyMd,
+  });
+
+  if (!outcome.ok) {
+    if (outcome.code === "not_found") {
+      return json({ code: outcome.code }, 404);
+    }
+
+    return json({ code: outcome.code }, outcome.code === "pm_disabled" ? 403 : 400);
+  }
+
+  return json({ ok: true, ...outcome.result });
+}
+
+/** `POST /api/conversations/<id>/participants` with `{action:"invite"|"remove", memberId}`. */
+export async function participantResponse(
+  sql: SQL,
+  session: Session,
+  conversationId: string,
+  request: Request,
+): Promise<Response> {
+  const body = await bodyRecord(request);
+  const action = body?.action;
+  const memberId = typeof body?.memberId === "string" ? body.memberId : "";
+
+  if (body === null || (action !== "invite" && action !== "remove")) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const outcome =
+    action === "invite"
+      ? await inviteConversationParticipant(sql, {
+          actorId: session.memberId,
+          conversationId,
+          memberId,
+        })
+      : await removeConversationParticipant(sql, {
+          actorId: session.memberId,
+          conversationId,
+          memberId,
+        });
+
+  return outcome.ok ? json({ ok: true }) : participantFailure(outcome);
+}
+
+/** `POST /api/conversations/<id>/leave` (task 2.1); access ends immediately. */
+export async function leaveConversationResponse(
+  sql: SQL,
+  session: Session,
+  conversationId: string,
+  request: Request,
+): Promise<Response> {
+  const body = await bodyRecord(request);
+  const blockReinvite = body?.blockReinvite === true;
+  const outcome = await leaveConversation(sql, {
+    actorId: session.memberId,
+    conversationId,
+    blockReinvite,
+  });
+
+  return outcome.ok ? json({ ok: true }) : participantFailure(outcome);
 }

@@ -8,12 +8,21 @@ import {
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
-import { readConversationForParticipant, startConversation } from "@bulletin/domain/conversations";
+import {
+  inviteConversationParticipant,
+  leaveConversation,
+  readConversationForParticipant,
+  readStartUsage,
+  startConversation,
+} from "@bulletin/domain/conversations";
 import { insertIgnore } from "@bulletin/domain/relationships";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import {
   conversationResponse,
   createConversationResponse,
+  leaveConversationResponse,
+  participantResponse,
+  replyConversationResponse,
 } from "../../apps/user-api/src/conversations.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -122,6 +131,28 @@ async function conversationCount(database: TestDatabase): Promise<number> {
   `) as Array<{ count: number }>;
 
   return row?.count ?? 0;
+}
+
+async function startFixture(
+  database: TestDatabase,
+  input: {
+    readonly starter: string;
+    readonly recipients: readonly string[];
+    readonly title?: string;
+  },
+): Promise<string> {
+  const outcome = await startConversation(database.sql, {
+    actorId: input.starter,
+    title: input.title ?? "Fixture conversation",
+    bodyMd: "First message.",
+    recipientIds: input.recipients,
+  });
+
+  if (!outcome.ok) {
+    throw new Error(`Could not start the conversation: ${outcome.code}`);
+  }
+
+  return outcome.result.conversationId;
 }
 
 integrationDescribe("conversation access", () => {
@@ -456,6 +487,275 @@ integrationDescribe("starting a conversation", () => {
       expect(empty.status).toBe(400);
       expect(await empty.json()).toEqual({ code: "invalid_body" });
       expect(await conversationCount(database)).toBe(0);
+    });
+  }, 30_000);
+});
+
+integrationDescribe("conversation replies and participants", () => {
+  test("a participant replies, the conversation moves up and pm.sent carries the new version", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      const response = await replyConversationResponse(
+        database.sql,
+        session(recipient),
+        conversationId,
+        postRequest({ bodyMd: "Second **reply**." }),
+      );
+
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { messageId: string };
+      const detail = await readConversationForParticipant(database.sql, conversationId, starter);
+
+      expect(detail?.messages).toHaveLength(2);
+      expect(detail?.messages[1]?.bodyHtml).toContain("<strong>reply</strong>");
+      expect(detail?.viewer.unreadCount).toBe(1);
+
+      const events = await pmSentEvents(database);
+      expect(events).toHaveLength(2);
+      expect(events[1]?.aggregateId).toBe(conversationId);
+      expect(events[1]?.aggregateVersion).toBe("2");
+      expect(events[1]?.payload).toEqual({
+        conversationId,
+        messageId: body.messageId,
+        senderId: recipient,
+      });
+
+      const empty = await replyConversationResponse(
+        database.sql,
+        session(recipient),
+        conversationId,
+        postRequest({ bodyMd: "   " }),
+      );
+      expect(empty.status).toBe(400);
+      expect(await empty.json()).toEqual({ code: "invalid_body" });
+    });
+  }, 30_000);
+
+  test("non-participants and PM-disabled members cannot reply", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const outsider = await memberId(database, "new-member");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      const denied = await replyConversationResponse(
+        database.sql,
+        session(outsider),
+        conversationId,
+        postRequest({ bodyMd: "Not mine." }),
+      );
+      expect(denied.status).toBe(404);
+      expect(await denied.json()).toEqual({ code: "not_found" });
+
+      const [group] = (await database.sql`
+        INSERT INTO core.groups (key, title, is_system)
+        VALUES ('reply_no_pm', 'No replies', false)
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (group === undefined) {
+        throw new Error("Could not create the group");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${group.id}, 'restrictions.cannot_pm', 'true'::jsonb)
+      `;
+      await database.sql`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        VALUES (${recipient}, ${group.id}, false)
+      `;
+
+      const restricted = await replyConversationResponse(
+        database.sql,
+        session(recipient),
+        conversationId,
+        postRequest({ bodyMd: "Blocked." }),
+      );
+      expect(restricted.status).toBe(403);
+      expect(await restricted.json()).toEqual({ code: "pm_disabled" });
+    });
+  }, 30_000);
+
+  test("the starter invites within the recipient limit and the newcomer sees full history", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const first = await memberId(database, "member-2");
+      const second = await memberId(database, "member-es");
+      const third = await memberId(database, "member-fr");
+      const conversationId = await startFixture(database, { starter, recipients: [first] });
+
+      // The default recipient limit is 1, so a second recipient is refused.
+      const overLimit = await participantResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ action: "invite", memberId: second }),
+      );
+      expect(overLimit.status).toBe(400);
+      expect(await overLimit.json()).toEqual({ code: "recipient_limit", limit: 1 });
+
+      await setGroupSetting(database, "members", "posting.pm_recipients", 2);
+
+      const invited = await participantResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ action: "invite", memberId: second }),
+      );
+      expect(invited.status).toBe(200);
+
+      const newcomer = await readConversationForParticipant(database.sql, conversationId, second);
+      expect(newcomer?.messages).toHaveLength(1);
+      expect(newcomer?.participants).toHaveLength(3);
+      expect(newcomer?.viewer.unreadCount).toBe(1);
+
+      const again = await participantResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ action: "invite", memberId: second }),
+      );
+      expect(again.status).toBe(409);
+      expect(await again.json()).toEqual({ code: "already_participant" });
+
+      // A non-starter cannot invite, even when a slot is free.
+      await setGroupSetting(database, "members", "posting.pm_recipients", 3);
+      const forbidden = await participantResponse(
+        database.sql,
+        session(first),
+        conversationId,
+        postRequest({ action: "invite", memberId: third }),
+      );
+      expect(forbidden.status).toBe(403);
+      expect(await forbidden.json()).toEqual({ code: "forbidden" });
+    });
+  }, 30_000);
+
+  test("removal ends access to the history and only the starter may remove", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const other = await memberId(database, "member-es");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      const notStarter = await participantResponse(
+        database.sql,
+        session(recipient),
+        conversationId,
+        postRequest({ action: "remove", memberId: starter }),
+      );
+      expect(notStarter.status).toBe(403);
+      expect(await notStarter.json()).toEqual({ code: "forbidden" });
+
+      const self = await participantResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ action: "remove", memberId: starter }),
+      );
+      expect(self.status).toBe(400);
+      expect(await self.json()).toEqual({ code: "cannot_remove_self" });
+
+      const removed = await participantResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ action: "remove", memberId: recipient }),
+      );
+      expect(removed.status).toBe(200);
+
+      const denied = await conversationResponse(database.sql, session(recipient), conversationId);
+      expect(denied.status).toBe(404);
+      expect(
+        await readConversationForParticipant(database.sql, conversationId, recipient),
+      ).toBeNull();
+
+      const [row] = (await database.sql`
+        SELECT state, left_at FROM core.conversation_participants
+        WHERE conversation_id = ${conversationId} AND member_id = ${recipient}
+      `) as Array<{ state: string; left_at: Date | null }>;
+      expect(row?.state).toBe("removed");
+      expect(row?.left_at).not.toBeNull();
+
+      // A removed participant cannot be re-invited by a non-starter; the starter can.
+      const reInvite = await inviteConversationParticipant(database.sql, {
+        actorId: starter,
+        conversationId,
+        memberId: recipient,
+      });
+      expect(reInvite.ok).toBe(true);
+
+      const outsiderRemove = await participantResponse(
+        database.sql,
+        session(other),
+        conversationId,
+        postRequest({ action: "remove", memberId: recipient }),
+      );
+      expect(outsiderRemove.status).toBe(404);
+    });
+  }, 30_000);
+
+  test("leaving ends access, frees the quota slot and can block re-invites", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      expect((await readStartUsage(database.sql, recipient)).active).toBe(1);
+
+      const left = await leaveConversationResponse(
+        database.sql,
+        session(recipient),
+        conversationId,
+        postRequest({ blockReinvite: true }),
+      );
+      expect(left.status).toBe(200);
+
+      expect((await readStartUsage(database.sql, recipient)).active).toBe(0);
+      expect(
+        (await conversationResponse(database.sql, session(recipient), conversationId)).status,
+      ).toBe(404);
+      expect(
+        (
+          await replyConversationResponse(
+            database.sql,
+            session(recipient),
+            conversationId,
+            postRequest({ bodyMd: "After leaving." }),
+          )
+        ).status,
+      ).toBe(404);
+
+      const blocked = await inviteConversationParticipant(database.sql, {
+        actorId: starter,
+        conversationId,
+        memberId: recipient,
+      });
+      expect(blocked).toEqual({ ok: false, code: "invite_blocked" });
+
+      // Without the block flag, a former participant can be invited back and sees history.
+      const second = await memberId(database, "member-es");
+      const secondConversation = await startFixture(database, {
+        starter,
+        recipients: [second],
+      });
+      await leaveConversation(database.sql, {
+        actorId: second,
+        conversationId: secondConversation,
+      });
+      const reinvited = await inviteConversationParticipant(database.sql, {
+        actorId: starter,
+        conversationId: secondConversation,
+        memberId: second,
+      });
+      expect(reinvited.ok).toBe(true);
+      expect(
+        (await readConversationForParticipant(database.sql, secondConversation, second))?.messages,
+      ).toHaveLength(1);
     });
   }, 30_000);
 });
