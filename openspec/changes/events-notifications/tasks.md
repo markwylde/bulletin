@@ -22,7 +22,7 @@
 
 ## 4. Realtime
 
-- [ ] 4.1 SSE endpoint (session validation, LISTEN wake-up, durable reads, cursor IDs, replay or resync, heartbeat), with integration tests for short/long disconnect and the hidden-forum scenario
+- [x] 4.1 SSE endpoint (session validation, LISTEN wake-up, durable reads, cursor IDs, replay or resync, heartbeat), with integration tests for short/long disconnect and the hidden-forum scenario
 - [ ] 4.2 Control events `resync`, `session_revoked` and `reauth_required` with the shared client handlers, defined in one typed contract; integration tests for revocation and grace expiry, and an E2E that a revoked session's open page switches to logged out
 - [ ] 4.3 Client stream handler (count updates, new-replies banner, logout on revocation), with E2E for the banner and revocation scenarios
 

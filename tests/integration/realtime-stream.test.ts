@@ -1,0 +1,475 @@
+import { describe, expect, test } from "bun:test";
+import {
+  baseSeedModule,
+  flagsSeedModule,
+  forumExtrasSeedModule,
+  groupsSeedModule,
+  membersSeedModule,
+  permissionFixtureSeedModule,
+  runSeeds,
+  SeedRegistry,
+} from "@bulletin/db/seed";
+import type { SessionRecord } from "@bulletin/domain/auth";
+import { emit } from "@bulletin/domain/events";
+import { createNotification } from "@bulletin/domain/notifications";
+import { reply, startTopic } from "@bulletin/domain/topics";
+import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { streamResponse } from "../../apps/user-api/src/stream.ts";
+
+const adminUrl = Bun.env.TEST_DATABASE_URL;
+const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
+
+interface SseEvent {
+  readonly id?: string;
+  readonly event?: string;
+  readonly data?: string;
+  readonly comment?: string;
+}
+
+class StreamReader {
+  private buffer = "";
+
+  constructor(private readonly reader: ReadableStreamDefaultReader<Uint8Array>) {}
+
+  async next(timeoutMs = 2_000): Promise<SseEvent | null> {
+    const deadline = Date.now() + timeoutMs;
+
+    for (;;) {
+      const boundary = this.buffer.indexOf("\n\n");
+
+      if (boundary !== -1) {
+        const block = this.buffer.slice(0, boundary);
+        this.buffer = this.buffer.slice(boundary + 2);
+
+        if (block.trim() === "" || block.startsWith(":")) {
+          return { comment: block.trim() };
+        }
+
+        const event: { id?: string; event?: string; data?: string } = {};
+
+        for (const line of block.split("\n")) {
+          if (line.startsWith("id: ")) {
+            event.id = line.slice(4);
+          } else if (line.startsWith("event: ")) {
+            event.event = line.slice(7);
+          } else if (line.startsWith("data: ")) {
+            event.data = line.slice(6);
+          }
+        }
+
+        return event;
+      }
+
+      const remaining = deadline - Date.now();
+
+      if (remaining <= 0) {
+        return null;
+      }
+
+      const chunk = await Promise.race([this.reader.read(), Bun.sleep(remaining).then(() => null)]);
+
+      if (chunk === null || chunk.done) {
+        return null;
+      }
+
+      this.buffer += new TextDecoder().decode(chunk.value);
+    }
+  }
+
+  async event(name: string, timeoutMs = 3_000): Promise<SseEvent | null> {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const event = await this.next(deadline - Date.now());
+
+      if (event === null) {
+        return null;
+      }
+
+      if (event.event === name) {
+        return event;
+      }
+    }
+
+    return null;
+  }
+}
+
+async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Promise<void> {
+  if (adminUrl === undefined) {
+    throw new Error("TEST_DATABASE_URL is required");
+  }
+
+  await withTestDatabase({ adminUrl, prefix: "realtime" }, async (database) => {
+    await runSeeds({
+      sql: database.sql,
+      registry: new SeedRegistry([
+        baseSeedModule,
+        flagsSeedModule,
+        permissionFixtureSeedModule,
+        groupsSeedModule,
+        forumExtrasSeedModule,
+        membersSeedModule,
+      ]),
+    });
+    await run(database);
+  });
+}
+
+async function memberId(database: TestDatabase, sub: string): Promise<string> {
+  const [row] = (await database.sql`
+    SELECT member_id::text AS member_id FROM pii.identities WHERE sub = ${sub}
+  `) as Array<{ member_id: string }>;
+
+  if (row === undefined) {
+    throw new Error(`Missing member ${sub}`);
+  }
+
+  return row.member_id;
+}
+
+async function forumId(database: TestDatabase, slug: string): Promise<string> {
+  const [row] = (await database.sql`
+    SELECT id::text AS id FROM core.forums WHERE slug = ${slug}
+  `) as Array<{ id: string }>;
+
+  if (row === undefined) {
+    throw new Error(`Missing forum ${slug}`);
+  }
+
+  return row.id;
+}
+
+async function createSession(
+  database: TestDatabase,
+  memberIdValue: string,
+  reauthAt: Date = new Date(Date.now() + 24 * 60 * 60 * 1_000),
+): Promise<{ id: string; record: SessionRecord }> {
+  const [row] = (await database.sql`
+    INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+    VALUES (${memberIdValue}, 'user', decode(md5(random()::text), 'hex'), ${reauthAt})
+    RETURNING id::text AS id
+  `) as Array<{ id: string }>;
+
+  if (row === undefined) {
+    throw new Error("Could not create session");
+  }
+
+  return {
+    id: row.id,
+    record: {
+      id: row.id,
+      memberId: memberIdValue,
+      kind: "user",
+      displayName: null,
+      createdAt: new Date(),
+      lastSeenAt: new Date(),
+      reauthAt,
+      lastAuthAt: new Date(),
+      reauthRetryCount: 0,
+      revokedAt: null,
+      rotatePending: false,
+      viaPreviousToken: false,
+      previousTokenExpiresAt: null,
+    },
+  };
+}
+
+function expectOk<T>(
+  outcome:
+    | { readonly ok: true; readonly result: T }
+    | { readonly ok: false; readonly code: string },
+): T {
+  if (!outcome.ok) {
+    throw new Error(`Expected success, received ${outcome.code}`);
+  }
+
+  return outcome.result;
+}
+
+async function openStream(
+  database: TestDatabase,
+  session: SessionRecord,
+  query: string,
+  options: {
+    readonly lastEventId?: string;
+    readonly heartbeatMs?: number;
+    readonly revalidateMs?: number;
+  } = {},
+): Promise<{ response: Response; reader: StreamReader }> {
+  const headers = new Headers();
+
+  if (options.lastEventId !== undefined) {
+    headers.set("last-event-id", options.lastEventId);
+  }
+
+  const response = await streamResponse({
+    sql: database.sql,
+    session,
+    request: new Request(`http://user.test/api/stream${query}`, { headers }),
+    heartbeatMs: options.heartbeatMs ?? 20,
+    revalidateMs: options.revalidateMs ?? 60_000,
+  });
+
+  if (response.body === null) {
+    throw new Error("Stream response has no body");
+  }
+
+  return { response, reader: new StreamReader(response.body.getReader()) };
+}
+
+async function notifyMember(database: TestDatabase, member: string): Promise<bigint> {
+  const eventId = await database.sql.begin(async (tx) =>
+    emit(tx, {
+      type: "member.promoted",
+      aggregateId: BigInt(member),
+      aggregateVersion: 1n,
+      payloadIds: { memberId: BigInt(member), fromGroupId: 1n, toGroupId: 2n, ruleId: 3n },
+    }),
+  );
+  const notificationId = await createNotification(database.sql, {
+    memberId: member,
+    type: "member.promoted",
+    eventId,
+  });
+
+  if (notificationId === null) {
+    throw new Error("Notification was deduplicated");
+  }
+
+  return notificationId;
+}
+
+integrationDescribe("realtime stream", () => {
+  test("sends the current count and wakes on a notification", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const { record } = await createSession(database, member);
+      const { response, reader } = await openStream(database, record, "");
+
+      try {
+        expect(response.status).toBe(200);
+        const initial = await reader.event("notifications");
+        expect(initial?.data).toBe(JSON.stringify({ count: 0 }));
+        expect(initial?.id).toMatch(/^n:\d+\|t:\d+$/);
+
+        await notifyMember(database, member);
+        const update = await reader.event("notifications");
+        expect(update?.data).toBe(JSON.stringify({ count: 1 }));
+      } finally {
+        await reader.next(50).catch(() => null);
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("announces new replies in the subscribed topic", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-2");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Realtime topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const { record } = await createSession(database, member);
+      const { response, reader } = await openStream(
+        database,
+        record,
+        `?topic=${topic.topicId}&post=${topic.postId}`,
+      );
+
+      try {
+        await reader.event("notifications");
+        const post = expectOk(
+          await reply(database.sql, {
+            actorId: author,
+            topicId: topic.topicId,
+            bodyMd: "A fresh reply.",
+          }),
+        );
+        const update = await reader.event("new_replies");
+        expect(JSON.parse(update?.data ?? "{}")).toMatchObject({
+          topicId: topic.topicId,
+          count: 1,
+          postId: post.postId,
+        });
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("cannot subscribe to a topic the viewer cannot read", async () => {
+    await withSeededDb(async (database) => {
+      const staffRoom = await forumId(database, "staff-room");
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: admin,
+          forumId: staffRoom,
+          title: "Hidden realtime topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const { record } = await createSession(database, member);
+      const response = await streamResponse({
+        sql: database.sql,
+        session: record,
+        request: new Request(
+          `http://user.test/api/stream?topic=${topic.topicId}&post=${topic.postId}`,
+        ),
+      });
+
+      expect(response.status).toBe(404);
+    });
+  }, 30_000);
+
+  test("replays the gap after a short disconnect", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-2");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Replay topic",
+          bodyMd: "Body.",
+        }),
+      );
+      const post = expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "Missed reply.",
+        }),
+      );
+      await notifyMember(database, member);
+
+      const { record } = await createSession(database, member);
+      const { response, reader } = await openStream(database, record, `?topic=${topic.topicId}`, {
+        lastEventId: `n:0|t:${topic.postId}`,
+      });
+
+      try {
+        const replies = await reader.event("new_replies");
+        expect(JSON.parse(replies?.data ?? "{}")).toMatchObject({
+          topicId: topic.topicId,
+          postId: post.postId,
+        });
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("instructs a resync when the gap is older than the replay window", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const oldId = await notifyMember(database, member);
+      await notifyMember(database, member);
+      // The missed event itself is older than the one-hour replay window.
+      await database.sql`
+        UPDATE core.notifications
+        SET created_at = now() - interval '2 hours'
+        WHERE member_id = ${member}
+      `;
+
+      const { record } = await createSession(database, member);
+      const { response, reader } = await openStream(database, record, "", {
+        lastEventId: `n:${oldId}|t:0`,
+      });
+
+      try {
+        const first = await reader.next(3_000);
+        expect(first?.event).toBe("resync");
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("sends session_revoked and closes when the session is revoked", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const { id, record } = await createSession(database, member);
+      const { response, reader } = await openStream(database, record, "");
+
+      try {
+        await reader.event("notifications");
+        await database.sql`UPDATE core.sessions SET revoked_at = now() WHERE id = ${id}`;
+        await database.sql`SELECT pg_notify('session_revoked', ${member})`;
+
+        expect((await reader.event("session_revoked"))?.event).toBe("session_revoked");
+        expect(await reader.next(500)).toBeNull();
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("refuses a session past its re-auth grace and closes an open one", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const stale = await createSession(
+        database,
+        member,
+        new Date(Date.now() - 3 * 60 * 60 * 1_000),
+      );
+      const refused = await streamResponse({
+        sql: database.sql,
+        session: stale.record,
+        request: new Request("http://user.test/api/stream"),
+      });
+      expect(refused.status).toBe(401);
+      expect(await refused.json()).toEqual({ code: "reauth_required" });
+
+      const { id, record } = await createSession(database, member);
+      const { response, reader } = await openStream(database, record, "", {
+        revalidateMs: 50,
+      });
+
+      try {
+        await reader.event("notifications");
+        await database.sql`
+          UPDATE core.sessions SET reauth_at = now() - interval '3 hours' WHERE id = ${id}
+        `;
+        expect((await reader.event("reauth_required", 2_000))?.event).toBe("reauth_required");
+        expect(await reader.next(500)).toBeNull();
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+
+  test("sends heartbeats on an idle stream", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const { record } = await createSession(database, member);
+      const { response, reader } = await openStream(database, record, "", { heartbeatMs: 20 });
+
+      try {
+        await reader.event("notifications");
+        let heartbeat: SseEvent | null = null;
+
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          heartbeat = await reader.next(1_000);
+
+          if (heartbeat?.comment !== undefined) {
+            break;
+          }
+        }
+
+        expect(heartbeat?.comment).toBe(": heartbeat");
+      } finally {
+        await response.body?.cancel().catch(() => undefined);
+      }
+    });
+  }, 30_000);
+});

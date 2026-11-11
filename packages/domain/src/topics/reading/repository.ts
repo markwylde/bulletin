@@ -1228,3 +1228,46 @@ export async function purgeExpiredTopicStubs(sql: SQL, now: Date = new Date()): 
 
   return rows.length;
 }
+
+/** Visible post ids after a stream cursor, oldest first (capped at the replay limit + 1). */
+export async function visiblePostIdsAfter(
+  sql: SQL,
+  topicId: string,
+  afterId: bigint,
+  limit: number,
+): Promise<readonly string[]> {
+  const rows = (await sql`
+    SELECT id::text AS id
+    FROM core.posts
+    WHERE topic_id = ${topicId}
+      AND visibility = 'visible'
+      AND id > ${afterId}
+    ORDER BY id
+    LIMIT ${limit}
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}
+
+export interface ReplayGap {
+  readonly missed: number;
+  readonly oldest: Date | null;
+}
+
+/** What a disconnect missed in one topic, for the stream's replay-or-resync decision. */
+export async function postReplayGap(
+  sql: SQL,
+  topicId: string,
+  afterId: bigint,
+): Promise<ReplayGap> {
+  const [row] = (await sql`
+    SELECT count(*)::int AS missed, min(created_at) AS oldest
+    FROM core.posts
+    WHERE topic_id = ${topicId} AND visibility = 'visible' AND id > ${afterId}
+  `) as Array<{ missed: number; oldest: Date | string | null }>;
+
+  return {
+    missed: row?.missed ?? 0,
+    oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest),
+  };
+}

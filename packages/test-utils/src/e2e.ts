@@ -23,6 +23,94 @@ function resolveViewport(viewport: ViewportName | Viewport): Viewport {
   return typeof viewport === "string" ? VIEWPORTS[viewport] : viewport;
 }
 
+interface OpenPage {
+  readonly view: Bun.WebView;
+  readonly pageErrors: string[];
+  readonly profileDirectory: string;
+  readonly ownsProfile: boolean;
+}
+
+/** Opens one page with error capture. The caller owns the process-wide view lifecycle. */
+async function openPage(options: PageOptions): Promise<OpenPage> {
+  const viewport = resolveViewport(options.viewport);
+  const profileDirectory =
+    options.profileDirectory ?? (await mkdtemp(join(tmpdir(), "bulletin-webview-")));
+  const ownsProfile = options.profileDirectory === undefined;
+  const errors: string[] = [];
+  const candidate = new Bun.WebView({
+    backend: { type: "chrome", url: false },
+    width: viewport.width,
+    height: viewport.height,
+    dataStore: { directory: profileDirectory },
+  });
+
+  // Set up the CDP session and exception/console capture before the real navigation.
+  await candidate.navigate("about:blank");
+  await candidate.cdp("Runtime.enable");
+  await candidate.cdp("Log.enable");
+  candidate.addEventListener<{
+    readonly exceptionDetails?: {
+      readonly text?: string;
+      readonly exception?: { readonly description?: string };
+    };
+  }>("Runtime.exceptionThrown", (event) => {
+    const details = event.data.exceptionDetails;
+    errors.push(details?.exception?.description ?? details?.text ?? "Uncaught page exception");
+  });
+  const allowedConsoleError = (message: string): boolean =>
+    (options.allowConsoleErrors ?? []).some((pattern) => pattern.test(message));
+  candidate.addEventListener<{
+    readonly type?: string;
+    readonly args?: readonly { readonly value?: unknown; readonly description?: string }[];
+  }>("Runtime.consoleAPICalled", (event) => {
+    if (event.data.type !== "error") {
+      return;
+    }
+
+    const message = (event.data.args ?? [])
+      .map((arg) => String(arg.value ?? arg.description ?? ""))
+      .join(" ");
+
+    if (!allowedConsoleError(message)) {
+      errors.push(message === "" ? "console.error" : message);
+    }
+  });
+  candidate.addEventListener<{
+    readonly entry?: {
+      readonly level?: string;
+      readonly text?: string;
+      readonly url?: string;
+    };
+  }>("Log.entryAdded", (event) => {
+    if (event.data.entry?.level === "error") {
+      const entry = event.data.entry;
+      const message = `${entry.text ?? "console error"}${entry.url === undefined ? "" : ` (${entry.url})`}`;
+
+      if (!allowedConsoleError(message)) {
+        errors.push(message);
+      }
+    }
+  });
+
+  await candidate.navigate(options.url);
+  await candidate.cdp("Emulation.setDeviceMetricsOverride", {
+    width: viewport.width,
+    height: viewport.height,
+    deviceScaleFactor: 1,
+    mobile: viewport.width < 500,
+  });
+
+  return { view: candidate, pageErrors: errors, profileDirectory, ownsProfile };
+}
+
+async function closePage(page: OpenPage): Promise<void> {
+  page.view.close();
+
+  if (page.ownsProfile) {
+    await rm(page.profileDirectory, { recursive: true, force: true });
+  }
+}
+
 /**
  * Opens a headless Chrome page with an isolated temporary profile and always cleans up.
  * E2E tests must run serially: Chrome is process-wide and closing all views resets its
@@ -32,88 +120,16 @@ export async function withPage<T>(
   options: PageOptions,
   run: (view: Bun.WebView) => Promise<T>,
 ): Promise<T> {
-  const viewport = resolveViewport(options.viewport);
-  const profileDirectory =
-    options.profileDirectory ?? (await mkdtemp(join(tmpdir(), "bulletin-webview-")));
-  const ownsProfile = options.profileDirectory === undefined;
-
-  let view: Bun.WebView | undefined;
+  let page: OpenPage | undefined;
   let lastError: unknown;
-  let pageErrors: string[] = [];
 
   try {
-    for (let attempt = 0; attempt < 3 && view === undefined; attempt += 1) {
+    for (let attempt = 0; attempt < 3 && page === undefined; attempt += 1) {
       Bun.WebView.closeAll();
       await Bun.sleep(25);
 
       try {
-        const candidate = new Bun.WebView({
-          backend: { type: "chrome", url: false },
-          width: viewport.width,
-          height: viewport.height,
-          dataStore: { directory: profileDirectory },
-        });
-        const errors: string[] = [];
-
-        // Set up the CDP session and exception/console capture before the real navigation.
-        await candidate.navigate("about:blank");
-        await candidate.cdp("Runtime.enable");
-        await candidate.cdp("Log.enable");
-        candidate.addEventListener<{
-          readonly exceptionDetails?: {
-            readonly text?: string;
-            readonly exception?: { readonly description?: string };
-          };
-        }>("Runtime.exceptionThrown", (event) => {
-          const details = event.data.exceptionDetails;
-          errors.push(
-            details?.exception?.description ?? details?.text ?? "Uncaught page exception",
-          );
-        });
-        const allowedConsoleError = (message: string): boolean =>
-          (options.allowConsoleErrors ?? []).some((pattern) => pattern.test(message));
-        candidate.addEventListener<{
-          readonly type?: string;
-          readonly args?: readonly { readonly value?: unknown; readonly description?: string }[];
-        }>("Runtime.consoleAPICalled", (event) => {
-          if (event.data.type !== "error") {
-            return;
-          }
-
-          const message = (event.data.args ?? [])
-            .map((arg) => String(arg.value ?? arg.description ?? ""))
-            .join(" ");
-
-          if (!allowedConsoleError(message)) {
-            errors.push(message === "" ? "console.error" : message);
-          }
-        });
-        candidate.addEventListener<{
-          readonly entry?: {
-            readonly level?: string;
-            readonly text?: string;
-            readonly url?: string;
-          };
-        }>("Log.entryAdded", (event) => {
-          if (event.data.entry?.level === "error") {
-            const entry = event.data.entry;
-            const message = `${entry.text ?? "console error"}${entry.url === undefined ? "" : ` (${entry.url})`}`;
-
-            if (!allowedConsoleError(message)) {
-              errors.push(message);
-            }
-          }
-        });
-
-        await candidate.navigate(options.url);
-        await candidate.cdp("Emulation.setDeviceMetricsOverride", {
-          width: viewport.width,
-          height: viewport.height,
-          deviceScaleFactor: 1,
-          mobile: viewport.width < 500,
-        });
-        view = candidate;
-        pageErrors = errors;
+        page = await openPage(options);
       } catch (error) {
         lastError = error;
         Bun.WebView.closeAll();
@@ -121,24 +137,85 @@ export async function withPage<T>(
       }
     }
 
-    if (view === undefined) {
+    if (page === undefined) {
       throw lastError instanceof Error ? lastError : new Error("Could not start Chrome");
     }
 
-    const result = await run(view);
+    const result = await run(page.view);
 
-    if (pageErrors.length > 0) {
-      throw new Error(`Page errors (uncaught or console):\n${pageErrors.join("\n")}`);
+    if (page.pageErrors.length > 0) {
+      throw new Error(`Page errors (uncaught or console):\n${page.pageErrors.join("\n")}`);
     }
 
     return result;
   } finally {
-    view?.close();
-    Bun.WebView.closeAll();
-
-    if (ownsProfile) {
-      await rm(profileDirectory, { recursive: true, force: true });
+    if (page !== undefined) {
+      await closePage(page);
     }
+
+    Bun.WebView.closeAll();
+  }
+}
+
+/**
+ * Opens several independent pages (separate Chrome profiles, one process) and fails on any
+ * uncaught or console error in any of them. Use for tests that must act in one page while
+ * another stays open, e.g. staff revoking a member's session.
+ */
+export async function withPages<T>(
+  options: Readonly<Record<string, PageOptions>>,
+  run: (views: Readonly<Record<string, Bun.WebView>>) => Promise<T>,
+): Promise<T> {
+  let pages: Record<string, OpenPage> = {};
+  let lastError: unknown;
+  let opened = false;
+
+  try {
+    for (let attempt = 0; attempt < 3 && !opened; attempt += 1) {
+      Bun.WebView.closeAll();
+      await Bun.sleep(25);
+      pages = {};
+
+      try {
+        for (const [name, pageOptions] of Object.entries(options)) {
+          pages[name] = await openPage(pageOptions);
+        }
+
+        opened = true;
+      } catch (error) {
+        lastError = error;
+
+        for (const page of Object.values(pages)) {
+          await closePage(page);
+        }
+
+        pages = {};
+        Bun.WebView.closeAll();
+        await Bun.sleep(100);
+      }
+    }
+
+    if (!opened) {
+      throw lastError instanceof Error ? lastError : new Error("Could not start Chrome");
+    }
+
+    const views = Object.fromEntries(
+      Object.entries(pages).map(([name, page]) => [name, page.view]),
+    ) as Record<string, Bun.WebView>;
+    const result = await run(views);
+    const errors = Object.values(pages).flatMap((page) => page.pageErrors);
+
+    if (errors.length > 0) {
+      throw new Error(`Page errors (uncaught or console):\n${errors.join("\n")}`);
+    }
+
+    return result;
+  } finally {
+    for (const page of Object.values(pages)) {
+      await closePage(page);
+    }
+
+    Bun.WebView.closeAll();
   }
 }
 

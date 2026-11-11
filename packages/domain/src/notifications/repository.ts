@@ -108,6 +108,8 @@ export async function createNotification(
     SET notification_id = ${id}
     WHERE event_id = ${input.eventId} AND member_id = ${input.memberId}
   `;
+  // Wake that member's open streams; the count itself is read from durable state (ADR 0003).
+  await sql`SELECT pg_notify('notify_member', ${input.memberId})`;
 
   return id;
 }
@@ -733,5 +735,34 @@ export async function notificationEmailContext(
     topicTitle: row.topic_title,
     topicSlug: row.topic_slug,
     postId: row.post_id,
+  };
+}
+
+/** Latest durable notification id for a member (stream cursor). */
+export async function maxNotificationId(sql: SQL, memberId: string): Promise<bigint> {
+  const [row] = (await sql`
+    SELECT coalesce(max(id), 0)::text AS id
+    FROM core.notifications
+    WHERE member_id = ${memberId}
+  `) as Array<{ id: string }>;
+
+  return BigInt(row?.id ?? "0");
+}
+
+/** What a disconnect missed in notifications, for the stream's replay-or-resync decision. */
+export async function notificationReplayGap(
+  sql: SQL,
+  memberId: string,
+  afterId: bigint,
+): Promise<{ readonly missed: number; readonly oldest: Date | null }> {
+  const [row] = (await sql`
+    SELECT count(*)::int AS missed, min(created_at) AS oldest
+    FROM core.notifications
+    WHERE member_id = ${memberId} AND id > ${afterId}
+  `) as Array<{ missed: number; oldest: Date | string | null }>;
+
+  return {
+    missed: row?.missed ?? 0,
+    oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest),
   };
 }

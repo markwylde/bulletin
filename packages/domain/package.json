@@ -25,7 +25,8 @@
     "./topics": "./src/topics/index.ts",
     "./polls": "./src/polls/index.ts",
     "./attachments": "./src/attachments/index.ts",
-    "./attachments/processing": "./src/attachments/processing.ts"
+    "./attachments/processing": "./src/attachments/processing.ts",
+    "./events/stream": "./src/events/stream.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

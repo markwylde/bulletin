@@ -332,6 +332,8 @@ export async function insertPost(
     throw new Error("Could not insert post");
   }
 
+  // Wake readers' streams for this topic; they re-read durable posts and filter by can().
+  await tx`SELECT pg_notify('topic_activity', ${input.topicId})`;
   return { id: row.id, position: row.position, createdAt: row.created_at };
 }
 

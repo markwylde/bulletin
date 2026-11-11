@@ -34,8 +34,11 @@ import {
   notificationReadResponse,
 } from "./notifications.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
+
 import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
+import { streamResponse } from "./stream.ts";
+import { createStreamHub } from "./stream-hub.ts";
 import {
   createTopicResponse,
   editPostResponse,
@@ -64,6 +67,7 @@ const sql = createServiceSql("user-api", databaseUrl);
 const flags = createUserApiFlags(sql);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
 const listener = await createListenerCheck(sql);
+const streamHub = await createStreamHub(sql);
 const auth = await createAuthService({
   sql,
   kind: "user",
@@ -84,6 +88,22 @@ await startService({
   port,
   async fetch(request) {
     const { pathname } = new URL(request.url);
+
+    if (pathname === "/api/stream") {
+      if (request.method !== "GET") {
+        return Response.json({ code: "method_not_allowed" }, { status: 405 });
+      }
+
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return streamResponse({ sql, session, request, hub: streamHub });
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
 
     if (request.method === "GET" && pathname === "/api/forums/redirect-counts") {
       const response = await auth.handle(request, async ({ session }) =>
@@ -487,11 +507,13 @@ await startService({
   },
   security: { nodeEnv: config.nodeEnv, connectSrc: [config.authIssuer] },
   async onShutdown() {
+    await streamHub.close();
     await auth.close();
     await listener.close();
     await sql.close();
   },
 }).catch(async (error: unknown) => {
+  await streamHub.close();
   await auth.close();
   await listener.close();
   await sql.close();
