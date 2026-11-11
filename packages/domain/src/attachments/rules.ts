@@ -38,6 +38,8 @@ export const ATTACHMENT_MAX_FILENAME_LENGTH = 255;
 export const ATTACHMENT_MAX_PIXELS = 40_000_000;
 export const ATTACHMENT_THUMBNAIL_MAX_EDGE = 480;
 export const ATTACHMENT_IMAGE_MAX_EDGE = 2_400;
+/** Preview cards are small; proxy images are capped tighter than post attachments. */
+export const UNFURL_IMAGE_MAX_EDGE = 1_200;
 
 export function isAttachmentContentType(value: string): value is AttachmentContentType {
   return (ATTACHMENT_CONTENT_TYPES as readonly string[]).includes(value);

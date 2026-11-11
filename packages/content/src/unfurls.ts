@@ -75,7 +75,7 @@ function link(url: string, body: string, className: string): string {
   return `<a class="${className}" href="${escapeHtml(url)}" rel="nofollow ugc noopener">${body}</a>`;
 }
 
-/** The preview card is text-only until `attachments-avatars` proxies images (ADR 0019). */
+/** The preview card only ever renders the worker-proxied local image (ADR 0019). */
 export function renderUnfurlCard(preview: UnfurlPreview): string {
   const url = normaliseUnfurlUrl(preview.url);
 
@@ -83,6 +83,10 @@ export function renderUnfurlCard(preview: UnfurlPreview): string {
     return escapeHtml(preview.title);
   }
 
+  const image =
+    preview.imageProxy !== null && /^\/unfurl\/[0-9a-f]{64}$/.test(preview.imageProxy)
+      ? `<img class="unfurl-image" src="${escapeHtml(preview.imageProxy)}" alt="" loading="lazy" decoding="async">`
+      : "";
   const parts = [`<span class="unfurl-title">${escapeHtml(preview.title)}</span>`];
 
   if (preview.description !== null && preview.description !== "") {
@@ -93,7 +97,7 @@ export function renderUnfurlCard(preview: UnfurlPreview): string {
     parts.push(`<span class="unfurl-site">${escapeHtml(preview.siteName)}</span>`);
   }
 
-  return link(url, parts.join(""), "unfurl-card");
+  return link(url, `${image}${parts.join("")}`, "unfurl-card");
 }
 
 /**

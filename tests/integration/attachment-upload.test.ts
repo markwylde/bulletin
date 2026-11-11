@@ -469,6 +469,7 @@ integrationDescribe("attachment cleanup", () => {
       await harness.storage.put("att/stray", "stray");
       await harness.storage.put("quarantine/stray", "stray");
       await harness.storage.put("processing/stray", "stray");
+      await harness.storage.put(`unfurl/${"b".repeat(64)}`, "stray");
       await harness.storage.put(`${liveKey}.thumb.webp`, "thumbnail");
       // Finalised rows no longer own their quarantine or snapshot keys: a replay is stray.
       await harness.storage.put(record?.quarantineKey ?? "", "replayed");
@@ -476,12 +477,13 @@ integrationDescribe("attachment cleanup", () => {
 
       const result = await runAttachmentReconciliation(harness.database.sql, harness.storage);
 
-      expect(result.deleted).toBe(5);
+      expect(result.deleted).toBe(6);
       expect(await harness.storage.exists(liveKey)).toBe(true);
       expect(await harness.storage.exists(`${liveKey}.thumb.webp`)).toBe(true);
       expect(await harness.storage.exists("att/stray")).toBe(false);
       expect(await harness.storage.exists("quarantine/stray")).toBe(false);
       expect(await harness.storage.exists("processing/stray")).toBe(false);
+      expect(await harness.storage.exists(`unfurl/${"b".repeat(64)}`)).toBe(false);
       expect(await harness.storage.exists(record?.quarantineKey ?? "")).toBe(false);
       expect(await harness.storage.exists(record?.snapshotKey ?? "")).toBe(false);
     });

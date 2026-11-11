@@ -24,6 +24,7 @@ const PREVIEW: UnfurlPreview = {
   siteName: "Example",
   provider: null,
   imageUrl: "https://example.com/image.png",
+  imageProxy: null,
 };
 
 describe("unfurls", () => {
@@ -71,6 +72,20 @@ describe("unfurls", () => {
     expect(html).toContain("Example");
     expect(html).not.toContain("<img");
     expect(html).not.toContain("data-url-hash");
+  });
+
+  test("renders only the worker-proxied image path, never the third-party URL", async () => {
+    const result = await renderContent("https://example.com/article", options());
+    const proxy = `/unfurl/${"a".repeat(64)}`;
+    const html = await resolveUnfurlPlaceholders(result.bodyHtml, {
+      async load() {
+        return { ...PREVIEW, imageUrl: "https://tracker.example/pixel.png", imageProxy: proxy };
+      },
+    });
+
+    expect(html).toContain(`<img class="unfurl-image" src="${proxy}"`);
+    expect(html).not.toContain("tracker.example");
+    expect(html).not.toContain("example.com/image.png");
   });
 
   test("preview text is escaped", async () => {

@@ -282,6 +282,7 @@ export async function fetchUnfurl(
       siteName: meta.siteName ?? oembed?.provider ?? null,
       provider: oembed?.provider ?? null,
       imageUrl: meta.imageUrl ?? oembed?.imageUrl ?? null,
+      imageProxy: null,
     },
   };
 }
@@ -328,6 +329,10 @@ function parsePreview(value: unknown): UnfurlPreview | null {
     siteName: typeof data.siteName === "string" ? data.siteName : null,
     provider: typeof data.provider === "string" ? data.provider : null,
     imageUrl: typeof data.imageUrl === "string" ? data.imageUrl : null,
+    imageProxy:
+      typeof data.imageProxy === "string" && /^\/unfurl\/[0-9a-f]{64}$/.test(data.imageProxy)
+        ? data.imageProxy
+        : null,
   };
 }
 

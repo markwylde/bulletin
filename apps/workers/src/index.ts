@@ -76,7 +76,7 @@ const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger }
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
 const forumJobs = await createForumJobs({ boss: boss.boss, sql, logger });
 const contentJobs = await createContentJobs({ boss: boss.boss, sql, logger });
-const unfurlJobs = await createUnfurlJobs({ boss: boss.boss, sql, logger });
+const unfurlJobs = await createUnfurlJobs({ boss: boss.boss, sql, logger, storage });
 const attachmentJobs = await createAttachmentJobs({
   boss: boss.boss,
   sql,

@@ -9,9 +9,11 @@ import {
   type UnfurlFetchResult,
 } from "@bulletin/domain/content";
 import type { SafeFetch } from "@bulletin/domain/net";
+import type { StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
+import { proxyUnfurlImage } from "./unfurl-images.ts";
 
 export const UNFURL_QUEUE = "content.unfurl";
 export const UNFURL_REFRESH_QUEUE = "content.unfurl.refresh";
@@ -25,6 +27,10 @@ export interface UnfurlJobPayload {
 
 export interface UnfurlProcessOptions {
   readonly fetch?: SafeFetch;
+  /** Fetcher for preview images; defaults to the SSRF-safe client (ADR 0016). */
+  readonly imageFetch?: SafeFetch;
+  /** When present, preview images are proxied and stored under `unfurl/<hash>`. */
+  readonly storage?: StorageClient;
   readonly now?: Date;
 }
 
@@ -54,9 +60,32 @@ export async function processUnfurl(
     now,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
   });
-  await recordUnfurlResult(sql, { urlHash, url: record.url, result, now });
+  const stored =
+    result.kind === "preview" && result.preview.imageUrl !== null && options.storage !== undefined
+      ? await withProxiedImage(options.storage, result, options)
+      : result;
+  await recordUnfurlResult(sql, { urlHash, url: record.url, result: stored, now });
 
-  return { kind: "stored", result };
+  return { kind: "stored", result: stored };
+}
+
+/** Attaches the local image path when the worker could proxy the third-party image. */
+async function withProxiedImage(
+  storage: StorageClient,
+  result: Extract<UnfurlFetchResult, { readonly kind: "preview" }>,
+  options: UnfurlProcessOptions,
+): Promise<UnfurlFetchResult> {
+  if (result.preview.imageUrl === null) {
+    return result;
+  }
+
+  const proxy = await proxyUnfurlImage(storage, result.preview.imageUrl, {
+    ...(options.imageFetch === undefined ? {} : { fetch: options.imageFetch }),
+  });
+
+  return proxy === null
+    ? result
+    : { kind: "preview", preview: { ...result.preview, imageProxy: proxy.path } };
 }
 
 export interface EnqueueUnfurlOptions {
@@ -111,6 +140,8 @@ export interface UnfurlJobsOptions {
   readonly sql: SQL;
   readonly logger?: Logger;
   readonly fetch?: SafeFetch;
+  readonly imageFetch?: SafeFetch;
+  readonly storage?: StorageClient;
   readonly now?: () => Date;
 }
 
@@ -131,6 +162,8 @@ export async function createUnfurlJobs(options: UnfurlJobsOptions): Promise<Unfu
         const result = await processUnfurl(options.sql, job.data.urlHash, {
           now: now(),
           ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+          ...(options.imageFetch === undefined ? {} : { imageFetch: options.imageFetch }),
+          ...(options.storage === undefined ? {} : { storage: options.storage }),
         });
         options.logger?.info("unfurl.processed", {
           urlHash: job.data.urlHash,

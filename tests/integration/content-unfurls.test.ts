@@ -3,7 +3,12 @@ import { renderContent, resolveUnfurlPlaceholders } from "@bulletin/content";
 import { processUnfurl } from "@bulletin/db/jobs";
 import { readUnfurl, readUnfurlPreview, requestUnfurl } from "@bulletin/domain/content";
 import { createSafeFetch, type ResolvedAddress, type SafeFetch } from "@bulletin/domain/net";
+import { createS3Handler } from "@bulletin/mock-s3/app";
+import { createMemoryStore } from "@bulletin/mock-s3/memory";
+import { createStorage, type StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import sharp from "sharp";
+import { unfurlImageResponse } from "../../apps/user-app/src/unfurl/image.ts";
 import { createOembedHandler } from "../../mocks/oembed/src/app.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -30,6 +35,33 @@ function localFetch(overrides: Parameters<typeof createSafeFetch>[0] = {}): Safe
     timeoutMs: 1_000,
     maxRedirects: 3,
     ...overrides,
+  });
+}
+
+/** A real storage client over the in-memory S3 mock, for proxied unfurl images. */
+function s3Storage(): StorageClient {
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: createS3Handler({
+      store: createMemoryStore(),
+      bucket: "bulletin",
+      credentials: {
+        accessKeyId: "bulletin",
+        secretAccessKey: "bulletin-secret",
+        region: "us-east-1",
+      },
+    }),
+  });
+  servers.push(server);
+
+  return createStorage({
+    endpoint: `http://127.0.0.1:${server.port}`,
+    publicEndpoint: `http://127.0.0.1:${server.port}`,
+    bucket: "bulletin",
+    accessKeyId: "bulletin",
+    secretAccessKey: "bulletin-secret",
+    region: "us-east-1",
   });
 }
 
@@ -94,6 +126,83 @@ integrationDescribe("unfurl worker (ADR 0007, 0016)", () => {
       expect(html).toContain("Mock link preview for example.test");
       expect(html).toContain("Canned OpenGraph description");
       expect(html).not.toContain("<img");
+    });
+  });
+
+  test("proxies the preview image and serves it from the files origin", async () => {
+    await withDb(async (database) => {
+      const jpeg = new Uint8Array(
+        await sharp({
+          create: { width: 900, height: 600, channels: 3, background: "#336699" },
+        })
+          .jpeg()
+          .withExif({ IFD0: { Copyright: "Bulletin" } })
+          .toBuffer(),
+      );
+      const imageUrl = `${serve(
+        () => new Response(jpeg, { headers: { "content-type": "image/jpeg" } }),
+      )}/og.jpg`;
+      const pageUrl = `${serve(
+        () =>
+          new Response(
+            `<html><head><title>Card</title>` +
+              `<meta property="og:title" content="Card with an image">` +
+              `<meta property="og:image" content="${imageUrl}">` +
+              `</head><body>article</body></html>`,
+            { headers: { "content-type": "text/html; charset=utf-8" } },
+          ),
+      )}/page`;
+      const request = await requestUnfurl(database.sql, pageUrl);
+
+      if (request === null) {
+        throw new Error("URL did not normalise");
+      }
+
+      const storage = s3Storage();
+      const result = await processUnfurl(database.sql, request.urlHash, {
+        fetch: localFetch(),
+        imageFetch: localFetch(),
+        storage,
+      });
+
+      expect(result.kind).toBe("stored");
+      const preview = await readUnfurlPreview(database.sql, request.urlHash);
+      expect(preview?.imageProxy).toMatch(/^\/unfurl\/[0-9a-f]{64}$/);
+
+      const hash = preview?.imageProxy?.slice("/unfurl/".length) ?? "";
+      expect(await storage.exists(`unfurl/${hash}`)).toBe(true);
+
+      const stored = await sharp(await storage.get(`unfurl/${hash}`)).metadata();
+      expect(stored.format).toBe("webp");
+      expect(stored.exif).toBeUndefined();
+
+      const content = await renderContent(pageUrl, {
+        profile: "post",
+        context: { kind: "forum_post", forumId: "1" },
+        authorId: "7",
+        unfurls: true,
+      });
+      const html = await resolveUnfurlPlaceholders(content.bodyHtml, {
+        load: (urlHash) => readUnfurlPreview(database.sql, urlHash),
+      });
+
+      expect(html).toContain(`<img class="unfurl-image" src="${preview?.imageProxy}"`);
+      expect(html).not.toContain(imageUrl);
+
+      const response = await unfurlImageResponse(storage, hash);
+      expect(response.status).toBe(302);
+      expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+
+      const location = response.headers.get("location");
+
+      if (location === null) {
+        throw new Error("Missing redirect location");
+      }
+
+      const file = await fetch(location);
+      expect(file.status).toBe(200);
+      expect(file.headers.get("content-type")).toBe("image/webp");
+      expect(file.headers.get("content-disposition")).toContain("inline;");
     });
   });
 

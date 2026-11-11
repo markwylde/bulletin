@@ -142,5 +142,8 @@ export interface UnfurlPreview {
   readonly description: string | null;
   readonly siteName: string | null;
   readonly provider: string | null;
+  /** The third-party image URL; never rendered, only proxied by the worker (ADR 0019). */
   readonly imageUrl: string | null;
+  /** Local `/unfurl/<hash>` path produced by the worker; safe to put in an `<img>`. */
+  readonly imageProxy: string | null;
 }

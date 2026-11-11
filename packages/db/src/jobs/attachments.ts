@@ -26,6 +26,7 @@ import {
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
+import { listUnfurlImageKeys } from "./unfurl-images.ts";
 
 /** Every ten seconds: publish snapshotted uploads so the editor sees them promptly. */
 export const ATTACHMENT_PROCESS_QUEUE = "attachment.process";
@@ -297,8 +298,12 @@ export async function runAttachmentReconciliation(
   storage: StorageClient,
   options: { readonly logger?: Logger } = {},
 ): Promise<AttachmentSweepResult> {
-  const [objects, rows] = await Promise.all([storage.list(""), listAttachmentKeys(sql)]);
-  const live = new Set<string>();
+  const [objects, rows, unfurlKeys] = await Promise.all([
+    storage.list(""),
+    listAttachmentKeys(sql),
+    listUnfurlImageKeys(sql),
+  ]);
+  const live = new Set<string>(unfurlKeys);
 
   for (const row of rows) {
     // A quarantine key is only authoritative while the upload is still pending; after
@@ -323,7 +328,8 @@ export async function runAttachmentReconciliation(
     const isAttachmentKey =
       object.key.startsWith("att/") ||
       object.key.startsWith("quarantine/") ||
-      object.key.startsWith("processing/");
+      object.key.startsWith("processing/") ||
+      object.key.startsWith("unfurl/");
 
     if (!isAttachmentKey || !isManagedKey(object.key) || live.has(object.key)) {
       continue;

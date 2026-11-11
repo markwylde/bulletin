@@ -40,45 +40,76 @@ function sharpImage(bytes: Uint8Array): ReturnType<typeof sharp> {
   return sharp(bytes, { failOn: "error", limitInputPixels: ATTACHMENT_MAX_PIXELS, pages: 1 });
 }
 
+async function assertRaster(image: ReturnType<typeof sharp>): Promise<void> {
+  const metadata = await image.metadata();
+
+  if (metadata.format === undefined || !RASTER_FORMATS.has(metadata.format)) {
+    throw new AttachmentProcessingError("image_invalid");
+  }
+}
+
+/** Shared WebP re-encode: rotation, bounded dimensions and every metadata block dropped. */
+async function encodeWebp(
+  image: ReturnType<typeof sharp>,
+  maxEdge: number,
+  quality: number,
+): Promise<Uint8Array> {
+  const output = await image
+    .clone()
+    .rotate()
+    .resize({ width: maxEdge, height: maxEdge, fit: "inside", withoutEnlargement: true })
+    .webp({ quality, effort: 4 })
+    .toBuffer();
+
+  return new Uint8Array(output);
+}
+
+export interface ProcessedRasterImage {
+  readonly bytes: Uint8Array;
+  readonly contentType: "image/webp";
+}
+
+/**
+ * Re-encodes one remote or uploaded raster image with the attachment pipeline. Unfurl proxies
+ * reuse this so every image that reaches the files origin is decoded, stripped and bounded by
+ * the same code (ADR 0019).
+ */
+export async function processRasterImage(
+  bytes: Uint8Array,
+  options: { readonly maxEdge?: number } = {},
+): Promise<ProcessedRasterImage> {
+  try {
+    const image = sharpImage(bytes);
+    await assertRaster(image);
+
+    return {
+      bytes: await encodeWebp(image, options.maxEdge ?? ATTACHMENT_IMAGE_MAX_EDGE, 82),
+      contentType: "image/webp",
+    };
+  } catch (error) {
+    if (error instanceof AttachmentProcessingError) {
+      throw error;
+    }
+
+    throw new AttachmentProcessingError("image_invalid");
+  }
+}
+
 /** Decodes and re-encodes a raster image to WebP, dropping every metadata block (ADR 0019). */
 async function processRaster(bytes: Uint8Array): Promise<ProcessedAttachmentBytes> {
   try {
     const image = sharpImage(bytes);
-    const metadata = await image.metadata();
-
-    if (metadata.format === undefined || !RASTER_FORMATS.has(metadata.format)) {
-      throw new AttachmentProcessingError("image_invalid");
-    }
+    await assertRaster(image);
 
     const [main, thumbnail] = await Promise.all([
-      image
-        .clone()
-        .rotate()
-        .resize({
-          width: ATTACHMENT_IMAGE_MAX_EDGE,
-          height: ATTACHMENT_IMAGE_MAX_EDGE,
-          fit: "inside",
-          withoutEnlargement: true,
-        })
-        .webp({ quality: 82, effort: 4 })
-        .toBuffer(),
-      image
-        .clone()
-        .rotate()
-        .resize({
-          width: ATTACHMENT_THUMBNAIL_MAX_EDGE,
-          height: ATTACHMENT_THUMBNAIL_MAX_EDGE,
-          fit: "inside",
-          withoutEnlargement: true,
-        })
-        .webp({ quality: 75, effort: 4 })
-        .toBuffer(),
+      encodeWebp(image, ATTACHMENT_IMAGE_MAX_EDGE, 82),
+      encodeWebp(image, ATTACHMENT_THUMBNAIL_MAX_EDGE, 75),
     ]);
 
     return {
-      bytes: new Uint8Array(main),
+      bytes: main,
       contentType: "image/webp",
-      thumbnail: new Uint8Array(thumbnail),
+      thumbnail,
     };
   } catch (error) {
     if (error instanceof AttachmentProcessingError) {
