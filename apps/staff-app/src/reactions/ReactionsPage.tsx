@@ -1,5 +1,5 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
@@ -62,6 +62,7 @@ export function ReactionsPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const query = useQuery({
     queryKey: ["staff", "reactions"],
     queryFn: () => apiGet<ReactionsView>("/api/staff/reactions"),
@@ -325,13 +326,27 @@ export function ReactionsPage() {
                 type="button"
                 data-reaction-delete
                 disabled={mutate.isPending || draft.id === null}
-                onClick={() =>
-                  draft.id === null ? undefined : mutate.mutate({ action: "delete", id: draft.id })
-                }
+                onClick={() => setConfirmDelete(true)}
               >
                 {t("staff.reactions.delete")}
               </button>
             </div>
+            <ConfirmDialog
+              open={confirmDelete}
+              titleKey="staff.reactions.deleteTitle"
+              bodyKey="staff.reactions.deleteBody"
+              confirmLabelKey="staff.reactions.delete"
+              tone="danger"
+              busy={mutate.isPending}
+              onConfirm={() => {
+                setConfirmDelete(false);
+
+                if (draft.id !== null) {
+                  mutate.mutate({ action: "delete", id: draft.id });
+                }
+              }}
+              onCancel={() => setConfirmDelete(false)}
+            />
           </section>
         </>
       ) : null}

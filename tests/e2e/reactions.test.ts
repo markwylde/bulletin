@@ -239,6 +239,8 @@ integrationDescribe("staff reaction set", () => {
       await clickSelector(view, `[data-reaction-edit="${rowId}"]:not([disabled])`);
       await waitForSelector(view, "[data-reaction-delete]:not([disabled])", 20_000);
       await clickSelector(view, "[data-reaction-delete]:not([disabled])");
+      await waitForSelector(view, "[data-confirm-dialog] [data-confirm-action]", 20_000);
+      await clickSelector(view, "[data-confirm-dialog] [data-confirm-action]");
       await waitForExpression(
         view,
         `!document.body.innerText.includes(${JSON.stringify(key)})`,

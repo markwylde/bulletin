@@ -535,6 +535,8 @@
   "staff.promotions.to": "Vers",
   "staff.reactions.actions": "Actions",
   "staff.reactions.delete": "Supprimer",
+  "staff.reactions.deleteBody": "Elle ne peut être supprimée que si personne ne l’a utilisée. Désactivez-la plutôt pour garder les réactions existantes visibles.",
+  "staff.reactions.deleteTitle": "Supprimer cette réaction ?",
   "staff.reactions.duplicate": "Cette clé est déjà utilisée.",
   "staff.reactions.edit": "Modifier",
   "staff.reactions.editor.title": "Réaction",

@@ -497,6 +497,8 @@
   "staff.promotions.to": "Hasta",
   "staff.reactions.actions": "Acciones",
   "staff.reactions.delete": "Eliminar",
+  "staff.reactions.deleteBody": "Solo se puede eliminar si nadie la ha usado. Desactívala en su lugar para que las reacciones existentes sigan visibles.",
+  "staff.reactions.deleteTitle": "¿Eliminar esta reacción?",
   "staff.reactions.duplicate": "Esa clave ya está en uso.",
   "staff.reactions.edit": "Editar",
   "staff.reactions.editor.title": "Reacción",

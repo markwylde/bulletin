@@ -497,6 +497,8 @@
   "staff.promotions.to": "To",
   "staff.reactions.actions": "Actions",
   "staff.reactions.delete": "Delete",
+  "staff.reactions.deleteBody": "It can only be deleted if nobody has used it. Disable it instead to keep existing reactions visible.",
+  "staff.reactions.deleteTitle": "Delete this reaction?",
   "staff.reactions.duplicate": "That key is already in use.",
   "staff.reactions.edit": "Edit",
   "staff.reactions.editor.title": "Reaction",
