@@ -24,6 +24,7 @@ import { loadPermissionSnapshot } from "../permissions/snapshot.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
 import { pollVoteStateForTopic } from "../polls/repository.ts";
 import { readViewerReactions } from "../reactions/repository.ts";
+import { readViewerVotes } from "../reputation/repository.ts";
 import {
   firstUnreadForTopics,
   readPostContext,
@@ -576,6 +577,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         session.memberId,
         reactionPosts,
       );
+      const viewerVotes = await readViewerVotes(options.sql, session.memberId, reactionPosts);
       const payload = {
         ctx,
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
@@ -599,6 +601,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         polls: poll === null ? [] : [poll],
         editablePosts,
         reactions: viewerReactions,
+        reputation: viewerVotes,
         ...(draft === null ? {} : { draft }),
       };
       const text = JSON.stringify(payload);

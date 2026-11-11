@@ -5,6 +5,12 @@ import {
   type AttachmentContentType,
   isAttachmentContentType,
 } from "../attachments/rules.ts";
+import {
+  DEFAULT_REPUTATION_LABEL_SCALE,
+  isReputationLabelKey,
+  REPUTATION_LABEL_KEYS,
+  type ReputationLabel,
+} from "../reputation/labels.ts";
 
 export const DEFAULT_ATTACHMENT_TYPES: readonly AttachmentContentType[] = ATTACHMENT_CONTENT_TYPES;
 
@@ -18,6 +24,11 @@ export interface BoardSettings {
   readonly postsPerPage: number;
   readonly publicEditHistory: boolean;
   readonly attachmentAllowedTypes: readonly AttachmentContentType[];
+  /** Reactions with a non-zero weight add reputation entries (reputation spec). */
+  readonly reactionsAffectReputation: boolean;
+  /** The board-wide switch for showing reputation totals and labels. */
+  readonly reputationDisplay: boolean;
+  readonly reputationLabelScale: readonly ReputationLabel[];
 }
 
 export interface BoardSettingsInput {
@@ -30,6 +41,9 @@ export interface BoardSettingsInput {
   readonly postsPerPage: number;
   readonly publicEditHistory: boolean;
   readonly attachmentAllowedTypes: readonly AttachmentContentType[];
+  readonly reactionsAffectReputation: boolean;
+  readonly reputationDisplay: boolean;
+  readonly reputationLabelScale: readonly ReputationLabel[];
 }
 
 export const EMPTY_BOARD_SETTINGS: BoardSettings = {
@@ -42,12 +56,16 @@ export const EMPTY_BOARD_SETTINGS: BoardSettings = {
   postsPerPage: 20,
   publicEditHistory: false,
   attachmentAllowedTypes: DEFAULT_ATTACHMENT_TYPES,
+  reactionsAffectReputation: false,
+  reputationDisplay: true,
+  reputationLabelScale: DEFAULT_REPUTATION_LABEL_SCALE,
 };
 
 export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
   const rows = (await sql`
     SELECT board_name, board_description, default_locale, offline, offline_message,
-      topics_per_page, posts_per_page, public_edit_history, attachment_allowed_types
+      topics_per_page, posts_per_page, public_edit_history, attachment_allowed_types,
+      reactions_affect_reputation, reputation_display, reputation_label_scale
     FROM core.board_settings
     WHERE id = 1
   `) as Array<{
@@ -60,6 +78,9 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     posts_per_page: number;
     public_edit_history: boolean;
     attachment_allowed_types: string[] | null;
+    reactions_affect_reputation: boolean;
+    reputation_display: boolean;
+    reputation_label_scale: unknown;
   }>;
   const row = rows[0];
 
@@ -76,7 +97,54 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
       row?.attachment_allowed_types === null || row?.attachment_allowed_types === undefined
         ? DEFAULT_ATTACHMENT_TYPES
         : canonicalAttachmentTypes(row.attachment_allowed_types),
+    reactionsAffectReputation: row?.reactions_affect_reputation ?? false,
+    reputationDisplay: row?.reputation_display ?? true,
+    reputationLabelScale: canonicalReputationLabelScale(row?.reputation_label_scale),
   };
+}
+
+/** Keeps known labels, valid thresholds, sorted ascending; unknown shapes use the defaults. */
+export function canonicalReputationLabelScale(value: unknown): readonly ReputationLabel[] {
+  let parsed = value;
+
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed) as unknown;
+    } catch {
+      return DEFAULT_REPUTATION_LABEL_SCALE;
+    }
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    return DEFAULT_REPUTATION_LABEL_SCALE;
+  }
+
+  const labels: ReputationLabel[] = [];
+
+  for (const entry of parsed) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      continue;
+    }
+
+    const record = entry as { readonly min?: unknown; readonly labelKey?: unknown };
+
+    if (
+      typeof record.min !== "number" ||
+      !Number.isInteger(record.min) ||
+      typeof record.labelKey !== "string" ||
+      !isReputationLabelKey(record.labelKey)
+    ) {
+      continue;
+    }
+
+    labels.push({ min: record.min, labelKey: record.labelKey });
+  }
+
+  if (labels.length === 0) {
+    return DEFAULT_REPUTATION_LABEL_SCALE;
+  }
+
+  return labels.sort((left, right) => left.min - right.min);
 }
 
 /** Keeps only known content types, deduped and in the canonical allowlist order. */
@@ -138,6 +206,19 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
   const topicsPerPage = pageSize(value.topicsPerPage);
   const postsPerPage = pageSize(value.postsPerPage);
   const publicEditHistory = value.publicEditHistory === true;
+  const reactionsAffectReputation = value.reactionsAffectReputation === true;
+  const reputationDisplay = value.reputationDisplay !== false;
+  let reputationLabelScale: readonly ReputationLabel[] = DEFAULT_REPUTATION_LABEL_SCALE;
+
+  if (value.reputationLabelScale !== undefined) {
+    const parsedScale = parseReputationLabelScale(value.reputationLabelScale);
+
+    if (parsedScale === null) {
+      fields.push("reputationLabelScale");
+    } else {
+      reputationLabelScale = parsedScale;
+    }
+  }
   const rawAttachmentTypes = value.attachmentAllowedTypes;
   let attachmentAllowedTypes: readonly AttachmentContentType[] = DEFAULT_ATTACHMENT_TYPES;
 
@@ -184,6 +265,51 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
       postsPerPage: postsPerPage ?? 20,
       publicEditHistory,
       attachmentAllowedTypes,
+      reactionsAffectReputation,
+      reputationDisplay,
+      reputationLabelScale,
     },
   };
+}
+
+/**
+ * Validates the staff scale: every shipped label exactly once, integer thresholds in range.
+ * The canonical order is ascending, so the last matching threshold is the most specific.
+ */
+function parseReputationLabelScale(value: unknown): readonly ReputationLabel[] | null {
+  if (!Array.isArray(value) || value.length !== REPUTATION_LABEL_KEYS.length) {
+    return null;
+  }
+
+  const labels: ReputationLabel[] = [];
+  const seen = new Set<string>();
+
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return null;
+    }
+
+    const record = entry as { readonly min?: unknown; readonly labelKey?: unknown };
+
+    if (
+      typeof record.min !== "number" ||
+      !Number.isInteger(record.min) ||
+      record.min < -1_000_000 ||
+      record.min > 1_000_000 ||
+      typeof record.labelKey !== "string" ||
+      !isReputationLabelKey(record.labelKey) ||
+      seen.has(record.labelKey)
+    ) {
+      return null;
+    }
+
+    seen.add(record.labelKey);
+    labels.push({ min: record.min, labelKey: record.labelKey });
+  }
+
+  if (seen.size !== REPUTATION_LABEL_KEYS.length) {
+    return null;
+  }
+
+  return labels.sort((left, right) => left.min - right.min);
 }

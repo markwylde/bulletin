@@ -140,6 +140,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     labelKey: "staff.nav.memberGroups",
   },
   {
+    id: "memberReputation",
+    path: "/members/reputation",
+    navGroup: "configuration",
+    permission: "acp.members",
+    icon: "members",
+    labelKey: "staff.nav.memberReputation",
+  },
+  {
     id: "moderators",
     path: "/moderators",
     navGroup: "configuration",

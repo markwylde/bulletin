@@ -6,6 +6,7 @@
 
 import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
 import { publishReactionStates } from "@bulletin/ui/islands/reactions/store";
+import { publishReputationStates } from "@bulletin/ui/islands/reputation/store";
 import { setFollowState } from "./follows/dom.ts";
 import {
   applyOverlay,
@@ -180,6 +181,10 @@ const overlayTarget: OverlayTarget = {
 
   setReactions(states) {
     publishReactionStates(states);
+  },
+
+  setReputation(states) {
+    publishReputationStates(states);
   },
 };
 

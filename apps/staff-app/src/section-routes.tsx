@@ -10,6 +10,7 @@ import { GroupSettingsPage } from "./groups/GroupSettingsPage.tsx";
 import { GroupsPage } from "./groups/GroupsPage.tsx";
 import { AdminLogPage } from "./log/AdminLogPage.tsx";
 import { MemberGroupsPage } from "./members/MemberGroupsPage.tsx";
+import { MemberReputationPage } from "./members/MemberReputationPage.tsx";
 import { ModeratorsPage } from "./moderators/ModeratorsPage.tsx";
 import { MasksPage } from "./permissions/MasksPage.tsx";
 import { PromotionsPage } from "./promotions/PromotionsPage.tsx";
@@ -31,6 +32,7 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   groupSettings: GroupSettingsPage,
   permissions: MasksPage,
   memberGroups: MemberGroupsPage,
+  memberReputation: MemberReputationPage,
   moderators: ModeratorsPage,
   promotions: PromotionsPage,
   reactions: ReactionsPage,

@@ -37,6 +37,7 @@ export * from "./forums.ts";
 export * from "./members.ts";
 export * from "./polls.ts";
 export * from "./reactions.ts";
+export * from "./reputation.ts";
 export * from "./topics.ts";
 
 export async function runMutation<TInput, TResult>(

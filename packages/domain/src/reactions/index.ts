@@ -1,7 +1,9 @@
 import type { SQL } from "bun";
+import { readBoardSettings } from "../board/index.ts";
 import { emit } from "../events/outbox.ts";
 import { runMutation } from "../mutations/index.ts";
 import { reactionAdminMutation, reactionSetMutation } from "../mutations/reactions.ts";
+import { applyReactionReputation } from "../reputation/index.ts";
 import {
   canReactInForum,
   lockReactionPost,
@@ -44,6 +46,8 @@ export interface SetReactionResult {
   readonly postId: string;
   readonly mine: string | null;
   readonly summary: ReactionSummary;
+  /** The post author whose reputation changed, or null when the link is off or unchanged. */
+  readonly reputationReceiverId: string | null;
 }
 
 export interface SetReactionInput {
@@ -123,6 +127,7 @@ export async function setReaction(
         postId: target.postId,
         mine: current,
         summary: await readReactionSummary(sql, target.postId),
+        reputationReceiverId: null,
       },
     };
   }
@@ -136,11 +141,13 @@ export async function setReaction(
         // Serialise concurrent reactions on this post so the summary cannot lose an update.
         await lockReactionPost(tx, target.postId);
 
+        let reactionWeight = 0;
+
         if (input.reactionId !== null) {
           // A staff edit may have disabled or removed the reaction since the pre-read.
           const [reaction] = (await tx`
-            SELECT enabled FROM core.reactions WHERE id = ${input.reactionId}
-          `) as Array<{ enabled: boolean }>;
+            SELECT enabled, weight FROM core.reactions WHERE id = ${input.reactionId}
+          `) as Array<{ enabled: boolean; weight: number }>;
 
           if (reaction === undefined) {
             reject("invalid_reaction");
@@ -149,6 +156,8 @@ export async function setReaction(
           if (!reaction.enabled) {
             reject("reaction_disabled");
           }
+
+          reactionWeight = reaction.weight;
 
           await tx`
             INSERT INTO core.post_reactions (post_id, member_id, reaction_id)
@@ -174,10 +183,28 @@ export async function setReaction(
           `;
         }
 
+        // The reaction-to-reputation link (design): an upsert or removal in this transaction.
+        let reputationReceiverId: string | null = null;
+        const { reactionsAffectReputation } = await readBoardSettings(tx);
+
+        if (target.authorId !== null) {
+          const linked = await applyReactionReputation(tx, {
+            postId: target.postId,
+            giverId: input.actorId,
+            receiverId: target.authorId,
+            points: reactionsAffectReputation ? (reactionWeight as -1 | 0 | 1) : 0,
+          });
+
+          if (linked.changed) {
+            reputationReceiverId = target.authorId;
+          }
+        }
+
         return {
           postId: target.postId,
           mine: input.reactionId,
           summary: await recomputeReactionSummary(tx, target.postId),
+          reputationReceiverId,
         };
       },
     });

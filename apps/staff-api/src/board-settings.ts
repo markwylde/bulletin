@@ -4,6 +4,7 @@ import {
   parseBoardSettingsInput,
   readBoardSettings,
 } from "@bulletin/domain/board";
+import { emit } from "@bulletin/domain/events";
 import { boardSettingsMutation, runMutation } from "@bulletin/domain/mutations";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
@@ -45,13 +46,16 @@ export async function saveBoardSettings(
       await tx`
         INSERT INTO core.board_settings (
           id, board_name, board_description, default_locale, offline, offline_message,
-          topics_per_page, posts_per_page, public_edit_history, attachment_allowed_types
+          topics_per_page, posts_per_page, public_edit_history, attachment_allowed_types,
+          reactions_affect_reputation, reputation_display, reputation_label_scale
         )
         VALUES (
           1, ${input.boardName}, ${input.boardDescription}, ${input.defaultLocale},
           ${input.offline}, ${input.offlineMessage}, ${input.topicsPerPage},
           ${input.postsPerPage}, ${input.publicEditHistory},
-          ${`{${input.attachmentAllowedTypes.join(",")}}`}::text[]
+          ${`{${input.attachmentAllowedTypes.join(",")}}`}::text[],
+          ${input.reactionsAffectReputation}, ${input.reputationDisplay},
+          ${JSON.stringify(input.reputationLabelScale)}::jsonb
         )
         ON CONFLICT (id) DO UPDATE
         SET board_name = EXCLUDED.board_name,
@@ -62,10 +66,23 @@ export async function saveBoardSettings(
             topics_per_page = EXCLUDED.topics_per_page,
             posts_per_page = EXCLUDED.posts_per_page,
             public_edit_history = EXCLUDED.public_edit_history,
-            attachment_allowed_types = EXCLUDED.attachment_allowed_types
+            attachment_allowed_types = EXCLUDED.attachment_allowed_types,
+            reactions_affect_reputation = EXCLUDED.reactions_affect_reputation,
+            reputation_display = EXCLUDED.reputation_display,
+            reputation_label_scale = EXCLUDED.reputation_label_scale
       `;
 
       const after = await readBoardSettings(tx);
+
+      // Turning the reaction link on or off rebuilds every reaction-sourced entry and total.
+      if (before.reactionsAffectReputation !== after.reactionsAffectReputation) {
+        await emit(tx, {
+          type: "reputation.recount.requested",
+          aggregateId: 1n,
+          aggregateVersion: 1n,
+          payloadIds: { requestedById: BigInt(actorMemberId) },
+        });
+      }
 
       await writeAdminLog(tx, {
         actorMemberId,
@@ -83,6 +100,9 @@ export async function saveBoardSettings(
             postsPerPage: before.postsPerPage,
             publicEditHistory: before.publicEditHistory,
             attachmentAllowedTypes: before.attachmentAllowedTypes,
+            reactionsAffectReputation: before.reactionsAffectReputation,
+            reputationDisplay: before.reputationDisplay,
+            reputationLabelScale: before.reputationLabelScale,
           },
           after: {
             boardName: after.boardName,
@@ -94,6 +114,9 @@ export async function saveBoardSettings(
             postsPerPage: after.postsPerPage,
             publicEditHistory: after.publicEditHistory,
             attachmentAllowedTypes: after.attachmentAllowedTypes,
+            reactionsAffectReputation: after.reactionsAffectReputation,
+            reputationDisplay: after.reputationDisplay,
+            reputationLabelScale: after.reputationLabelScale,
           },
         },
       });

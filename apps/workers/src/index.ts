@@ -19,6 +19,7 @@ import {
   createForumJobs,
   createMaintenanceJobs,
   createPromotionJobs,
+  createReputationJobs,
   createUnfurlJobs,
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
@@ -34,6 +35,7 @@ import {
   createNotificationsFanoutWorker,
   NOTIFICATION_FANOUT_QUEUE,
 } from "./notifications.ts";
+import { createReputationEventHandler } from "./reputation.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "workers", level: config.logLevel });
@@ -73,6 +75,7 @@ const subscribers: EventSubscriber[] = [
     name: "notifications",
     types: ["topic.created", "post.created", "member.promoted"],
   },
+  { name: "reputation", types: ["reputation.recount.requested"] },
 ];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
 const enqueueEmail = async (intentId: string): Promise<void> => {
@@ -117,6 +120,7 @@ const eventWorker = await createEventWorker({
       ...(purger === undefined ? {} : { purger }),
       logger,
     }),
+    reputation: createReputationEventHandler({ boss: boss.boss, logger }),
     notifications: createNotificationsEventHandler({
       sql,
       logger,
@@ -135,6 +139,7 @@ const notificationFanout = await createNotificationsFanoutWorker({
   enqueueEmail,
 });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
+const reputationJobs = await createReputationJobs({ boss: boss.boss, sql, logger });
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
 const forumJobs = await createForumJobs({ boss: boss.boss, sql, logger });
 const contentJobs = await createContentJobs({ boss: boss.boss, sql, logger });
@@ -193,6 +198,7 @@ await startService({
     await unfurlJobs.stop();
     await attachmentJobs.stop();
     await promotionJobs.stop();
+    await reputationJobs.stop();
     await eventWorker.stop();
     await boss.stop();
   },
@@ -208,6 +214,7 @@ await startService({
   await unfurlJobs.stop();
   await attachmentJobs.stop();
   await promotionJobs.stop();
+  await reputationJobs.stop();
   await boss.stop();
   throw error;
 });

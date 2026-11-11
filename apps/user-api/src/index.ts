@@ -35,9 +35,9 @@ import {
 } from "./notifications.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
 import { reactionMembersResponse, reactionSetResponse } from "./reactions.ts";
-
 import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
+import { reputationGiveResponse } from "./reputation.ts";
 import { streamResponse } from "./stream.ts";
 import { createStreamHub } from "./stream-hub.ts";
 import {
@@ -351,6 +351,24 @@ await startService({
       }
 
       return Response.json({ code: "method_not_allowed" }, { status: 405 });
+    }
+
+    const reputationMatch = /^\/api\/posts\/(\d+)\/reputation$/.exec(pathname);
+
+    if (reputationMatch !== null) {
+      if (request.method !== "POST") {
+        return Response.json({ code: "method_not_allowed" }, { status: 405 });
+      }
+
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return reputationGiveResponse(sql, session, reputationMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }
 
     const createTopicMatch = /^\/api\/forums\/(\d+)\/topics$/.exec(pathname);

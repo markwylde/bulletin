@@ -5,6 +5,7 @@ import * as v from "valibot";
 import { Editor } from "./Editor.tsx";
 import { LanguageSwitcher } from "./LanguageSwitcher.tsx";
 import { LocaleSuggestion } from "./LocaleSuggestion.tsx";
+import { PostReputation } from "./PostReputation.tsx";
 import { Reactions } from "./Reactions.tsx";
 import { SpikeCounter } from "./SpikeCounter.tsx";
 import {
@@ -12,6 +13,7 @@ import {
   type IslandPropsSchema,
   languageSwitcherSchema,
   localeSuggestionSchema,
+  postReputationSchema,
   reactionsSchema,
   spikeCounterSchema,
 } from "./schemas.ts";
@@ -51,4 +53,5 @@ export const SERVER_ISLANDS: ServerIslandRegistry = {
   ),
   Editor: defineServerIsland("Editor", editorSchema, Editor),
   Reactions: defineServerIsland("Reactions", reactionsSchema, Reactions),
+  PostReputation: defineServerIsland("PostReputation", postReputationSchema, PostReputation),
 };

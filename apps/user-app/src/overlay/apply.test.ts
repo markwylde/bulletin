@@ -14,6 +14,7 @@ function target(): {
   readonly editable: string[];
   readonly follows: string[];
   readonly reactions: string[];
+  readonly reputation: string[];
 } {
   const unread: string[] = [];
   const counts: string[] = [];
@@ -26,6 +27,7 @@ function target(): {
   const editable: string[] = [];
   const follows: string[] = [];
   const reactions: string[] = [];
+  const reputation: string[] = [];
 
   return {
     unread,
@@ -39,6 +41,7 @@ function target(): {
     editable,
     follows,
     reactions,
+    reputation,
     target: {
       unreadSlots: (topicId) => [
         { markUnread: () => unread.push(topicId) },
@@ -59,6 +62,12 @@ function target(): {
           ...states.map(
             (state) =>
               `${state.postId}:${state.reactionId ?? "none"}:${state.own ? "own" : "other"}`,
+          ),
+        ),
+      setReputation: (states) =>
+        reputation.push(
+          ...states.map(
+            (state) => `${state.postId}:${state.points ?? "none"}:${state.own ? "own" : "other"}`,
           ),
         ),
     },
@@ -186,6 +195,21 @@ describe("overlay applier", () => {
     });
 
     expect(fixture.reactions).toEqual(["7:2:other", "8:none:own"]);
+  });
+
+  test("marks the member's own reputation vote and own posts, ignoring unsafe ids", () => {
+    const fixture = target();
+
+    applyOverlay(fixture.target, {
+      reputation: [
+        { postId: "7", points: 1, own: false },
+        { postId: "8", points: null, own: true },
+        { postId: "x", points: -1, own: false },
+        { postId: "9", points: 2, own: false },
+      ],
+    });
+
+    expect(fixture.reputation).toEqual(["7:1:other", "8:none:own"]);
   });
 
   test("ignores unknown payload fields and keeps applying the rest", () => {

@@ -69,6 +69,7 @@ import {
   savePromotionRule,
 } from "./promotions.ts";
 import { listReactionsForStaff, mutateReaction } from "./reactions.ts";
+import { mutateMemberReputation, readMemberReputation } from "./reputation.ts";
 import {
   listActiveOverrides,
   revertOverride,
@@ -687,6 +688,50 @@ async function moderatorsMutate(context: StaffRouteContext): Promise<Response> {
   }
 }
 
+async function memberReputationGet(context: StaffRouteContext): Promise<Response> {
+  const memberId = context.url.searchParams.get("memberId");
+
+  if (memberId === null || !/^\d+$/.test(memberId)) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const result = await readMemberReputation(context.sql, context.session.memberId, memberId);
+
+  if (!result.ok) {
+    return result.code === "forbidden" ? forbidden() : json({ code: result.code }, 404);
+  }
+
+  return json(result.view);
+}
+
+async function memberReputationMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const memberId = isRecord(body) && typeof body.memberId === "string" ? body.memberId : "";
+
+  if (!/^\d+$/.test(memberId)) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const result = await mutateMemberReputation(
+    context.sql,
+    context.session.memberId,
+    memberId,
+    body,
+  );
+
+  if (result.ok) {
+    return json({
+      ok: true,
+      total: result.total,
+      ...(result.removedId === undefined ? {} : { removedId: result.removedId }),
+    });
+  }
+
+  const status = result.code === "not_found" ? 404 : result.code === "forbidden" ? 403 : 400;
+
+  return json({ code: result.code }, status);
+}
+
 async function reactionsList(context: StaffRouteContext): Promise<Response> {
   return json(await listReactionsForStaff(context.sql));
 }
@@ -1090,6 +1135,21 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     permission: "acp.members",
     requiresStepUp: true,
     handler: moderatorsMutate,
+  },
+  {
+    id: "members.reputation.get",
+    method: "GET",
+    path: "/api/staff/members/reputation",
+    permission: "acp.members",
+    handler: memberReputationGet,
+  },
+  {
+    id: "members.reputation.update",
+    method: "POST",
+    path: "/api/staff/members/reputation",
+    permission: "acp.members",
+    requiresStepUp: true,
+    handler: memberReputationMutate,
   },
   {
     id: "reactions.list",

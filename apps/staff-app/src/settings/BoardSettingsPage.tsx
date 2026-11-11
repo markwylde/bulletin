@@ -13,7 +13,48 @@ interface BoardSettings {
   readonly offline: boolean;
   readonly offlineMessage: string;
   readonly attachmentAllowedTypes: readonly string[];
+  readonly reactionsAffectReputation: boolean;
+  readonly reputationDisplay: boolean;
+  readonly reputationLabelScale: readonly ReputationLabel[];
 }
+
+interface ReputationLabel {
+  readonly min: number;
+  readonly labelKey: string;
+}
+
+const REPUTATION_LABEL_FIELDS = [
+  {
+    id: "reputationLabelNotorious",
+    key: "notorious",
+    labelKey: "staff.settings.board.reputationLabel.notorious",
+    fallback: -1_000_000,
+  },
+  {
+    id: "reputationLabelDisliked",
+    key: "disliked",
+    labelKey: "staff.settings.board.reputationLabel.disliked",
+    fallback: -100,
+  },
+  {
+    id: "reputationLabelNeutral",
+    key: "neutral",
+    labelKey: "staff.settings.board.reputationLabel.neutral",
+    fallback: 0,
+  },
+  {
+    id: "reputationLabelRespected",
+    key: "respected",
+    labelKey: "staff.settings.board.reputationLabel.respected",
+    fallback: 100,
+  },
+  {
+    id: "reputationLabelRevered",
+    key: "revered",
+    labelKey: "staff.settings.board.reputationLabel.revered",
+    fallback: 500,
+  },
+] as const;
 
 const ATTACHMENT_TYPE_OPTIONS = [
   { value: "image/png", labelKey: "staff.settings.board.type.imagePng" },
@@ -36,6 +77,9 @@ const EMPTY_VALUES: FormValues = {
   offline: false,
   offlineMessage: "",
   attachmentAllowedTypes: ATTACHMENT_TYPE_OPTIONS.map((option) => option.value),
+  reactionsAffectReputation: false,
+  reputationDisplay: true,
+  ...Object.fromEntries(REPUTATION_LABEL_FIELDS.map((field) => [field.id, field.fallback])),
 };
 
 const BOARD_FORM: FormDefinition = {
@@ -89,6 +133,32 @@ const BOARD_FORM: FormDefinition = {
       ],
     },
     {
+      id: "reputation",
+      titleKey: "staff.settings.board.section.reputation",
+      descriptionKey: "staff.settings.board.section.reputationHelp",
+      fields: [
+        {
+          id: "reactionsAffectReputation",
+          type: "toggle",
+          labelKey: "staff.settings.board.reactionsAffectReputation",
+          helpKey: "staff.settings.board.reactionsAffectReputationHelp",
+        },
+        {
+          id: "reputationDisplay",
+          type: "toggle",
+          labelKey: "staff.settings.board.reputationDisplay",
+          helpKey: "staff.settings.board.reputationDisplayHelp",
+        },
+        ...REPUTATION_LABEL_FIELDS.map((field) => ({
+          id: field.id,
+          type: "number" as const,
+          labelKey: field.labelKey,
+          min: -1_000_000,
+          max: 1_000_000,
+        })),
+      ],
+    },
+    {
       id: "offline",
       titleKey: "staff.settings.board.section.offline",
       descriptionKey: "staff.settings.board.section.offlineDescription",
@@ -122,6 +192,16 @@ function toValues(settings: BoardSettings): FormValues {
     offline: settings.offline,
     offlineMessage: settings.offlineMessage,
     attachmentAllowedTypes: settings.attachmentAllowedTypes,
+    reactionsAffectReputation: settings.reactionsAffectReputation,
+    reputationDisplay: settings.reputationDisplay,
+    ...Object.fromEntries(
+      REPUTATION_LABEL_FIELDS.map((field) => [
+        field.id,
+        settings.reputationLabelScale.find(
+          (label) => label.labelKey === `reputation.label.${field.key}`,
+        )?.min ?? field.fallback,
+      ]),
+    ),
   };
 }
 
@@ -137,6 +217,15 @@ function toPayload(values: FormValues): BoardSettings {
     attachmentAllowedTypes: Array.isArray(values.attachmentAllowedTypes)
       ? values.attachmentAllowedTypes
       : [],
+    reactionsAffectReputation: values.reactionsAffectReputation === true,
+    reputationDisplay: values.reputationDisplay !== false,
+    reputationLabelScale: REPUTATION_LABEL_FIELDS.map((field) => {
+      const raw = values[field.id];
+      return {
+        min: typeof raw === "number" ? raw : Number(raw ?? field.fallback),
+        labelKey: `reputation.label.${field.key}`,
+      };
+    }),
   };
 }
 

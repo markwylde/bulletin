@@ -1,5 +1,5 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
-import { readBoardSettings } from "@bulletin/domain/board";
+import { type BoardSettings, readBoardSettings } from "@bulletin/domain/board";
 import { showVisibleForum } from "@bulletin/domain/forums";
 import {
   CapabilityView,
@@ -26,6 +26,7 @@ import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import { etagWithFragments } from "../http/cache.ts";
 import { renderPollFragment } from "../polls/fragment.ts";
 import { renderReactionBar } from "../reactions/fragment.ts";
+import { renderReputationControls } from "../reputation/fragment.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
@@ -74,6 +75,7 @@ export type TopicRouteResult = TopicPageRouteResult | TopicRedirectRouteResult;
 interface TopicRenderData {
   readonly theme: LoadedTheme | null;
   readonly boardName: string;
+  readonly settings: BoardSettings;
   readonly title: string;
   readonly page: TopicPageData | null;
   readonly error: { readonly status: 403 | 404 } | null;
@@ -388,6 +390,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       const data: TopicRenderData = {
         theme,
         boardName,
+        settings: freshSettings,
         title: pageData?.viewModel.title ?? input.translate("theme.error.title"),
         page: pageData,
         error,
@@ -487,6 +490,10 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
         input.locale,
         input.translate,
         latest?.flags.clientFlags.avatar_upload === true,
+        {
+          display: latest?.settings.reputationDisplay ?? false,
+          scale: latest?.settings.reputationLabelScale ?? [],
+        },
       ),
       pageData.pollId === null
         ? Promise.resolve(null)
@@ -499,8 +506,23 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
           ),
     ]);
     const reactionBars = new Map<string, string>();
+    const reputationControls = new Map<string, string>();
     await Promise.all(
       pageData.viewModel.posts.map(async (post) => {
+        if (post.authorId !== null) {
+          reputationControls.set(
+            post.id,
+            renderReputationControls({
+              postId: post.id,
+              receiverId: post.authorId,
+              canGive: pageData.canGiveReputation,
+              canNegative: pageData.canGiveNegativeReputation,
+              locale: input.locale,
+              translate: input.translate,
+            }),
+          );
+        }
+
         reactionBars.set(
           post.id,
           await renderReactionBar({
@@ -523,6 +545,10 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     html = html.replace(
       /<bl-post-reactions data-post="(\d+)"><\/bl-post-reactions>/g,
       (match, postId: string) => reactionBars.get(postId) ?? match,
+    );
+    html = html.replace(
+      /<bl-post-reputation data-post="(\d+)"><\/bl-post-reputation>/g,
+      (match, postId: string) => reputationControls.get(postId) ?? match,
     );
     html = replaceMemberCards(html, cards);
 

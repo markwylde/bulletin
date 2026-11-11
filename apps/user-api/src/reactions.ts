@@ -1,3 +1,4 @@
+import { evaluatePromotion } from "@bulletin/db/jobs";
 import { can, GUEST_PRINCIPAL, loadForumTree } from "@bulletin/domain/permissions";
 import {
   type ReactionErrorCode,
@@ -62,7 +63,20 @@ export async function reactionSetResponse(
     sessionId: session.id ?? session.sessionId ?? null,
   });
 
-  return result.ok ? json({ ok: true, ...result.result }) : failure(result.code);
+  if (!result.ok) {
+    return failure(result.code);
+  }
+
+  if (result.result.reputationReceiverId !== null) {
+    await evaluatePromotion(sql, result.result.reputationReceiverId).catch(() => undefined);
+  }
+
+  return json({
+    ok: true,
+    postId: result.result.postId,
+    mine: result.result.mine,
+    summary: result.result.summary,
+  });
 }
 
 /**

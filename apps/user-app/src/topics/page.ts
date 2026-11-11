@@ -30,6 +30,7 @@ import { topicCapabilityDeps } from "./capability.ts";
 
 export interface TopicPagePost {
   readonly id: string;
+  readonly authorId: string | null;
   readonly position: number;
   readonly href: string;
   readonly authorCard: SafeHtml;
@@ -109,6 +110,8 @@ export interface TopicPageData {
   readonly loadPost: (postId: string) => Promise<TopicPagePost | null>;
   /** The viewer may react (a member whose groups allow it); own posts are excluded by overlay. */
   readonly canReact: boolean;
+  readonly canGiveReputation: boolean;
+  readonly canGiveNegativeReputation: boolean;
 }
 
 function formatDate(locale: Locale, value: Date): string {
@@ -342,6 +345,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
 
     return {
       id: post.id,
+      authorId: post.authorId,
       position: post.position,
       href: canonicalUrl("topic", input.topic.id, input.topic.slug, { postId: post.id }),
       authorCard:
@@ -470,6 +474,12 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     canReact:
       principalMemberId(input.principal) !== null &&
       input.snapshot.settings["posting.can_react"] === true,
+    canGiveReputation:
+      principalMemberId(input.principal) !== null &&
+      input.snapshot.settings["posting.can_give_reputation"] === true,
+    canGiveNegativeReputation:
+      principalMemberId(input.principal) !== null &&
+      input.snapshot.settings["posting.can_give_negative_reputation"] === true,
     pollId: poll?.id ?? null,
     postTags,
     allPostTags: [...new Set(allPostTags)],

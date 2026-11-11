@@ -125,10 +125,28 @@ export const approvedPostsCriterion: PromotionCriterion = {
   },
 };
 
+interface ReputationRow {
+  readonly reputation: number;
+}
+
+/** The criterion contributed by `reactions-reputation` (task 2.5). */
+export const reputationCriterion: PromotionCriterion = {
+  key: "reputation",
+  labelKey: "staff.groups.promotionCriterion.reputation",
+  async read({ sql, memberId }) {
+    const [row] = (await sql`
+      SELECT reputation FROM core.members WHERE id = ${memberId}
+    `) as ReputationRow[];
+
+    return row?.reputation ?? 0;
+  },
+};
+
 /** The process-wide registry. Later changes call `registerPromotionCriterion`. */
 export const promotionCriteria = createPromotionCriteriaRegistry([
   daysSinceJoiningCriterion,
   approvedPostsCriterion,
+  reputationCriterion,
 ]);
 
 export function registerPromotionCriterion(criterion: PromotionCriterion): void {

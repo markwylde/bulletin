@@ -119,6 +119,30 @@ export const reactionsSchema = v.strictObject({
   labels: reactionLabelsSchema,
 });
 
+const reputationLabelsSchema = v.strictObject({
+  giveUp: v.pipe(v.string(), v.minLength(1)),
+  giveDown: v.pipe(v.string(), v.minLength(1)),
+  givenUp: v.pipe(v.string(), v.minLength(1)),
+  givenDown: v.pipe(v.string(), v.minLength(1)),
+  failed: v.pipe(v.string(), v.minLength(1)),
+  dailyLimit: v.pipe(v.string(), v.minLength(1)),
+  minPosts: v.pipe(v.string(), v.minLength(1)),
+  negativeNotAllowed: v.pipe(v.string(), v.minLength(1)),
+  cannotReceive: v.pipe(v.string(), v.minLength(1)),
+  alreadyGiven: v.pipe(v.string(), v.minLength(1)),
+  ownPost: v.pipe(v.string(), v.minLength(1)),
+});
+
+/** The reputation give controls next to a post; the overlay supplies own/given state. */
+export const postReputationSchema = v.strictObject({
+  postId: v.pipe(v.string(), v.regex(/^\d+$/)),
+  receiverId: v.pipe(v.string(), v.regex(/^\d+$/)),
+  canGive: v.boolean(),
+  canNegative: v.boolean(),
+  locale: v.picklist(LOCALE_VALUES),
+  labels: reputationLabelsSchema,
+});
+
 /** The canonical island names; the template registry and the client runtime must match. */
 export const ISLAND_SCHEMAS = {
   SpikeCounter: spikeCounterSchema,
@@ -126,6 +150,7 @@ export const ISLAND_SCHEMAS = {
   LocaleSuggestion: localeSuggestionSchema,
   Editor: editorSchema,
   Reactions: reactionsSchema,
+  PostReputation: postReputationSchema,
 } as const;
 
 export type IslandName = keyof typeof ISLAND_SCHEMAS;

@@ -1326,3 +1326,23 @@ fieldset.bl-editor__modes {
   padding-inline-start: 1.25rem;
   overflow-wrap: anywhere;
 }
+
+/* Reputation (task 2.3): the author card label and the give controls on a post. */
+.bl-author-card__reputation {
+  color: var(--bl-muted);
+  font-size: 0.8125rem;
+}
+
+.bl-post__reputation {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.bl-post__reputation .bl-button {
+  min-width: var(--bl-touch);
+  min-height: var(--bl-touch);
+  padding-inline: 0;
+}

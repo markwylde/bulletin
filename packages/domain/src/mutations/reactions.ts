@@ -1,14 +1,19 @@
-import { GLOBAL_CACHE_TAGS, postReactionsTag } from "@bulletin/cache";
+import { GLOBAL_CACHE_TAGS, memberTag, postReactionsTag } from "@bulletin/cache";
 import type { Mutation } from "./index.ts";
 
 export interface ReactionSetResult {
   readonly postId: string;
+  /** The author whose reputation changed, when the reaction link is on. */
+  readonly reputationReceiverId: string | null;
 }
 
 /** A member's reaction changes only that post's reaction bar, never its body (ADR 0006). */
 export const reactionSetMutation: Mutation<{ readonly postId: string }, ReactionSetResult> = {
   name: "reaction.set",
-  tags: (_input, result) => [postReactionsTag(result.postId)],
+  tags: (_input, result) => [
+    postReactionsTag(result.postId),
+    ...(result.reputationReceiverId === null ? [] : [memberTag(result.reputationReceiverId)]),
+  ],
 };
 
 export interface ReactionAdminResult {

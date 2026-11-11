@@ -7,6 +7,7 @@ import {
   type IslandPropsSchema,
   languageSwitcherSchema,
   localeSuggestionSchema,
+  postReputationSchema,
   reactionsSchema,
   spikeCounterSchema,
 } from "./schemas.ts";
@@ -97,5 +98,9 @@ export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
   Reactions: defineClientIsland(reactionsSchema, async () => {
     const module = await import("./Reactions.tsx");
     return module.Reactions;
+  }),
+  PostReputation: defineClientIsland(postReputationSchema, async () => {
+    const module = await import("./PostReputation.tsx");
+    return module.PostReputation;
   }),
 };

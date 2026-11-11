@@ -1,4 +1,5 @@
 import { GLOBAL_CACHE_TAGS, memberTag, type RenderCache, topicViewsTag } from "@bulletin/cache";
+import { type ReputationLabel, reputationLabelFor } from "@bulletin/domain/reputation";
 import {
   loadMemberCards,
   type MemberCardRecord,
@@ -34,7 +35,38 @@ export async function renderTopicViewsFragment(
   return rendered.html;
 }
 
-function cardHtml(card: MemberCardRecord, translate: Translator, avatarEnabled: boolean): string {
+/** The board's reputation display settings, captured in the card fragment's cache key. */
+export interface ReputationDisplay {
+  readonly display: boolean;
+  readonly scale: readonly ReputationLabel[];
+}
+
+function reputationHtml(
+  card: MemberCardRecord,
+  translate: Translator,
+  reputation: ReputationDisplay | null,
+): string {
+  if (reputation === null || !reputation.display) {
+    return "";
+  }
+
+  const label = translate(reputationLabelFor(reputation.scale, card.reputation));
+
+  return [
+    '<span class="bl-author-card__reputation">',
+    `<span data-reputation-label="${card.id}">${escapeHtml(label)}</span>`,
+    ' <span aria-hidden="true">·</span> ',
+    `<span data-reputation-count="${card.id}">${card.reputation}</span>`,
+    "</span>",
+  ].join("");
+}
+
+function cardHtml(
+  card: MemberCardRecord,
+  translate: Translator,
+  avatarEnabled: boolean,
+  reputation: ReputationDisplay | null,
+): string {
   const name = card.displayName ?? translate("member.deletedName");
   const group = card.groupTitle ?? translate("member.noGroup");
   const profile =
@@ -60,6 +92,7 @@ function cardHtml(card: MemberCardRecord, translate: Translator, avatarEnabled: 
     `<span class="bl-author-card__posts">${escapeHtml(
       translate("member.postCount", { count: card.postCount }),
     )}</span>`,
+    reputationHtml(card, translate, reputation),
     "</span>",
     "</span>",
   ].join("");
@@ -76,6 +109,7 @@ export async function renderMemberCards(
   locale: Locale,
   translate: Translator,
   avatarEnabled = true,
+  reputation: ReputationDisplay | null = null,
 ): Promise<ReadonlyMap<string, string>> {
   const unique = [...new Set(memberIds)];
   const cards = await loadMemberCards(sql, unique);
@@ -90,12 +124,19 @@ export async function renderMemberCards(
     }
 
     const fragment = await cache.getOrRender({
-      tags: [memberTag(id), GLOBAL_CACHE_TAGS.ranks, GLOBAL_CACHE_TAGS.flags],
+      tags: [
+        memberTag(id),
+        GLOBAL_CACHE_TAGS.ranks,
+        GLOBAL_CACHE_TAGS.flags,
+        GLOBAL_CACHE_TAGS.board,
+      ],
       prepare: async () => ({
-        key: `member-card:${id}:${locale}:avatar=${avatarEnabled ? "on" : "off"}`,
+        key: `member-card:${id}:${locale}:avatar=${avatarEnabled ? "on" : "off"}:rep=${
+          reputation === null || !reputation.display ? "off" : JSON.stringify(reputation.scale)
+        }`,
         data: card,
       }),
-      render: (value) => cardHtml(value, translate, avatarEnabled),
+      render: (value) => cardHtml(value, translate, avatarEnabled, reputation),
     });
 
     rendered.set(id, fragment.html);

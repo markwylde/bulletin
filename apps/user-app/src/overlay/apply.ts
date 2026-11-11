@@ -5,6 +5,7 @@
  */
 
 import type { ReactionViewerState } from "@bulletin/ui/islands/reactions/store";
+import type { ReputationViewerState } from "@bulletin/ui/islands/reputation/store";
 
 export type OverlayCount = "notifications" | "conversations";
 
@@ -53,6 +54,8 @@ export interface OverlayPayload {
   readonly follows?: Readonly<Record<string, boolean>>;
   /** The member's own reaction on each rendered post; never in shared HTML (ADR 0006). */
   readonly reactions?: readonly ReactionViewerState[];
+  /** The member's own reputation vote on each rendered post. */
+  readonly reputation?: readonly ReputationViewerState[];
 }
 
 export interface UnreadSlot {
@@ -75,6 +78,7 @@ export interface OverlayTarget {
   setEditablePosts(posts: readonly OverlayEditablePost[]): void;
   setFollow(context: string, following: boolean): void;
   setReactions(states: readonly ReactionViewerState[]): void;
+  setReputation(states: readonly ReputationViewerState[]): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -184,6 +188,23 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
   });
 
   target.setReactions(reactions);
+
+  const reputation = (payload.reputation ?? []).flatMap((state) => {
+    if (
+      typeof state !== "object" ||
+      state === null ||
+      typeof state.postId !== "string" ||
+      !/^[1-9]\d{0,18}$/.test(state.postId) ||
+      typeof state.own !== "boolean" ||
+      !(state.points === null || state.points === 1 || state.points === -1)
+    ) {
+      return [];
+    }
+
+    return [{ postId: state.postId, points: state.points, own: state.own }];
+  });
+
+  target.setReputation(reputation);
 
   const draft = payload.draft;
 
