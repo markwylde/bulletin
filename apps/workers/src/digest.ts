@@ -125,7 +125,8 @@ export async function deliverDigestEmail(
       type: "digest",
       expiresAt: Date.now() + DIGEST_UNSUBSCRIBE_TTL_MS,
     });
-    const unsubscribeUrl = `${options.userOrigin}/unsubscribe?token=${encodeURIComponent(token)}`;
+    const pageUrl = `${options.userOrigin}/unsubscribe?token=${encodeURIComponent(token)}`;
+    const oneClickUrl = `${options.userOrigin}/api/notifications/unsubscribe?token=${encodeURIComponent(token)}`;
     const lines = [greeting, "", intro];
 
     for (const item of items) {
@@ -138,7 +139,7 @@ export async function deliverDigestEmail(
       lines.push(translate("digest.item", { title: item.title, url }));
     }
 
-    lines.push("", translate("digest.unsubscribe", { url: unsubscribeUrl }));
+    lines.push("", translate("digest.unsubscribe", { url: pageUrl }));
     const text = lines.join("\n");
     const html = `<!doctype html><html><body><p>${escapeHtml(greeting)}</p><p>${escapeHtml(
       intro,
@@ -152,8 +153,8 @@ export async function deliverDigestEmail(
         )}`;
         return `<li><a href="${escapeHtml(url)}">${escapeHtml(item.title)}</a></li>`;
       })
-      .join("")}</ul><p><a href="${escapeHtml(unsubscribeUrl)}">${escapeHtml(
-      translate("digest.unsubscribe", { url: unsubscribeUrl }),
+      .join("")}</ul><p><a href="${escapeHtml(pageUrl)}">${escapeHtml(
+      translate("digest.unsubscribe", { url: pageUrl }),
     )}</a></p></body></html>`;
 
     await sendSmtpMail({
@@ -164,6 +165,10 @@ export async function deliverDigestEmail(
         subject: digestSubject(translate, row.frequency),
         text,
         html,
+        headers: {
+          "List-Unsubscribe": `<${oneClickUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
       },
     });
 

@@ -151,6 +151,42 @@ integrationDescribe("digests", () => {
     });
   }, 60_000);
 
+  test("a digest is delivered even when the notifications flag is off", async () => {
+    await withMailStack(async ({ database, store, options }) => {
+      const member = await memberId(database, "member-2");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+
+      await database.sql`
+        INSERT INTO core.feature_flags (key, description, owner, default_value)
+        VALUES ('notifications', 'In-app notifications.', 'core', false)
+        ON CONFLICT (key) DO UPDATE SET default_value = false
+      `;
+
+      await setDigestFrequency(database.sql, member, "weekly");
+      await follow(database.sql, { memberId: member, kind: "forum", id: forum });
+      expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Digest while notifications are off",
+          bodyMd: "Body.",
+        }),
+      );
+
+      const queued = await queueDigests(database.sql, "weekly");
+      expect(queued).toHaveLength(1);
+      expect(
+        await deliverDigestEmail(
+          database.sql,
+          options,
+          queued[0] ?? { intentId: "0", deliveryId: "0" },
+        ),
+      ).toBe("sent");
+      expect(store.list()[0]?.text).toContain("Digest while notifications are off");
+    });
+  }, 60_000);
+
   test("content that became unreadable after the window is not sent", async () => {
     await withMailStack(async ({ database, store, options }) => {
       const member = await memberId(database, "member-2");

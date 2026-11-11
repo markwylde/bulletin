@@ -54,9 +54,10 @@ export async function queueDigests(
   const now = options.now ?? new Date();
   const window = digestWindowMs(frequency);
   const rows = (await sql`
-    SELECT member_id::text AS member_id, last_sent_at
-    FROM core.digest_subscriptions
-    WHERE frequency = ${frequency}
+    SELECT s.member_id::text AS member_id, s.last_sent_at
+    FROM core.digest_subscriptions s
+    JOIN core.members m ON m.id = s.member_id AND m.state = 'active'
+    WHERE s.frequency = ${frequency}
   `) as Array<{ member_id: string; last_sent_at: Date | string | null }>;
   const queued: QueuedDigest[] = [];
 

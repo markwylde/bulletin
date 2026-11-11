@@ -75,6 +75,7 @@ integrationDescribe("identity schema", () => {
           "post_count",
           "previous_visit_at",
           "promotion_version",
+          "state",
         ].sort(),
       );
       expect(byTable.get("member_groups")?.sort()).toEqual(

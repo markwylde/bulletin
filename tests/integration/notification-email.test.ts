@@ -235,6 +235,12 @@ integrationDescribe("notification email", () => {
       expect(message?.text).not.toContain("Quoted secret source body.");
       expect(message?.html).not.toContain("Quoted secret source body.");
       expect(message?.html).toContain("Email topic");
+      // RFC 8058 headers point at the one-click endpoint; the body links to the confirmation page.
+      expect(message?.headers["list-unsubscribe"]).toContain(
+        `${userOrigin()}/api/notifications/unsubscribe?token=`,
+      );
+      expect(message?.headers["list-unsubscribe-post"]).toBe("List-Unsubscribe=One-Click");
+      expect(message?.text).toMatch(/\/unsubscribe\?token=/);
 
       const token = /unsubscribe\?token=([^>\s]+)/.exec(message?.text ?? "")?.[1];
       expect(token).toBeString();
@@ -323,6 +329,64 @@ integrationDescribe("notification email", () => {
         SELECT delivered_at FROM core.delivery_intents WHERE id = ${intentId}
       `) as Array<{ delivered_at: Date | null }>;
       expect(intent?.delivered_at).toBeNull();
+    });
+  }, 60_000);
+
+  test("system mail resolves the address but respects the erasure fence", async () => {
+    await withMailStack(async ({ database }) => {
+      const member = await memberId(database, "member-1");
+      const worker = new SQL(roleUrl(database.url, "workers"));
+
+      try {
+        const [row] = (await worker`
+          INSERT INTO core.delivery_intents (member_id, kind, ref_id, channel)
+          VALUES (${member}, 'system', 1, 'email')
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+
+        const [target] = (await worker`
+          SELECT pii.delivery_target(${row?.id ?? "0"}, 'email') AS email
+        `) as Array<{ email: string | null }>;
+        expect(target?.email).toBe(await emailFor(database, member));
+
+        await database.sql`UPDATE core.members SET state = 'erasing' WHERE id = ${member}`;
+        const [refused] = (await worker`
+          SELECT pii.delivery_target(${row?.id ?? "0"}, 'email') AS email
+        `) as Array<{ email: string | null }>;
+        expect(refused?.email).toBeNull();
+      } finally {
+        await worker.close();
+      }
+    });
+  }, 60_000);
+
+  test("an erasing member's pending notification email is never sent", async () => {
+    await withMailStack(async ({ database, store, options }) => {
+      const fixture = await replyFixture(database);
+      const { notificationId, intentId } = await createIntent(
+        database,
+        fixture,
+        fixture.starter,
+        "topic.reply",
+      );
+      await database.sql`
+        UPDATE core.members SET state = 'erasing' WHERE id = ${fixture.starter}
+      `;
+
+      expect(await deliverNotificationEmail(database.sql, options, intentId.toString())).toBe(
+        "skipped",
+      );
+      expect(store.list()).toEqual([]);
+
+      const [intent] = (await database.sql`
+        SELECT delivered_at FROM core.delivery_intents WHERE id = ${intentId}
+      `) as Array<{ delivered_at: Date | null }>;
+      expect(intent?.delivered_at).toBeNull();
+
+      const [notification] = (await database.sql`
+        SELECT read_at FROM core.notifications WHERE id = ${notificationId}
+      `) as Array<{ read_at: Date | null }>;
+      expect(notification?.read_at).toBeNull();
     });
   }, 60_000);
 

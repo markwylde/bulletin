@@ -333,7 +333,7 @@ export async function eventRecipients(
       const [member] = (await sql`
         SELECT id
         FROM core.members
-        WHERE id = ${memberId} AND is_service = false
+        WHERE id = ${memberId} AND is_service = false AND state = 'active'
       `) as Array<{ id: string }>;
 
       return member === undefined
@@ -765,4 +765,13 @@ export async function notificationReplayGap(
     missed: row?.missed ?? 0,
     oldest: row?.oldest === null || row?.oldest === undefined ? null : new Date(row.oldest),
   };
+}
+
+/** The erasure fence (ADR 0012): only active members get new notifications or deliveries. */
+export async function memberIsActive(sql: SQL, memberId: string): Promise<boolean> {
+  const [row] = (await sql`
+    SELECT 1 AS active FROM core.members WHERE id = ${memberId} AND state = 'active'
+  `) as Array<{ active: number }>;
+
+  return row !== undefined;
 }

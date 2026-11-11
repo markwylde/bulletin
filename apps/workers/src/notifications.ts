@@ -4,6 +4,7 @@ import {
   createNotification,
   createNotificationEmailIntent,
   eventRecipients,
+  memberIsActive,
   type NotificationRecipient,
   type NotificationRecipientFilter,
   notificationChannels,
@@ -50,6 +51,10 @@ export function createNotificationsEventHandler(
     const emailIntents: string[] = [];
     await options.sql.begin(async (tx) => {
       for (const recipient of recipients) {
+        if (!(await memberIsActive(tx, recipient.memberId))) {
+          continue;
+        }
+
         const channels = await notificationChannels(tx, recipient.memberId, recipient.type);
 
         if (!channels.in_app && !channels.email && !channels.digest) {

@@ -33,7 +33,7 @@
 
 ## 6. Email
 
-- [ ] 6.1 `core.delivery_intents` for notifications, digests and system mail, with `pii.delivery_target(intent_id, channel)`; tests for the digest-with-notifications-off scenario and that an erasing member gets nothing
+- [x] 6.1 `core.delivery_intents` for notifications, digests and system mail, with `pii.delivery_target(intent_id, channel)`; tests for the digest-with-notifications-off scenario and that an erasing member gets nothing
 - [ ] 6.2 Unsubscribe confirmation page plus `POST /api/notifications/unsubscribe` with signed tokens and RFC 8058 headers; tests for the click-and-confirm and link-scanner scenarios
 
 ## 7. Feature flag
