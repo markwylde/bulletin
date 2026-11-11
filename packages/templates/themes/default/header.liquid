@@ -16,5 +16,9 @@
       {% island "LanguageSwitcher" language %}
     </nav>
   </div>
+  <div class="bl-reauth-banner" data-stream-reauth hidden>
+    <p>{% t "realtime.reauthBody" %}</p>
+    <a class="bl-button bl-button--small" data-stream-reauth-continue href="/api/auth/refresh">{% t "realtime.continue" %}</a>
+  </div>
   {% island "LocaleSuggestion" localeSuggestion %}
 </header>

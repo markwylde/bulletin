@@ -28,6 +28,10 @@
     {% endif %}
   </header>
 
+  <button class="bl-button bl-new-replies" type="button" data-new-replies
+    data-label-one="{% t "realtime.newReplyOne" %}"
+    data-label-other="{% t "realtime.newReplyOther" %}" hidden></button>
+
   {% if flags.polls and pollSlot %}{{ pollSlot }}{% endif %}
 
   {% if posts.size > 0 %}
