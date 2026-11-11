@@ -40,6 +40,9 @@ function isAllowed(file: SourceFile): boolean {
     // download path re-authorises per request (ADR 0019).
     file.path === "packages/domain/src/attachments/store.ts" ||
     file.path === "packages/db/src/jobs/attachments.ts" ||
+    // Conversation removal is a retention lifecycle job: it deletes only conversations with no
+    // active participant and never serves a viewer (ADR 0012).
+    file.path === "packages/db/src/jobs/conversations.ts" ||
     // Badge rules count a member's own content to award a badge; they never serve a viewer.
     file.path.startsWith("packages/domain/src/badges/") ||
     isPermissionRepository(file)

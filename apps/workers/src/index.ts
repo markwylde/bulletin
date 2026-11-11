@@ -17,6 +17,7 @@ import {
   createAttachmentJobs,
   createBadgeJobs,
   createContentJobs,
+  createConversationJobs,
   createForumJobs,
   createLeaderboardJobs,
   createMaintenanceJobs,
@@ -177,6 +178,12 @@ const attachmentJobs = await createAttachmentJobs({
   storage,
   logger,
 });
+const conversationJobs = await createConversationJobs({
+  boss: boss.boss,
+  sql,
+  storage,
+  logger,
+});
 
 let relayInFlight: Promise<void> | undefined;
 const relayTimer = setInterval(() => {
@@ -226,6 +233,7 @@ await startService({
     await contentJobs.stop();
     await unfurlJobs.stop();
     await attachmentJobs.stop();
+    await conversationJobs.stop();
     await promotionJobs.stop();
     await reputationJobs.stop();
     await eventWorker.stop();
@@ -244,6 +252,7 @@ await startService({
   await contentJobs.stop();
   await unfurlJobs.stop();
   await attachmentJobs.stop();
+  await conversationJobs.stop();
   await promotionJobs.stop();
   await reputationJobs.stop();
   await boss.stop();

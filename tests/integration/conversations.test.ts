@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CONVERSATION_REMOVAL_CRON,
+  CONVERSATION_REMOVAL_QUEUE,
+  createConversationJobs,
+  runConversationRemoval,
+} from "@bulletin/db/jobs";
+import {
   baseSeedModule,
   flagsSeedModule,
   groupsSeedModule,
@@ -8,18 +14,22 @@ import {
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
+import { refreshMemberStorage } from "@bulletin/domain/attachments";
 import {
   inviteConversationParticipant,
   leaveConversation,
   listConversations,
   readConversationForParticipant,
   readStartUsage,
+  replyToConversation,
   searchConversations,
   startConversation,
 } from "@bulletin/domain/conversations";
 import { insertIgnore } from "@bulletin/domain/relationships";
 import { createServerT } from "@bulletin/i18n";
+import { type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import type { PgBoss } from "pg-boss";
 import {
   archiveConversationResponse,
   conversationResponse,
@@ -924,6 +934,240 @@ integrationDescribe("conversation search", () => {
       });
       expect(page.conversations).toEqual([]);
       expect(page.hasConversations).toBe(false);
+    });
+  }, 30_000);
+});
+
+interface RecordingStorage {
+  readonly storage: StorageClient;
+  readonly deleted: string[];
+}
+
+function recordingStorage(): RecordingStorage {
+  const deleted: string[] = [];
+
+  return {
+    deleted,
+    storage: {
+      async put() {
+        return 0;
+      },
+      async get() {
+        return new Uint8Array();
+      },
+      async exists() {
+        return false;
+      },
+      async stat() {
+        return { size: 0, contentType: "application/octet-stream", etag: "" };
+      },
+      async delete(key: string) {
+        deleted.push(key);
+      },
+      async copy() {},
+      async list() {
+        return [];
+      },
+      presignGet() {
+        return "";
+      },
+      presignPut() {
+        return "";
+      },
+    },
+  };
+}
+
+async function createReadyAttachment(
+  database: TestDatabase,
+  memberId: string,
+  sizeBytes = 120,
+): Promise<{ readonly id: string; readonly storageKey: string }> {
+  const storageKey = `att/${crypto.randomUUID()}`;
+  const [row] = (await database.sql`
+    INSERT INTO core.attachments (
+      member_id, state, filename, declared_type, declared_bytes, quarantine_key,
+      storage_key, size_bytes, sha256, verified_type
+    )
+    VALUES (
+      ${memberId}, 'ready', 'secret.pdf', 'application/pdf', ${sizeBytes},
+      ${`quarantine/${crypto.randomUUID()}`}, ${storageKey}, ${sizeBytes},
+      ${"a".repeat(64)}, 'application/pdf'
+    )
+    RETURNING id::text AS id
+  `) as Array<{ id: string }>;
+
+  if (row === undefined) {
+    throw new Error("Could not create the attachment");
+  }
+
+  await refreshMemberStorage(database.sql, [memberId]);
+  return { id: row.id, storageKey };
+}
+
+async function attachToMessage(
+  database: TestDatabase,
+  messageId: string,
+  attachmentId: string,
+): Promise<void> {
+  await database.sql`
+    INSERT INTO core.conversation_message_attachments (message_id, attachment_id)
+    VALUES (${messageId}, ${attachmentId})
+  `;
+}
+
+async function conversationMessageIds(
+  database: TestDatabase,
+  conversationId: string,
+): Promise<readonly string[]> {
+  const rows = (await database.sql`
+    SELECT id::text AS id
+    FROM core.conversation_messages
+    WHERE conversation_id = ${conversationId}
+    ORDER BY id
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}
+
+async function storageUsedBytes(database: TestDatabase, memberId: string): Promise<number> {
+  const [row] = (await database.sql`
+    SELECT used_bytes::text AS used_bytes
+    FROM core.member_storage
+    WHERE member_id = ${memberId}
+  `) as Array<{ used_bytes: string }>;
+
+  return Number(row?.used_bytes ?? "0");
+}
+
+integrationDescribe("permanent conversation removal", () => {
+  test("deletes an empty conversation, its messages, attachments and objects", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+      const [messageId] = await conversationMessageIds(database, conversationId);
+      const attachment = await createReadyAttachment(database, starter);
+      await attachToMessage(database, messageId ?? "", attachment.id);
+      expect(await storageUsedBytes(database, starter)).toBe(120);
+
+      await leaveConversation(database.sql, { actorId: starter, conversationId });
+      await leaveConversation(database.sql, { actorId: recipient, conversationId });
+
+      const recording = recordingStorage();
+      const result = await runConversationRemoval(database.sql, recording.storage);
+
+      expect(result).toMatchObject({
+        removed: 1,
+        kept: 0,
+        messagesDeleted: 1,
+        attachmentsDeleted: 1,
+      });
+      expect(recording.deleted).toContain(attachment.storageKey);
+      expect(recording.deleted).toContain(thumbnailKeyFor(attachment.storageKey));
+      expect(await conversationCount(database)).toBe(0);
+      expect(await storageUsedBytes(database, starter)).toBe(0);
+
+      // A second sweep is a no-op.
+      const again = await runConversationRemoval(database.sql, recording.storage);
+      expect(again.removed).toBe(0);
+    });
+  }, 30_000);
+
+  test("keeps only held messages and their attachments until the hold is released", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      const reply = await replyToConversation(database.sql, {
+        actorId: recipient,
+        conversationId,
+        bodyMd: "This message will be reported.",
+      });
+
+      if (!reply.ok) {
+        throw new Error("Could not create the reply");
+      }
+
+      const [first, second] = await conversationMessageIds(database, conversationId);
+      const unheld = await createReadyAttachment(database, starter, 100);
+      const held = await createReadyAttachment(database, starter, 140);
+      await attachToMessage(database, first ?? "", unheld.id);
+      await attachToMessage(database, second ?? "", held.id);
+      await database.sql`
+        INSERT INTO core.conversation_message_holds (message_id, holder, ref)
+        VALUES (${second}, 'report', '42')
+      `;
+      expect(await storageUsedBytes(database, starter)).toBe(240);
+
+      await leaveConversation(database.sql, { actorId: starter, conversationId });
+      await leaveConversation(database.sql, { actorId: recipient, conversationId });
+
+      const recording = recordingStorage();
+      const keptResult = await runConversationRemoval(database.sql, recording.storage);
+
+      expect(keptResult).toMatchObject({
+        removed: 0,
+        kept: 1,
+        messagesDeleted: 1,
+        attachmentsDeleted: 1,
+      });
+      expect(await conversationCount(database)).toBe(1);
+      expect(await conversationMessageIds(database, conversationId)).toEqual([second]);
+      expect(recording.deleted).toContain(unheld.storageKey);
+      expect(recording.deleted).not.toContain(held.storageKey);
+      expect(await storageUsedBytes(database, starter)).toBe(140);
+
+      const stillKept = await runConversationRemoval(database.sql, recording.storage);
+      expect(stillKept.kept).toBe(1);
+      expect(stillKept.messagesDeleted).toBe(0);
+
+      await database.sql`
+        DELETE FROM core.conversation_message_holds
+        WHERE message_id = ${second} AND holder = 'report' AND ref = '42'
+      `;
+      const finished = await runConversationRemoval(database.sql, recording.storage);
+
+      expect(finished).toMatchObject({ removed: 1, kept: 0, messagesDeleted: 1 });
+      expect(await conversationCount(database)).toBe(0);
+      expect(recording.deleted).toContain(held.storageKey);
+      expect(await storageUsedBytes(database, starter)).toBe(0);
+    });
+  }, 30_000);
+
+  test("registers the removal sweep schedule", async () => {
+    await withSeededDb(async (database) => {
+      const calls: string[] = [];
+      const boss = {
+        getQueue: async () => ({}),
+        updateQueue: async () => {},
+        createQueue: async (name: string) => {
+          calls.push(`create:${name}`);
+        },
+        work: async (name: string) => {
+          calls.push(`work:${name}`);
+        },
+        schedule: async (name: string, cron: string) => {
+          calls.push(`schedule:${name}:${cron}`);
+        },
+        offWork: async (name: string) => {
+          calls.push(`off:${name}`);
+        },
+      } as unknown as PgBoss;
+
+      const jobs = await createConversationJobs({
+        boss,
+        sql: database.sql,
+        storage: recordingStorage().storage,
+      });
+
+      expect(calls).toContain(`work:${CONVERSATION_REMOVAL_QUEUE}`);
+      expect(calls).toContain(
+        `schedule:${CONVERSATION_REMOVAL_QUEUE}:${CONVERSATION_REMOVAL_CRON}`,
+      );
+      await jobs.stop();
+      expect(calls).toContain(`off:${CONVERSATION_REMOVAL_QUEUE}`);
     });
   }, 30_000);
 });
