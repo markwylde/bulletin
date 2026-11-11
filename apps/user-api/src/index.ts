@@ -14,12 +14,12 @@ import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
 import {
-  attachmentDeleteResponse,
-  attachmentDownloadCountResponse,
-  attachmentFinaliseResponse,
-  attachmentRequestResponse,
+  attachmentDeleteRoute,
+  attachmentDownloadCountRoute,
+  attachmentFinaliseRoute,
+  attachmentRequestRoute,
 } from "./attachments.ts";
-import { avatarRemoveResponse, avatarUploadResponse } from "./avatars.ts";
+import { avatarRemoveRoute, avatarUploadRoute } from "./avatars.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
 import { draftsRoute } from "./drafts.ts";
@@ -299,9 +299,7 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return flags.guard("attachments", session.memberId)(request, () =>
-          attachmentRequestResponse(sql, storage, session, request),
-        );
+        return attachmentRequestRoute(sql, storage, flags, session, request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -315,8 +313,12 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return flags.guard("attachments", session.memberId)(request, () =>
-          attachmentFinaliseResponse(sql, storage, session, attachmentFinaliseMatch[1] ?? ""),
+        return attachmentFinaliseRoute(
+          sql,
+          storage,
+          flags,
+          session,
+          attachmentFinaliseMatch[1] ?? "",
         );
       });
 
@@ -331,9 +333,7 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return flags.guard("attachments", session.memberId)(request, () =>
-          attachmentDownloadCountResponse(sql, session, attachmentDownloadMatch[1] ?? ""),
-        );
+        return attachmentDownloadCountRoute(sql, flags, session, attachmentDownloadMatch[1] ?? "");
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -347,9 +347,7 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return flags.guard("attachments", session.memberId)(request, () =>
-          attachmentDeleteResponse(sql, session, attachmentDeleteMatch[1] ?? "", request),
-        );
+        return attachmentDeleteRoute(sql, flags, session, attachmentDeleteMatch[1] ?? "", request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -361,9 +359,7 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return flags.guard("avatar_upload", session.memberId)(request, () =>
-          avatarUploadResponse(sql, storage, session, request),
-        );
+        return avatarUploadRoute(sql, storage, flags, session, request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -375,9 +371,7 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return flags.guard("avatar_upload", session.memberId)(request, () =>
-          avatarRemoveResponse(sql, storage, session),
-        );
+        return avatarRemoveRoute(sql, storage, flags, session);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

@@ -12,6 +12,7 @@ const labels = readLabels<AvatarLabels>("account-avatar-labels");
 const fileInput = document.querySelector<HTMLInputElement>("[data-avatar-file]");
 const canvas = document.querySelector<HTMLCanvasElement>("[data-avatar-canvas]");
 const zoom = document.querySelector<HTMLInputElement>("[data-avatar-zoom]");
+const editor = document.querySelector<HTMLElement>("[data-avatar-editor]");
 const save = document.querySelector<HTMLButtonElement>("[data-avatar-save]");
 const remove = document.querySelector<HTMLButtonElement>("[data-avatar-remove]");
 const error = document.querySelector<HTMLElement>("[data-avatar-error]");
@@ -53,14 +54,24 @@ function draw(): void {
   }
 
   const zoomValue = Math.min(Math.max(Number(zoom?.value ?? "1"), 1), 3);
-  const edge = Math.min(image.naturalWidth, image.naturalHeight) / zoomValue;
-  const sourceX = (image.naturalWidth - edge) / 2;
-  const sourceY = (image.naturalHeight - edge) / 2;
+  const sourceEdge = Math.min(image.naturalWidth, image.naturalHeight) / zoomValue;
+  const sourceX = (image.naturalWidth - sourceEdge) / 2;
+  const sourceY = (image.naturalHeight - sourceEdge) / 2;
+  const maxWidth = Number(editor?.dataset.avatarMaxWidth ?? "256");
+  const maxHeight = Number(editor?.dataset.avatarMaxHeight ?? "256");
+  const outputEdge = Math.max(
+    1,
+    Math.min(
+      256,
+      Number.isFinite(maxWidth) ? maxWidth : 256,
+      Number.isFinite(maxHeight) ? maxHeight : 256,
+    ),
+  );
 
-  canvas.width = 256;
-  canvas.height = 256;
-  context.clearRect(0, 0, 256, 256);
-  context.drawImage(image, sourceX, sourceY, edge, edge, 0, 0, 256, 256);
+  canvas.width = outputEdge;
+  canvas.height = outputEdge;
+  context.clearRect(0, 0, outputEdge, outputEdge);
+  context.drawImage(image, sourceX, sourceY, sourceEdge, sourceEdge, 0, 0, outputEdge, outputEdge);
 }
 
 fileInput?.addEventListener("change", () => {

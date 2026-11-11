@@ -1,5 +1,6 @@
 import type { QuotePipeline, QuoteSource, QuoteSourceRef } from "@bulletin/content";
 import type { SQL } from "bun";
+import { restartOrphanClock } from "../attachments/store.ts";
 import { insertQuoteSnapshot } from "../content/quotes.ts";
 import type { ForumAction, ModeratorPower } from "../permissions/actions.ts";
 import { can } from "../permissions/can.ts";
@@ -490,11 +491,33 @@ export async function setPostVisibility(
 }
 
 export async function deletePostRow(tx: SQL, postId: string): Promise<void> {
+  // Collect links before the post cascade removes them; the orphan sweep must eventually see
+  // attachments that lost their last reference (ADR 0019).
+  const removed = (await tx`
+    DELETE FROM core.post_attachments
+    WHERE post_id = ${postId}
+    RETURNING attachment_id::text AS attachment_id
+  `) as Array<{ attachment_id: string }>;
+
   await tx`DELETE FROM core.posts WHERE id = ${postId}`;
+  await restartOrphanClock(
+    tx,
+    removed.map((row) => row.attachment_id),
+  );
 }
 
 export async function deleteTopicRow(tx: SQL, topicId: string): Promise<void> {
+  const removed = (await tx`
+    DELETE FROM core.post_attachments
+    WHERE post_id IN (SELECT id FROM core.posts WHERE topic_id = ${topicId})
+    RETURNING attachment_id::text AS attachment_id
+  `) as Array<{ attachment_id: string }>;
+
   await tx`DELETE FROM core.topics WHERE id = ${topicId}`;
+  await restartOrphanClock(
+    tx,
+    removed.map((row) => row.attachment_id),
+  );
 }
 
 export async function visiblePostCount(tx: SQL, topicId: string): Promise<number> {

@@ -11,6 +11,7 @@ import {
 } from "@bulletin/domain/member";
 import { type AvatarVariant, avatarKey, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
+import type { AttachmentRouteFlags } from "./attachments.ts";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 const AVATAR_VARIANTS = Object.keys(AVATAR_SIZES) as AvatarVariant[];
@@ -132,9 +133,12 @@ export async function avatarUploadResponse(
 
   const stored = await setMemberAvatar(sql, session.memberId, processed.hash);
 
-  if (!stored) {
+  if (stored !== "ok") {
     await deleteAvatarObjects(storage, session.memberId, processed.hash);
-    return json({ code: "not_found" }, 404);
+
+    return stored === "blocked"
+      ? json({ code: "avatar_blocked" }, 403)
+      : json({ code: "not_found" }, 404);
   }
 
   if (previous?.hash !== undefined && previous.hash !== processed.hash) {
@@ -160,4 +164,28 @@ export async function avatarRemoveResponse(
   await deleteAvatarObjects(storage, session.memberId, previous.hash);
 
   return json({ ok: true });
+}
+
+export function avatarUploadRoute(
+  sql: SQL,
+  storage: StorageClient,
+  flags: AttachmentRouteFlags,
+  session: Session,
+  request: Request,
+): Promise<Response> {
+  return flags.guard("avatar_upload", session.memberId)(request, () =>
+    avatarUploadResponse(sql, storage, session, request),
+  );
+}
+
+export function avatarRemoveRoute(
+  sql: SQL,
+  storage: StorageClient,
+  flags: AttachmentRouteFlags,
+  session: Session,
+): Promise<Response> {
+  return flags.guard("avatar_upload", session.memberId)(
+    new Request("http://bulletin.localhost/"),
+    () => avatarRemoveResponse(sql, storage, session),
+  );
 }

@@ -55,9 +55,19 @@ export async function readAvatarPolicy(sql: SQL, memberId: string): Promise<Avat
   };
 }
 
-/** Stores the content hash and invalidates the member card, not the post blocks. */
-export async function setMemberAvatar(sql: SQL, memberId: string, hash: string): Promise<boolean> {
-  let updated = false;
+export type SetMemberAvatarResult = "ok" | "blocked" | "missing";
+
+/**
+ * Stores the content hash and invalidates the member card, not the post blocks. The block is
+ * rechecked in the UPDATE itself so an upload that passed its early policy check cannot land
+ * after staff removed the avatar and applied a block.
+ */
+export async function setMemberAvatar(
+  sql: SQL,
+  memberId: string,
+  hash: string,
+): Promise<SetMemberAvatarResult> {
+  let result: SetMemberAvatarResult = "missing";
 
   await runMutation({
     sql,
@@ -68,15 +78,24 @@ export async function setMemberAvatar(sql: SQL, memberId: string, hash: string):
         UPDATE core.members
         SET avatar_hash = ${hash}, avatar_updated_at = now()
         WHERE id = ${memberId}
+          AND (avatar_blocked_until IS NULL OR avatar_blocked_until <= now())
         RETURNING id
       `) as Array<{ id: string }>;
 
-      updated = rows.length > 0;
+      if (rows.length > 0) {
+        result = "ok";
+      } else {
+        const [member] = (await tx`
+          SELECT 1 FROM core.members WHERE id = ${memberId}
+        `) as unknown[];
+        result = member === undefined ? "missing" : "blocked";
+      }
+
       return { memberId };
     },
   });
 
-  return updated;
+  return result;
 }
 
 export interface ClearAvatarOptions {

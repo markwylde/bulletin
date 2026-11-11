@@ -1,4 +1,4 @@
-import { readMember, readNameHistory } from "@bulletin/domain/member";
+import { readAvatarPolicy, readMember, readNameHistory } from "@bulletin/domain/member";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -89,7 +89,10 @@ export async function buildAccountPage(input: AccountPageInput): Promise<Account
     return null;
   }
 
-  const history = await readNameHistory(input.sql, input.memberId);
+  const [history, avatarPolicy] = await Promise.all([
+    readNameHistory(input.sql, input.memberId),
+    readAvatarPolicy(input.sql, input.memberId),
+  ]);
   const formatter = new Intl.DateTimeFormat(input.locale, { dateStyle: "medium" });
   const language: LanguageSwitcherView = languageSwitcherView(input.locale, input.translate);
   const title = input.translate("account.title");
@@ -104,6 +107,8 @@ export async function buildAccountPage(input: AccountPageInput): Promise<Account
         initialsHtml: safeHtml(
           initialsSvg(input.memberId, member.displayName ?? input.translate("member.deletedName")),
         ),
+        maxWidth: avatarPolicy?.maxWidth ?? 512,
+        maxHeight: avatarPolicy?.maxHeight ?? 512,
       },
       history: history.map((entry) => ({
         oldName: entry.oldName,

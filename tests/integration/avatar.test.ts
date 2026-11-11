@@ -379,6 +379,10 @@ integrationDescribe("avatars", () => {
         avatarRequest(base64(await imageBytes())),
       );
       expect(blockedUpload.status).toBe(403);
+
+      // An upload that passed its early policy check still cannot commit after the block.
+      expect(await setMemberAvatar(database.sql, member, "d".repeat(64))).toBe("blocked");
+      expect((await readMemberAvatar(database.sql, member))?.hash).toBeNull();
     });
   }, 30_000);
 

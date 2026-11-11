@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { runAttachmentOrphanSweep } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
   forumExtrasSeedModule,
@@ -12,19 +13,23 @@ import {
 } from "@bulletin/db/seed";
 import {
   deleteAttachment,
+  deleteAttachments,
   listMemberAttachments,
   readAttachmentById,
   readPostAttachments,
   recordAttachmentDownload,
+  refreshMemberStorage,
 } from "@bulletin/domain/attachments";
 import { FORUM_ACTION_BITS } from "@bulletin/domain/permissions";
 import { startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
+import type { StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { attachmentDeleteResponse } from "../../apps/user-api/src/attachments.ts";
 import { buildAttachmentsPage } from "../../apps/user-app/src/account/attachments.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderPostAttachments } from "../../apps/user-app/src/topics/attachments.ts";
+import { deletePostRow } from "../../packages/domain/src/topics/repository.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -235,6 +240,81 @@ integrationDescribe("attachment management", () => {
           attachmentId: staffAttachment,
         }),
       ).toEqual({ ok: false, code: "forbidden" });
+    });
+  }, 30_000);
+
+  test("recomputing quota keeps a processing attachment in used bytes", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const ready = await createAttachment(database, member, "ready.pdf", 1000);
+
+      await database.sql`
+        INSERT INTO core.attachments (
+          member_id, state, filename, declared_type, declared_bytes, quarantine_key,
+          snapshot_key, size_bytes, sha256
+        )
+        VALUES (
+          ${member}, 'snapshotted', 'processing.pdf', 'application/pdf', 500,
+          ${`quarantine/${crypto.randomUUID()}`}, ${`processing/${crypto.randomUUID()}`},
+          700, ${"a".repeat(64)}
+        )
+      `;
+
+      await refreshMemberStorage(database.sql, [member]);
+      const [afterRefresh] = (await database.sql`
+        SELECT used_bytes::text AS used_bytes, reserved_bytes::text AS reserved_bytes
+        FROM core.member_storage WHERE member_id = ${member}
+      `) as Array<{ used_bytes: string; reserved_bytes: string }>;
+      expect(afterRefresh).toEqual({ used_bytes: "1700", reserved_bytes: "0" });
+
+      await deleteAttachments(database.sql, [ready]);
+      const [afterDelete] = (await database.sql`
+        SELECT used_bytes::text AS used_bytes, reserved_bytes::text AS reserved_bytes
+        FROM core.member_storage WHERE member_id = ${member}
+      `) as Array<{ used_bytes: string; reserved_bytes: string }>;
+      expect(afterDelete).toEqual({ used_bytes: "700", reserved_bytes: "0" });
+    });
+  }, 30_000);
+
+  test("hard-deleting a post schedules its attachment for object cleanup", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const member = await memberId(database, "member-1");
+      const attachmentId = await createAttachment(database, member, "post-delete.pdf", 1000);
+      const [stored] = (await database.sql`
+        SELECT storage_key FROM core.attachments WHERE id = ${attachmentId}
+      `) as Array<{ storage_key: string }>;
+      const topic = ok(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: offTopic,
+          title: "Attachment post deletion",
+          bodyMd: `[post-delete.pdf](attachment:${attachmentId})`,
+        }),
+      );
+
+      await database.sql.begin(async (tx) => {
+        await deletePostRow(tx, topic.postId);
+      });
+
+      const [expired] = (await database.sql`
+        SELECT expires_at > now() AS scheduled FROM core.attachments WHERE id = ${attachmentId}
+      `) as Array<{ scheduled: boolean }>;
+      expect(expired?.scheduled).toBe(true);
+
+      const deletedKeys: string[] = [];
+      const storage = {
+        async delete(key: string) {
+          deletedKeys.push(key);
+        },
+      } as unknown as StorageClient;
+      const swept = await runAttachmentOrphanSweep(database.sql, storage, {
+        now: new Date(Date.now() + 25 * 60 * 60 * 1_000),
+      });
+
+      expect(swept.deleted).toBe(1);
+      expect(await readAttachmentById(database.sql, attachmentId)).toBeNull();
+      expect(deletedKeys).toContain(stored?.storage_key);
     });
   }, 30_000);
 

@@ -18,7 +18,7 @@
   <section class="bl-card" data-account-avatar>
     <h2 class="bl-card__title">{% t "account.avatar.title" %}</h2>
     <p class="bl-muted">{% t "account.avatar.body" %}</p>
-    <div class="bl-avatar-editor" data-avatar-editor>
+    <div class="bl-avatar-editor" data-avatar-editor data-avatar-max-width="{{ avatar.maxWidth }}" data-avatar-max-height="{{ avatar.maxHeight }}">
       <div class="bl-avatar-editor__current" data-avatar-current>
         {% if avatar.url %}
           <img class="bl-avatar bl-avatar--image" data-account-avatar-img src="{{ avatar.url }}" alt="" width="64" height="64" loading="lazy">

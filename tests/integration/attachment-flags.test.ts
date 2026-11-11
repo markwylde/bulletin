@@ -16,8 +16,15 @@ import {
 import { setMemberAvatar } from "@bulletin/domain/member";
 import { startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
+import type { StorageClient } from "@bulletin/storage";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import {
+  attachmentDeleteRoute,
+  attachmentFinaliseRoute,
+  attachmentRequestRoute,
+} from "../../apps/user-api/src/attachments.ts";
+import { avatarRemoveRoute, avatarUploadRoute } from "../../apps/user-api/src/avatars.ts";
 import { createUserApiFlags } from "../../apps/user-api/src/flag-guard.ts";
 import { buildAccountPage } from "../../apps/user-app/src/account/page.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
@@ -107,33 +114,81 @@ async function createAttachment(database: TestDatabase, member: string): Promise
 }
 
 integrationDescribe("attachment and avatar feature flags", () => {
-  test("route guards answer 404 when the flags are off", async () => {
+  test("the real routes answer 404 and make no change when the flags are off", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const attachmentId = await createAttachment(database, member);
       const flags = createUserApiFlags(database.sql);
-      const request = new Request("http://bulletin.localhost/api/attachments", { method: "POST" });
-
-      const attachmentOn = await flags.guard("attachments", member)(request, () =>
-        Response.json({ ok: true }),
-      );
-      expect(attachmentOn.status).toBe(200);
-
-      const avatarOn = await flags.guard("avatar_upload", member)(request, () =>
-        Response.json({ ok: true }),
-      );
-      expect(avatarOn.status).toBe(200);
+      const storage = {} as StorageClient;
+      const session = { memberId: member };
+      const uploadRequest = () =>
+        new Request("http://bulletin.localhost/api/attachments", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            forumId: forum,
+            filename: "blocked.txt",
+            contentType: "text/plain",
+            sizeBytes: 10,
+          }),
+        });
 
       await setFlag(database, "attachments", false);
-      const attachmentOff = await flags.guard("attachments", member)(request, () =>
-        Response.json({ ok: true }),
-      );
-      expect(attachmentOff.status).toBe(404);
+
+      expect(
+        (await attachmentRequestRoute(database.sql, storage, flags, session, uploadRequest()))
+          .status,
+      ).toBe(404);
+      const count = (await database.sql`
+        SELECT count(*)::int AS count FROM core.attachments
+      `) as Array<{ count: number }>;
+      expect(count[0]?.count).toBe(1);
+
+      expect(
+        (await attachmentFinaliseRoute(database.sql, storage, flags, session, attachmentId)).status,
+      ).toBe(404);
+      expect(
+        (
+          await attachmentDeleteRoute(
+            database.sql,
+            flags,
+            session,
+            attachmentId,
+            new Request("http://bulletin.localhost/api/attachments/x/delete", {
+              method: "POST",
+              body: "{}",
+            }),
+          )
+        ).status,
+      ).toBe(404);
+      expect(
+        (await database.sql`
+        SELECT 1 FROM core.attachments WHERE id = ${attachmentId}
+      `) as unknown[],
+      ).toHaveLength(1);
 
       await setFlag(database, "avatar_upload", false);
-      const avatarOff = await flags.guard("avatar_upload", member)(request, () =>
-        Response.json({ ok: true }),
-      );
-      expect(avatarOff.status).toBe(404);
+      expect(
+        (
+          await avatarUploadRoute(
+            database.sql,
+            storage,
+            flags,
+            session,
+            new Request("http://bulletin.localhost/api/me/avatar", {
+              method: "POST",
+              body: JSON.stringify({ imageBase64: "AAAA" }),
+            }),
+          )
+        ).status,
+      ).toBe(404);
+      expect((await avatarRemoveRoute(database.sql, storage, flags, session)).status).toBe(404);
+      expect(
+        (await database.sql`
+        SELECT avatar_hash FROM core.members WHERE id = ${member}
+      `) as Array<{ avatar_hash: string | null }>,
+      ).toEqual([{ avatar_hash: null }]);
     });
   }, 30_000);
 

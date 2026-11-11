@@ -484,18 +484,29 @@ export async function refreshMemberStorage(sql: SQL, memberIds: readonly string[
   const array = `{${ids.join(",")}}`;
 
   await sql`
+    INSERT INTO core.member_storage (member_id)
+    SELECT unnest(${array}::bigint[])
+    ON CONFLICT (member_id) DO NOTHING
+  `;
+
+  await sql`
     UPDATE core.member_storage ms
     SET
+      -- Finalise moved snapshotted bytes from reserved to used; publication and rejection
+      -- adjust only used. Recompute with the same accounting, or a future publication would
+      -- leave a stranded reservation.
       used_bytes = COALESCE((
         SELECT sum(a.size_bytes)::bigint
         FROM core.attachments a
-        WHERE a.member_id = ms.member_id AND a.state = 'ready' AND a.deleted_at IS NULL
+        WHERE a.member_id = ms.member_id
+          AND a.state IN ('snapshotted', 'processing', 'ready')
+          AND a.deleted_at IS NULL
       ), 0),
       reserved_bytes = COALESCE((
         SELECT sum(a.declared_bytes)::bigint
         FROM core.attachments a
         WHERE a.member_id = ms.member_id
-          AND a.state IN ('pending', 'snapshotted', 'processing')
+          AND a.state = 'pending'
           AND a.deleted_at IS NULL
       ), 0),
       updated_at = now()
@@ -721,7 +732,7 @@ export async function syncPostAttachments(
   return position;
 }
 
-async function restartOrphanClock(tx: SQL, ids: readonly string[]): Promise<void> {
+export async function restartOrphanClock(tx: SQL, ids: readonly string[]): Promise<void> {
   if (ids.length === 0) {
     return;
   }

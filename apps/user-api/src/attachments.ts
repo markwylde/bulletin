@@ -267,3 +267,60 @@ export async function attachmentDownloadCountResponse(
 
   return json({ downloadCount: outcome.downloadCount });
 }
+
+/** The production route wrapper, so tests exercise the flag guard and the handler together. */
+export interface AttachmentRouteFlags {
+  guard(
+    key: string,
+    memberId: string,
+  ): (request: Request, next: () => Response | Promise<Response>) => Promise<Response>;
+}
+
+export function attachmentRequestRoute(
+  sql: SQL,
+  storage: StorageClient,
+  flags: AttachmentRouteFlags,
+  session: Session,
+  request: Request,
+): Promise<Response> {
+  return flags.guard("attachments", session.memberId)(request, () =>
+    attachmentRequestResponse(sql, storage, session, request),
+  );
+}
+
+export function attachmentFinaliseRoute(
+  sql: SQL,
+  storage: StorageClient,
+  flags: AttachmentRouteFlags,
+  session: Session,
+  id: string,
+): Promise<Response> {
+  return flags.guard("attachments", session.memberId)(
+    new Request("http://bulletin.localhost/"),
+    () => attachmentFinaliseResponse(sql, storage, session, id),
+  );
+}
+
+export function attachmentDeleteRoute(
+  sql: SQL,
+  flags: AttachmentRouteFlags,
+  session: Session,
+  id: string,
+  request: Request,
+): Promise<Response> {
+  return flags.guard("attachments", session.memberId)(request, () =>
+    attachmentDeleteResponse(sql, session, id, request),
+  );
+}
+
+export function attachmentDownloadCountRoute(
+  sql: SQL,
+  flags: AttachmentRouteFlags,
+  session: Session,
+  id: string,
+): Promise<Response> {
+  return flags.guard("attachments", session.memberId)(
+    new Request("http://bulletin.localhost/"),
+    () => attachmentDownloadCountResponse(sql, session, id),
+  );
+}
