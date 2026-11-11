@@ -116,108 +116,118 @@ export async function evaluatePromotion(
   memberId: string,
   options: EvaluatePromotionOptions = {},
 ): Promise<PromotionResult> {
+  return sql.begin((tx) => evaluatePromotionInTransaction(tx, memberId, options));
+}
+
+/**
+ * The body of `evaluatePromotion` for callers that already hold a transaction (the reputation
+ * recount commits the cursor and the promotions it triggers together).
+ */
+export async function evaluatePromotionInTransaction(
+  tx: SQL,
+  memberId: string,
+  options: EvaluatePromotionOptions = {},
+): Promise<PromotionResult> {
   const now = options.now ?? new Date();
   const criteria = options.criteria ?? defaultPromotionCriteria;
 
-  return sql.begin(async (tx) => {
-    const [member] = (await tx`
-      SELECT id
-      FROM core.members
-      WHERE id = ${memberId}
-      FOR UPDATE
-    `) as MemberLockRow[];
+  const [member] = (await tx`
+    SELECT id
+    FROM core.members
+    WHERE id = ${memberId}
+    FOR UPDATE
+  `) as MemberLockRow[];
 
-    if (member === undefined) {
-      return { kind: "missing" } as const;
-    }
+  if (member === undefined) {
+    return { kind: "missing" } as const;
+  }
 
-    // A separate statement sees the committed state after a concurrent evaluation releases the
-    // lock, even though the locking SELECT's snapshot predates it.
-    const [primary] = (await tx`
-      SELECT group_id
-      FROM core.member_groups
-      WHERE member_id = ${memberId} AND is_primary
-    `) as PrimaryGroupRow[];
+  // A separate statement sees the committed state after a concurrent evaluation releases the
+  // lock, even though the locking SELECT's snapshot predates it.
+  const [primary] = (await tx`
+    SELECT group_id
+    FROM core.member_groups
+    WHERE member_id = ${memberId} AND is_primary
+  `) as PrimaryGroupRow[];
 
-    if (primary === undefined) {
-      return { kind: "none" } as const;
-    }
-
-    const rules = (await tx`
-      SELECT id, from_group_id, to_group_id, criteria, position
-      FROM core.promotion_rules
-      WHERE enabled
-        AND from_group_id = ${primary.group_id}
-      ORDER BY position, id
-    `) as PromotionRuleRow[];
-
-    for (const rule of rules) {
-      if (!(await ruleMatches(tx, rule, memberId, criteria, now))) {
-        continue;
-      }
-
-      // Move the primary membership; remove a secondary row for the target first so the move
-      // cannot violate the (member, group) primary key.
-      await tx`
-        DELETE FROM core.member_groups
-        WHERE member_id = ${memberId}
-          AND group_id = ${rule.to_group_id}
-          AND NOT is_primary
-      `;
-
-      const moved = (await tx`
-        UPDATE core.member_groups
-        SET group_id = ${rule.to_group_id}
-        WHERE member_id = ${memberId}
-          AND is_primary
-        RETURNING 1
-      `) as unknown[];
-
-      if (moved.length === 0) {
-        await tx`
-          INSERT INTO core.member_groups (member_id, group_id, is_primary)
-          VALUES (${memberId}, ${rule.to_group_id}, true)
-          ON CONFLICT (member_id, group_id) DO UPDATE SET is_primary = true
-        `;
-      }
-
-      const [version] = (await tx`
-        UPDATE core.members
-        SET promotion_version = promotion_version + 1
-        WHERE id = ${memberId}
-        RETURNING promotion_version
-      `) as Array<{ promotion_version: string }>;
-
-      if (version === undefined) {
-        throw new Error(`Could not version the promotion of member ${memberId}`);
-      }
-
-      const aggregateVersion = toBigInt(version.promotion_version);
-
-      await emit(tx, {
-        type: "member.promoted",
-        aggregateId: toBigInt(memberId),
-        aggregateVersion,
-        payloadIds: {
-          memberId: toBigInt(memberId),
-          fromGroupId: toBigInt(rule.from_group_id),
-          toGroupId: toBigInt(rule.to_group_id),
-          ruleId: toBigInt(rule.id),
-        },
-      });
-
-      return {
-        kind: "promoted",
-        memberId,
-        fromGroupId: rule.from_group_id,
-        toGroupId: rule.to_group_id,
-        ruleId: rule.id,
-        aggregateVersion,
-      } as const;
-    }
-
+  if (primary === undefined) {
     return { kind: "none" } as const;
-  });
+  }
+
+  const rules = (await tx`
+    SELECT id, from_group_id, to_group_id, criteria, position
+    FROM core.promotion_rules
+    WHERE enabled
+      AND from_group_id = ${primary.group_id}
+    ORDER BY position, id
+  `) as PromotionRuleRow[];
+
+  for (const rule of rules) {
+    if (!(await ruleMatches(tx, rule, memberId, criteria, now))) {
+      continue;
+    }
+
+    // Move the primary membership; remove a secondary row for the target first so the move
+    // cannot violate the (member, group) primary key.
+    await tx`
+      DELETE FROM core.member_groups
+      WHERE member_id = ${memberId}
+        AND group_id = ${rule.to_group_id}
+        AND NOT is_primary
+    `;
+
+    const moved = (await tx`
+      UPDATE core.member_groups
+      SET group_id = ${rule.to_group_id}
+      WHERE member_id = ${memberId}
+        AND is_primary
+      RETURNING 1
+    `) as unknown[];
+
+    if (moved.length === 0) {
+      await tx`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        VALUES (${memberId}, ${rule.to_group_id}, true)
+        ON CONFLICT (member_id, group_id) DO UPDATE SET is_primary = true
+      `;
+    }
+
+    const [version] = (await tx`
+      UPDATE core.members
+      SET promotion_version = promotion_version + 1
+      WHERE id = ${memberId}
+      RETURNING promotion_version
+    `) as Array<{ promotion_version: string }>;
+
+    if (version === undefined) {
+      throw new Error(`Could not version the promotion of member ${memberId}`);
+    }
+
+    const aggregateVersion = toBigInt(version.promotion_version);
+
+    await emit(tx, {
+      type: "member.promoted",
+      aggregateId: toBigInt(memberId),
+      aggregateVersion,
+      payloadIds: {
+        memberId: toBigInt(memberId),
+        fromGroupId: toBigInt(rule.from_group_id),
+        toGroupId: toBigInt(rule.to_group_id),
+        ruleId: toBigInt(rule.id),
+      },
+    });
+
+    return {
+      kind: "promoted",
+      memberId,
+      fromGroupId: rule.from_group_id,
+      toGroupId: rule.to_group_id,
+      ruleId: rule.id,
+      aggregateVersion,
+    } as const;
+  }
+
+  return { kind: "none" } as const;
 }
 
 /** Members whose current primary group is the source of at least one enabled rule. */

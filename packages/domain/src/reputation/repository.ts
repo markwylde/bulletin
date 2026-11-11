@@ -313,6 +313,22 @@ export async function lockMember(tx: SQL, memberId: string): Promise<void> {
   await tx`SELECT id FROM core.members WHERE id = ${memberId} FOR UPDATE`;
 }
 
+/**
+ * Locks several members in ascending id order. Reciprocal votes (A→B and B→A) would otherwise
+ * take their giver and receiver rows in opposite orders and deadlock.
+ */
+export async function lockMembers(tx: SQL, memberIds: readonly string[]): Promise<void> {
+  const ordered = [...new Set(memberIds)].sort((left, right) => {
+    const a = BigInt(left);
+    const b = BigInt(right);
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+
+  for (const memberId of ordered) {
+    await lockMember(tx, memberId);
+  }
+}
+
 export async function readVoteEntry(
   sql: SQL,
   postId: string,

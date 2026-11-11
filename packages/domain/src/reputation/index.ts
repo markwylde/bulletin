@@ -12,6 +12,7 @@ import {
   deleteStaleReactionEntries,
   listReactionReceivers,
   lockMember,
+  lockMembers,
   lockReputationPost,
   memberPostCount,
   readDailyUsage,
@@ -146,9 +147,10 @@ export async function giveReputation(
       mutation: reputationGiveMutation,
       input: { receiverId },
       apply: async (tx) => {
-        // Serialise votes on this post and this giver's daily allowance.
+        // Serialise votes on this post and this giver's daily allowance. Both members are
+        // locked in id order so reciprocal A→B and B→A votes cannot deadlock.
         await lockReputationPost(tx, target.postId);
-        await lockMember(tx, input.actorId);
+        await lockMembers(tx, [input.actorId, receiverId]);
 
         if ((await readVoteEntry(tx, target.postId, input.actorId)) !== null) {
           reject("already_given");

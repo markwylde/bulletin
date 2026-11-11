@@ -7,7 +7,7 @@ import {
   type RenderStatus,
   readTagVersion,
 } from "@bulletin/cache";
-import { runReputationRecount } from "@bulletin/db/jobs";
+import { evaluatePromotionInTransaction, runReputationRecount } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -159,18 +159,6 @@ async function setReactionsLink(database: TestDatabase, enabled: boolean): Promi
   `;
 }
 
-async function reactionId(database: TestDatabase, key: string): Promise<string> {
-  const [row] = (await database.sql`
-    SELECT id::text AS id FROM core.reactions WHERE key = ${key}
-  `) as Array<{ id: string }>;
-
-  if (row === undefined) {
-    throw new Error(`Missing reaction ${key}`);
-  }
-
-  return row.id;
-}
-
 async function entryFor(
   database: TestDatabase,
   postId: string,
@@ -254,6 +242,65 @@ integrationDescribe("reputation", () => {
       });
     });
   }, 45_000);
+
+  test("reciprocal votes lock both members in id order and do not deadlock", async () => {
+    await withSeededDb(async (database) => {
+      const first = await memberSession(database, "member-1");
+      const second = await memberSession(database, "member-2");
+      const firstIsLower = BigInt(first.memberId) < BigInt(second.memberId);
+      const lower = firstIsLower ? first : second;
+      const higher = firstIsLower ? second : first;
+      const lowerSub = firstIsLower ? "member-1" : "member-2";
+      const higherSub = firstIsLower ? "member-2" : "member-1";
+      // Each member has a post the other votes on.
+      const lowerTarget = await startedTopic(
+        database,
+        higherSub,
+        "off-topic",
+        "Lower giver target",
+      );
+      const higherTarget = await startedTopic(
+        database,
+        lowerSub,
+        "off-topic",
+        "Higher giver target",
+      );
+      const blocker = new SQL(database.url);
+      let lowerVote: ReturnType<typeof giveReputation> | undefined;
+      let higherVote: ReturnType<typeof giveReputation> | undefined;
+
+      try {
+        // Hold the lower member row so both votes queue behind it in a controlled order.
+        await blocker.begin(async (tx) => {
+          await tx`SELECT id FROM core.members WHERE id = ${lower.memberId} FOR UPDATE`;
+          lowerVote = giveReputation(database.sql, {
+            actorId: lower.memberId,
+            postId: lowerTarget.postId,
+            points: 1,
+          });
+          await Bun.sleep(150);
+          higherVote = giveReputation(database.sql, {
+            actorId: higher.memberId,
+            postId: higherTarget.postId,
+            points: 1,
+          });
+          await Bun.sleep(150);
+        });
+
+        if (lowerVote === undefined || higherVote === undefined) {
+          throw new Error("The reciprocal votes did not start");
+        }
+
+        const [lowerResult, higherResult] = await Promise.all([lowerVote, higherVote]);
+        expect(lowerResult.ok).toBe(true);
+        expect(higherResult.ok).toBe(true);
+        expect(await reputationOf(database, lower.memberId)).toBe(1);
+        expect(await reputationOf(database, higher.memberId)).toBe(1);
+      } finally {
+        await blocker.close();
+      }
+    });
+  }, 60_000);
 
   test("enforces giving permissions, the minimum post count and the daily allowance", async () => {
     await withSeededDb(async (database) => {
@@ -999,6 +1046,96 @@ integrationDescribe("reputation", () => {
 
       const result = await runReputationRecount(database.sql, { reason: "promotion" });
       expect(result.done).toBe(true);
+      expect(await reputationOf(database, author.memberId)).toBe(5);
+
+      const [group] = (await database.sql`
+        SELECT g.key
+        FROM core.member_groups mg
+        JOIN core.groups g ON g.id = mg.group_id
+        WHERE mg.member_id = ${author.memberId} AND mg.is_primary
+      `) as Array<{ key: string }>;
+      expect(group?.key).toBe("regulars");
+      expect(
+        (
+          await database.sql`
+            SELECT 1 FROM core.events WHERE type = 'member.promoted'
+          `
+        ).length,
+      ).toBe(1);
+    });
+  }, 60_000);
+
+  test("a failed promotion evaluation rolls back the cursor and retries the batch", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberSession(database, "member-2");
+      const giver = await memberSession(database, "member-1");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Retried promotion");
+
+      for (let index = 0; index < 5; index += 1) {
+        const post = await reply(database.sql, {
+          actorId: author.memberId,
+          topicId: topic.topicId,
+          bodyMd: `Retried post ${index}.`,
+        });
+
+        if (!post.ok) {
+          throw new Error("Could not reply");
+        }
+
+        await database.sql`
+          INSERT INTO core.reputation_entries (post_id, giver_id, receiver_id, points, source)
+          VALUES (${post.result.postId}, ${giver.memberId}, ${author.memberId}, 1, 'vote')
+        `;
+      }
+
+      await database.sql`
+        UPDATE core.members SET reputation = 0 WHERE id = ${author.memberId}
+      `;
+      await database.sql`
+        INSERT INTO core.promotion_rules (from_group_id, to_group_id, criteria, position, enabled)
+        SELECT m.id, r.id, '{"reputation": 5}'::jsonb, 0, true
+        FROM core.groups m, core.groups r
+        WHERE m.key = 'members' AND r.key = 'regulars'
+      `;
+
+      const failure = new Error("promotion evaluation failed");
+      let armed = true;
+
+      await expect(
+        runReputationRecount(database.sql, {
+          reason: "promotion-retry",
+          batchSize: 1_000,
+          evaluatePromotion: async (tx, memberId) => {
+            if (armed && memberId === author.memberId) {
+              armed = false;
+              throw failure;
+            }
+
+            await evaluatePromotionInTransaction(tx, memberId);
+          },
+        }),
+      ).rejects.toThrow("promotion evaluation failed");
+
+      // The batch, its totals and its cursor all rolled back together.
+      const running = (await listRecountRuns(database.sql, 5)).find(
+        (run) => run.status === "running",
+      );
+      expect(running).toMatchObject({ cursorMemberId: "0", processedMembers: 0 });
+      expect(await reputationOf(database, author.memberId)).toBe(0);
+      expect(
+        (
+          await database.sql`
+            SELECT 1 FROM core.events WHERE type = 'member.promoted'
+          `
+        ).length,
+      ).toBe(0);
+
+      const retried = await runReputationRecount(database.sql, {
+        reason: "promotion-retry",
+        batchSize: 1_000,
+      });
+      expect(retried.runId).toBe(running?.id);
+      expect(retried.done).toBe(true);
       expect(await reputationOf(database, author.memberId)).toBe(5);
 
       const [group] = (await database.sql`

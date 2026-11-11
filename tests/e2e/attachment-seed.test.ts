@@ -11,13 +11,32 @@ integrationDescribe("seeded attachments and avatars", () => {
     await withPage(
       { url: `${USER_URL}/forum/5-off-topic`, viewport: "mobile360" },
       async (view) => {
-        await waitForSelector(view, "[data-topic-list]", 20_000);
-        const href = await view.evaluate<string | null>(`(() => {
-        const link = [...document.querySelectorAll("[data-topic-link]")].find(
-          (element) => element.textContent?.includes("A garden update with photos"),
-        );
-        return link?.getAttribute("href") ?? null;
-      })()`);
+        // Earlier E2E runs add topics to off-topic, so the seeded topic can move to a later page.
+        let href: string | null = null;
+
+        for (let page = 0; page < 20; page += 1) {
+          await waitForSelector(view, "[data-topic-list]", 20_000);
+          href = await view.evaluate<string | null>(`(() => {
+            const link = [...document.querySelectorAll("[data-topic-list] [data-topic-link]")].find(
+              (element) => element.textContent?.includes("A garden update with photos"),
+            );
+            return link?.getAttribute("href") ?? null;
+          })()`);
+
+          if (href !== null) {
+            break;
+          }
+
+          const next = await view.evaluate<string | null>(
+            'document.querySelector("[data-page-next]")?.getAttribute("href") ?? null',
+          );
+
+          if (next === null) {
+            break;
+          }
+
+          await view.navigate(new URL(next, USER_URL).toString());
+        }
 
         if (href === null) {
           throw new Error("Missing the seeded attachment topic");

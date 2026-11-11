@@ -17,7 +17,7 @@ import {
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
-import { evaluatePromotion } from "./promotion.ts";
+import { evaluatePromotionInTransaction } from "./promotion.ts";
 
 export const REPUTATION_RECOUNT_QUEUE = "reputation.recount";
 
@@ -59,10 +59,13 @@ export async function runReputationRecount(
     readonly batchSize?: number;
     /** Test seam: stop after this many member batches and leave the run open. */
     readonly maxBatches?: number;
+    /** Test seam: replace the promotion evaluation committed with each batch. */
+    readonly evaluatePromotion?: (tx: SQL, memberId: string) => Promise<unknown>;
   } = {},
 ): Promise<ReputationRecountResult> {
   const reason = options.reason ?? "manual";
   const batchSize = options.batchSize ?? REPUTATION_RECOUNT_BATCH;
+  const promotionEvaluator = options.evaluatePromotion ?? evaluatePromotionInTransaction;
   let runId = "";
 
   await sql.begin(async (tx) => {
@@ -113,8 +116,12 @@ export async function runReputationRecount(
     const changes = await sql.begin(async (tx) => {
       const batch = await recomputeMemberBatch(tx, ids);
 
+      // Reputation is a promotion criterion; a recount can push members over their threshold.
+      // The promotions, their events and the cursor advance commit together, so a failed
+      // evaluation retries the same batch instead of skipping it.
       for (const change of batch) {
         await bumpCacheTags(tx, [memberTag(change.memberId)]);
+        await promotionEvaluator(tx, change.memberId);
       }
 
       await updateRecountProgress(tx, runId, {
@@ -125,11 +132,6 @@ export async function runReputationRecount(
 
       return batch;
     });
-
-    // Reputation is a promotion criterion; a recount can push members over their threshold.
-    for (const change of changes) {
-      await evaluatePromotion(sql, change.memberId);
-    }
 
     cursor = last;
     processed += ids.length;
