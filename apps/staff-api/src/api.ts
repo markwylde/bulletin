@@ -62,6 +62,8 @@ import {
   searchModeratorMembers,
 } from "./moderators.ts";
 import { deletePrefix, listPrefixesAdmin, type PrefixMutation, savePrefix } from "./prefixes.ts";
+import { listProfileFieldsForStaff, mutateProfileFieldForStaff } from "./profile-fields.ts";
+import { mutateMemberProfileForStaff, readMemberProfileForStaff } from "./profiles.ts";
 import {
   deletePromotionRule,
   listPromotions,
@@ -710,6 +712,49 @@ async function reputationRecountsGet(context: StaffRouteContext): Promise<Respon
   return result.ok ? json({ runs: result.runs }) : forbidden();
 }
 
+async function profileFieldsList(context: StaffRouteContext): Promise<Response> {
+  return json(await listProfileFieldsForStaff(context.sql));
+}
+
+async function profileFieldsMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await mutateProfileFieldForStaff(context.sql, context.session.memberId, body);
+
+  if (!result.ok) {
+    return json(
+      { code: result.code },
+      result.code === "not_found" ? 404 : result.code === "unknown_group" ? 400 : 400,
+    );
+  }
+
+  return json({ ok: true, id: result.id });
+}
+
+async function memberProfileGet(context: StaffRouteContext): Promise<Response> {
+  const memberId = context.url.searchParams.get("memberId") ?? "";
+  const result = await readMemberProfileForStaff(context.sql, context.session.memberId, memberId);
+
+  if (!result.ok) {
+    return result.code === "forbidden" ? forbidden() : json({ code: result.code }, 404);
+  }
+
+  return json(result.profile);
+}
+
+async function memberProfileMutate(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await mutateMemberProfileForStaff(context.sql, context.session.memberId, body);
+
+  if (!result.ok) {
+    return json(
+      { code: result.code },
+      result.code === "forbidden" ? 403 : result.code === "not_found" ? 404 : 400,
+    );
+  }
+
+  return json({ ok: true });
+}
+
 async function memberReputationMutate(context: StaffRouteContext): Promise<Response> {
   const body: unknown = await context.request.json().catch(() => null);
   const memberId = isRecord(body) && typeof body.memberId === "string" ? body.memberId : "";
@@ -1163,6 +1208,34 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     permission: "acp.members",
     requiresStepUp: true,
     handler: memberReputationMutate,
+  },
+  {
+    id: "members.profile.get",
+    method: "GET",
+    path: "/api/staff/members/profile",
+    permission: "acp.members",
+    handler: memberProfileGet,
+  },
+  {
+    id: "members.profile.update",
+    method: "POST",
+    path: "/api/staff/members/profile",
+    permission: "acp.members",
+    handler: memberProfileMutate,
+  },
+  {
+    id: "profileFields.list",
+    method: "GET",
+    path: "/api/staff/profile-fields",
+    permission: "acp.profile_fields",
+    handler: profileFieldsList,
+  },
+  {
+    id: "profileFields.mutate",
+    method: "POST",
+    path: "/api/staff/profile-fields",
+    permission: "acp.profile_fields",
+    handler: profileFieldsMutate,
   },
   {
     id: "reactions.list",

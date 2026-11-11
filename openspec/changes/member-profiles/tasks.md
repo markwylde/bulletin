@@ -2,10 +2,10 @@
 
 ## 1. Profiles and fields
 
-- [ ] 1.1 Migrations for profile fields, field groups, field values, about, privacy options and signature columns; integration tests
-- [ ] 1.2 Profile page view model and template (stats, fields by visibility class, badges, recent readable posts) with the cache variant harness applied; tests for the permission-filtered recent posts and the staff-only field; E2E at all viewports
-- [ ] 1.3 Profile editing (about, fields with required/editability, privacy options) and staff edit with logging; integration tests including permission denial
-- [ ] 1.4 Staff custom field manager (types, labels per locale, group view/edit), with tests
+- [x] 1.1 Migrations for profile fields, field groups, field values, about, privacy options and signature columns; integration tests
+- [x] 1.2 Profile page view model and template (stats, fields by visibility class, badges, recent readable posts) with the cache variant harness applied; tests for the permission-filtered recent posts and the staff-only field; E2E at all viewports
+- [x] 1.3 Profile editing (about, fields with required/editability, privacy options) and staff edit with logging; integration tests including permission denial
+- [x] 1.4 Staff custom field manager (types, labels per locale, group view/edit), with tests
 
 ## 2. Signatures
 
