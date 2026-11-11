@@ -33,7 +33,7 @@
 
 ## 6. Settings, strings and seed
 
-- [ ] 6.1 Group settings entries for quotas, types, sizes and avatar limits, plus board settings for allowed types; tests for merge behaviour
+- [x] 6.1 Group settings entries for quotas, types, sizes and avatar limits, plus board settings for allowed types; tests for merge behaviour
 - [ ] 6.2 Add en/es/fr strings for upload UI, errors, attachment lists and avatar UI; verify completeness
 - [ ] 6.3 Seed avatars for a subset of members, image and file attachments in posts (including one in a staff-only forum), and verify after `docker compose up --watch`
 

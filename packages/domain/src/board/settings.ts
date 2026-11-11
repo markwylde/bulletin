@@ -1,5 +1,12 @@
 import { DEFAULT_LOCALE, isLocale, type Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import {
+  ATTACHMENT_CONTENT_TYPES,
+  type AttachmentContentType,
+  isAttachmentContentType,
+} from "../attachments/rules.ts";
+
+export const DEFAULT_ATTACHMENT_TYPES: readonly AttachmentContentType[] = ATTACHMENT_CONTENT_TYPES;
 
 export interface BoardSettings {
   readonly boardName: string;
@@ -10,6 +17,7 @@ export interface BoardSettings {
   readonly topicsPerPage: number;
   readonly postsPerPage: number;
   readonly publicEditHistory: boolean;
+  readonly attachmentAllowedTypes: readonly AttachmentContentType[];
 }
 
 export interface BoardSettingsInput {
@@ -21,6 +29,7 @@ export interface BoardSettingsInput {
   readonly topicsPerPage: number;
   readonly postsPerPage: number;
   readonly publicEditHistory: boolean;
+  readonly attachmentAllowedTypes: readonly AttachmentContentType[];
 }
 
 export const EMPTY_BOARD_SETTINGS: BoardSettings = {
@@ -32,12 +41,13 @@ export const EMPTY_BOARD_SETTINGS: BoardSettings = {
   topicsPerPage: 20,
   postsPerPage: 20,
   publicEditHistory: false,
+  attachmentAllowedTypes: DEFAULT_ATTACHMENT_TYPES,
 };
 
 export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
   const rows = (await sql`
     SELECT board_name, board_description, default_locale, offline, offline_message,
-      topics_per_page, posts_per_page, public_edit_history
+      topics_per_page, posts_per_page, public_edit_history, attachment_allowed_types
     FROM core.board_settings
     WHERE id = 1
   `) as Array<{
@@ -49,6 +59,7 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     topics_per_page: number;
     posts_per_page: number;
     public_edit_history: boolean;
+    attachment_allowed_types: string[] | null;
   }>;
   const row = rows[0];
 
@@ -61,7 +72,19 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     topicsPerPage: row?.topics_per_page ?? 20,
     postsPerPage: row?.posts_per_page ?? 20,
     publicEditHistory: row?.public_edit_history ?? false,
+    attachmentAllowedTypes:
+      row?.attachment_allowed_types === null || row?.attachment_allowed_types === undefined
+        ? DEFAULT_ATTACHMENT_TYPES
+        : canonicalAttachmentTypes(row.attachment_allowed_types),
   };
+}
+
+/** Keeps only known content types, deduped and in the canonical allowlist order. */
+export function canonicalAttachmentTypes(
+  values: readonly string[],
+): readonly AttachmentContentType[] {
+  const allowed = new Set(values.filter(isAttachmentContentType));
+  return ATTACHMENT_CONTENT_TYPES.filter((type) => allowed.has(type));
 }
 
 export type BoardSettingsParseResult =
@@ -115,6 +138,23 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
   const topicsPerPage = pageSize(value.topicsPerPage);
   const postsPerPage = pageSize(value.postsPerPage);
   const publicEditHistory = value.publicEditHistory === true;
+  const rawAttachmentTypes = value.attachmentAllowedTypes;
+  let attachmentAllowedTypes: readonly AttachmentContentType[] = DEFAULT_ATTACHMENT_TYPES;
+
+  if (rawAttachmentTypes !== undefined) {
+    if (
+      !Array.isArray(rawAttachmentTypes) ||
+      !rawAttachmentTypes.every((entry) => typeof entry === "string")
+    ) {
+      fields.push("attachmentAllowedTypes");
+    } else {
+      attachmentAllowedTypes = canonicalAttachmentTypes(rawAttachmentTypes);
+
+      if (attachmentAllowedTypes.length !== new Set(rawAttachmentTypes).size) {
+        fields.push("attachmentAllowedTypes");
+      }
+    }
+  }
 
   if (topicsPerPage === null) {
     fields.push("topicsPerPage");
@@ -143,6 +183,7 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
       topicsPerPage: topicsPerPage ?? 20,
       postsPerPage: postsPerPage ?? 20,
       publicEditHistory,
+      attachmentAllowedTypes,
     },
   };
 }

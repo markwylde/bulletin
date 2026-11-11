@@ -5,8 +5,17 @@ import {
   transitionAttachment,
 } from "@bulletin/storage";
 import type { SQL } from "bun";
+import { readBoardSettings } from "../board/settings.ts";
 import type { ViewerPrincipal } from "../permissions/principal.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
+import {
+  ATTACHMENT_CONTENT_TYPES,
+  type AttachmentContentType,
+  DOCUMENT_ATTACHMENT_TYPES,
+  RASTER_ATTACHMENT_TYPES,
+  SVG_ATTACHMENT_TYPE,
+  TEXT_ATTACHMENT_TYPES,
+} from "./rules.ts";
 
 /** Wake-up channel for a freshly snapshotted upload (ADR 0003: NOTIFY is only a wake-up). */
 export const ATTACHMENT_PROCESS_CHANNEL = "bulletin_attachments";
@@ -21,7 +30,12 @@ export interface UploadLimits {
   readonly quotaBytes: number;
   /** Per-file bytes, or 0 when uploads are disabled. */
   readonly perFileBytes: number;
+  /** Board allowlist narrowed by the group's image/document toggles. */
+  readonly allowedTypes: readonly AttachmentContentType[];
 }
+
+const IMAGE_TYPES = new Set<string>([...RASTER_ATTACHMENT_TYPES, SVG_ATTACHMENT_TYPE]);
+const DOCUMENT_TYPES = new Set<string>([...DOCUMENT_ATTACHMENT_TYPES, ...TEXT_ATTACHMENT_TYPES]);
 
 function settingBytes(value: unknown, unit: number): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value * unit : 0;
@@ -32,11 +46,23 @@ export async function readUploadLimits(
   sql: SQL,
   principal: ViewerPrincipal,
 ): Promise<UploadLimits> {
-  const merged = await loadMergedGroupSettings(sql, principal);
+  const [merged, board] = await Promise.all([
+    loadMergedGroupSettings(sql, principal),
+    readBoardSettings(sql),
+  ]);
+  const images = merged["posting.upload_images"] === true;
+  const documents = merged["posting.upload_documents"] === true;
+  const boardTypes = new Set(board.attachmentAllowedTypes);
+  const allowedTypes = ATTACHMENT_CONTENT_TYPES.filter(
+    (type) =>
+      boardTypes.has(type) &&
+      ((images && IMAGE_TYPES.has(type)) || (documents && DOCUMENT_TYPES.has(type))),
+  );
 
   return {
     quotaBytes: settingBytes(merged["posting.upload_quota_mb"], 1024 * 1024),
     perFileBytes: settingBytes(merged["posting.upload_per_file_kb"], 1024),
+    allowedTypes,
   };
 }
 

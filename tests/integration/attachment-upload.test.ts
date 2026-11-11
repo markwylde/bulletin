@@ -248,6 +248,49 @@ integrationDescribe("attachment upload request", () => {
     });
   });
 
+  test("enforces the group type toggles and the board allowlist", async () => {
+    await withHarness("attach_types_config", async (harness) => {
+      await setUploadLimits(harness.database, { quotaMb: 10, perFileKb: 10_240 });
+      const member = await memberId(harness.database, "member-1");
+      const forum = await forumId(harness.database, "off-topic");
+
+      await harness.database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'posting.upload_images', 'false'::jsonb
+        FROM core.groups WHERE key IN ('members', 'regulars')
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      await harness.database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'posting.upload_documents', 'true'::jsonb
+        FROM core.groups WHERE key IN ('members', 'regulars')
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+
+      const image = await requestUpload(harness, member, {
+        forumId: forum,
+        filename: "photo.png",
+        contentType: "image/png",
+        sizeBytes: 1024,
+      });
+      expect(image.status).toBe(415);
+      expect(await image.json()).toEqual({ code: "type_not_allowed" });
+
+      await harness.database.sql`
+        UPDATE core.board_settings SET attachment_allowed_types = ARRAY['image/png']::text[]
+        WHERE id = 1
+      `;
+      const pdf = await requestUpload(harness, member, {
+        forumId: forum,
+        filename: "report.pdf",
+        contentType: "application/pdf",
+        sizeBytes: 1024,
+      });
+      expect(pdf.status).toBe(415);
+      expect(await pdf.json()).toEqual({ code: "type_not_allowed" });
+    });
+  });
+
   test("shows the remaining quota and refuses an upload that exceeds it", async () => {
     await withHarness("attach_quota", async (harness) => {
       await setUploadLimits(harness.database, { quotaMb: 5, perFileKb: 10_240 });

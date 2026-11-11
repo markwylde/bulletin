@@ -214,6 +214,22 @@ describe("merge rules", () => {
     expect(merged["posting.flood_control_seconds"]).toBe(15);
   });
 
+  test("upload image/document toggles merge with allow-any", () => {
+    const merged = mergeGroupSettings([
+      source("1", true, {
+        "posting.upload_images": false,
+        "posting.upload_documents": true,
+      }),
+      source("2", false, {
+        "posting.upload_images": true,
+        "posting.upload_documents": false,
+      }),
+    ]);
+
+    expect(merged["posting.upload_images"]).toBe(true);
+    expect(merged["posting.upload_documents"]).toBe(true);
+  });
+
   test("merges every registered setting to a value", () => {
     const merged = mergeGroupSettings([
       source("1", true, {

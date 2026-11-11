@@ -45,12 +45,13 @@ export async function saveBoardSettings(
       await tx`
         INSERT INTO core.board_settings (
           id, board_name, board_description, default_locale, offline, offline_message,
-          topics_per_page, posts_per_page, public_edit_history
+          topics_per_page, posts_per_page, public_edit_history, attachment_allowed_types
         )
         VALUES (
           1, ${input.boardName}, ${input.boardDescription}, ${input.defaultLocale},
           ${input.offline}, ${input.offlineMessage}, ${input.topicsPerPage},
-          ${input.postsPerPage}, ${input.publicEditHistory}
+          ${input.postsPerPage}, ${input.publicEditHistory},
+          ${`{${input.attachmentAllowedTypes.join(",")}}`}::text[]
         )
         ON CONFLICT (id) DO UPDATE
         SET board_name = EXCLUDED.board_name,
@@ -60,7 +61,8 @@ export async function saveBoardSettings(
             offline_message = EXCLUDED.offline_message,
             topics_per_page = EXCLUDED.topics_per_page,
             posts_per_page = EXCLUDED.posts_per_page,
-            public_edit_history = EXCLUDED.public_edit_history
+            public_edit_history = EXCLUDED.public_edit_history,
+            attachment_allowed_types = EXCLUDED.attachment_allowed_types
       `;
 
       const after = await readBoardSettings(tx);
@@ -80,6 +82,7 @@ export async function saveBoardSettings(
             topicsPerPage: before.topicsPerPage,
             postsPerPage: before.postsPerPage,
             publicEditHistory: before.publicEditHistory,
+            attachmentAllowedTypes: before.attachmentAllowedTypes,
           },
           after: {
             boardName: after.boardName,
@@ -90,6 +93,7 @@ export async function saveBoardSettings(
             topicsPerPage: after.topicsPerPage,
             postsPerPage: after.postsPerPage,
             publicEditHistory: after.publicEditHistory,
+            attachmentAllowedTypes: after.attachmentAllowedTypes,
           },
         },
       });

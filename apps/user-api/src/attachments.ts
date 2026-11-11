@@ -98,6 +98,10 @@ export async function attachmentRequestResponse(
 
   const limits = await readUploadLimits(sql, session.memberId);
 
+  if (!limits.allowedTypes.includes(contentType)) {
+    return json({ code: "type_not_allowed" }, 415);
+  }
+
   if (limits.perFileBytes === 0 || sizeBytes > limits.perFileBytes) {
     return json({ code: "file_too_large", maxBytes: limits.perFileBytes }, 413);
   }

@@ -12,7 +12,22 @@ interface BoardSettings {
   readonly defaultLocale: "en" | "es" | "fr";
   readonly offline: boolean;
   readonly offlineMessage: string;
+  readonly attachmentAllowedTypes: readonly string[];
 }
+
+const ATTACHMENT_TYPE_OPTIONS = [
+  { value: "image/png", labelKey: "staff.settings.board.type.imagePng" },
+  { value: "image/jpeg", labelKey: "staff.settings.board.type.imageJpeg" },
+  { value: "image/gif", labelKey: "staff.settings.board.type.imageGif" },
+  { value: "image/webp", labelKey: "staff.settings.board.type.imageWebp" },
+  { value: "image/avif", labelKey: "staff.settings.board.type.imageAvif" },
+  { value: "image/svg+xml", labelKey: "staff.settings.board.type.imageSvg" },
+  { value: "application/pdf", labelKey: "staff.settings.board.type.pdf" },
+  { value: "application/zip", labelKey: "staff.settings.board.type.zip" },
+  { value: "text/plain", labelKey: "staff.settings.board.type.plainText" },
+  { value: "text/html", labelKey: "staff.settings.board.type.html" },
+  { value: "text/csv", labelKey: "staff.settings.board.type.csv" },
+] as const;
 
 const EMPTY_VALUES: FormValues = {
   boardName: "",
@@ -20,6 +35,7 @@ const EMPTY_VALUES: FormValues = {
   defaultLocale: "en",
   offline: false,
   offlineMessage: "",
+  attachmentAllowedTypes: ATTACHMENT_TYPE_OPTIONS.map((option) => option.value),
 };
 
 const BOARD_FORM: FormDefinition = {
@@ -59,6 +75,20 @@ const BOARD_FORM: FormDefinition = {
       ],
     },
     {
+      id: "attachments",
+      titleKey: "staff.settings.board.section.attachments",
+      descriptionKey: "staff.settings.board.section.attachmentsHelp",
+      fields: [
+        {
+          id: "attachmentAllowedTypes",
+          type: "multi-select",
+          labelKey: "staff.settings.board.attachmentTypes",
+          helpKey: "staff.settings.board.attachmentTypesHelp",
+          options: ATTACHMENT_TYPE_OPTIONS,
+        },
+      ],
+    },
+    {
       id: "offline",
       titleKey: "staff.settings.board.section.offline",
       descriptionKey: "staff.settings.board.section.offlineDescription",
@@ -91,6 +121,7 @@ function toValues(settings: BoardSettings): FormValues {
     defaultLocale: settings.defaultLocale,
     offline: settings.offline,
     offlineMessage: settings.offlineMessage,
+    attachmentAllowedTypes: settings.attachmentAllowedTypes,
   };
 }
 
@@ -103,6 +134,9 @@ function toPayload(values: FormValues): BoardSettings {
     defaultLocale: isLocale(rawLocale) ? rawLocale : "en",
     offline: values.offline === true,
     offlineMessage: typeof values.offlineMessage === "string" ? values.offlineMessage : "",
+    attachmentAllowedTypes: Array.isArray(values.attachmentAllowedTypes)
+      ? values.attachmentAllowedTypes
+      : [],
   };
 }
 
