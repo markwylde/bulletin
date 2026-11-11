@@ -19,6 +19,15 @@
     </form>
   </section>
 
+  <section class="bl-card" data-account-public-profile>
+    <h2 class="bl-card__title">{% t "account.profile.title" %}</h2>
+    <p class="bl-muted">{% t "account.profile.body" %}</p>
+    <div class="bl-actions">
+      <a class="bl-button" href="/account/profile" data-account-profile-edit>{% t "account.profile.edit" %}</a>
+      {% if profileUrl %}<a class="bl-button bl-button--quiet" href="{{ profileUrl }}" data-account-profile-view>{% t "account.profile.view" %}</a>{% endif %}
+    </div>
+  </section>
+
   {% if flags.avatar_upload %}
   <section class="bl-card" data-account-avatar>
     <h2 class="bl-card__title">{% t "account.avatar.title" %}</h2>

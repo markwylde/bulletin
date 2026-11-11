@@ -34,6 +34,7 @@ import {
   notificationReadResponse,
 } from "./notifications.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
+import { profileSaveResponse } from "./profile.ts";
 import { reactionMembersResponse, reactionSetResponse } from "./reactions.ts";
 import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
@@ -276,6 +277,18 @@ await startService({
         return flags.guard("follows", session.memberId)(request, () =>
           followSettingsResponse(sql, session, request),
         );
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/profile") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return profileSaveResponse(sql, session, request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

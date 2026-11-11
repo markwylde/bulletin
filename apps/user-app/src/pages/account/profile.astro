@@ -1,0 +1,85 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { profileEditContract } from "../../contracts.ts";
+import { readSql } from "../../db.ts";
+import ThemeLayout from "../../layouts/ThemeLayout.astro";
+import { buildProfileEditPage } from "../../profiles/edit.ts";
+import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
+import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
+import { USER_CATALOGS } from "../../catalogs.ts";
+
+const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account/profile")}`;
+const session = Astro.locals.session ?? null;
+
+if (session === null) {
+  return Astro.redirect(loginUrl, 303);
+}
+
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const sql = readSql();
+const page = await buildProfileEditPage({
+  sql,
+  memberId: session.memberId,
+  locale,
+  translate,
+});
+
+if (page === null) {
+  return Astro.redirect(loginUrl, 303);
+}
+
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+const rendered = await renderCachedPage({
+  tags: [`member:${session.memberId}`],
+  cache: null,
+  tagVersions: null,
+  shell: { visitor: "member", authState: "authenticated" },
+  prepare: async () => ({
+    variant: pageVariant({
+      route: profileEditContract.route,
+      visibilityKey: `member:${session.memberId}`,
+      theme: null,
+      pluginsGeneration: PLUGIN_GENERATION,
+      locale,
+      colourScheme: "system",
+      renderFlagsHash: "",
+    }),
+    data: undefined,
+  }),
+  render: async () => {
+    const result = await renderThemedPage({
+      sql,
+      boardName,
+      locale,
+      translate,
+      template: profileEditContract.templates.page,
+      viewModel: page.viewModel,
+      breadcrumbs: page.breadcrumbs,
+      route: profileEditContract,
+    });
+
+    return { html: result.html, errors: result.errors };
+  },
+});
+
+Astro.response.headers.set("cache-control", "private, no-store");
+const labels = {
+  saved: translate("profile.edit.saved"),
+  saveFailed: translate("profile.edit.saveFailed"),
+  required: translate("profile.edit.required"),
+  invalid: translate("profile.edit.invalid"),
+  notEditable: translate("profile.edit.notEditable"),
+};
+---
+
+<ThemeLayout
+  title={`${page.title} · ${boardName}`}
+  locale={locale}
+  body={rendered.html}
+  authState="authenticated"
+  visitor="member"
+>
+  <script type="application/json" id="profile-edit-labels" set:html={JSON.stringify(labels)}></script>
+  <script>import "../../profiles/edit-client.ts";</script>
+</ThemeLayout>

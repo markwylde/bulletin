@@ -1,0 +1,76 @@
+{{ header }}
+<main id="main" class="bl-main" data-profile-edit-page>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{% t "profile.edit.title" %}</h1>
+  <p class="bl-muted">{% t "profile.edit.intro" %}</p>
+
+  <form class="bl-form" data-profile-edit-form novalidate>
+    <section class="bl-card" data-profile-edit-about>
+      <h2 class="bl-card__title">{% t "profile.about.title" %}</h2>
+      <label class="bl-label" for="profile-about">{% t "profile.edit.aboutLabel" %}</label>
+      <textarea class="bl-input bl-textarea" id="profile-about" name="about" rows="6" maxlength="20000" data-profile-about>{{ about }}</textarea>
+      <p class="bl-muted">{% t "profile.edit.aboutHelp" %}</p>
+    </section>
+
+    {% if fields.size > 0 %}
+      <section class="bl-card" data-profile-edit-fields>
+        <h2 class="bl-card__title">{% t "profile.fields.title" %}</h2>
+        {% for field in fields %}
+          <div class="bl-field" data-profile-field="{{ field.id }}" data-profile-field-type="{{ field.type }}">
+            {% if field.type == "multiselect" %}
+              <span class="bl-label">{{ field.label }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}</span>
+              <div class="bl-checkboxes">
+                {% for option in field.options %}
+                  <label class="bl-checkbox">
+                    <input type="checkbox" value="{{ option.value }}" data-profile-option{% if option.selected %} checked{% endif %}>
+                    <span>{{ option.label }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            {% elsif field.type == "select" %}
+              <label class="bl-label" for="profile-field-{{ field.id }}">{{ field.label }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}</label>
+              <select class="bl-input" id="profile-field-{{ field.id }}" data-profile-field-input{% if field.required %} required{% endif %}>
+                <option value="">{% t "profile.edit.choose" %}</option>
+                {% for option in field.options %}
+                  <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+              </select>
+            {% elsif field.multiline %}
+              <label class="bl-label" for="profile-field-{{ field.id }}">{{ field.label }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}</label>
+              <textarea class="bl-input bl-textarea" id="profile-field-{{ field.id }}" rows="4" maxlength="5000" data-profile-field-input{% if field.required %} required{% endif %}>{{ field.value }}</textarea>
+            {% else %}
+              <label class="bl-label" for="profile-field-{{ field.id }}">{{ field.label }}{% if field.required %} <span aria-hidden="true">*</span>{% endif %}</label>
+              <input
+                class="bl-input"
+                id="profile-field-{{ field.id }}"
+                data-profile-field-input
+                value="{{ field.value }}"
+                {% if field.type == "number" %}type="number" step="any"{% elsif field.type == "date" %}type="date"{% elsif field.type == "url" %}type="url" inputmode="url"{% else %}type="text" maxlength="200"{% endif %}
+                {% if field.required %}required{% endif %}
+              >
+            {% endif %}
+          </div>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <section class="bl-card" data-profile-edit-privacy>
+      <h2 class="bl-card__title">{% t "profile.privacy.title" %}</h2>
+      <label class="bl-checkbox">
+        <input type="checkbox" data-profile-hide-online{% if hideOnline %} checked{% endif %}>
+        <span>{% t "profile.privacy.hideOnline" %}</span>
+      </label>
+      <label class="bl-checkbox">
+        <input type="checkbox" data-profile-hide-from-list{% if hideFromMemberList %} checked{% endif %}>
+        <span>{% t "profile.privacy.hideFromList" %}</span>
+      </label>
+    </section>
+
+    <div class="bl-actions">
+      <button class="bl-button" type="submit" data-profile-save>{% t "profile.edit.save" %}</button>
+      <p class="bl-muted" data-profile-saved hidden>{% t "profile.edit.saved" %}</p>
+      <p class="bl-error-text" data-profile-error hidden></p>
+    </div>
+  </form>
+</main>
+{{ footer }}

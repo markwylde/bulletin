@@ -1,4 +1,5 @@
 import { readAvatarPolicy, readMember, readNameHistory } from "@bulletin/domain/member";
+import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -102,6 +103,10 @@ export async function buildAccountPage(input: AccountPageInput): Promise<Account
     breadcrumbs: [{ label: title, href: null }],
     viewModel: {
       displayName: member.displayName ?? "",
+      profileUrl:
+        member.displayName === null
+          ? null
+          : canonicalUrl("profile", input.memberId, member.displayName),
       avatar: {
         url: member.avatarHash === null ? null : avatarUrl(input.memberId, member.avatarHash, "lg"),
         initialsHtml: safeHtml(
