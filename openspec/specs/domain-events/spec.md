@@ -37,3 +37,10 @@ Each event SHALL carry the aggregate version after the change, so consumers can 
 #### Scenario: Out of order
 - **WHEN** a consumer receives version 5 of a topic after already processing version 6
 - **THEN** it can detect that version 5 is stale
+
+### Requirement: Dead letters visible
+Deliveries that exhaust retries SHALL be listed in the staff app with error details, and staff SHALL be able to retry them.
+
+#### Scenario: Retry dead letter
+- **WHEN** an admin retries a dead-lettered delivery after fixing the cause
+- **THEN** it is delivered and removed from the dead-letter list
