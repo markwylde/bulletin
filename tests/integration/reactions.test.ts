@@ -557,6 +557,21 @@ integrationDescribe("reactions", () => {
       const party = await reactionId(database, "party");
       expect(await readTagVersion(database.sql, GLOBAL_CACHE_TAGS.reactions)).not.toBe(before);
 
+      // Creating an existing key must not silently change its weight; the edit path does that.
+      expect(
+        await saveReaction(database.sql, {
+          key: "party",
+          icon: "🎉",
+          labelKey: "reaction.label.love",
+          weight: -1,
+          position: 99,
+          enabled: true,
+        }),
+      ).toEqual({ ok: false, code: "duplicate_key" });
+      expect(
+        (await listReactions(database.sql)).find((reaction) => reaction.key === "party")?.weight,
+      ).toBe(1);
+
       // Editing a reaction to a key another reaction already owns is refused.
       const thanks = await reactionId(database, "thanks");
       expect(

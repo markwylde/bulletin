@@ -31,7 +31,7 @@ import {
   readReputationTarget,
   readViewerVotes,
 } from "@bulletin/domain/reputation";
-import { startTopic } from "@bulletin/domain/topics";
+import { hardDelete, reply, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
@@ -781,6 +781,236 @@ integrationDescribe("reputation", () => {
       expect(await can(database.sql, member.memberId, "receive_reputation")).toBe(false);
     });
   }, 45_000);
+
+  test("a reaction write waits for a board rebuild before touching reactions", async () => {
+    await withSeededDb(async (database) => {
+      const giver = await memberSession(database, "member-1");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Locked reaction");
+      const like = (await listReactions(database.sql)).find((reaction) => reaction.key === "like");
+
+      if (like === undefined) {
+        throw new Error("Missing the like reaction");
+      }
+
+      await setReactionsLink(database, true);
+      const other = new SQL(database.url);
+      let signalLocked: () => void = () => undefined;
+      let releaseLock: () => void = () => undefined;
+      const locked = new Promise<void>((resolve) => {
+        signalLocked = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        releaseLock = resolve;
+      });
+
+      try {
+        const rebuild = other.begin(async (tx) => {
+          await tx`SELECT pg_advisory_xact_lock(hashtext('bulletin.reputation.rebuild')::bigint)`;
+          signalLocked();
+          await gate;
+        });
+
+        await locked;
+        const reaction = setReaction(database.sql, {
+          actorId: giver.memberId,
+          postId: topic.postId,
+          reactionId: like.id,
+        });
+        await Bun.sleep(150);
+
+        // The shared lock is taken before any reaction write reaches the tables.
+        expect(
+          (
+            await database.sql`
+              SELECT 1 FROM core.post_reactions WHERE post_id = ${topic.postId}
+            `
+          ).length,
+        ).toBe(0);
+
+        releaseLock();
+        await rebuild;
+        const result = await reaction;
+        expect(result.ok).toBe(true);
+        expect(await entryFor(database, topic.postId, giver.memberId)).toMatchObject({
+          source: "reaction",
+        });
+      } finally {
+        await other.close();
+      }
+    });
+  }, 60_000);
+
+  test("hard-deleting a rated post recounts the receiver and refreshes the card", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberSession(database, "admin");
+      const giver = await memberSession(database, "member-1");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Rated post delete");
+      const second = await reply(database.sql, {
+        actorId: author.memberId,
+        topicId: topic.topicId,
+        bodyMd: "A deletable rated post.",
+      });
+
+      if (!second.ok) {
+        throw new Error("Could not reply");
+      }
+
+      await giveReputation(database.sql, {
+        actorId: giver.memberId,
+        postId: second.result.postId,
+        points: 1,
+      });
+      expect(await reputationOf(database, author.memberId)).toBe(1);
+      const cardVersion = await readTagVersion(database.sql, memberTag(author.memberId));
+
+      const deleted = await hardDelete(database.sql, {
+        actorId: admin.memberId,
+        postId: second.result.postId,
+      });
+      expect(deleted.ok).toBe(true);
+      expect(await reputationOf(database, author.memberId)).toBe(0);
+      expect(await readTagVersion(database.sql, memberTag(author.memberId))).not.toBe(cardVersion);
+    });
+  }, 60_000);
+
+  test("hard-deleting a rated topic recounts every receiver", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberSession(database, "admin");
+      const giver = await memberSession(database, "member-1");
+      const other = await memberSession(database, "member-fr");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Rated topic delete");
+      const second = await reply(database.sql, {
+        actorId: author.memberId,
+        topicId: topic.topicId,
+        bodyMd: "Another rated post.",
+      });
+
+      if (!second.ok) {
+        throw new Error("Could not reply");
+      }
+
+      await giveReputation(database.sql, {
+        actorId: giver.memberId,
+        postId: topic.postId,
+        points: 1,
+      });
+      await giveReputation(database.sql, {
+        actorId: other.memberId,
+        postId: second.result.postId,
+        points: 1,
+      });
+      expect(await reputationOf(database, author.memberId)).toBe(2);
+      const cardVersion = await readTagVersion(database.sql, memberTag(author.memberId));
+
+      const deleted = await hardDelete(database.sql, {
+        actorId: admin.memberId,
+        topicId: topic.topicId,
+      });
+      expect(deleted.ok).toBe(true);
+      expect(await reputationOf(database, author.memberId)).toBe(0);
+      expect(await readTagVersion(database.sql, memberTag(author.memberId))).not.toBe(cardVersion);
+    });
+  }, 60_000);
+
+  test("a resumed recount notices a reaction-link change and rebuilds again", async () => {
+    await withSeededDb(async (database) => {
+      const giver = await memberSession(database, "member-1");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Config change");
+      const like = (await listReactions(database.sql)).find((reaction) => reaction.key === "like");
+
+      if (like === undefined) {
+        throw new Error("Missing the like reaction");
+      }
+
+      await setReactionsLink(database, true);
+      await setReaction(database.sql, {
+        actorId: giver.memberId,
+        postId: topic.postId,
+        reactionId: like.id,
+      });
+      expect(await reputationOf(database, author.memberId)).toBe(1);
+
+      const first = await runReputationRecount(database.sql, {
+        reason: "config-change",
+        batchSize: 1,
+        maxBatches: 1,
+      });
+      expect(first.done).toBe(false);
+
+      await setReactionsLink(database, false);
+      const second = await runReputationRecount(database.sql, { reason: "config-change" });
+      expect(second.runId).toBe(first.runId);
+      expect(second.done).toBe(true);
+      expect(await entryFor(database, topic.postId, giver.memberId)).toBeNull();
+      expect(await reputationOf(database, author.memberId)).toBe(0);
+
+      await setReactionsLink(database, true);
+      const third = await runReputationRecount(database.sql, { reason: "config-change" });
+      expect(third.done).toBe(true);
+      expect(await entryFor(database, topic.postId, giver.memberId)).toEqual({
+        points: 1,
+        source: "reaction",
+      });
+      expect(await reputationOf(database, author.memberId)).toBe(1);
+    });
+  }, 60_000);
+
+  test("a recount evaluates promotion for members whose total changed", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberSession(database, "member-2");
+      const giver = await memberSession(database, "member-1");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Recount promotion");
+
+      for (let index = 0; index < 5; index += 1) {
+        const post = await reply(database.sql, {
+          actorId: author.memberId,
+          topicId: topic.topicId,
+          bodyMd: `Rated post ${index}.`,
+        });
+
+        if (!post.ok) {
+          throw new Error("Could not reply");
+        }
+
+        await database.sql`
+          INSERT INTO core.reputation_entries (post_id, giver_id, receiver_id, points, source)
+          VALUES (${post.result.postId}, ${giver.memberId}, ${author.memberId}, 1, 'vote')
+        `;
+      }
+
+      await database.sql`
+        UPDATE core.members SET reputation = 0 WHERE id = ${author.memberId}
+      `;
+      await database.sql`
+        INSERT INTO core.promotion_rules (from_group_id, to_group_id, criteria, position, enabled)
+        SELECT m.id, r.id, '{"reputation": 5}'::jsonb, 0, true
+        FROM core.groups m, core.groups r
+        WHERE m.key = 'members' AND r.key = 'regulars'
+      `;
+
+      const result = await runReputationRecount(database.sql, { reason: "promotion" });
+      expect(result.done).toBe(true);
+      expect(await reputationOf(database, author.memberId)).toBe(5);
+
+      const [group] = (await database.sql`
+        SELECT g.key
+        FROM core.member_groups mg
+        JOIN core.groups g ON g.id = mg.group_id
+        WHERE mg.member_id = ${author.memberId} AND mg.is_primary
+      `) as Array<{ key: string }>;
+      expect(group?.key).toBe("regulars");
+      expect(
+        (
+          await database.sql`
+            SELECT 1 FROM core.events WHERE type = 'member.promoted'
+          `
+        ).length,
+      ).toBe(1);
+    });
+  }, 60_000);
 
   test("the viewer vote state and the target are read for the overlay and API", async () => {
     await withSeededDb(async (database) => {

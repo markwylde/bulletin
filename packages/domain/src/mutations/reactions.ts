@@ -17,7 +17,8 @@ export const reactionSetMutation: Mutation<{ readonly postId: string }, Reaction
 };
 
 export interface ReactionAdminResult {
-  readonly reactionId: string;
+  /** Null when a create collided with an existing key (reported as `duplicate_key`). */
+  readonly reactionId: string | null;
 }
 
 /** The staff-managed set is shared by every reaction bar on the board. */

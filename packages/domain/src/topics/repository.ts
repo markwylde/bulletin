@@ -6,6 +6,11 @@ import type { ForumAction, ModeratorPower } from "../permissions/actions.ts";
 import { can } from "../permissions/can.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
 import type { ForumTree } from "../permissions/tree.ts";
+import {
+  listPostReputationReceivers,
+  listTopicReputationReceivers,
+  recountReputationReceivers,
+} from "../reputation/repository.ts";
 
 export type PostVisibility = "visible" | "unapproved" | "soft_deleted";
 export type ForumPrefixMode = "none" | "optional" | "required";
@@ -518,8 +523,10 @@ export async function deletePostRow(tx: SQL, postId: string): Promise<void> {
     WHERE post_id = ${postId}
     RETURNING attachment_id::text AS attachment_id
   `) as Array<{ attachment_id: string }>;
+  const reputationReceivers = await listPostReputationReceivers(tx, postId);
 
   await tx`DELETE FROM core.posts WHERE id = ${postId}`;
+  await recountReputationReceivers(tx, reputationReceivers);
   await restartOrphanClock(
     tx,
     removed.map((row) => row.attachment_id),
@@ -532,8 +539,10 @@ export async function deleteTopicRow(tx: SQL, topicId: string): Promise<void> {
     WHERE post_id IN (SELECT id FROM core.posts WHERE topic_id = ${topicId})
     RETURNING attachment_id::text AS attachment_id
   `) as Array<{ attachment_id: string }>;
+  const reputationReceivers = await listTopicReputationReceivers(tx, topicId);
 
   await tx`DELETE FROM core.topics WHERE id = ${topicId}`;
+  await recountReputationReceivers(tx, reputationReceivers);
   await restartOrphanClock(
     tx,
     removed.map((row) => row.attachment_id),

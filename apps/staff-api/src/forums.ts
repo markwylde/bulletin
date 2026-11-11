@@ -1,6 +1,10 @@
 import { saveContent } from "@bulletin/content";
 import { forumSettingsMutation, forumTreeMutation, runMutation } from "@bulletin/domain/mutations";
 import { bumpPermVersion, hashForumPassword, loadForumTree } from "@bulletin/domain/permissions";
+import {
+  listForumReputationReceivers,
+  recountReputationReceivers,
+} from "@bulletin/domain/reputation";
 import { slugify } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
@@ -529,8 +533,10 @@ export async function deleteForum(
           WHERE t.forum_id = ${forumId} AND p.visibility = 'visible' AND p.author_id IS NOT NULL
           GROUP BY p.author_id
         `) as Array<{ author_id: string; count: number }>;
+        const reputationReceivers = await listForumReputationReceivers(tx, forumId);
 
         await tx`DELETE FROM core.topics WHERE forum_id = ${forumId}`;
+        await recountReputationReceivers(tx, reputationReceivers);
 
         for (const author of authors) {
           await tx`

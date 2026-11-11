@@ -3,7 +3,7 @@ import { readBoardSettings } from "../board/index.ts";
 import { emit } from "../events/outbox.ts";
 import { runMutation } from "../mutations/index.ts";
 import { reactionAdminMutation, reactionSetMutation } from "../mutations/reactions.ts";
-import { applyReactionReputation } from "../reputation/index.ts";
+import { applyReactionReputation, lockReputationRebuild } from "../reputation/index.ts";
 import {
   canReactInForum,
   lockReactionPost,
@@ -138,7 +138,9 @@ export async function setReaction(
       mutation: reactionSetMutation,
       input: { postId: target.postId },
       apply: async (tx) => {
-        // Serialise concurrent reactions on this post so the summary cannot lose an update.
+        // Serialise concurrent reactions on this post so the summary cannot lose an update,
+        // and hold the reaction-rebuild lock shared so a recount cannot straddle this write.
+        await lockReputationRebuild(tx, "shared");
         await lockReactionPost(tx, target.postId);
 
         let reactionWeight = 0;
@@ -357,29 +359,25 @@ export async function saveReaction(
           return { reactionId: updated.id };
         }
 
+        // Creating a key that already exists is a conflict, never a silent weight change: the
+        // edit path knows the previous weight and requests the recount (task findings 4).
         const [saved] = (await tx`
           INSERT INTO core.reactions (key, icon, label_key, weight, position, enabled)
           VALUES (
             ${input.key}, ${input.icon}, ${input.labelKey}, ${input.weight},
             ${input.position}, ${input.enabled}
           )
-          ON CONFLICT (key) DO UPDATE
-            SET icon = EXCLUDED.icon,
-                label_key = EXCLUDED.label_key,
-                weight = EXCLUDED.weight,
-                position = EXCLUDED.position,
-                enabled = EXCLUDED.enabled,
-                updated_at = now()
+          ON CONFLICT (key) DO NOTHING
           RETURNING id::text AS id
         `) as Array<{ id: string }>;
 
-        if (saved === undefined) {
-          throw new Error("Saving a reaction returned no row");
-        }
-
-        return { reactionId: saved.id };
+        return { reactionId: saved?.id ?? null };
       },
     });
+
+    if (result.reactionId === null) {
+      return { ok: false, code: "duplicate_key" };
+    }
 
     return { ok: true, reactionId: result.reactionId };
   } catch (error) {

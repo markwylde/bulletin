@@ -1,3 +1,4 @@
+import { bumpCacheTags, memberTag } from "@bulletin/cache";
 import type { SQL } from "bun";
 import { can } from "../permissions/can.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
@@ -123,22 +124,25 @@ export async function canReadPost(
 
 /** Whether the member may give, give negative points and how many may be given per day. */
 export async function readReputationRules(sql: SQL, memberId: string): Promise<ReputationRules> {
-  const settings = await loadMergedGroupSettings(sql, memberId);
+  const [settings, canGive, canGiveNegative] = await Promise.all([
+    loadMergedGroupSettings(sql, memberId),
+    can(sql, memberId, "give_reputation"),
+    can(sql, memberId, "give_negative_reputation"),
+  ]);
   const minPosts = Number(settings["posting.reputation_min_posts"] ?? 0);
   const dailyLimit = Number(settings["posting.reputation_daily_limit"] ?? 10);
 
   return {
-    canGive: settings["posting.can_give_reputation"] === true,
-    canGiveNegative: settings["posting.can_give_negative_reputation"] === true,
+    canGive,
+    canGiveNegative,
     minPosts: Number.isFinite(minPosts) ? minPosts : 0,
     dailyLimit: Number.isFinite(dailyLimit) ? dailyLimit : 10,
   };
 }
 
 /** A `restrict-any` opt-out: one group can stop a member from receiving reputation. */
-export async function canReceiveReputation(sql: SQL, memberId: string): Promise<boolean> {
-  const settings = await loadMergedGroupSettings(sql, memberId);
-  return settings["posting.cannot_receive_reputation"] !== true;
+export function canReceiveReputation(sql: SQL, memberId: string): Promise<boolean> {
+  return can(sql, memberId, "receive_reputation");
 }
 
 export async function readDailyUsage(sql: SQL, giverId: string): Promise<DailyUsage> {
@@ -242,6 +246,66 @@ export async function upsertReactionEntries(
 /** Removes every reaction-sourced entry (the link is off). */
 export async function deleteReactionEntries(tx: SQL): Promise<void> {
   await tx`DELETE FROM core.reputation_entries WHERE source = 'reaction'`;
+}
+
+/** Receivers with an entry on one post, captured before a cascade deletes the entries. */
+export async function listPostReputationReceivers(
+  tx: SQL,
+  postId: string,
+): Promise<readonly string[]> {
+  const rows = (await tx`
+    SELECT DISTINCT receiver_id::text AS id
+    FROM core.reputation_entries
+    WHERE post_id = ${postId}
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}
+
+export async function listTopicReputationReceivers(
+  tx: SQL,
+  topicId: string,
+): Promise<readonly string[]> {
+  const rows = (await tx`
+    SELECT DISTINCT e.receiver_id::text AS id
+    FROM core.reputation_entries e
+    JOIN core.posts p ON p.id = e.post_id
+    WHERE p.topic_id = ${topicId}
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}
+
+export async function listForumReputationReceivers(
+  tx: SQL,
+  forumId: string,
+): Promise<readonly string[]> {
+  const rows = (await tx`
+    SELECT DISTINCT e.receiver_id::text AS id
+    FROM core.reputation_entries e
+    JOIN core.posts p ON p.id = e.post_id
+    JOIN core.topics t ON t.id = p.topic_id
+    WHERE t.forum_id = ${forumId}
+  `) as Array<{ id: string }>;
+
+  return rows.map((row) => row.id);
+}
+
+/**
+ * Recounts receivers whose entries a cascade removed, in the caller's transaction. A content
+ * delete must never leave a stale total or card (ADR 0006 materialisation rule).
+ */
+export async function recountReputationReceivers(
+  tx: SQL,
+  receiverIds: readonly string[],
+): Promise<void> {
+  for (const memberId of [...new Set(receiverIds)]) {
+    const recounted = await recomputeReputation(tx, memberId);
+
+    if (recounted !== null && recounted.previous !== recounted.total) {
+      await bumpCacheTags(tx, [memberTag(memberId)]);
+    }
+  }
 }
 
 /** Locks the member row; two giving transactions for the same receiver cannot interleave. */
@@ -483,6 +547,18 @@ export async function recomputeAllReputations(tx: SQL): Promise<readonly MemberT
 // Board recounts: resumable runs with progress for the staff app (design risk: big boards)
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A stable signature of everything a reaction rebuild depends on (the link and every weight),
+ * so an interrupted run notices a settings change and rebuilds again.
+ */
+export async function reputationConfigHash(tx: SQL, enabled: boolean): Promise<string> {
+  const weights = (await tx`
+    SELECT key, weight FROM core.reactions ORDER BY key
+  `) as Array<{ key: string; weight: number }>;
+
+  return new Bun.CryptoHasher("sha256").update(JSON.stringify({ enabled, weights })).digest("hex");
+}
+
 const RECOUNT_CLAIM_LOCK = "bulletin.reputation.recount";
 const REBUILD_LOCK = "bulletin.reputation.rebuild";
 
@@ -507,6 +583,7 @@ export interface ReputationRecountRun {
   readonly processedMembers: number;
   readonly changedMembers: number;
   readonly cursorMemberId: string;
+  readonly configHash: string | null;
   readonly rebuiltAt: Date | null;
   readonly startedAt: Date;
   readonly updatedAt: Date;
@@ -521,6 +598,7 @@ interface RecountRow {
   readonly processed_members: number;
   readonly changed_members: number;
   readonly cursor_member_id: string;
+  readonly config_hash: string | null;
   readonly rebuilt_at: Date | null;
   readonly started_at: Date;
   readonly updated_at: Date;
@@ -536,6 +614,7 @@ function recountRun(row: RecountRow): ReputationRecountRun {
     processedMembers: row.processed_members,
     changedMembers: row.changed_members,
     cursorMemberId: row.cursor_member_id,
+    configHash: row.config_hash,
     rebuiltAt: row.rebuilt_at,
     startedAt: row.started_at,
     updatedAt: row.updated_at,
@@ -550,7 +629,8 @@ export async function ensureRecountRun(tx: SQL, reason: string): Promise<Reputat
   const [existing] = (await tx`
     SELECT
       id::text AS id, status, reason, total_members, processed_members, changed_members,
-      cursor_member_id::text AS cursor_member_id, rebuilt_at, started_at, updated_at, finished_at
+      cursor_member_id::text AS cursor_member_id, config_hash, rebuilt_at, started_at,
+      updated_at, finished_at
     FROM core.reputation_recounts
     WHERE status = 'running'
     ORDER BY core.reputation_recounts.id
@@ -570,7 +650,8 @@ export async function ensureRecountRun(tx: SQL, reason: string): Promise<Reputat
     VALUES (${reason}, ${count?.total ?? 0})
     RETURNING
       id::text AS id, status, reason, total_members, processed_members, changed_members,
-      cursor_member_id::text AS cursor_member_id, rebuilt_at, started_at, updated_at, finished_at
+      cursor_member_id::text AS cursor_member_id, config_hash, rebuilt_at, started_at,
+      updated_at, finished_at
   `) as RecountRow[];
 
   if (created === undefined) {
@@ -587,7 +668,8 @@ export async function readRecountRun(
   const [row] = (await sql`
     SELECT
       id::text AS id, status, reason, total_members, processed_members, changed_members,
-      cursor_member_id::text AS cursor_member_id, rebuilt_at, started_at, updated_at, finished_at
+      cursor_member_id::text AS cursor_member_id, config_hash, rebuilt_at, started_at,
+      updated_at, finished_at
     FROM core.reputation_recounts
     WHERE id = ${runId}
   `) as RecountRow[];
@@ -595,10 +677,14 @@ export async function readRecountRun(
   return row === undefined ? null : recountRun(row);
 }
 
-export async function markRecountRebuilt(sql: SQL, runId: string): Promise<void> {
+export async function markRecountRebuilt(
+  sql: SQL,
+  runId: string,
+  configHash: string,
+): Promise<void> {
   await sql`
     UPDATE core.reputation_recounts
-    SET rebuilt_at = now(), updated_at = now()
+    SET rebuilt_at = now(), config_hash = ${configHash}, updated_at = now()
     WHERE id = ${runId}
   `;
 }
@@ -638,7 +724,8 @@ export async function listRecountRuns(
   const rows = (await sql`
     SELECT
       id::text AS id, status, reason, total_members, processed_members, changed_members,
-      cursor_member_id::text AS cursor_member_id, rebuilt_at, started_at, updated_at, finished_at
+      cursor_member_id::text AS cursor_member_id, config_hash, rebuilt_at, started_at,
+      updated_at, finished_at
     FROM core.reputation_recounts
     ORDER BY core.reputation_recounts.id DESC
     LIMIT ${limit}

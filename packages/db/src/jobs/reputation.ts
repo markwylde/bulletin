@@ -11,11 +11,13 @@ import {
   readRecountRun,
   rebuildReactionEntries,
   recomputeMemberBatch,
+  reputationConfigHash,
   updateRecountProgress,
 } from "@bulletin/domain/reputation";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
+import { evaluatePromotion } from "./promotion.ts";
 
 export const REPUTATION_RECOUNT_QUEUE = "reputation.recount";
 
@@ -67,17 +69,18 @@ export async function runReputationRecount(
     await lockReputationRebuild(tx, "exclusive");
     const run = await ensureRecountRun(tx, reason);
     runId = run.id;
+    const settings = await readBoardSettings(tx);
+    const signature = await reputationConfigHash(tx, settings.reactionsAffectReputation);
 
-    if (run.rebuiltAt === null) {
-      const settings = await readBoardSettings(tx);
-
+    // A resumed run rebuilds again when the link or any weight changed since its last rebuild.
+    if (run.rebuiltAt === null || run.configHash !== signature) {
       if (settings.reactionsAffectReputation) {
         await rebuildReactionEntries(tx);
       } else {
         await deleteReactionEntries(tx);
       }
 
-      await markRecountRebuilt(tx, run.id);
+      await markRecountRebuilt(tx, run.id, signature);
     }
   });
 
@@ -107,25 +110,30 @@ export async function runReputationRecount(
 
     const last = ids[ids.length - 1] ?? cursor;
 
-    const changedInBatch = await sql.begin(async (tx) => {
-      const changes = await recomputeMemberBatch(tx, ids);
+    const changes = await sql.begin(async (tx) => {
+      const batch = await recomputeMemberBatch(tx, ids);
 
-      for (const change of changes) {
+      for (const change of batch) {
         await bumpCacheTags(tx, [memberTag(change.memberId)]);
       }
 
       await updateRecountProgress(tx, runId, {
         cursorMemberId: last,
         processed: ids.length,
-        changed: changes.length,
+        changed: batch.length,
       });
 
-      return changes.length;
+      return batch;
     });
+
+    // Reputation is a promotion criterion; a recount can push members over their threshold.
+    for (const change of changes) {
+      await evaluatePromotion(sql, change.memberId);
+    }
 
     cursor = last;
     processed += ids.length;
-    changed += changedInBatch;
+    changed += changes.length;
     batches += 1;
   }
 }
