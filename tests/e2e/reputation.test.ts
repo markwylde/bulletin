@@ -48,12 +48,14 @@ async function topicHrefs(view: Bun.WebView): Promise<readonly string[]> {
 }
 
 /**
- * Finds a post this member has not rated yet. A fresh CI database finds one in the first
- * topics; the loop keeps repeated local runs working after earlier runs spent the obvious ones.
+ * Gives +1 to the first post this member can rate. Candidates that hydrate away (already
+ * rated or the member's own post) are skipped, so repeated local runs stay deterministic.
  */
-async function findUnratedPost(
-  view: Bun.WebView,
-): Promise<{ readonly url: string; readonly postId: string } | null> {
+async function giveReputationOnSomePost(view: Bun.WebView): Promise<{
+  readonly url: string;
+  readonly postId: string;
+  readonly before: number;
+} | null> {
   await view.navigate(FORUM_URL);
   const hrefs = await topicHrefs(view);
 
@@ -61,37 +63,56 @@ async function findUnratedPost(
     const url = new URL(href, USER_URL).toString();
     await view.navigate(url);
     await waitForSelector(view, "[data-topic-page]", 20_000);
-    // Own posts and votes already given arrive with the overlay, so scan only after it.
     await waitForExpression(
       view,
       'document.documentElement.dataset.overlayApplied === "true"',
       20_000,
     ).catch(() => undefined);
 
-    const found = await view.evaluate<string | null>(`(() => {
-      const post = [...document.querySelectorAll('[data-post]')].find((element) =>
-        element.querySelector('[data-reputation-vote="1"]:not([disabled])')
-      );
-      return post?.getAttribute('data-post') ?? null;
-    })()`);
+    const candidates = await view.evaluate<string[]>(`[...document.querySelectorAll('[data-post]')]
+      .filter((element) => element.querySelector('[data-reputation-vote="1"]'))
+      .map((element) => element.getAttribute('data-post') ?? '')
+      .filter((id) => id !== '')`);
 
-    if (found !== null) {
-      // Islands hydrate when they scroll near the viewport; bring this post into view and
-      // re-check after the overlay has had its say (it may already be voted or the own post).
+    for (const postId of candidates) {
+      // Islands hydrate when they scroll near the viewport; the overlay then removes the
+      // control on own posts and on posts already rated.
       await view.evaluate(
-        `document.querySelector('[data-post="${found}"]')?.scrollIntoView({ block: "center" })`,
+        `document.querySelector('[data-post="${postId}"]')?.scrollIntoView({ block: "center" })`,
       );
       await waitForSelector(
         view,
-        `[data-post="${found}"] bl-island[data-name="PostReputation"][data-hydrated="true"]`,
+        `[data-post="${postId}"] bl-island[data-name="PostReputation"][data-hydrated="true"]`,
         10_000,
       ).catch(() => null);
+      await Bun.sleep(150);
+
       const clickable = await view.evaluate<boolean>(
-        `document.querySelector('[data-post="${found}"] [data-reputation-vote="1"]:not([disabled])') !== null`,
+        `document.querySelector('[data-post="${postId}"] [data-reputation-vote="1"]:not([disabled])') !== null`,
       );
 
-      if (clickable) {
-        return { url, postId: found };
+      if (!clickable) {
+        continue;
+      }
+
+      const before = await view.evaluate<number>(`Number(
+        document.querySelector('[data-post="${postId}"] [data-reputation-count]')?.textContent ?? "0"
+      )`);
+
+      await clickSelector(
+        view,
+        `[data-post="${postId}"] [data-reputation-vote="1"]:not([disabled])`,
+      );
+      const given = await waitForSelector(
+        view,
+        `[data-post="${postId}"] [data-reputation-given="1"]`,
+        10_000,
+      )
+        .then(() => true)
+        .catch(() => false);
+
+      if (given) {
+        return { url, postId, before };
       }
     }
   }
@@ -110,29 +131,13 @@ integrationDescribe("reputation", () => {
         },
         async (view) => {
           await loginAs(view, "member-1");
-          const target = await findUnratedPost(view);
+          const target = await giveReputationOnSomePost(view);
 
           if (target === null) {
-            throw new Error("No unrated post found in the seeded topics");
+            throw new Error("No ratable post found in the seeded topics");
           }
 
-          const { postId } = target;
-          await waitForSelector(
-            view,
-            `[data-post="${postId}"] [data-reputation-vote="1"]:not([disabled])`,
-            20_000,
-          );
-
-          const before = await view.evaluate<number>(`Number(
-            document.querySelector('[data-post="${postId}"] [data-reputation-count]')?.textContent ?? "0"
-          )`);
-
-          await clickSelector(view, `[data-post="${postId}"] [data-reputation-vote="1"]`);
-          await waitForSelector(
-            view,
-            `[data-post="${postId}"] [data-reputation-given="1"]`,
-            20_000,
-          );
+          const { postId, before } = target;
           expect(
             await view.evaluate<number>(`Number(
               document.querySelector('[data-post="${postId}"] [data-reputation-count]')?.textContent ?? "0"
