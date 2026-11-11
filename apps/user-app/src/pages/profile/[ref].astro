@@ -1,0 +1,71 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { cacheRuntime } from "../../cache-runtime.ts";
+import { USER_CATALOGS } from "../../catalogs.ts";
+import { profileContract } from "../../contracts.ts";
+import { readSql } from "../../db.ts";
+import { applyCacheHeaders, isNotModified, requestHasSession } from "../../http/cache.ts";
+import ThemeLayout from "../../layouts/ThemeLayout.astro";
+import { renderProfileRoute } from "../../profiles/route.ts";
+import { PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
+
+const sql = readSql();
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const session = Astro.locals.session ?? null;
+const dev = import.meta.env.DEV;
+const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
+const runtime = await cacheRuntime(sql);
+const result = await renderProfileRoute({
+  sql,
+  locale,
+  translate,
+  session,
+  ref: Astro.params.ref ?? "",
+  pluginsGeneration: PLUGIN_GENERATION,
+  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  cache: runtime.cache,
+  tagVersions: runtime.tags,
+});
+
+if (result.kind === "redirect") {
+  return new Response(null, {
+    status: result.status,
+    headers: { location: result.location, "cache-control": "no-store" },
+  });
+}
+
+const headers = new Headers();
+
+applyCacheHeaders(headers, {
+  cdnCacheable: profileContract.cdnCacheable,
+  hasSession: requestHasSession(Astro.request.headers.get("cookie"), nodeEnv),
+  hasUnlockGrant: result.hasUnlockGrant,
+  tags: result.tags,
+  etag: result.etag,
+  dev,
+  status: result.cache,
+  key: result.variant,
+});
+
+for (const [name, value] of headers) {
+  Astro.response.headers.set(name, value);
+}
+
+if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
+  return new Response(null, { status: 304, headers });
+}
+
+Astro.response.status = result.status;
+---
+
+<ThemeLayout
+  title={`${result.title} · ${result.boardName}`}
+  locale={locale}
+  body={result.html}
+  visitor={session === null ? "guest" : "member"}
+  serverLocale={locale}
+  {...(Astro.locals.localeSource === undefined
+    ? {}
+    : { localeSource: Astro.locals.localeSource })}
+/>

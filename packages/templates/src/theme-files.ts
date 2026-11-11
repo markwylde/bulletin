@@ -22,10 +22,12 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "demo",
   "display-name",
   "account",
+  "account-profile",
   "account-attachments",
   "account-follows",
   "account-notifications",
   "account-notification-preferences",
+  "profile",
   "unsubscribe",
 ] as const;
 

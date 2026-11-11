@@ -39,6 +39,11 @@ export interface AccountViewModel {
   readonly memberId: string;
 }
 
+/** The profile route's own member tag. */
+export interface ProfileViewModel {
+  readonly memberId: string;
+}
+
 /**
  * Every user-app page declares a view-model contract (ADR 0006, 0008; tasks 2.4 and 3.2). The
  * architecture test fails the build when a page has no entry here or an entry has no page.
@@ -146,6 +151,37 @@ export const accountContract = defineContract<AccountViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/** The member's own profile editor: personal, never shared (ADR 0006). */
+export const profileEditContract = defineContract<AccountViewModel>({
+  route: "/account/profile",
+  templates: {
+    page: "account-profile",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`, GLOBAL_CACHE_TAGS.profileFields],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+/**
+ * A public profile is cached per viewer field-visibility class (ADR 0005, 0006). The route
+ * adds the recent-post forums' read bits to the variant key at render time.
+ */
+export const profileContract = defineContract<ProfileViewModel>({
+  route: "/profile/[ref]",
+  templates: { page: "profile", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: (model) => [
+    `member:${model.memberId}`,
+    GLOBAL_CACHE_TAGS.profileFields,
+    GLOBAL_CACHE_TAGS.badges,
+    GLOBAL_CACHE_TAGS.board,
+  ],
+  cdnCacheable: true,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const notificationPreferencesContract = defineContract<AccountViewModel>({
   route: "/account/notifications/preferences",
   templates: {
@@ -218,6 +254,8 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [topicContract.route]: topicContract,
   [displayNameContract.route]: displayNameContract,
   [accountContract.route]: accountContract,
+  [profileEditContract.route]: profileEditContract,
+  [profileContract.route]: profileContract,
   [unsubscribeContract.route]: unsubscribeContract,
   [unsubscribeConfirmedContract.route]: unsubscribeConfirmedContract,
   [notificationPreferencesContract.route]: notificationPreferencesContract,

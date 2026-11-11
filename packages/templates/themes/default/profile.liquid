@@ -1,0 +1,107 @@
+{{ header }}
+<main id="main" class="bl-main" data-profile-page data-profile-member="{{ profile.id }}">
+  {{ breadcrumbs }}
+
+  <section class="bl-card bl-profile" data-profile-summary>
+    <header class="bl-profile__header">
+      <div class="bl-profile__avatar">
+        {% if profile.avatarUrl %}
+          <img class="bl-avatar bl-avatar--image" src="{{ profile.avatarUrl }}" alt="" width="96" height="96" loading="lazy" data-profile-avatar>
+        {% else %}
+          {{ profile.initialsHtml }}
+        {% endif %}
+      </div>
+      <div class="bl-profile__identity">
+        <h1 class="bl-page__title" data-profile-name>{{ profile.name }}</h1>
+        {% if profile.groupTitle %}
+          <p class="bl-profile__group" data-profile-group{% if profile.groupColour %} style="color: {{ profile.groupColour }}"{% endif %}>{{ profile.groupTitle }}</p>
+        {% endif %}
+        <dl class="bl-profile__stats">
+          <div>
+            <dt>{% t "profile.stats.joined" %}</dt>
+            <dd data-profile-joined>{{ profile.joinedLabel }}</dd>
+          </div>
+          <div>
+            <dt>{% t "profile.stats.posts" %}</dt>
+            <dd data-profile-posts>{{ profile.postCountLabel }}</dd>
+          </div>
+          <div>
+            <dt>{% t "profile.stats.reputation" %}</dt>
+            <dd data-profile-reputation>{{ profile.reputationLabel }}</dd>
+          </div>
+          {% if profile.lastActiveLabel %}
+            <div>
+              <dt>{% t "profile.stats.lastActive" %}</dt>
+              <dd data-profile-last-active>{{ profile.lastActiveLabel }}</dd>
+            </div>
+          {% endif %}
+        </dl>
+      </div>
+    </header>
+  </section>
+
+  <section class="bl-card" data-profile-about>
+    <h2 class="bl-card__title">{% t "profile.about.title" %}</h2>
+    {% if profile.aboutHtml %}
+      <div class="bl-profile__about">{{ profile.aboutHtml }}</div>
+    {% else %}
+      <p class="bl-muted">{% t "profile.about.empty" %}</p>
+    {% endif %}
+  </section>
+
+  {% if profile.fields.size > 0 %}
+    <section class="bl-card" data-profile-fields>
+      <h2 class="bl-card__title">{% t "profile.fields.title" %}</h2>
+      <dl class="bl-profile__fields">
+        {% for field in profile.fields %}
+          <div class="bl-profile__field" data-profile-field-row="{{ field.id }}">
+            <dt>{{ field.label }}</dt>
+            <dd>
+              {% if field.href %}
+                <a href="{{ field.href }}" rel="nofollow ugc noopener">{{ field.value }}</a>
+              {% else %}
+                {{ field.value }}
+              {% endif %}
+            </dd>
+          </div>
+        {% endfor %}
+      </dl>
+    </section>
+  {% endif %}
+
+  {% if profile.badges.size > 0 %}
+    <section class="bl-card" data-profile-badges>
+      <h2 class="bl-card__title">{% t "profile.badges.title" %}</h2>
+      <ul class="bl-profile__badges">
+        {% for badge in profile.badges %}
+          <li class="bl-profile__badge" data-profile-badge="{{ badge.id }}">
+            {% if badge.imageUrl %}
+              <img class="bl-profile__badge-image" src="{{ badge.imageUrl }}" alt="" width="32" height="32" loading="lazy">
+            {% endif %}
+            <span class="bl-badge">{{ badge.label }}</span>
+            {% if badge.description %}
+              <span class="bl-muted">{{ badge.description }}</span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <section class="bl-card" data-profile-posts>
+    <h2 class="bl-card__title">{% t "profile.posts.title" %}</h2>
+    {% if profile.posts.size > 0 %}
+      <ol class="bl-profile__posts">
+        {% for post in profile.posts %}
+          <li class="bl-profile__post" data-profile-post="{{ post.id }}">
+            <a href="{{ post.href }}">{{ post.title }}</a>
+            <span class="bl-muted">{{ post.forumTitle }} · <time datetime="{{ post.iso }}">{{ post.dateLabel }}</time></span>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="bl-muted" data-profile-posts-empty>{% t "profile.posts.empty" %}</p>
+    {% endif %}
+  </section>
+</main>
+{{ footer }}
