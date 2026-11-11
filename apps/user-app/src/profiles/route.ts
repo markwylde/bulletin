@@ -17,6 +17,13 @@ import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
 import { buildProfilePage, type ProfilePageData } from "./page.ts";
 
+/**
+ * Last-active is visit data written without a tag bump (ADR 0006). A short fragment TTL keeps
+ * a warmed profile from showing a stale timestamp forever without turning visits into writes
+ * that invalidate content caches.
+ */
+export const PROFILE_FRAGMENT_TTL_MS = 60_000;
+
 export interface ProfileRouteInput {
   readonly sql: SQL;
   readonly locale: Locale;
@@ -175,6 +182,7 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
           renderFlagsHash: flags.hash,
         }),
         data: { theme, boardName, page, flags },
+        ttlMs: PROFILE_FRAGMENT_TTL_MS,
       };
     },
     render: async (data) => {

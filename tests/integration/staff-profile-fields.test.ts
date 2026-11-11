@@ -198,4 +198,64 @@ integrationDescribe("staff custom profile field manager", () => {
       ]);
     });
   });
+
+  test("rejects a type change when stored values do not fit the new type", async () => {
+    await withDb(async (database) => {
+      const admin = await createMember(database, "Field Admin", "administrators");
+      const member = await createMember(database, "Field Member", "members");
+      const mutate = route("profileFields.mutate");
+
+      const created = await call(database, admin, mutate, {
+        action: "save",
+        field: {
+          type: "short_text",
+          labels: LABELS,
+          options: [],
+          groups: [],
+        },
+      });
+      expect(created.status).toBe(200);
+      const fieldId = ((await created.json()) as { id: string }).id;
+
+      await database.sql`
+        INSERT INTO core.member_field_values (member_id, field_id, value)
+        VALUES (${member}, ${fieldId}, '"January 1, 2020"'::jsonb)
+      `;
+
+      const asDate = await call(database, admin, mutate, {
+        action: "save",
+        field: {
+          id: fieldId,
+          type: "date",
+          labels: LABELS,
+          options: [],
+          groups: [],
+        },
+      });
+      expect(asDate.status).toBe(400);
+      expect(((await asDate.json()) as { code: string }).code).toBe("incompatible_values");
+
+      const [unchanged] = (await database.sql`
+        SELECT type FROM core.profile_fields WHERE id = ${fieldId}
+      `) as Array<{ type: string }>;
+      expect(unchanged?.type).toBe("short_text");
+
+      // A value that does fit the new type lets the change through.
+      await database.sql`
+        UPDATE core.member_field_values SET value = '"2020-01-01"'::jsonb
+        WHERE member_id = ${member} AND field_id = ${fieldId}
+      `;
+      const migrated = await call(database, admin, mutate, {
+        action: "save",
+        field: {
+          id: fieldId,
+          type: "date",
+          labels: LABELS,
+          options: [],
+          groups: [],
+        },
+      });
+      expect(migrated.status).toBe(200);
+    });
+  });
 });

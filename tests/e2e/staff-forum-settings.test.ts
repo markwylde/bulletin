@@ -86,6 +86,8 @@ integrationDescribe("staff forum settings, prefixes and announcements", () => {
 
       await view.navigate(`${STAFF_URL}/announcements`);
       await waitForSelector(view, '[data-page="announcements"]');
+      // The editor renders only after the announcements query resolves.
+      await waitForSelector(view, '[data-announcement-field="title"]', 20_000);
       await setInputValue(view, '[data-announcement-field="title"]', `E2E Notice ${stamp}`);
       await setInputValue(view, '[data-announcement-field="body"]', "E2E notice body");
       await clickSelector(view, "[data-announcement-save]");

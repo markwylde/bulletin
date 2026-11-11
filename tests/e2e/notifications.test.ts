@@ -253,17 +253,22 @@ integrationDescribe("notification centre", () => {
             ),
           ).toBe(true);
 
+          // Badge and friend entries are notifications without a link; opening one cannot mark
+          // it read or navigate. Pick the newest unread entry that can actually be opened.
           openedRow = await view.evaluate<string | null>(
-            'document.querySelector("[data-notification-row]")?.getAttribute("data-notification-row") ?? null',
+            `document.querySelector(
+              '[data-notification-row][data-unread="true"] [data-notification-link]'
+            )?.closest("[data-notification-row]")?.getAttribute("data-notification-row") ?? null`,
           );
 
           if (openedRow === null) {
-            throw new Error("Missing notification row");
+            throw new Error("Missing unread notification with a link");
           }
 
           // Opening an unread entry marks it read and navigates to the topic.
-          await waitForSelector(view, "[data-notification-link]:not([disabled])");
-          await clickSelector(view, "[data-notification-link]");
+          const openedLink = `[data-notification-row="${openedRow}"] [data-notification-link]:not([disabled])`;
+          await waitForSelector(view, openedLink);
+          await clickSelector(view, openedLink);
           await waitForSelector(view, "[data-topic-page]");
         },
       );

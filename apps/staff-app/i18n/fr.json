@@ -565,6 +565,7 @@
   "staff.profileFields.group": "Groupe",
   "staff.profileFields.groups": "Qui peut voir et modifier",
   "staff.profileFields.groupsHelp": "Un champ sans groupe sélectionné est visible par tout le monde et modifiable par personne. Sélectionnez un groupe pour restreindre la visibilité et autoriser la modification.",
+  "staff.profileFields.incompatible": "Certaines valeurs enregistrées par les membres ne correspondent pas à ce type. Revenez au type précédent ou effacez ces valeurs d'abord.",
   "staff.profileFields.intro": "Définissez les champs que les membres remplissent sur leur profil et les groupes autorisés à les voir ou à les modifier.",
   "staff.profileFields.invalid": "Remplissez chaque libellé et donnez une valeur et toutes les traductions à chaque option.",
   "staff.profileFields.labelEn": "Libellé (anglais)",

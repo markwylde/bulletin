@@ -111,6 +111,25 @@ function optionLabel(field: ProfileField, value: string, locale: Locale): string
   return option === undefined ? null : localizedText(option.labels, locale);
 }
 
+/**
+ * Formats the exact `YYYY-MM-DD` value stored for a date field. Anything else (legacy or
+ * hand-edited data) is not a date: the caller shows the raw value rather than throwing while
+ * formatting a different string.
+ */
+function formattedDateValue(raw: string, locale: Locale): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return null;
+  }
+
+  const date = new Date(`${raw}T00:00:00Z`);
+
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== raw) {
+    return null;
+  }
+
+  return dateFormatter(locale).format(date);
+}
+
 function fieldView(
   field: ProfileField,
   raw: ProfileFieldValue | undefined,
@@ -127,15 +146,20 @@ function fieldView(
       return typeof raw === "number"
         ? { id: field.id, label, value: numberFormatter(locale).format(raw), href: null }
         : null;
-    case "date":
-      return typeof raw === "string" && !Number.isNaN(Date.parse(raw))
-        ? {
-            id: field.id,
-            label,
-            value: dateFormatter(locale).format(new Date(`${raw}T00:00:00Z`)),
-            href: null,
-          }
-        : null;
+    case "date": {
+      if (typeof raw !== "string" || raw.trim() === "") {
+        return null;
+      }
+
+      const formatted = formattedDateValue(raw, locale);
+
+      return {
+        id: field.id,
+        label,
+        value: formatted ?? raw,
+        href: null,
+      };
+    }
     case "url":
       return typeof raw === "string" ? { id: field.id, label, value: raw, href: raw } : null;
     case "select":

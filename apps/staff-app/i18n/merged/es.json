@@ -603,6 +603,7 @@
   "staff.profileFields.group": "Grupo",
   "staff.profileFields.groups": "Quién puede ver y editar",
   "staff.profileFields.groupsHelp": "Un campo sin grupos seleccionados es visible para todos y no lo puede editar nadie. Selecciona un grupo para restringir la visibilidad y permitir la edición.",
+  "staff.profileFields.incompatible": "Algunos valores guardados por los miembros no encajan con este tipo. Vuelve al tipo anterior o borra esos valores primero.",
   "staff.profileFields.intro": "Define los campos que los miembros completan en su perfil y qué grupos pueden verlos o editarlos.",
   "staff.profileFields.invalid": "Completa todas las etiquetas y da un valor y todas las traducciones a cada opción.",
   "staff.profileFields.labelEn": "Etiqueta (inglés)",

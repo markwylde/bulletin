@@ -155,13 +155,49 @@ export function parseProfileFieldInput(value: unknown): ProfileFieldWrite | null
 
 export type ProfileFieldMutationResult =
   | { readonly ok: true; readonly id: string }
-  | { readonly ok: false; readonly code: "invalid" | "not_found" | "unknown_group" };
+  | {
+      readonly ok: false;
+      readonly code: "invalid" | "not_found" | "unknown_group" | "incompatible_values";
+    };
+
+/**
+ * Stored values must survive an edit to their field's definition. A type change from text to
+ * date (or a removed select option) would otherwise leave values no renderer can format.
+ */
+async function storedValuesFitField(sql: SQL, input: ProfileFieldWrite): Promise<boolean> {
+  if (input.id === null) {
+    return true;
+  }
+
+  const rows = (await sql`
+    SELECT value FROM core.member_field_values WHERE field_id = ${input.id}
+  `) as Array<{ value: unknown }>;
+
+  if (rows.length === 0) {
+    return true;
+  }
+
+  const field: ProfileField = {
+    id: input.id,
+    type: input.type,
+    required: input.required,
+    labels: input.labels,
+    options: input.options,
+    position: input.position,
+  };
+
+  return rows.every((row) => normalizeValue(field, row.value).ok);
+}
 
 /** Saves one definition and invalidates every cached profile (the field class may change). */
 export async function saveProfileField(
   sql: SQL,
   input: ProfileFieldWrite,
 ): Promise<ProfileFieldMutationResult> {
+  if (!(await storedValuesFitField(sql, input))) {
+    return { ok: false, code: "incompatible_values" };
+  }
+
   if (input.groups.length > 0) {
     const ids = input.groups.map((group) => group.groupId);
     const [known] = (await sql`

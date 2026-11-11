@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { SEEDED_PROFILES } from "@bulletin/db/seed";
 import { loginAs, loginAsRefused, waitForText, withPage } from "@bulletin/test-utils/e2e";
 import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
@@ -32,8 +32,26 @@ const APPS = [
 
 const VIEWPORTS = ["mobile360", "desktop"] as const;
 
+/**
+ * Every signed-out page load sends a guest beacon. This file opens many pages in a row, so
+ * clear the per-IP bucket between tests instead of tripping the production flood control.
+ */
+async function resetBeaconRateBuckets(): Promise<void> {
+  const origin = userBaseUrl();
+  const response = await fetch(new URL("/api/test/reset-rate-buckets", origin), {
+    method: "POST",
+    headers: { origin },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Could not reset rate buckets: ${response.status}`);
+  }
+}
+
 for (const app of APPS) {
   integrationDescribe(`${app.name} login`, () => {
+    beforeEach(resetBeaconRateBuckets);
+
     for (const profile of profiles) {
       for (const viewport of VIEWPORTS) {
         test(`${app.name} ${profile.sub} at ${viewport}`, async () => {

@@ -19,6 +19,7 @@ import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cach
 import { createTestDatabase, type TestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import {
+  PROFILE_FRAGMENT_TTL_MS,
   type ProfileRouteInput,
   renderProfileRoute,
 } from "../../apps/user-app/src/profiles/route.ts";
@@ -34,6 +35,8 @@ interface Harness {
   readonly database: TestDatabase;
   readonly cache: ReturnType<typeof createRenderCache>;
   readonly versions: Awaited<ReturnType<typeof createTagVersions>>;
+  /** Test seam for fragment expiry; advancing it does not bump any tag. */
+  readonly clock: { now: number };
   readonly memberId: string;
   readonly publicForumId: string;
   readonly staffForumId: string;
@@ -66,12 +69,14 @@ async function seed(): Promise<Harness> {
     heartbeatMs: 100,
     heartbeatTimeoutMs: 1_000,
   });
-  const cache = createRenderCache({ tags: versions });
+  const clock = { now: Date.now() };
+  const cache = createRenderCache({ tags: versions, now: () => clock.now });
 
   return {
     database,
     cache,
     versions,
+    clock,
     ...(await ids(database)),
   };
 }
@@ -433,6 +438,73 @@ integrationDescribe("profile page (member-profiles)", () => {
       expect(htmlOf(guest)).not.toContain("data-profile-last-active");
       expect(htmlOf(admin)).toContain("data-profile-last-active");
       expect(admin.variant).not.toBe(guest.variant);
+    } finally {
+      await close(harness);
+    }
+  }, 30_000);
+
+  test("a date field with a legacy value renders the raw value instead of throwing", async () => {
+    const harness = await seed();
+
+    try {
+      const legacy = await createField(harness.database, {
+        type: "date",
+        label: "Legacy date",
+        visibleTo: [],
+      });
+      const valid = await createField(harness.database, {
+        type: "date",
+        label: "Valid date",
+        visibleTo: [],
+      });
+
+      // Accepted by a previous definition and never re-validated, so it is not YYYY-MM-DD.
+      await setValue(harness.database, harness.memberId, legacy, "January 1, 2020");
+      await setValue(harness.database, harness.memberId, valid, "2020-01-01");
+
+      const result = await render(harness, { session: null });
+      const html = htmlOf(result);
+
+      expect(html).toContain("January 1, 2020");
+      expect(html).toContain("data-profile-field-row");
+      expect(html).toContain("2020");
+    } finally {
+      await close(harness);
+    }
+  }, 30_000);
+
+  test("a warmed profile picks up last-active activity after the fragment TTL", async () => {
+    const harness = await seed();
+
+    try {
+      const member = await session(harness.database, "member-1");
+
+      await harness.database.sql`
+        UPDATE core.members
+        SET last_active_at = '2026-01-01T10:00:00Z'
+        WHERE id = ${harness.memberId}
+      `;
+
+      const first = await render(harness, { session: member });
+      expect(first.cache).toBe("miss");
+      expect(htmlOf(first)).toContain("data-profile-last-active");
+
+      // A session activity write (ADR 0006) updates the timestamp without bumping `member:{id}`.
+      await harness.database.sql`
+        UPDATE core.members
+        SET last_active_at = '2026-01-01T12:30:00Z'
+        WHERE id = ${harness.memberId}
+      `;
+
+      const stillWarm = await render(harness, { session: member });
+      expect(stillWarm.cache).toBe("hit");
+      expect(htmlOf(stillWarm)).toBe(htmlOf(first));
+
+      harness.clock.now += PROFILE_FRAGMENT_TTL_MS + 1;
+
+      const refreshed = await render(harness, { session: member });
+      expect(refreshed.cache).toBe("miss");
+      expect(htmlOf(refreshed)).not.toBe(htmlOf(first));
     } finally {
       await close(harness);
     }

@@ -2,7 +2,7 @@ import { useT } from "@bulletin/ui";
 import { useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { apiGet, apiPost } from "../api.ts";
+import { ApiError, apiGet, apiPost } from "../api.ts";
 
 interface OptionView {
   readonly value: string;
@@ -147,7 +147,12 @@ export function ProfileFieldsPage() {
       setDraft(emptyDraft());
       void queryClient.invalidateQueries({ queryKey: ["staff", "profile-fields"] });
     },
-    onError: () => {
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === "incompatible_values") {
+        toast.pushToast({ messageKey: "staff.profileFields.incompatible", tone: "error" });
+        return;
+      }
+
       toast.pushToast({ messageKey: "staff.profileFields.saveError", tone: "error" });
     },
   });

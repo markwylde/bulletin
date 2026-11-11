@@ -603,6 +603,7 @@
   "staff.profileFields.group": "Group",
   "staff.profileFields.groups": "Who can see and edit",
   "staff.profileFields.groupsHelp": "A field with no groups selected is visible to everyone and editable by nobody. Select a group to restrict visibility and allow editing.",
+  "staff.profileFields.incompatible": "Some members' saved values do not fit this type. Change the type back or clear those values first.",
   "staff.profileFields.intro": "Define the fields members fill in on their profiles and which groups can see or edit them.",
   "staff.profileFields.invalid": "Fill every label, and give each option a value and every translation.",
   "staff.profileFields.labelEn": "Label (English)",
