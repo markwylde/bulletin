@@ -4,11 +4,10 @@ import { runMutation } from "../mutations/index.ts";
 import { reactionAdminMutation, reactionSetMutation } from "../mutations/reactions.ts";
 import {
   canReactInForum,
-  listReactions,
   lockReactionPost,
-  type ReactionRecord,
   type ReactionSummary,
   readMemberReaction,
+  readReaction,
   readReactionSummary,
   readReactionTarget,
   recomputeReactionSummary,
@@ -104,9 +103,9 @@ export async function setReaction(
   }
 
   if (input.reactionId !== null) {
-    const chosen = (await listReactions(sql)).find((reaction) => reaction.id === input.reactionId);
+    const chosen = await readReaction(sql, input.reactionId);
 
-    if (chosen === undefined) {
+    if (chosen === null) {
       return { ok: false, code: "invalid_reaction" };
     }
 
@@ -437,5 +436,3 @@ export async function deleteReaction(sql: SQL, reactionId: string): Promise<Reac
     throw error;
   }
 }
-
-export type { ReactionRecord };

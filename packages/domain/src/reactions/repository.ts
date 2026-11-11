@@ -15,11 +15,6 @@ export interface ReactionRecord {
   readonly enabled: boolean;
 }
 
-export interface ReactionSummaryEntry {
-  readonly reactionId: string;
-  readonly count: number;
-}
-
 /** Reaction id to total, as stored in `posts.reaction_summary`. */
 export type ReactionSummary = Readonly<Record<string, number>>;
 
