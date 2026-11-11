@@ -28,7 +28,7 @@
 
 ## 5. Strings and seed
 
-- [ ] 5.1 Add en/es/fr strings for notification texts, emails, digests, preferences and banners; verify completeness
+- [x] 5.1 Add en/es/fr strings for notification texts, emails, digests, preferences and banners; verify completeness
 - [ ] 5.2 Seed follows, notifications (read and unread) and digest preferences for seeded members, and verify the bell shows counts after `docker compose up --watch`
 
 ## 6. Email
