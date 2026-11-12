@@ -19,6 +19,7 @@ import {
   verifyThemePreviewToken,
 } from "@bulletin/domain/themes";
 import { filterThemeCss } from "@bulletin/domain/themes/css";
+import { type Catalog, isLocale, validateRuntimeCatalog } from "@bulletin/i18n";
 import { opaqueKey, type StorageClient } from "@bulletin/storage";
 import {
   createTemplateEngine,
@@ -46,6 +47,22 @@ const ASSET_TYPES = new Set([
 ]);
 
 const engine = createTemplateEngine({ islands: {} });
+
+let userCatalog: Promise<Catalog | null> | null = null;
+
+/** The user-app's shipped English catalog, so theme overrides keep known keys and placeholders. */
+function userAppBaseCatalog(): Promise<Catalog | null> {
+  userCatalog ??= Bun.file(new URL("../../user-app/i18n/merged/en.json", import.meta.url))
+    .json()
+    .then((value: unknown) =>
+      typeof value === "object" && value !== null && !Array.isArray(value)
+        ? (value as Catalog)
+        : null,
+    )
+    .catch(() => null);
+
+  return userCatalog;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -388,6 +405,8 @@ export async function saveStringsResponse(
 
   const strings: ThemeStringInput[] = [];
 
+  const base = await userAppBaseCatalog();
+
   for (const entry of body.strings) {
     if (!isRecord(entry)) {
       return respond({ code: "invalid_request" }, 400);
@@ -397,8 +416,16 @@ export async function saveStringsResponse(
     const key = text(entry.key, 160);
     const value = text(entry.value, 5_000);
 
-    if ((locale !== "en" && locale !== "es" && locale !== "fr") || key === null || value === null) {
+    if (typeof locale !== "string" || !isLocale(locale) || key === null || value === null) {
       return respond({ code: "invalid_request" }, 400);
+    }
+
+    if (base !== null) {
+      const validation = validateRuntimeCatalog({ locale, base, catalog: { [key]: value } });
+
+      if (validation.issues.length > 0) {
+        return respond({ code: "invalid_key", issues: validation.issues }, 400);
+      }
     }
 
     strings.push({ locale, key, value });

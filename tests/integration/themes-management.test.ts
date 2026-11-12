@@ -41,6 +41,7 @@ import {
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
 import { renderThemedPage } from "../../apps/user-app/src/theme/render.ts";
+import { resolveRequestTheme } from "../../apps/user-app/src/theme/request-theme.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -477,6 +478,67 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
         VALUES (${childId}, ${guests.id})
       `;
       expect(await guestThemeId(database.sql, childId)).toBe(childId);
+    });
+  }, 60_000);
+
+  test("preview grants are scoped to one session and guest cookies are validated", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const other = await memberId(database, "member-1");
+      const childId = await child(database, "request-theme-child", admin);
+      const [session] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${admin}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [otherSession] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${other}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (session === undefined || otherSession === undefined) {
+        throw new Error("Could not create sessions");
+      }
+
+      await grantPreviewTheme(database.sql, session.id, childId);
+      const context = (memberId: string, sessionId: string) => ({
+        memberId,
+        sessionId,
+        reauthAt: new Date().toISOString(),
+        locale: "en" as const,
+        displayName: "Admin",
+      });
+
+      expect(
+        await resolveRequestTheme(database.sql, null, context(admin, session.id)),
+      ).toMatchObject({ themeId: childId, preview: true });
+      expect(
+        await resolveRequestTheme(database.sql, null, context(other, otherSession.id)),
+      ).toMatchObject({ themeId: null, preview: false });
+
+      const [vip] = (await database.sql`
+        SELECT id FROM core.groups WHERE key = 'vip'
+      `) as Array<{ id: string }>;
+
+      if (vip === undefined) {
+        throw new Error("Missing VIP group");
+      }
+
+      await database.sql`
+        INSERT INTO core.theme_allowed_groups (theme_id, group_id) VALUES (${childId}, ${vip.id})
+      `;
+      expect(await resolveRequestTheme(database.sql, `bp=en.${childId}.dark`, null)).toMatchObject({
+        themeId: null,
+        invalidGuestTheme: true,
+      });
+
+      await database.sql`DELETE FROM core.theme_allowed_groups WHERE theme_id = ${childId}`;
+      expect(await resolveRequestTheme(database.sql, `bp=en.${childId}.dark`, null)).toMatchObject({
+        themeId: childId,
+        invalidGuestTheme: false,
+        guestScheme: "dark",
+      });
     });
   }, 60_000);
 
