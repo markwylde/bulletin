@@ -18,32 +18,34 @@ const STAFF_URL = staffBaseUrl();
 const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 const QUEUE_URL = new URL("/moderation/queue", USER_URL).toString();
 
-async function setForumApproval(view: Bun.WebView, enabled: boolean): Promise<void> {
-  await view.navigate(`${STAFF_URL}/forums`);
-  await waitForSelector(view, '[data-page="forums"]');
-  await waitForSelector(view, '[data-forum-title="Off Topic"] [data-forum-settings]', 20_000);
-  await clickSelector(view, '[data-forum-title="Off Topic"] [data-forum-settings]');
-  await waitForSelector(view, '[data-forum-setting="require-approval-posts"]', 20_000);
+async function setBoardApproval(view: Bun.WebView, count: number): Promise<void> {
+  await view.navigate(`${STAFF_URL}/settings/board`);
+  await waitForSelector(view, '[data-page="board-settings"]', 20_000);
+  await waitForSelector(view, '[data-form-field="newMemberApprovalPosts"] input', 20_000);
+  await setInputValue(view, '[data-form-field="newMemberApprovalPosts"] input', String(count));
+  await waitForExpression(
+    view,
+    `(document.querySelector('[data-form-field="newMemberApprovalPosts"] input')?.value ?? '') === ${JSON.stringify(String(count))}`,
+    5_000,
+  );
+  await clickSelector(view, "[data-form-submit]");
+  await waitForSelector(view, '[data-toast-tone="success"]');
+}
 
-  const changed = await view.evaluate<boolean>(`(() => {
-    const input = document.querySelector('[data-forum-setting="require-approval-posts"]');
-    if (!(input instanceof HTMLInputElement)) return false;
-    if (input.checked !== ${enabled}) input.click();
+async function selectQueueItem(view: Bun.WebView, body: string): Promise<void> {
+  const selected = await view.evaluate<boolean>(`(() => {
+    const item = [...document.querySelectorAll('[data-moderation-item]')].find(
+      (element) => element.textContent?.includes(${JSON.stringify(body)})
+    );
+    const check = item?.querySelector('[data-moderation-check]');
+    if (!(check instanceof HTMLInputElement)) return false;
+    check.click();
     return true;
   })()`);
 
-  if (!changed) {
-    throw new Error("Forum approval toggle not found");
+  if (!selected) {
+    throw new Error("Held item not found in the queue");
   }
-
-  await waitForExpression(
-    view,
-    `document.querySelector('[data-forum-setting="require-approval-posts"]')?.checked === ${enabled}`,
-    5_000,
-  );
-  await waitForSelector(view, "[data-forum-settings-save]:not([disabled])", 20_000);
-  await clickSelector(view, "[data-forum-settings-save]");
-  await waitForSelector(view, '[data-toast-tone="success"]');
 }
 
 async function openFirstTopic(view: Bun.WebView): Promise<string> {
@@ -63,7 +65,7 @@ async function openFirstTopic(view: Bun.WebView): Promise<string> {
   return url;
 }
 
-async function replyHeld(view: Bun.WebView, body: string): Promise<void> {
+async function replyHeld(view: Bun.WebView, body: string): Promise<string> {
   await clickSelector(view, "[data-reply-toggle]");
   await waitForSelector(view, "[data-reply-form]:not([hidden])", 20_000);
   await view.evaluate(
@@ -80,6 +82,7 @@ async function replyHeld(view: Bun.WebView, body: string): Promise<void> {
   // The held block arrives through the personal overlay (covered by integration tests); a
   // slow overlay must not hide the queue journey this E2E is exercising.
   await Bun.sleep(750);
+  return view.evaluate<string>("location.href");
 }
 
 for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
@@ -92,13 +95,13 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
       let topicUrl = FORUM_URL;
 
       try {
-        await withPage({ url: `${STAFF_URL}/forums`, viewport }, async (view) => {
+        await withPage({ url: `${STAFF_URL}/settings/board`, viewport }, async (view) => {
           await loginAs(view, "admin");
-          await setForumApproval(view, true);
+          await setBoardApproval(view, 1000);
         });
 
         await withPage({ url: USER_URL, viewport }, async (view) => {
-          await loginAs(view, "member-1");
+          await loginAs(view, "new-member");
           await view.evaluate('fetch("/api/test/reset-rate-buckets", { method: "POST" })');
           topicUrl = await openFirstTopic(view);
           await replyHeld(view, firstBody);
@@ -117,14 +120,19 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
             `Number(document.querySelector('[data-moderation-count]')?.textContent ?? '0') >= 1`,
             5_000,
           );
+          const beforeCount = Number(
+            await view.evaluate<string>(
+              'document.querySelector("[data-moderation-count]")?.textContent ?? "0"',
+            ),
+          );
           await waitForSelector(view, "[data-moderation-item]", 20_000);
-          await clickSelector(view, "[data-moderation-select-all]");
+          await selectQueueItem(view, firstBody);
           await waitForSelector(view, "[data-moderation-approve]:not([disabled])", 20_000);
           await clickSelector(view, "[data-moderation-approve]");
           await waitForSelector(view, "[data-moderation-status]:not([hidden])", 20_000);
           await waitForExpression(
             view,
-            `document.querySelector('[data-moderation-count]')?.textContent?.trim() === '0'`,
+            `Number(document.querySelector('[data-moderation-count]')?.textContent ?? '0') < ${beforeCount}`,
             5_000,
           );
           expect(
@@ -135,16 +143,15 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
         });
 
         await withPage({ url: USER_URL, viewport }, async (view) => {
-          await loginAs(view, "member-1");
+          await loginAs(view, "new-member");
           await view.evaluate('fetch("/api/test/reset-rate-buckets", { method: "POST" })');
-          await view.navigate(topicUrl);
+          await view.navigate(`${topicUrl}/page/999`);
           await waitForSelector(view, "[data-post-list]", 20_000);
           await waitForExpression(
             view,
-            `document.querySelector('[data-post-held]') === null &&
-              [...document.querySelectorAll('[data-post-body]')].some(
-                (element) => element.textContent?.includes(${JSON.stringify(firstBody)})
-              )`,
+            `[...document.querySelectorAll('[data-post-body]')].some(
+              (element) => element.textContent?.includes(${JSON.stringify(firstBody)})
+            )`,
             20_000,
           );
           await replyHeld(view, secondBody);
@@ -160,7 +167,9 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
           await waitForSelector(view, '[data-toast-tone="success"]', 20_000);
           await waitForExpression(
             view,
-            `document.querySelectorAll('[data-moderation-item]').length === 0`,
+            `![...document.querySelectorAll('[data-moderation-item]')].some(
+              (element) => element.textContent?.includes(${JSON.stringify(secondBody)})
+            )`,
             20_000,
           );
           expect(
@@ -170,9 +179,9 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
           ).toBeLessThanOrEqual(1);
         });
       } finally {
-        await withPage({ url: `${STAFF_URL}/forums`, viewport }, async (view) => {
+        await withPage({ url: `${STAFF_URL}/settings/board`, viewport }, async (view) => {
           await loginAs(view, "admin");
-          await setForumApproval(view, false);
+          await setBoardApproval(view, 0);
         }).catch(() => undefined);
       }
     }, 300_000);
