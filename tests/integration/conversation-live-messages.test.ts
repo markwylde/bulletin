@@ -217,6 +217,7 @@ integrationDescribe("live conversation message rendering", () => {
       await database.sql`
         UPDATE core.conversation_messages
         SET body_html = '<p>safe</p><script>alert(1)</script>',
+            body_html_unfiltered = NULL,
             body_text = 'safe',
             render_version = 1,
             sanitiser_version = 1
