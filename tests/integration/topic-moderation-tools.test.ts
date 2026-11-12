@@ -806,6 +806,55 @@ integrationDescribe("topic moderation tools", () => {
     });
   }, 60_000);
 
+  test("splitting only held posts creates a held topic without touching counters", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const heldAuthor = await memberId(database, "new-member");
+
+      const source = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Visible source with a held reply",
+          bodyMd: "Visible source opening.",
+        }),
+      );
+      await database.sql`UPDATE core.members SET post_count = 0 WHERE id = ${heldAuthor}`;
+      await database.sql`
+        UPDATE core.board_settings SET new_member_approval_posts = 1 WHERE id = 1
+      `;
+      const heldReply = expectOk(
+        await reply(database.sql, {
+          actorId: heldAuthor,
+          topicId: source.topicId,
+          bodyMd: "Held reply to split.",
+        }),
+      );
+      await syncForumCounters(database, forum);
+      await syncMemberPostCounter(database, heldAuthor);
+      const before = await storedCounters(database, forum);
+      const memberBefore = await memberVisiblePostCount(database, heldAuthor);
+
+      const split = expectOk(
+        await splitTopic(database.sql, {
+          actorId: admin,
+          sourceTopicId: source.topicId,
+          postIds: [heldReply.postId],
+          target: { kind: "new", forumId: forum, title: "Held split topic" },
+        }),
+      );
+
+      const [target] = (await database.sql`
+        SELECT visibility FROM core.topics WHERE id = ${split.topicId}
+      `) as Array<{ visibility: string }>;
+      expect(target?.visibility).toBe("unapproved");
+      expect(await storedCounters(database, forum)).toEqual(before);
+      expect(await memberVisiblePostCount(database, heldAuthor)).toBe(memberBefore);
+    });
+  }, 60_000);
+
   test("merging a held source does not subtract an uncounted topic", async () => {
     await withSeededDb(async (database) => {
       const forum = await forumId(database, "off-topic");

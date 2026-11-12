@@ -599,6 +599,11 @@ export async function splitTopic(
         }
 
         let targetId = currentTarget?.id;
+        // A new topic is public only when at least one moved post is public; an all-held
+        // selection creates a held topic that joins the counters when its opener is approved.
+        const newTopicVisibility = rows.some((row) => row.visibility === "visible")
+          ? ("visible" as const)
+          : ("unapproved" as const);
 
         if (targetId === undefined) {
           if (input.target.kind !== "new") {
@@ -611,6 +616,7 @@ export async function splitTopic(
             slug: slugify(newTitle),
             prefixId: null,
             starterId: rows[0]?.author_id ?? input.actorId,
+            visibility: newTopicVisibility,
           });
         }
 
@@ -650,7 +656,10 @@ export async function splitTopic(
         // visible target adds them back, and a visible source loses the posts it no longer
         // holds.
         const sourceCounted = currentSource.visibility === "visible";
-        const targetCounted = currentTarget === null || currentTarget.visibility === "visible";
+        const targetCounted =
+          currentTarget === null
+            ? newTopicVisibility === "visible"
+            : currentTarget.visibility === "visible";
         const memberPostDeltas = new Map<string, number>();
 
         if (sourceCounted !== targetCounted) {
@@ -686,7 +695,7 @@ export async function splitTopic(
           }
         }
 
-        if (currentTarget === null) {
+        if (currentTarget === null && targetCounted) {
           await adjustForumTopicCount(tx, currentTargetForumId, 1);
         }
 
