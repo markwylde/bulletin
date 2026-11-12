@@ -34,6 +34,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "online",
   "leaderboards",
   "profile",
+  "search",
   "moderation-queue",
   "moderation-reports",
   "moderation-report",

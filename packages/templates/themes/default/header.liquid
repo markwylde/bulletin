@@ -2,10 +2,17 @@
 <header class="bl-header" data-theme-header{% if flags.realtime %} data-realtime{% endif %}>
   <div class="bl-header__inner">
     <a class="bl-header__brand" href="/" data-board-name>{{ boardName }}</a>
+    <form class="bl-quick-search" method="get" action="/search" role="search" data-quick-search>
+      <label class="bl-sr-only" for="bl-quick-search-input">{% t "search.quick.label" %}</label>
+      <input class="bl-input bl-quick-search__input" id="bl-quick-search-input" type="search" name="q"
+        maxlength="200" placeholder="{% t "search.quick.placeholder" %}" data-quick-search-input>
+      <button class="bl-button bl-button--small" type="submit" data-quick-search-submit>{% t "search.quick.submit" %}</button>
+    </form>
     <nav class="bl-header__nav" aria-label="{% t "theme.nav" %}">
       {% comment %}Membership-dependent UI stays out of shared HTML: the per-request shell unhides it.{% endcomment %}
       <a class="bl-header__link" href="/account" data-account-link data-overlay-member-only hidden>{% t "theme.account" %}</a>
       {% if flags.conversations %}<a class="bl-header__link" href="/conversations" data-conversations-link data-overlay-member-only hidden>{% t "conversation.title" %}</a>{% endif %}
+      <a class="bl-header__link" href="/search/new" data-new-content-link data-overlay-member-only hidden>{% t "search.new.crumb" %}</a>
       {% comment %}Counts come from the overlay, so the shared header stays identical.{% endcomment %}
       {% if flags.notifications %}
       <a class="bl-header__bell" href="/account/notifications" data-notifications-link data-overlay-member-only hidden aria-label="{% t "theme.notifications" %}">

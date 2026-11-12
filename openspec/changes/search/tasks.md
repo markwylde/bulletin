@@ -14,8 +14,8 @@
 
 ## 3. UI
 
-- [ ] 3.1 Search page (filters, sort, results, pagination) and the quick-search box, in default theme templates; E2E at 360 and 1440
-- [ ] 3.2 "Content by member" and "new content since last visit" views, with integration tests
+- [x] 3.1 Search page (filters, sort, results, pagination) and the quick-search box, in default theme templates; E2E at 360 and 1440
+- [x] 3.2 "Content by member" and "new content since last visit" views, with integration tests
 
 ## 4. Performance, strings and seed
 

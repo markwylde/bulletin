@@ -386,6 +386,34 @@ export const leaderboardContract = defineContract({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/** Search results are viewer-dependent and never shareable; the routes set no-store. */
+export const searchContract = defineContract({
+  route: "/search",
+  templates: { page: "search", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+export const searchMemberContract = defineContract({
+  route: "/search/member/[ref]",
+  templates: { page: "search", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+export const searchNewContract = defineContract({
+  route: "/search/new",
+  templates: { page: "search", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [homeContract.route]: homeContract,
   [loginContract.route]: loginContract,
@@ -414,4 +442,7 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [moderationReportContract.route]: moderationReportContract,
   [conversationsContract.route]: conversationsContract,
   [conversationContract.route]: conversationContract,
+  [searchContract.route]: searchContract,
+  [searchMemberContract.route]: searchMemberContract,
+  [searchNewContract.route]: searchNewContract,
 };

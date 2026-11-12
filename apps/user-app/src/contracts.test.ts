@@ -26,6 +26,9 @@ import {
   profileContract,
   profileEditContract,
   ROUTE_CONTRACTS,
+  searchContract,
+  searchMemberContract,
+  searchNewContract,
   topicContract,
   unsubscribeConfirmedContract,
   unsubscribeContract,
@@ -71,6 +74,9 @@ describe("route contracts", () => {
         attachmentsContract.route,
         conversationsContract.route,
         conversationContract.route,
+        searchContract.route,
+        searchMemberContract.route,
+        searchNewContract.route,
       ].sort(),
     );
   });

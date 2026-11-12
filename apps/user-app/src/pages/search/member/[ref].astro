@@ -1,0 +1,42 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { USER_CATALOGS } from "../../../catalogs.ts";
+import { readSql } from "../../../db.ts";
+import ThemeLayout from "../../../layouts/ThemeLayout.astro";
+import { renderSearchRoute } from "../../../search/route.ts";
+
+const sql = readSql();
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const session = Astro.locals.session ?? null;
+const result = await renderSearchRoute({
+  sql,
+  locale,
+  translate,
+  session,
+  params: Astro.url.searchParams,
+  mode: "member",
+  ref: Astro.params.ref ?? "",
+});
+
+if (result.kind === "redirect") {
+  return new Response(null, {
+    status: result.status,
+    headers: { location: result.location, "cache-control": "no-store" },
+  });
+}
+
+Astro.response.headers.set("cache-control", "private, no-store");
+Astro.response.status = result.status;
+---
+
+<ThemeLayout
+  title={`${result.title} · ${result.boardName}`}
+  locale={locale}
+  body={result.html}
+  visitor={session === null ? "guest" : "member"}
+  serverLocale={locale}
+  {...(Astro.locals.localeSource === undefined
+    ? {}
+    : { localeSource: Astro.locals.localeSource })}
+/>

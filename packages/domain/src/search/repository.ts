@@ -3,6 +3,7 @@ import type { CapabilityView } from "../permissions/capability.ts";
 import type { SearchConfig } from "./language.ts";
 import {
   BODY_SNIPPET_OPTIONS,
+  renderPlainSnippet,
   renderSearchSnippet,
   SNIPPET_GT,
   SNIPPET_LT,
@@ -432,4 +433,213 @@ export async function searchPostPage(
       } satisfies PostSearchHit,
     ];
   });
+}
+
+interface ActivityPostRow {
+  readonly id: string;
+  readonly topic_id: string;
+  readonly title: string;
+  readonly slug: string;
+  readonly forum_id: string;
+  readonly forum_slug: string;
+  readonly forum_title: string;
+  readonly author_id: string | null;
+  readonly author_display_name: string | null;
+  readonly created_at: Date;
+  readonly position: number;
+  readonly body_text: string;
+}
+
+interface ActivityTopicRow {
+  readonly id: string;
+  readonly title: string;
+  readonly slug: string;
+  readonly forum_id: string;
+  readonly forum_slug: string;
+  readonly forum_title: string;
+  readonly author_id: string | null;
+  readonly author_display_name: string | null;
+  readonly created_at: Date;
+  readonly last_body: string;
+  readonly last_post_at: Date;
+}
+
+export interface MemberPostListInput {
+  readonly capability: CapabilityView;
+  readonly memberId: string;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+function memberPostConditions(sql: SQL, input: MemberPostListInput) {
+  const { readableForumIds, seeUnapprovedForumIds, seeDeletedForumIds } = searchClearance(
+    input.capability,
+  );
+  const readable = bigintArray(readableForumIds);
+  const unapproved = bigintArray(seeUnapprovedForumIds);
+  const deleted = bigintArray(seeDeletedForumIds);
+  const conditions = sql`
+    topic.moved_to IS NULL
+    AND topic.forum_id = ANY(${readable}::bigint[])
+    AND ${topicVisibility(sql, unapproved, deleted)}
+    AND ${postVisibility(sql, unapproved, deleted)}
+    AND post.author_id = ${input.memberId}::bigint
+  `;
+
+  return { conditions };
+}
+
+/** The member's posts, newest first, across every readable forum (activity view). */
+export async function countMemberPosts(sql: SQL, input: MemberPostListInput): Promise<number> {
+  const { conditions } = memberPostConditions(sql, input);
+  const [row] = (await sql`
+    SELECT count(*)::int AS total
+    FROM core.posts AS post
+    JOIN core.topics AS topic ON topic.id = post.topic_id
+    WHERE ${conditions}
+  `) as Array<{ total: number }>;
+
+  return row?.total ?? 0;
+}
+
+export async function searchMemberPostPage(
+  sql: SQL,
+  input: MemberPostListInput,
+): Promise<readonly PostSearchHit[]> {
+  const { conditions } = memberPostConditions(sql, input);
+  const rows = (await sql`
+    SELECT
+      post.id::text AS id,
+      post.topic_id::text AS topic_id,
+      topic.title,
+      topic.slug,
+      topic.forum_id::text AS forum_id,
+      forum.slug AS forum_slug,
+      forum.title AS forum_title,
+      post.author_id::text AS author_id,
+      author.display_name AS author_display_name,
+      post.created_at,
+      post.position,
+      post.body_text
+    FROM core.posts AS post
+    JOIN core.topics AS topic ON topic.id = post.topic_id
+    JOIN core.forums AS forum ON forum.id = topic.forum_id
+    LEFT JOIN core.members AS author ON author.id = post.author_id
+    WHERE ${conditions}
+    ORDER BY post.created_at DESC, post.id DESC
+    LIMIT ${input.limit} OFFSET ${input.offset}
+  `) as ActivityPostRow[];
+
+  return rows.map((row) => ({
+    kind: "post",
+    postId: row.id,
+    topicId: row.topic_id,
+    topicTitle: row.title,
+    topicSlug: row.slug,
+    forumId: row.forum_id,
+    forumSlug: row.forum_slug,
+    forumTitle: row.forum_title,
+    authorId: row.author_id,
+    authorDisplayName: row.author_display_name,
+    createdAt: new Date(row.created_at),
+    position: row.position,
+    snippet: renderPlainSnippet(row.body_text),
+    score: 0,
+  }));
+}
+
+export interface NewTopicListInput {
+  readonly capability: CapabilityView;
+  readonly since: Date;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+function newTopicConditions(sql: SQL, input: NewTopicListInput) {
+  const { readableForumIds, seeUnapprovedForumIds, seeDeletedForumIds } = searchClearance(
+    input.capability,
+  );
+  const readable = bigintArray(readableForumIds);
+  const unapproved = bigintArray(seeUnapprovedForumIds);
+  const deleted = bigintArray(seeDeletedForumIds);
+  const conditions = sql`
+    topic.moved_to IS NULL
+    AND topic.forum_id = ANY(${readable}::bigint[])
+    AND ${topicVisibility(sql, unapproved, deleted)}
+    AND EXISTS (
+      SELECT 1
+      FROM core.posts AS post
+      WHERE post.topic_id = topic.id
+        AND post.created_at > ${input.since}
+        AND ${postVisibility(sql, unapproved, deleted)}
+    )
+  `;
+
+  return { conditions };
+}
+
+/** Topics with a readable post newer than the member's previous visit. */
+export async function countNewTopics(sql: SQL, input: NewTopicListInput): Promise<number> {
+  const { conditions } = newTopicConditions(sql, input);
+  const [row] = (await sql`
+    SELECT count(*)::int AS total
+    FROM core.topics AS topic
+    WHERE ${conditions}
+  `) as Array<{ total: number }>;
+
+  return row?.total ?? 0;
+}
+
+export async function searchNewTopicPage(
+  sql: SQL,
+  input: NewTopicListInput,
+): Promise<readonly TopicSearchHit[]> {
+  const { conditions } = newTopicConditions(sql, input);
+  const { seeUnapprovedForumIds, seeDeletedForumIds } = searchClearance(input.capability);
+  const unapproved = bigintArray(seeUnapprovedForumIds);
+  const deleted = bigintArray(seeDeletedForumIds);
+  const rows = (await sql`
+    SELECT
+      topic.id::text AS id,
+      topic.title,
+      topic.slug,
+      topic.forum_id::text AS forum_id,
+      forum.slug AS forum_slug,
+      forum.title AS forum_title,
+      latest.author_id::text AS author_id,
+      latest_author.display_name AS author_display_name,
+      topic.created_at,
+      latest.body_text AS last_body,
+      latest.created_at AS last_post_at
+    FROM core.topics AS topic
+    JOIN core.forums AS forum ON forum.id = topic.forum_id
+    CROSS JOIN LATERAL (
+      SELECT post.author_id, post.body_text, post.created_at
+      FROM core.posts AS post
+      WHERE post.topic_id = topic.id
+        AND post.created_at > ${input.since}
+        AND ${postVisibility(sql, unapproved, deleted)}
+      ORDER BY post.created_at DESC, post.id DESC
+      LIMIT 1
+    ) AS latest
+    LEFT JOIN core.members AS latest_author ON latest_author.id = latest.author_id
+    WHERE ${conditions}
+    ORDER BY latest.created_at DESC, topic.id DESC
+    LIMIT ${input.limit} OFFSET ${input.offset}
+  `) as ActivityTopicRow[];
+
+  return rows.map((row) => ({
+    kind: "topic",
+    topicId: row.id,
+    topicTitle: row.title,
+    topicSlug: row.slug,
+    forumId: row.forum_id,
+    forumSlug: row.forum_slug,
+    forumTitle: row.forum_title,
+    authorId: row.author_id,
+    authorDisplayName: row.author_display_name,
+    createdAt: new Date(row.created_at),
+    snippet: renderPlainSnippet(row.last_body),
+    score: 0,
+  }));
 }

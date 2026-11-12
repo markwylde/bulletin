@@ -38,3 +38,12 @@ export function renderSearchSnippet(headline: string): string {
 
   return escapeHtml(marked).replaceAll(start, "<mark>").replaceAll(stop, "</mark>");
 }
+
+/** A readable excerpt for activity lists, which have no query to highlight. */
+export function renderPlainSnippet(text: string, maxLength = 220): string {
+  const normalised = text.replace(/\s+/g, " ").trim();
+  const excerpt =
+    normalised.length > maxLength ? `${normalised.slice(0, maxLength - 1).trimEnd()}…` : normalised;
+
+  return escapeHtml(excerpt);
+}
