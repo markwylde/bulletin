@@ -126,6 +126,7 @@ integrationDescribe("flags seed", () => {
         "reputation",
         "search",
         "signatures",
+        "theme_chooser",
         "unfurls",
         "warnings",
         "whos_online",

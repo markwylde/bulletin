@@ -299,6 +299,18 @@ const FLAGS: readonly SeededFlag[] = [
     fullyOnDaysAgo: 1,
   },
   {
+    key: "theme_chooser",
+    description: "The footer and settings theme and colour-scheme chooser.",
+    owner: "themes",
+    defaultValue: true,
+    affectsRender: true,
+    clientVisible: true,
+    rules: [],
+    createdDaysAgo: 1,
+    updatedDaysAgo: 0,
+    fullyOnDaysAgo: 0,
+  },
+  {
     key: "warnings",
     description: "Member warnings, warning history and acknowledgement gates.",
     owner: "moderation",

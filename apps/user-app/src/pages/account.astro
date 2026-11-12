@@ -7,7 +7,12 @@ import { readSql } from "../db.ts";
 import { loadViewerFlags } from "../flags.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
-import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../theme/render.ts";
+import {
+  boardNameFrom,
+  PLUGIN_GENERATION,
+  renderThemedPage,
+  themeChooserView,
+} from "../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account")}`;
 const session = Astro.locals.session ?? null;
@@ -61,6 +66,7 @@ const rendered = await renderCachedPage({
       template: "account",
       viewModel: {
         ...account.viewModel,
+        themeChooser: themeChooserView(translate),
         flags: {
           ...(account.viewModel as { readonly flags?: Record<string, boolean> }).flags,
           ...flags.values,

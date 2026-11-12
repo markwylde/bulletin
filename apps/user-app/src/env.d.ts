@@ -15,6 +15,7 @@ declare global {
       themeId?: string | null;
       previewTheme?: boolean;
       colourScheme?: import("@bulletin/i18n").ColorScheme;
+      clientFlags?: Readonly<Record<string, boolean>>;
       themeCookieScheme?: import("@bulletin/i18n").ColorScheme;
       resetThemeCookie?: string;
     }

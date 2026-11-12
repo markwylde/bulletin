@@ -10,6 +10,7 @@ import {
   postReputationSchema,
   reactionsSchema,
   spikeCounterSchema,
+  themeChooserSchema,
 } from "./schemas.ts";
 
 /** The result of validating an island's props in the browser. */
@@ -102,5 +103,9 @@ export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
   PostReputation: defineClientIsland(postReputationSchema, async () => {
     const module = await import("./PostReputation.tsx");
     return module.PostReputation;
+  }),
+  ThemeChooser: defineClientIsland(themeChooserSchema, async () => {
+    const module = await import("./ThemeChooser.tsx");
+    return module.ThemeChooser;
   }),
 };

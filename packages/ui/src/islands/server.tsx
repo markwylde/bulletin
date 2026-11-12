@@ -16,7 +16,9 @@ import {
   postReputationSchema,
   reactionsSchema,
   spikeCounterSchema,
+  themeChooserSchema,
 } from "./schemas.ts";
+import { ThemeChooser } from "./ThemeChooser.tsx";
 
 function defineServerIsland<TProps extends object>(
   name: string,
@@ -54,4 +56,5 @@ export const SERVER_ISLANDS: ServerIslandRegistry = {
   Editor: defineServerIsland("Editor", editorSchema, Editor),
   Reactions: defineServerIsland("Reactions", reactionsSchema, Reactions),
   PostReputation: defineServerIsland("PostReputation", postReputationSchema, PostReputation),
+  ThemeChooser: defineServerIsland("ThemeChooser", themeChooserSchema, ThemeChooser),
 };

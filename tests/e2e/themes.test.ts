@@ -86,6 +86,14 @@ integrationDescribe("theme management", () => {
     });
 
     await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await view.evaluate(
+        'document.querySelector("[data-theme-footer]")?.scrollIntoView({ block: "center" })',
+      );
+      await waitForSelector(
+        view,
+        'bl-island[data-name="ThemeChooser"][data-hydrated="true"]',
+        20_000,
+      );
       await waitForSelector(view, "[data-appearance-chooser]:not([hidden])", 20_000);
       await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
       const guestThemes = await view.evaluate<string[]>(
@@ -105,21 +113,44 @@ integrationDescribe("theme management", () => {
 
     await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "member-2");
-      await view.navigate(USER_URL);
-      await waitForSelector(view, "[data-appearance-chooser]:not([hidden])", 20_000);
-      await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
+      await view.navigate(new URL("/account", USER_URL).toString());
+      await waitForSelector(
+        view,
+        '[data-appearance-settings] bl-island[data-name="ThemeChooser"][data-hydrated="true"]',
+        20_000,
+      );
+      await waitForSelector(
+        view,
+        "[data-appearance-settings] [data-appearance-chooser]:not([hidden])",
+        20_000,
+      );
+      await waitForSelector(
+        view,
+        "[data-appearance-settings] [data-appearance-save]:not([disabled])",
+        20_000,
+      );
       const memberThemes = await view.evaluate<string[]>(
-        `[...document.querySelectorAll("[data-appearance-theme] option")].map((option) => option.textContent ?? "")`,
+        `[...document.querySelectorAll("[data-appearance-settings] [data-appearance-theme] option")].map((option) => option.textContent ?? "")`,
       );
       expect(memberThemes).toContain("sunset");
       expect(memberThemes).not.toContain("vip-gold");
-      await setInputValue(view, "[data-appearance-theme]", chosenTheme);
-      await setInputValue(view, "[data-appearance-scheme]", "dark");
-      await clickSelector(view, "[data-appearance-save]");
+      await setInputValue(view, "[data-appearance-settings] [data-appearance-theme]", chosenTheme);
+      await setInputValue(view, "[data-appearance-settings] [data-appearance-scheme]", "dark");
+      await clickSelector(view, "[data-appearance-settings] [data-appearance-save]");
       await waitForSelector(view, 'html[data-scheme="dark"]', 20_000);
+      await waitForSelector(
+        view,
+        '[data-appearance-settings] bl-island[data-name="ThemeChooser"][data-hydrated="true"]',
+        20_000,
+      );
+      await waitForSelector(
+        view,
+        "[data-appearance-settings] [data-appearance-chooser]:not([hidden])",
+        20_000,
+      );
       expect(
         await view.evaluate<string>(
-          'document.querySelector("[data-appearance-theme]")?.value ?? ""',
+          'document.querySelector("[data-appearance-settings] [data-appearance-theme]")?.value ?? ""',
         ),
       ).toBe(chosenTheme);
       expect(await view.evaluate<string>("getComputedStyle(document.body).backgroundColor")).toBe(

@@ -180,7 +180,9 @@ await startService({
 
     if (request.method === "GET" && pathname === "/api/theme-options") {
       const response = await auth.handle(request, async ({ session }) =>
-        themeOptionsResponse(sql, request, session),
+        flags.guard("theme_chooser", session?.memberId ?? null)(request, () =>
+          themeOptionsResponse(sql, request, session),
+        ),
       );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -192,7 +194,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return saveAppearanceResponse(sql, session, request);
+        return flags.guard("theme_chooser", session.memberId)(request, () =>
+          saveAppearanceResponse(sql, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

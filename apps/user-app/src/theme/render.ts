@@ -87,6 +87,32 @@ export function localeSuggestionView(locale: Locale, translate: Translator): Loc
   };
 }
 
+export interface ThemeChooserView {
+  readonly labels: {
+    readonly theme: string;
+    readonly scheme: string;
+    readonly save: string;
+    readonly failed: string;
+    readonly system: string;
+    readonly light: string;
+    readonly dark: string;
+  };
+}
+
+export function themeChooserView(translate: Translator): ThemeChooserView {
+  return {
+    labels: {
+      theme: translate("theme.chooser.theme"),
+      scheme: translate("theme.chooser.scheme"),
+      save: translate("theme.chooser.save"),
+      failed: translate("theme.chooser.failed"),
+      system: translate("theme.chooser.system"),
+      light: translate("theme.chooser.light"),
+      dark: translate("theme.chooser.dark"),
+    },
+  };
+}
+
 export interface PageRegionsInput {
   readonly boardName: string;
   readonly locale: Locale;
@@ -127,7 +153,12 @@ export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
     },
     {
       name: "footer",
-      viewModel: { boardName: input.boardName, year: input.year ?? new Date().getFullYear() },
+      viewModel: {
+        boardName: input.boardName,
+        year: input.year ?? new Date().getFullYear(),
+        flags,
+        themeChooser: themeChooserView(input.translate),
+      },
     },
   ];
 }

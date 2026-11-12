@@ -14,6 +14,7 @@ import {
 import { canViewOffline, readBoard } from "./board.ts";
 import { closeCacheRuntime } from "./cache-runtime.ts";
 import { readSql } from "./db.ts";
+import { loadViewerFlags } from "./flags.ts";
 import { offlinePage } from "./offline.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
 import { resolveRequestTheme } from "./theme/request-theme.ts";
@@ -165,6 +166,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
       }
 
       context.locals.session = sessionContext;
+
+      try {
+        context.locals.clientFlags = (await loadViewerFlags(readSql(), sessionContext)).clientFlags;
+      } catch {
+        context.locals.clientFlags = {};
+      }
 
       if (
         isNavigation &&

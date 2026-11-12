@@ -31,6 +31,9 @@ const {
   clientFlagsJson,
   colourScheme = "system",
 } = Astro.props;
+const flagsJson =
+  clientFlagsJson ??
+  (Astro.locals.clientFlags === undefined ? undefined : JSON.stringify(Astro.locals.clientFlags));
 ---
 
 <!doctype html>
@@ -40,7 +43,7 @@ const {
   data-visitor={visitor}
   data-server-locale={serverLocale}
   data-locale-source={localeSource}
-  data-client-flags={clientFlagsJson}
+  data-client-flags={flagsJson}
   data-scheme={colourScheme}
 >
   <head>
@@ -58,6 +61,5 @@ const {
     <script>import "../visits.ts";</script>
     <script>import "../realtime/client.ts";</script>
     <script>import "../read-tracking/client.ts";</script>
-    <script>import "../theme/chooser-client.ts";</script>
   </body>
 </html>

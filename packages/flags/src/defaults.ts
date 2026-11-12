@@ -275,6 +275,16 @@ export const searchFlag = defineFlag({
   clientVisible: false,
 });
 
+/** Member and guest theme/scheme chooser (change `themes`). */
+export const themeChooserFlag = defineFlag({
+  key: "theme_chooser",
+  description: "The footer and settings theme and colour-scheme chooser.",
+  owner: "themes",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Saved multi-moderation actions applied by moderators (change `moderation`). */
 export const multimodFlag = defineFlag({
   key: "multimod",
@@ -311,4 +321,5 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   warningsFlag,
   multimodFlag,
   searchFlag,
+  themeChooserFlag,
 ]);

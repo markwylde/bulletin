@@ -1,20 +1,4 @@
 <footer class="bl-footer" data-theme-footer>
-  <form class="bl-appearance" data-appearance-chooser hidden
-    data-save-failed="{% t "theme.chooser.failed" %}">
-    <label class="bl-appearance__field">
-      <span>{% t "theme.chooser.theme" %}</span>
-      <select class="bl-input" data-appearance-theme></select>
-    </label>
-    <label class="bl-appearance__field">
-      <span>{% t "theme.chooser.scheme" %}</span>
-      <select class="bl-input" data-appearance-scheme>
-        <option value="system">{% t "theme.chooser.system" %}</option>
-        <option value="light">{% t "theme.chooser.light" %}</option>
-        <option value="dark">{% t "theme.chooser.dark" %}</option>
-      </select>
-    </label>
-    <button class="bl-button bl-button--small" type="submit" data-appearance-save>{% t "theme.chooser.save" %}</button>
-    <p class="bl-error-text" data-appearance-error hidden></p>
-  </form>
+  {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
   <p class="bl-footer__text">{% t "theme.footer" %} <span data-board-year>{{ year }}</span></p>
 </footer>

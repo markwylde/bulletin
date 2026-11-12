@@ -22,6 +22,18 @@ export const spikeCounterSchema = v.strictObject({
   start: v.optional(v.pipe(v.number(), v.integer(), v.minValue(0)), 0),
 });
 
+export const themeChooserSchema = v.strictObject({
+  labels: v.strictObject({
+    theme: v.pipe(v.string(), v.trim(), v.minLength(1)),
+    scheme: v.pipe(v.string(), v.trim(), v.minLength(1)),
+    save: v.pipe(v.string(), v.trim(), v.minLength(1)),
+    failed: v.pipe(v.string(), v.trim(), v.minLength(1)),
+    system: v.pipe(v.string(), v.trim(), v.minLength(1)),
+    light: v.pipe(v.string(), v.trim(), v.minLength(1)),
+    dark: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  }),
+});
+
 export const languageSwitcherSchema = v.strictObject({
   current: v.picklist(LOCALE_VALUES),
   options: v.pipe(v.array(languageOptionSchema), v.minLength(1)),
@@ -154,6 +166,7 @@ export const ISLAND_SCHEMAS = {
   Editor: editorSchema,
   Reactions: reactionsSchema,
   PostReputation: postReputationSchema,
+  ThemeChooser: themeChooserSchema,
 } as const;
 
 export type IslandName = keyof typeof ISLAND_SCHEMAS;

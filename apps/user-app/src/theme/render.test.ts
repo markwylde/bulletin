@@ -34,7 +34,17 @@ describe("theme regions", () => {
     });
     expect(regions[0]?.viewModel).not.toHaveProperty("isMember");
     expect(regions[1]?.viewModel).toEqual({ items: [{ label: "Home", href: null }] });
-    expect(regions[3]?.viewModel).toEqual({ boardName: "Bulletin", year: 2026 });
+    expect(regions[3]?.viewModel).toMatchObject({
+      boardName: "Bulletin",
+      year: 2026,
+      themeChooser: {
+        labels: {
+          theme: "Theme",
+          scheme: "Colour scheme",
+          save: "Apply",
+        },
+      },
+    });
   });
 
   test("never varies the shared header by membership", () => {
