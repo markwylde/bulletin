@@ -95,7 +95,8 @@ integrationDescribe("topic seed", () => {
       const [counters] = (await database.sql`
         SELECT
           (SELECT coalesce(sum(topic_count), 0)::int FROM core.forums) AS topic_sum,
-          (SELECT count(*)::int FROM core.topics WHERE moved_to IS NULL) AS real_topics,
+          (SELECT count(*)::int FROM core.topics
+            WHERE moved_to IS NULL AND visibility = 'visible') AS real_topics,
           (SELECT coalesce(sum(post_count), 0)::int FROM core.forums) AS post_sum,
           (SELECT count(*)::int FROM core.posts WHERE visibility = 'visible') AS visible_posts,
           (

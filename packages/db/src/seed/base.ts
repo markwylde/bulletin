@@ -11,6 +11,7 @@ import { forumSeedModule } from "./forums.ts";
 import { runSeeds, type SeedModule, SeedRegistry, type SeedResult } from "./framework.ts";
 import { groupsSeedModule } from "./groups.ts";
 import { membersSeedModule } from "./members.ts";
+import { moderationSeedModule } from "./moderation.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
 import { notificationsSeedModule } from "./notifications.ts";
 import { profilesSeedModule } from "./profiles.ts";
@@ -69,6 +70,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         notificationsSeedModule,
         attachmentSeedModule,
         conversationSeedModule,
+        moderationSeedModule,
         adminLogSeedModule,
         flagsSeedModule,
         themesSeedModule,

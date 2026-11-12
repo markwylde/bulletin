@@ -46,8 +46,8 @@
 
 ## 8. Strings and seed
 
-- [ ] 8.1 Add en/es/fr strings for all moderation UI, notifications and reasons; verify completeness
-- [ ] 8.2 Seed held posts from the new-member profile, open and resolved reports (including a PM report), warnings with thresholds reached for the warned profile, a banned member, IP bans, filter words, multi-mod actions and log entries; verify after `docker compose up --watch`
+- [x] 8.1 Add en/es/fr strings for all moderation UI, notifications and reasons; verify completeness
+- [x] 8.2 Seed held posts from the new-member profile, open and resolved reports (including a PM report), warnings with thresholds reached for the warned profile, a banned member, IP bans, filter words, multi-mod actions and log entries; verify after `docker compose up --watch`
 
 ## 9. Feature flag
 

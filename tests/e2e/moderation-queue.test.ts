@@ -161,7 +161,7 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
           await loginAs(view, "admin");
           await waitForSelector(view, '[data-page="moderation"]', 20_000);
           await waitForSelector(view, "[data-moderation-item]", 20_000);
-          await clickSelector(view, "[data-moderation-check]");
+          await selectQueueItem(view, secondBody);
           await waitForSelector(view, "[data-moderation-reject]:not([disabled])", 20_000);
           await clickSelector(view, "[data-moderation-reject]");
           await waitForSelector(view, '[data-toast-tone="success"]', 20_000);
