@@ -23,6 +23,7 @@ import {
   saveFilterSettings,
   saveFilterWord,
 } from "@bulletin/domain/filters";
+import { approveHeldPosts, rejectHeldPosts } from "@bulletin/domain/moderation";
 import {
   editPost,
   move,
@@ -35,6 +36,7 @@ import {
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { buildConversationPage } from "../../apps/user-app/src/conversations/page.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
 import { renderTopicRoute } from "../../apps/user-app/src/topics/route.ts";
 
@@ -951,6 +953,114 @@ integrationDescribe("content filters", () => {
         SELECT visibility, hold_reason FROM core.posts WHERE id = ${spamReply.postId}
       `) as Array<{ visibility: string; hold_reason: string | null }>;
       expect(spamRow).toEqual({ visibility: "unapproved", hold_reason: "domain_blocklist" });
+    });
+  }, 60_000);
+
+  test("holding an edited opener keeps counters exact through approval and rejection", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const replier = await memberId(database, "member-2");
+      const moderator = await memberId(database, "super-mod");
+      const forum = await forumId(database, "off-topic");
+      await setMemberSetting(database, "members", "posting.link_limit", 1);
+      await setMemberSetting(database, "members", "posting.link_limit_action", "hold");
+
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Counted topic hold",
+          bodyMd: "An opening with no links.",
+        }),
+      );
+      expectOk(
+        await reply(database.sql, {
+          actorId: replier,
+          topicId: topic.topicId,
+          bodyMd: "First reply.",
+        }),
+      );
+      expectOk(
+        await reply(database.sql, {
+          actorId: replier,
+          topicId: topic.topicId,
+          bodyMd: "Second reply.",
+        }),
+      );
+
+      const counters = async () => {
+        const [forumRow] = (await database.sql`
+          SELECT post_count, topic_count FROM core.forums WHERE id = ${forum}
+        `) as Array<{ post_count: number; topic_count: number }>;
+        const [topicRow] = (await database.sql`
+          SELECT visibility, reply_count FROM core.topics WHERE id = ${topic.topicId}
+        `) as Array<{ visibility: string; reply_count: number }>;
+        const [authorRow] = (await database.sql`
+          SELECT post_count FROM core.members WHERE id = ${member}
+        `) as Array<{ post_count: number }>;
+        const [replierRow] = (await database.sql`
+          SELECT post_count FROM core.members WHERE id = ${replier}
+        `) as Array<{ post_count: number }>;
+
+        return {
+          forumPosts: forumRow?.post_count ?? -1,
+          forumTopics: forumRow?.topic_count ?? -1,
+          authorPosts: authorRow?.post_count ?? -1,
+          replierPosts: replierRow?.post_count ?? -1,
+          visibility: topicRow?.visibility ?? "missing",
+          replyCount: topicRow?.reply_count ?? -1,
+        };
+      };
+
+      const before = await counters();
+      expect(before.replyCount).toBe(2);
+
+      const holdOpener = async () =>
+        expectOk(
+          await editPost(database.sql, {
+            actorId: member,
+            postId: topic.postId,
+            bodyMd: "[one](https://one.example) [two](https://two.example)",
+          }),
+        );
+
+      await holdOpener();
+      const held = await counters();
+      expect(held).toEqual({
+        ...before,
+        forumPosts: before.forumPosts - 3,
+        forumTopics: before.forumTopics - 1,
+        authorPosts: before.authorPosts - 1,
+        replierPosts: before.replierPosts - 2,
+        visibility: "unapproved",
+      });
+
+      const approved = await approveHeldPosts(database.sql, {
+        actorId: moderator,
+        postIds: [topic.postId],
+      });
+      expect(approved.ok).toBe(true);
+      const afterApproval = await counters();
+      expect(afterApproval).toEqual({ ...before, visibility: "visible" });
+
+      await holdOpener();
+      const heldAgain = await counters();
+      expect(heldAgain).toEqual(held);
+
+      const rejected = await rejectHeldPosts(database.sql, {
+        actorId: moderator,
+        postIds: [topic.postId],
+      });
+      expect(rejected.ok).toBe(true);
+      const afterRejection = await database.sql`
+        SELECT t.id FROM core.topics t WHERE t.id = ${topic.topicId}
+      `;
+      expect(afterRejection).toHaveLength(0);
+      const persisted = await counters();
+      expect(persisted.forumPosts).toBe(heldAgain.forumPosts);
+      expect(persisted.forumTopics).toBe(heldAgain.forumTopics);
+      expect(persisted.authorPosts).toBe(heldAgain.authorPosts);
+      expect(persisted.replierPosts).toBe(heldAgain.replierPosts);
     });
   }, 60_000);
 

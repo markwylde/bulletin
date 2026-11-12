@@ -694,10 +694,10 @@ export async function adjustTopicReplyCount(
 export async function recountTopic(tx: SQL, topicId: string): Promise<void> {
   await tx`
     UPDATE core.topics t
-    SET reply_count = GREATEST((
-          SELECT count(*) - 1 FROM core.posts
-          WHERE topic_id = t.id AND visibility = 'visible'
-        ), 0),
+    SET reply_count = (
+          SELECT count(*)::int FROM core.posts
+          WHERE topic_id = t.id AND visibility = 'visible' AND position > 1
+        ),
         first_post_id = (
           SELECT id FROM core.posts
           WHERE topic_id = t.id AND visibility = 'visible'

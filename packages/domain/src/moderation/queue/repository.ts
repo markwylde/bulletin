@@ -14,6 +14,7 @@ import {
   adjustForumPostCount,
   adjustForumTopicCount,
   adjustMemberPostCount,
+  adjustMemberPostCounts,
   adjustTopicReplyCount,
   deletePostRow,
   deleteTopicRow,
@@ -22,6 +23,7 @@ import {
   recountTopic,
   refreshForumLastPost,
   setPostVisibility,
+  visiblePostCountsByAuthor,
 } from "../../topics/repository.ts";
 import { writeModerationLog } from "../log/repository.ts";
 
@@ -466,22 +468,34 @@ export async function approveHeldPosts(
           await tx`UPDATE core.posts SET hold_reason = NULL WHERE id = ${target.postId}`;
 
           if (topicBecomesVisible) {
+            // A hidden topic may have replies that were removed from the counters when the
+            // opener was held (or were never counted); restoring the whole topic is exact.
+            const counts = await visiblePostCountsByAuthor(tx, target.topicId);
+            const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
+
             await tx`
               UPDATE core.topics SET visibility = 'visible', hold_reason = NULL, updated_at = now()
               WHERE id = ${target.topicId}
             `;
             await adjustForumTopicCount(tx, target.forumId, 1);
-            await adjustForumPostCount(tx, target.forumId, 1);
+            await adjustForumPostCount(tx, target.forumId, total);
+            await adjustMemberPostCounts(tx, counts, 1);
+            memberIds.push(...counts.keys());
           } else if (target.position > 1) {
             await adjustForumPostCount(tx, target.forumId, 1);
             await adjustTopicReplyCount(tx, target.topicId, 1);
+
+            if (target.authorId !== null) {
+              await adjustMemberPostCount(tx, target.authorId, 1);
+              memberIds.push(target.authorId);
+            }
           } else {
             await adjustForumPostCount(tx, target.forumId, 1);
-          }
 
-          if (target.authorId !== null) {
-            await adjustMemberPostCount(tx, target.authorId, 1);
-            memberIds.push(target.authorId);
+            if (target.authorId !== null) {
+              await adjustMemberPostCount(tx, target.authorId, 1);
+              memberIds.push(target.authorId);
+            }
           }
 
           await recountTopic(tx, target.topicId);

@@ -45,6 +45,7 @@ import {
   adjustForumPostCount,
   adjustForumTopicCount,
   adjustMemberPostCount,
+  adjustMemberPostCounts,
   adjustTopicReplyCount,
   completeNewTopic,
   createPostQuotePipeline,
@@ -66,6 +67,7 @@ import {
   setPostVisibility,
   setTopicVisibility,
   updatePostRendering,
+  visiblePostCountsByAuthor,
 } from "./repository.ts";
 import {
   reject,
@@ -897,22 +899,31 @@ export async function editPost(
         });
 
         if (holdReason !== null) {
-          const topic =
-            current.position === 1 ? await loadTopicForWrite(tx, current.topicId) : null;
-
-          await setPostVisibility(tx, current.id, "unapproved");
-          await setPostHoldReason(tx, current.id, holdReason);
-          await adjustForumPostCount(tx, current.forumId, -1);
-
-          if (current.authorId !== null) {
-            await adjustMemberPostCount(tx, current.authorId, -1);
-          }
-
           if (current.position > 1) {
+            await setPostVisibility(tx, current.id, "unapproved");
+            await setPostHoldReason(tx, current.id, holdReason);
+            await adjustForumPostCount(tx, current.forumId, -1);
             await adjustTopicReplyCount(tx, current.topicId, -1);
-          } else if (topic !== null && topic.visibility === "visible") {
-            await setTopicVisibility(tx, current.topicId, "unapproved");
-            await adjustForumTopicCount(tx, current.forumId, -1);
+
+            if (current.authorId !== null) {
+              await adjustMemberPostCount(tx, current.authorId, -1);
+            }
+          } else {
+            // Holding the opener hides the whole topic. Every visible post leaves the public
+            // counters now, so approval can restore them and rejection needs no correction.
+            const topic = await loadTopicForWrite(tx, current.topicId);
+            const counts = await visiblePostCountsByAuthor(tx, current.topicId);
+            const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
+
+            await setPostVisibility(tx, current.id, "unapproved");
+            await setPostHoldReason(tx, current.id, holdReason);
+            await adjustForumPostCount(tx, current.forumId, -total);
+            await adjustMemberPostCounts(tx, counts, -1);
+
+            if (topic !== null && topic.visibility === "visible") {
+              await setTopicVisibility(tx, current.topicId, "unapproved");
+              await adjustForumTopicCount(tx, current.forumId, -1);
+            }
           }
 
           await recountTopic(tx, current.topicId);
