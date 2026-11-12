@@ -71,6 +71,25 @@ export async function insertQuoteSnapshot(sql: SQL, draft: QuoteSnapshotDraft): 
   return id;
 }
 
+/** The first snapshot stored for a source; re-renders reuse it instead of re-validating the post. */
+export async function findQuoteSnapshotBySource(
+  sql: SQL,
+  source: QuoteSourceKey,
+): Promise<QuoteSnapshotRecord | null> {
+  const rows = (await sql`
+    SELECT id::text AS id, source_kind, source_id::text AS source_id,
+      source_author_id::text AS source_author_id, body_md, body_html,
+      render_version, sanitiser_version, created_at, redacted_at
+    FROM core.quote_snapshots
+    WHERE source_kind = ${source.kind} AND source_id = ${source.id}
+    ORDER BY id
+    LIMIT 1
+  `) as QuoteSnapshotRow[];
+
+  const row = rows[0];
+  return row === undefined ? null : toRecord(row);
+}
+
 export async function loadQuoteSnapshot(
   sql: SQL,
   snapshotId: string,

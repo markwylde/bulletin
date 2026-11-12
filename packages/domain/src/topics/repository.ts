@@ -1,7 +1,7 @@
 import type { QuotePipeline, QuoteSource, QuoteSourceRef } from "@bulletin/content";
 import type { SQL } from "bun";
 import { restartOrphanClock } from "../attachments/store.ts";
-import { insertQuoteSnapshot } from "../content/quotes.ts";
+import { findQuoteSnapshotBySource, insertQuoteSnapshot } from "../content/quotes.ts";
 import type { ForumAction, ModeratorPower } from "../permissions/actions.ts";
 import { can } from "../permissions/can.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
@@ -884,6 +884,61 @@ export function createPostQuotePipeline(
     },
     snapshots: {
       create: (draft) => insertQuoteSnapshot(sql, draft),
+    },
+  };
+}
+
+/**
+ * The re-render quote pipeline keeps the stored snapshot reference for every quote instead
+ * of re-validating the source (ADR 0007). A filter change must still rebuild the surrounding
+ * Markdown when a quoted post was deleted or became unreadable; read-time quote resolution
+ * rechecks access for the viewer anyway.
+ */
+export function createPostRerenderQuotePipeline(sql: SQL): QuotePipeline {
+  return {
+    resolver: {
+      async canRead(ref: QuoteSourceRef): Promise<boolean> {
+        return ref.kind === "post" && (await findQuoteSnapshotBySource(sql, ref)) !== null;
+      },
+      async load(ref: QuoteSourceRef): Promise<QuoteSource | null> {
+        if (ref.kind !== "post") {
+          return null;
+        }
+
+        const snapshot = await findQuoteSnapshotBySource(sql, ref);
+
+        if (snapshot === null) {
+          return null;
+        }
+
+        const rows = (await sql`
+          SELECT t.forum_id::text AS forum_id
+          FROM core.posts p
+          JOIN core.topics t ON t.id = p.topic_id
+          WHERE p.id = ${ref.id}
+        `) as Array<{ forum_id: string }>;
+
+        return {
+          ref: { kind: "post", id: ref.id },
+          sourceAuthorId: snapshot.sourceAuthorId,
+          bodyMd: snapshot.bodyMd,
+          contextId: rows[0]?.forum_id ?? null,
+        };
+      },
+    },
+    snapshots: {
+      async create(draft): Promise<string> {
+        const snapshot = await findQuoteSnapshotBySource(sql, {
+          kind: "post",
+          id: draft.sourceId,
+        });
+
+        if (snapshot === null) {
+          throw new Error("A quote snapshot disappeared during re-render");
+        }
+
+        return snapshot.id;
+      },
     },
   };
 }

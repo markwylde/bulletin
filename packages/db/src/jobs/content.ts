@@ -29,8 +29,7 @@ import {
   quoteSnapshotTags,
 } from "@bulletin/domain/content";
 import { FILTER_RERENDER_CHANNEL, loadReplaceWords } from "@bulletin/domain/filters";
-import { loadForumTree } from "@bulletin/domain/permissions";
-import { createPostQuotePipeline } from "@bulletin/domain/topics";
+import { createPostRerenderQuotePipeline } from "@bulletin/domain/topics";
 import { evaluateFlag, GUEST_VIEWER } from "@bulletin/flags";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
@@ -54,6 +53,8 @@ export interface RerenderRow {
   readonly topicId?: string;
   readonly forumId?: string;
   readonly authorId?: string;
+  /** Forum sources only: quote references already stored for the post. */
+  readonly quotedForumIds?: readonly string[];
 }
 
 export interface RenderedContent {
@@ -533,7 +534,7 @@ export const postRerenderSource: ContentRerenderSource = {
     const rows = (await sql`
       SELECT p.id::text AS id, p.topic_id::text AS topic_id, t.forum_id::text AS forum_id,
         p.author_id::text AS author_id, p.body_md, p.body_html, p.body_text,
-        p.render_version, p.sanitiser_version
+        p.render_version, p.sanitiser_version, p.quoted_forum_ids::text[] AS quoted_forum_ids
       FROM core.posts p
       JOIN core.topics t ON t.id = p.topic_id
       WHERE p.id > ${options.afterId}
@@ -553,6 +554,7 @@ export const postRerenderSource: ContentRerenderSource = {
       body_text: string;
       render_version: number;
       sanitiser_version: number;
+      quoted_forum_ids: string[];
     }>;
 
     return rows.map((row) => ({
@@ -563,17 +565,17 @@ export const postRerenderSource: ContentRerenderSource = {
       sanitiserVersion: row.sanitiser_version,
       topicId: row.topic_id,
       forumId: row.forum_id,
+      quotedForumIds: row.quoted_forum_ids,
       ...(row.author_id === null ? {} : { authorId: row.author_id }),
     }));
   },
   async render(sql, row, options) {
-    const tree = await loadForumTree(sql);
     const renderedPost = await renderContent(row.bodyMd, {
       profile: "post",
       context: { kind: "forum_post", forumId: row.forumId ?? "0" },
       authorId: row.authorId ?? "0",
       ...renderInputs(options),
-      quotes: createPostQuotePipeline(sql, tree),
+      quotes: createPostRerenderQuotePipeline(sql),
       keepUnfilteredHtml: true,
     });
 
@@ -585,7 +587,9 @@ export const postRerenderSource: ContentRerenderSource = {
       bodyText: renderedPost.bodyText,
       renderVersion: renderedPost.renderVersion,
       sanitiserVersion: renderedPost.sanitiserVersion,
-      quotedForumIds: renderedPost.quotedForumIds,
+      // The stored references declare the same read bits; a re-render never republishes
+      // content by adding or dropping a quoted forum (ADR 0007).
+      quotedForumIds: row.quotedForumIds ?? renderedPost.quotedForumIds,
       mentionedMemberIds: renderedPost.mentionedMemberIds,
       quotedPostIds: renderedPost.quoteSources
         .filter((source) => source.kind === "post")

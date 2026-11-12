@@ -22,7 +22,15 @@ import {
   saveFilterSettings,
   saveFilterWord,
 } from "@bulletin/domain/filters";
-import { editPost, readTopic, readTopicPostPage, reply, startTopic } from "@bulletin/domain/topics";
+import {
+  editPost,
+  move,
+  readTopic,
+  readTopicPostPage,
+  reply,
+  softDelete,
+  startTopic,
+} from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
@@ -372,6 +380,134 @@ integrationDescribe("content filters", () => {
       });
       expect(await rendered()).toContain("OLDMARK");
       expect(await rendered()).not.toContain("SECONDMARK");
+    });
+  }, 60_000);
+
+  test("a re-render keeps quote snapshots of a deleted source", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const admin = await memberId(database, "admin");
+      const forum = await forumId(database, "off-topic");
+      const source = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Deleted quote source",
+          bodyMd: "The quoted source body.",
+        }),
+      );
+      const quoting = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Quoting post",
+          bodyMd: `:::quote{source="post:${source.postId}"}\nquoted\n:::\n\nHello OLDMARK.`,
+        }),
+      );
+      const stored = async () =>
+        (
+          (await database.sql`
+            SELECT body_html, quoted_forum_ids::text[] AS quoted_forum_ids
+            FROM core.posts WHERE id = ${quoting.postId}
+          `) as Array<{ body_html: string; quoted_forum_ids: string[] }>
+        )[0];
+
+      const before = await stored();
+      const snapshotId = /data-snapshot="(\d+)"/.exec(before?.body_html ?? "")?.[1];
+      expect(snapshotId).toBeString();
+      expect(before?.quoted_forum_ids).toEqual([forum]);
+
+      expectOk(await softDelete(database.sql, { actorId: admin, postId: source.postId }));
+      expectOk(
+        await saveFilterWord(database.sql, {
+          word: "OLDMARK",
+          mode: "replace",
+          replacement: "REBUILT",
+          matchMode: "any",
+          enabled: true,
+        }),
+      );
+
+      const result = await runContentRerenderJob(database.sql, {
+        sources: [postRerenderSource],
+        batchSize: 5_000,
+      });
+      expect(result.rerendered).toBeGreaterThan(0);
+
+      const after = await stored();
+      expect(after?.body_html).toContain("REBUILT");
+      expect(after?.body_html).toContain(`data-snapshot="${snapshotId}"`);
+      expect(after?.quoted_forum_ids).toEqual([forum]);
+
+      const snapshots = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'post' AND source_id = ${source.postId}
+      `) as Array<{ count: number }>;
+      expect(snapshots[0]?.count).toBe(1);
+    });
+  }, 60_000);
+
+  test("a re-render keeps quote snapshots when the source is no longer readable", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const admin = await memberId(database, "admin");
+      const forum = await forumId(database, "off-topic");
+      const staffForum = await forumId(database, "staff-room");
+      const source = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Moved quote source",
+          bodyMd: "The quoted source body.",
+        }),
+      );
+      const quoting = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Quoting post with revoked access",
+          bodyMd: `:::quote{source="post:${source.postId}"}\nquoted\n:::\n\nHello OLDMARK.`,
+        }),
+      );
+      const snapshotId = /data-snapshot="(\d+)"/.exec(
+        (
+          (await database.sql`
+            SELECT body_html FROM core.posts WHERE id = ${quoting.postId}
+          `) as Array<{ body_html: string }>
+        )[0]?.body_html ?? "",
+      )?.[1];
+      expect(snapshotId).toBeString();
+
+      expectOk(
+        await move(database.sql, {
+          actorId: admin,
+          topicId: source.topicId,
+          toForumId: staffForum,
+        }),
+      );
+      expectOk(
+        await saveFilterWord(database.sql, {
+          word: "OLDMARK",
+          mode: "replace",
+          replacement: "REBUILT",
+          matchMode: "any",
+          enabled: true,
+        }),
+      );
+
+      const result = await runContentRerenderJob(database.sql, {
+        sources: [postRerenderSource],
+        batchSize: 5_000,
+      });
+      expect(result.rerendered).toBeGreaterThan(0);
+
+      const [after] = (await database.sql`
+        SELECT body_html, quoted_forum_ids::text[] AS quoted_forum_ids
+        FROM core.posts WHERE id = ${quoting.postId}
+      `) as Array<{ body_html: string; quoted_forum_ids: string[] }>;
+      expect(after?.body_html).toContain("REBUILT");
+      expect(after?.body_html).toContain(`data-snapshot="${snapshotId}"`);
+      expect(after?.quoted_forum_ids).toEqual([forum]);
     });
   }, 60_000);
 
