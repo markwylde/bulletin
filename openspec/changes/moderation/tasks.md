@@ -34,11 +34,11 @@
 
 ## 6. Bans and IPs
 
-- [ ] 6.1 Member bans (Banned group, timed restore job, ban notice), with integration tests
-- [ ] 6.2 IP capture via the write-only definer function `pii.record_post_ip` (ADR 0012 table), and IP/CIDR bans in `core.ip_bans` checked in the app without reading `pii` with expiry and middleware checks; tests for the CIDR and expiry scenarios
-- [ ] 6.3 Audited IP lookups (two-transaction grant, step-up, view-IPs power, retention-expired message) via `pii.read_post_ip`, with tests proving the audit row commits before data is returned, and a denial test
-- [ ] 6.4 Reverse IP lookup via `pii.read_members_by_ip` (own audited grant, forum-scoped to the actor's view-IPs forums, 100-row cap), with tests for the forum-scoping scenario, the audit row, and role denial for user_api and workers
-- [ ] 6.5 `pii.read_login_ips(grant)` for admins with `members.view_ips` (step-up, audited, in-SQL checks), with permission-denial and audit tests
+- [x] 6.1 Member bans (Banned group, timed restore job, ban notice), with integration tests
+- [x] 6.2 IP capture via the write-only definer function `pii.record_post_ip` (ADR 0012 table), and IP/CIDR bans in `core.ip_bans` checked in the app without reading `pii` with expiry and middleware checks; tests for the CIDR and expiry scenarios
+- [x] 6.3 Audited IP lookups (two-transaction grant, step-up, view-IPs power, retention-expired message) via `pii.read_post_ip`, with tests proving the audit row commits before data is returned, and a denial test
+- [x] 6.4 Reverse IP lookup via `pii.read_members_by_ip` (own audited grant, forum-scoped to the actor's view-IPs forums, 100-row cap), with tests for the forum-scoping scenario, the audit row, and role denial for user_api and workers
+- [x] 6.5 `pii.read_login_ips(grant)` for admins with `members.view_ips` (step-up, audited, in-SQL checks), with permission-denial and audit tests
 
 ## 7. Moderation log
 

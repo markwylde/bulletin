@@ -67,6 +67,8 @@
   "auth.resume": "Reanudar",
   "auth.signedIn": "Sesión iniciada",
   "auth.signingIn": "Te estamos iniciando sesión…",
+  "ban.notice": "Estás expulsado: {reason}.{until}",
+  "ban.until": " Termina el {date}.",
   "board.offline.defaultMessage": "El foro no está disponible temporalmente. Inténtalo de nuevo más tarde.",
   "board.offline.signIn": "Iniciar sesión",
   "board.offline.title": "El foro está desconectado",

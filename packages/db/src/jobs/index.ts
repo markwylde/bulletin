@@ -1,5 +1,6 @@
 export * from "./attachments.ts";
 export * from "./badges.ts";
+export * from "./bans.ts";
 export * from "./content.ts";
 export * from "./conversations.ts";
 export * from "./forums.ts";

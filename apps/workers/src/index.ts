@@ -16,6 +16,7 @@ import { syncFlagDefinitions } from "@bulletin/db/flags";
 import {
   createAttachmentJobs,
   createBadgeJobs,
+  createBanJobs,
   createContentJobs,
   createConversationJobs,
   createForumJobs,
@@ -172,6 +173,7 @@ const notificationFanout = await createNotificationsFanoutWorker({
 });
 const leaderboardJobs = await createLeaderboardJobs({ boss: boss.boss, sql, logger });
 const badgeJobs = await createBadgeJobs({ boss: boss.boss, sql, logger });
+const banJobs = await createBanJobs({ boss: boss.boss, sql, logger });
 const warningJobs = await createWarningJobs({ boss: boss.boss, sql, logger });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
 const reputationJobs = await createReputationJobs({ boss: boss.boss, sql, logger });
@@ -242,6 +244,7 @@ await startService({
     await attachmentJobs.stop();
     await conversationJobs.stop();
     await warningJobs.stop();
+    await banJobs.stop();
     await promotionJobs.stop();
     await reputationJobs.stop();
     await eventWorker.stop();

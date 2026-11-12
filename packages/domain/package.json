@@ -39,7 +39,9 @@
     "./moderation": "./src/moderation/index.ts",
     "./reports": "./src/reports/index.ts",
     "./warnings": "./src/warnings/index.ts",
-    "./filters": "./src/filters/index.ts"
+    "./filters": "./src/filters/index.ts",
+    "./pii": "./src/pii/index.ts",
+    "./bans": "./src/bans/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

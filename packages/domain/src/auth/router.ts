@@ -1,5 +1,6 @@
 import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import { isIpBanned } from "../bans/repository.ts";
 import type { StaffScheme } from "../permissions/acp.ts";
 import { can } from "../permissions/can.ts";
 import { createJwks, type IdTokenClaims, IdTokenError, verifyIdToken } from "./jwt.ts";
@@ -172,6 +173,10 @@ export function createAuthRouter(
   async function challenge(request: Request): Promise<Response> {
     if (!originAllowed(request, options)) {
       return json({ code: "invalid_origin" }, 403);
+    }
+
+    if (options.kind === "user" && (await isIpBanned(options.sql, clientIp(request)))) {
+      return json({ code: "ip_banned" }, 403);
     }
 
     const body = await readJson(request);
@@ -552,6 +557,10 @@ export function createAuthRouter(
 
   /** Completes the server-side code exchange and extends `reauth_at`. */
   async function callback(request: Request): Promise<Response> {
+    if (options.kind === "user" && (await isIpBanned(options.sql, clientIp(request)))) {
+      return json({ code: "ip_banned" }, 403);
+    }
+
     const url = new URL(request.url);
     const challengeId = parseCookieHeader(request.headers.get("cookie"))[challengeCookie];
 

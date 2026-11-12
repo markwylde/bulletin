@@ -32,6 +32,14 @@ export const EVENT_CATALOG = {
     aggregateType: "member",
     payloadIds: ["memberId"],
   },
+  "member.banned": {
+    aggregateType: "member",
+    payloadIds: ["memberId", "actorId"],
+  },
+  "member.unbanned": {
+    aggregateType: "member",
+    payloadIds: ["memberId", "actorId"],
+  },
   "member.promoted": {
     aggregateType: "member",
     payloadIds: ["memberId", "fromGroupId", "toGroupId", "ruleId"],

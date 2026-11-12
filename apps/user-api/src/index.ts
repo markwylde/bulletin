@@ -8,7 +8,8 @@ import {
 import { syncFlagDefinitions } from "@bulletin/db/flags";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
-import { createAuthService } from "@bulletin/domain/auth";
+import { clientIp, createAuthService } from "@bulletin/domain/auth";
+import { isIpBanned } from "@bulletin/domain/bans";
 import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
@@ -766,6 +767,10 @@ await startService({
 
     const createTopicMatch = /^\/api\/forums\/(\d+)\/topics$/.exec(pathname);
     if (request.method === "POST" && createTopicMatch !== null) {
+      if (await isIpBanned(sql, clientIp(request))) {
+        return Response.json({ code: "ip_banned" }, { status: 403 });
+      }
+
       const response = await auth.handle(request, async ({ session }) => {
         if (session === null) {
           return Response.json({ code: "unauthenticated" }, { status: 401 });
@@ -783,6 +788,10 @@ await startService({
     const replyMatch = /^\/api\/topics\/(\d+)\/replies$/.exec(pathname);
 
     if (request.method === "POST" && replyMatch !== null) {
+      if (await isIpBanned(sql, clientIp(request))) {
+        return Response.json({ code: "ip_banned" }, { status: 403 });
+      }
+
       const response = await auth.handle(request, async ({ session }) => {
         if (session === null) {
           return Response.json({ code: "unauthenticated" }, { status: 401 });

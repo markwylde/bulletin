@@ -1191,6 +1191,9 @@ integrationDescribe("ACP permission catalog", () => {
       ).toEqual([
         "acp.access",
         "acp.members",
+        "bans.ip",
+        "members.ban",
+        "members.view_ips",
         "members.view_list",
         "reports.members",
         "reports.pms",

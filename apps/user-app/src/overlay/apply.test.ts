@@ -68,6 +68,7 @@ function target(): {
       setFirstUnread: (topicId, url) => firstUnread.push(`${topicId}:${url}`),
       setEditablePosts: (posts) =>
         editable.push(...posts.map((post) => `${post.postId}:${post.canEdit ? "edit" : "read"}`)),
+      setBan: () => {},
       setHeldPosts: (posts) => heldPosts.push(...posts.map((post) => post.postId)),
       setHeldTopics: (topics) => heldTopics.push(...topics.map((topic) => topic.topicId)),
       setFollow: (context, following) => follows.push(`${context}:${following ? "yes" : "no"}`),

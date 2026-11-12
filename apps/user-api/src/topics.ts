@@ -1,4 +1,5 @@
 import { evaluatePromotion } from "@bulletin/db/jobs";
+import { clientIp } from "@bulletin/domain/auth";
 import { readBoardSettings } from "@bulletin/domain/board";
 import {
   can,
@@ -7,6 +8,7 @@ import {
   loadPermissionSnapshot,
   type PermissionSnapshot,
 } from "@bulletin/domain/permissions";
+import { recordPostIp } from "@bulletin/domain/pii";
 import { parsePollInput } from "@bulletin/domain/polls";
 import {
   editPost,
@@ -180,6 +182,7 @@ export async function createTopicResponse(
       ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
       ...(poll === null || poll === undefined ? {} : { poll }),
       ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
+      ip: clientIp(request),
     });
 
     if (!created.ok) {
@@ -194,6 +197,7 @@ export async function createTopicResponse(
     return result;
   }
 
+  await recordPostIp(sql, result.postId, clientIp(request));
   await evaluatePromotion(sql, session.memberId).catch(() => undefined);
   const topic = await readTopic(sql, result.topicId);
 
@@ -237,6 +241,7 @@ export async function replyResponse(
       sessionId: session.id ?? session.sessionId ?? null,
       bodyMd,
       ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
+      ip: clientIp(request),
     });
 
     if (!created.ok) {
@@ -251,6 +256,7 @@ export async function replyResponse(
     return result;
   }
 
+  await recordPostIp(sql, result.postId, clientIp(request));
   await evaluatePromotion(sql, session.memberId).catch(() => undefined);
 
   return json({

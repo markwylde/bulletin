@@ -349,6 +349,7 @@ export type SaveProfileResult =
         | "custom_title_not_allowed"
         | "custom_title_too_long"
         | "blocked_word"
+        | "banned"
         | "too_many_featured";
       readonly fieldId?: string;
       readonly limit?: number;
@@ -489,6 +490,16 @@ export async function saveMemberProfile(
 ): Promise<SaveProfileResult> {
   const aboutMd = input.aboutMd;
   const byId = new Map(input.fields.map((field) => [field.id, field]));
+  const banned = (await sql`
+    SELECT 1 FROM core.member_groups mg
+    JOIN core.groups g ON g.id = mg.group_id
+    WHERE mg.member_id = ${input.memberId} AND g.key = 'banned'
+    LIMIT 1
+  `) as unknown[];
+
+  if (banned.length > 0) {
+    return { ok: false, code: "banned" };
+  }
 
   if (await isBlockedText(sql, aboutMd)) {
     return { ok: false, code: "blocked_word" };

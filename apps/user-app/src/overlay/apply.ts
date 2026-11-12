@@ -82,6 +82,8 @@ export interface OverlayPayload {
   readonly hideSignatures?: boolean;
   /** Member ids the viewer ignores; their rendered posts collapse client-side (task 3.1). */
   readonly ignored?: readonly string[];
+  /** An active member ban, shown in the shell with its reason and end date. */
+  readonly ban?: { readonly reason: string; readonly until: string | null };
 }
 
 export interface UnreadSlot {
@@ -109,6 +111,7 @@ export interface OverlayTarget {
   setReputation(states: readonly ReputationViewerState[]): void;
   setHideSignatures(hidden: boolean): void;
   setIgnoredMembers(memberIds: readonly string[]): void;
+  setBan(ban: { readonly reason: string; readonly until: string | null }): void;
 }
 
 function isCount(value: unknown): value is number {
@@ -151,6 +154,10 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
     ) {
       target.setFirstUnread(link.topicId, link.url);
     }
+  }
+
+  if (payload.ban !== undefined && typeof payload.ban.reason === "string") {
+    target.setBan({ reason: payload.ban.reason, until: payload.ban.until ?? null });
   }
 
   if (payload.editablePosts !== undefined) {

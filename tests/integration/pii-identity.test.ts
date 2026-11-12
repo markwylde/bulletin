@@ -5,7 +5,14 @@ import { SQL } from "bun";
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 const APP_ROLES = ["user_app", "user_api", "staff_api", "workers"] as const;
-const PII_TABLES = ["access_log", "identities", "ip_log", "session_meta"] as const;
+const PII_TABLES = [
+  "access_grants",
+  "access_log",
+  "identities",
+  "ip_log",
+  "post_ips",
+  "session_meta",
+] as const;
 
 async function withDb(
   prefix: string,

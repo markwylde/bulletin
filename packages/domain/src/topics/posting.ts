@@ -8,6 +8,7 @@ import {
 } from "@bulletin/content";
 import type { SQL } from "bun";
 import { syncPostAttachments } from "../attachments/store.ts";
+import { isIpBanned } from "../bans/repository.ts";
 import { redactQuoteSnapshotsInTransaction } from "../content/quotes.ts";
 import { loadContentRenderDependencies } from "../content/rendering.ts";
 import { emit } from "../events/outbox.ts";
@@ -80,6 +81,7 @@ export interface StartTopicInput {
   readonly poll?: PollInput;
   /** False when the `follows` flag is off for the actor. */
   readonly autoFollow?: boolean;
+  readonly ip?: string | null;
 }
 
 export interface ReplyInput {
@@ -89,6 +91,7 @@ export interface ReplyInput {
   readonly bodyMd: string;
   /** False when the `follows` flag is off for the actor. */
   readonly autoFollow?: boolean;
+  readonly ip?: string | null;
 }
 
 export interface EditPostInput {
@@ -165,6 +168,10 @@ export async function startTopic(
 
   if (input.poll !== undefined && !validPollInput(input.poll)) {
     return { ok: false, code: "invalid_poll" };
+  }
+
+  if (await isIpBanned(sql, input.ip ?? null)) {
+    return { ok: false, code: "forbidden" };
   }
 
   const blockedBefore = await postingBlockedByWarning(sql, input.actorId);
@@ -427,6 +434,10 @@ export async function reply(
 
   if (bodyMd === null) {
     return { ok: false, code: "invalid_body" };
+  }
+
+  if (await isIpBanned(sql, input.ip ?? null)) {
+    return { ok: false, code: "forbidden" };
   }
 
   const blockedBefore = await postingBlockedByWarning(sql, input.actorId);

@@ -47,14 +47,14 @@ export async function saveBoardSettings(
         INSERT INTO core.board_settings (
           id, board_name, board_description, default_locale, offline, offline_message,
           topics_per_page, posts_per_page, public_edit_history, new_member_approval_posts,
-          attachment_allowed_types, reactions_affect_reputation, reputation_display,
+          ip_retention_days, attachment_allowed_types, reactions_affect_reputation, reputation_display,
           reputation_label_scale
         )
         VALUES (
           1, ${input.boardName}, ${input.boardDescription}, ${input.defaultLocale},
           ${input.offline}, ${input.offlineMessage}, ${input.topicsPerPage},
           ${input.postsPerPage}, ${input.publicEditHistory}, ${input.newMemberApprovalPosts},
-          ${`{${input.attachmentAllowedTypes.join(",")}}`}::text[],
+          ${input.ipRetentionDays}, ${`{${input.attachmentAllowedTypes.join(",")}}`}::text[],
           ${input.reactionsAffectReputation}, ${input.reputationDisplay},
           ${JSON.stringify(input.reputationLabelScale)}::jsonb
         )
@@ -68,6 +68,7 @@ export async function saveBoardSettings(
             posts_per_page = EXCLUDED.posts_per_page,
             public_edit_history = EXCLUDED.public_edit_history,
             new_member_approval_posts = EXCLUDED.new_member_approval_posts,
+            ip_retention_days = EXCLUDED.ip_retention_days,
             attachment_allowed_types = EXCLUDED.attachment_allowed_types,
             reactions_affect_reputation = EXCLUDED.reactions_affect_reputation,
             reputation_display = EXCLUDED.reputation_display,
@@ -102,6 +103,7 @@ export async function saveBoardSettings(
             postsPerPage: before.postsPerPage,
             publicEditHistory: before.publicEditHistory,
             newMemberApprovalPosts: before.newMemberApprovalPosts,
+            ipRetentionDays: before.ipRetentionDays,
             attachmentAllowedTypes: before.attachmentAllowedTypes,
             reactionsAffectReputation: before.reactionsAffectReputation,
             reputationDisplay: before.reputationDisplay,
@@ -117,6 +119,7 @@ export async function saveBoardSettings(
             postsPerPage: after.postsPerPage,
             publicEditHistory: after.publicEditHistory,
             newMemberApprovalPosts: after.newMemberApprovalPosts,
+            ipRetentionDays: after.ipRetentionDays,
             attachmentAllowedTypes: after.attachmentAllowedTypes,
             reactionsAffectReputation: after.reactionsAffectReputation,
             reputationDisplay: after.reputationDisplay,

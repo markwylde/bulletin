@@ -91,6 +91,7 @@ export async function profileSaveResponse(
       return json({ code: result.code, ...details }, 400);
     case "signature_disabled":
     case "custom_title_not_allowed":
+    case "banned":
       return json({ code: result.code }, 403);
     case "not_editable":
     case "unknown_field":

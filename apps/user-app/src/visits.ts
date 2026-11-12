@@ -335,6 +335,25 @@ const overlayTarget: OverlayTarget = {
     document.documentElement.toggleAttribute("data-hide-signatures", hidden);
   },
 
+  setBan(ban) {
+    const notice = document.querySelector<HTMLElement>("[data-ban-notice]");
+
+    if (notice === null) {
+      return;
+    }
+
+    const until =
+      ban.until === null
+        ? ""
+        : ` ${(notice.getAttribute("data-label-ban-until") ?? "").replace(
+            "__DATE__",
+            new Date(ban.until).toLocaleDateString(),
+          )}`;
+    const template = notice.getAttribute("data-label-ban") ?? "";
+    notice.textContent = template.replace("__REASON__", ban.reason).replace("__UNTIL__", until);
+    notice.hidden = false;
+  },
+
   setIgnoredMembers(memberIds) {
     const ignored = new Set(memberIds);
 

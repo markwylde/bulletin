@@ -1,5 +1,6 @@
 import { isLocale, type Locale, type Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import { activeMemberBan } from "../bans/repository.ts";
 import { readBoardSettings } from "../board/index.ts";
 import { readDraft, validDraftContext } from "../content/drafts.ts";
 import { followedTargets, parseFollowTargets } from "../follows/repository.ts";
@@ -272,6 +273,10 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
 
       if (result.kind === "blocked_word") {
         return json({ code: "blocked_word" }, 400);
+      }
+
+      if (result.kind === "banned") {
+        return json({ code: "forbidden" }, 403);
       }
 
       if (result.kind === "limit") {
@@ -627,6 +632,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
             })
           : Promise.resolve([]),
       ]);
+      const ban = await activeMemberBan(options.sql, session.memberId);
       const payload = {
         ctx,
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
@@ -657,6 +663,9 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         reactions: viewerReactions,
         reputation: viewerVotes,
         ...(draft === null ? {} : { draft }),
+        ...(ban === null
+          ? {}
+          : { ban: { reason: ban.reason, until: ban.expiresAt?.toISOString() ?? null } }),
       };
       const text = JSON.stringify(payload);
       const etag = `"${new Bun.CryptoHasher("sha256").update(text).digest("hex")}"`;

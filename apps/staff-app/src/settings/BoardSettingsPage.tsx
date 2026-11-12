@@ -13,6 +13,7 @@ interface BoardSettings {
   readonly offline: boolean;
   readonly offlineMessage: string;
   readonly newMemberApprovalPosts: number;
+  readonly ipRetentionDays: number;
   readonly attachmentAllowedTypes: readonly string[];
   readonly reactionsAffectReputation: boolean;
   readonly reputationDisplay: boolean;
@@ -78,6 +79,7 @@ const EMPTY_VALUES: FormValues = {
   offline: false,
   offlineMessage: "",
   newMemberApprovalPosts: 0,
+  ipRetentionDays: 90,
   attachmentAllowedTypes: ATTACHMENT_TYPE_OPTIONS.map((option) => option.value),
   reactionsAffectReputation: false,
   reputationDisplay: true,
@@ -132,6 +134,14 @@ const BOARD_FORM: FormDefinition = {
           helpKey: "staff.settings.board.newMemberApprovalPostsHelp",
           min: 0,
           max: 1_000,
+        },
+        {
+          id: "ipRetentionDays",
+          type: "number",
+          labelKey: "staff.settings.board.ipRetentionDays",
+          helpKey: "staff.settings.board.ipRetentionDaysHelp",
+          min: 1,
+          max: 3_650,
         },
       ],
     },
@@ -209,6 +219,7 @@ function toValues(settings: BoardSettings): FormValues {
     offline: settings.offline,
     offlineMessage: settings.offlineMessage,
     newMemberApprovalPosts: settings.newMemberApprovalPosts,
+    ipRetentionDays: settings.ipRetentionDays,
     attachmentAllowedTypes: settings.attachmentAllowedTypes,
     reactionsAffectReputation: settings.reactionsAffectReputation,
     reputationDisplay: settings.reputationDisplay,
@@ -236,6 +247,10 @@ function toPayload(values: FormValues): BoardSettings {
       typeof values.newMemberApprovalPosts === "number"
         ? values.newMemberApprovalPosts
         : Number(values.newMemberApprovalPosts ?? 0),
+    ipRetentionDays:
+      typeof values.ipRetentionDays === "number"
+        ? values.ipRetentionDays
+        : Number(values.ipRetentionDays ?? 90),
     attachmentAllowedTypes: Array.isArray(values.attachmentAllowedTypes)
       ? values.attachmentAllowedTypes
       : [],

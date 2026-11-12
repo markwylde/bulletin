@@ -44,6 +44,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     labelKey: "staff.nav.moderation",
   },
   {
+    id: "bans",
+    path: "/moderation/bans",
+    navGroup: "overview",
+    permission: "acp.members",
+    icon: "moderators",
+    labelKey: "staff.nav.bans",
+  },
+  {
     id: "warnings",
     path: "/moderation/warnings",
     navGroup: "overview",

@@ -21,7 +21,8 @@ export type UpdateDisplayNameResult =
   | { readonly kind: "missing" }
   | { readonly kind: "taken" }
   | { readonly kind: "limit"; readonly nextAllowedAt: Date }
-  | { readonly kind: "blocked_word" };
+  | { readonly kind: "blocked_word" }
+  | { readonly kind: "banned" };
 
 function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
@@ -85,6 +86,17 @@ export async function updateDisplayName(
 ): Promise<UpdateDisplayNameResult> {
   if (await isBlockedText(sql, input.name)) {
     return { kind: "blocked_word" };
+  }
+
+  const banned = (await sql`
+    SELECT 1 FROM core.member_groups mg
+    JOIN core.groups g ON g.id = mg.group_id
+    WHERE mg.member_id = ${memberId} AND g.key = 'banned'
+    LIMIT 1
+  `) as unknown[];
+
+  if (banned.length > 0) {
+    return { kind: "banned" };
   }
 
   try {

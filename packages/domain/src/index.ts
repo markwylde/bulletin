@@ -1,5 +1,6 @@
 export * from "./attachments/index.ts";
 export * from "./audit/index.ts";
+export * from "./bans/index.ts";
 export * from "./board/index.ts";
 export * from "./content/index.ts";
 export * from "./conversations/index.ts";
@@ -8,6 +9,7 @@ export * from "./member/index.ts";
 export * from "./moderation/index.ts";
 export * from "./mutations/index.ts";
 export * from "./permissions/index.ts";
+export * from "./pii/index.ts";
 export * from "./polls/index.ts";
 export * from "./reactions/index.ts";
 export * from "./reports/index.ts";

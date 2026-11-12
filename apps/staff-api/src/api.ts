@@ -25,6 +25,7 @@ import {
   mutateBadge,
   mutateMemberBadge,
 } from "./badges.ts";
+import { listBansResponse, mutateBanResponse } from "./bans.ts";
 import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import { listEmbedProvidersForStaff, mutateEmbedProvider } from "./embeds.ts";
 import { emoticonImageForStaff, listEmoticonsForStaff, mutateEmoticon } from "./emoticons.ts";
@@ -51,6 +52,7 @@ import {
   setMemberGroups,
   updateGroup,
 } from "./groups.ts";
+import { openIpAccessResponse, readIpAccessResponse } from "./ip-tools.ts";
 import {
   bulkToggleMatrix,
   deleteMask,
@@ -1018,6 +1020,36 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/dashboard/moderation",
     permission: "acp.members",
     handler: async ({ sql, session }) => staffQueueCountResponse(sql, session),
+  },
+  {
+    id: "bans.list",
+    method: "GET",
+    path: "/api/staff/bans",
+    permission: "acp.members",
+    handler: async ({ sql }) => listBansResponse(sql),
+  },
+  {
+    id: "bans.mutate",
+    method: "POST",
+    path: "/api/staff/bans",
+    permission: "acp.members",
+    handler: async ({ sql, session, request }) => mutateBanResponse(sql, session.memberId, request),
+  },
+  {
+    id: "ips.open",
+    method: "POST",
+    path: "/api/staff/ips/open",
+    permission: "acp.members",
+    requiresStepUp: true,
+    handler: async ({ sql, request }) => openIpAccessResponse(sql, request),
+  },
+  {
+    id: "ips.read",
+    method: "POST",
+    path: "/api/staff/ips/read",
+    permission: "acp.members",
+    requiresStepUp: true,
+    handler: async ({ sql, request }) => readIpAccessResponse(sql, request),
   },
   {
     id: "filters.settings",

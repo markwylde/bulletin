@@ -67,6 +67,8 @@
   "auth.resume": "Reprendre",
   "auth.signedIn": "Connecté",
   "auth.signingIn": "Connexion en cours…",
+  "ban.notice": "Vous êtes banni : {reason}.{until}",
+  "ban.until": " Fin le {date}.",
   "board.offline.defaultMessage": "Le forum est temporairement indisponible. Réessayez plus tard.",
   "board.offline.signIn": "Se connecter",
   "board.offline.title": "Le forum est hors ligne",
