@@ -5,8 +5,8 @@ import { moderationReportContract } from "../../../contracts.ts";
 import { readSql } from "../../../db.ts";
 import { loadViewerFlags } from "../../../flags.ts";
 import ThemeLayout from "../../../layouts/ThemeLayout.astro";
-import { readReportDetail } from "@bulletin/domain/reports";
 import { buildReportDetailView } from "../../../reports/page.ts";
+import { readReportDetailFromApi } from "../../../reports/read.ts";
 import { pageVariant, renderCachedPage } from "../../../theme/cached-route.ts";
 import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../../theme/render.ts";
 
@@ -26,17 +26,13 @@ let status = 200;
 let report = null;
 
 if (/^\d+$/.test(reportId)) {
-  const result = await readReportDetail(sql, {
-    actorId: session.memberId,
-    sessionId: session.sessionId,
+  const result = await readReportDetailFromApi({
     reportId,
+    cookie: Astro.request.headers.get("cookie"),
   });
 
-  if (result.ok) {
-    report = result.result;
-  } else {
-    status = result.code === "forbidden" ? 403 : 404;
-  }
+  report = result.detail;
+  status = result.status;
 } else {
   status = 404;
 }

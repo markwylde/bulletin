@@ -28,6 +28,8 @@ import {
 import { startTopic } from "@bulletin/domain/topics";
 import type { StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
+import { reportDetailResponse } from "../../apps/user-api/src/reports.ts";
 import { createNotificationsEventHandler } from "../../apps/workers/src/notifications.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -767,6 +769,80 @@ integrationDescribe("reports", () => {
         member_id: reporterA,
         type: "report.rejected",
       });
+    });
+  }, 60_000);
+
+  test("serves a PM report through user-api's role while user-app stays read-only", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const superMod = await memberId(database, "super-mod");
+
+      const started = expectOk(
+        await startConversation(database.sql, {
+          actorId: member,
+          title: "Role-scoped report read",
+          bodyMd: "Message 1",
+          recipientIds: [recipient],
+        }),
+      );
+
+      for (const bodyMd of ["Message 2", "Message 3"]) {
+        expectOk(
+          await replyToConversation(database.sql, {
+            actorId: recipient,
+            conversationId: started.conversationId,
+            bodyMd,
+          }),
+        );
+      }
+
+      const messageIds = await conversationMessageIds(database, started.conversationId);
+      const report = expectOk(
+        await createReport(database.sql, {
+          actorId: member,
+          targetType: "pm",
+          targetId: messageIds[1] ?? "",
+          reason: "abuse",
+          comment: "Read through the API role.",
+        }),
+      );
+
+      const apiUrl = new URL(database.url);
+      apiUrl.username = "user_api";
+      apiUrl.password = "";
+      const apiSql = new SQL(apiUrl.toString());
+
+      try {
+        // The SSR page forwards the session cookie to this operation, so the audited PM
+        // read runs as user_api (ADR 0001).
+        const response = await reportDetailResponse(
+          apiSql,
+          { memberId: superMod },
+          report.reportId,
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          report: { pmMessages: Array<{ messageId: string }> };
+        };
+        expect(body.report.pmMessages.map((message) => message.messageId)).toEqual(
+          messageIds.slice(0, 2),
+        );
+      } finally {
+        await apiSql.close();
+      }
+
+      const audits = (await database.sql`
+        SELECT target_id::text AS target_id FROM core.moderation_log
+        WHERE action = 'report.pm_access'
+      `) as Array<{ target_id: string }>;
+      expect(audits).toHaveLength(1);
+      expect(audits[0]?.target_id).toBe(report.reportId);
+
+      const [grants] = (await database.sql`
+        SELECT has_table_privilege('user_app', 'core.moderation_log', 'INSERT') AS insert_allowed
+      `) as Array<{ insert_allowed: boolean }>;
+      expect(grants?.insert_allowed).toBe(false);
     });
   }, 60_000);
 });
