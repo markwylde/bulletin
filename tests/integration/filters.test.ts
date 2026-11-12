@@ -14,6 +14,7 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
+import { startConversation } from "@bulletin/domain/conversations";
 import {
   deleteFilterWord,
   loadReplaceWords,
@@ -691,6 +692,89 @@ integrationDescribe("content filters", () => {
       } finally {
         await versions.close();
       }
+    });
+  }, 60_000);
+
+  test("applies changed and removed replacement rules to private messages", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const rule = await saveFilterWord(database.sql, {
+        word: "ORIGINALWORD",
+        mode: "replace",
+        replacement: "FIRSTWORD",
+        matchMode: "any",
+        enabled: true,
+      });
+
+      if (!rule.ok) {
+        throw new Error(`Could not save the filter word: ${rule.code}`);
+      }
+
+      const started = await startConversation(database.sql, {
+        actorId: member,
+        title: "Filtered private message",
+        bodyMd: "Hello ORIGINALWORD.",
+        recipientIds: [recipient],
+      });
+
+      if (!started.ok) {
+        throw new Error(`Could not start the conversation: ${started.code}`);
+      }
+
+      const [stored] = (await database.sql`
+        SELECT body_html, body_html_unfiltered
+        FROM core.conversation_messages
+        WHERE conversation_id = ${started.result.conversationId}
+        ORDER BY id
+        LIMIT 1
+      `) as Array<{ body_html: string; body_html_unfiltered: string | null }>;
+      expect(stored?.body_html).toContain("FIRSTWORD");
+      expect(stored?.body_html_unfiltered).toContain("ORIGINALWORD");
+
+      const rendered = async (): Promise<string> => {
+        const page = await buildConversationPage({
+          sql: database.sql,
+          memberId: member,
+          locale: "en",
+          translate,
+          conversationId: started.result.conversationId,
+          attachmentsEnabled: true,
+          mentionsEnabled: true,
+          replaceWords: await loadReplaceWords(database.sql),
+        });
+
+        if (page === null) {
+          throw new Error("Missing the conversation page");
+        }
+
+        return page.messages.map((message) => message.body.toString()).join("\n");
+      };
+
+      const first = await rendered();
+      expect(first).toContain("FIRSTWORD");
+      expect(first).not.toContain("ORIGINALWORD");
+
+      // The background rerender job has not run: the change must already be visible.
+      expectOk(
+        await saveFilterWord(database.sql, {
+          id: rule.id,
+          word: "ORIGINALWORD",
+          mode: "replace",
+          replacement: "SECONDWORD",
+          matchMode: "any",
+          enabled: true,
+        }),
+      );
+      const changed = await rendered();
+      expect(changed).toContain("SECONDWORD");
+      expect(changed).not.toContain("FIRSTWORD");
+      expect(changed).not.toContain("ORIGINALWORD");
+
+      expect((await deleteFilterWord(database.sql, rule.id)).ok).toBe(true);
+      const removed = await rendered();
+      expect(removed).toContain("ORIGINALWORD");
+      expect(removed).not.toContain("SECONDWORD");
     });
   }, 60_000);
 

@@ -45,6 +45,7 @@ export interface RerenderRow {
   readonly id: string;
   readonly bodyMd: string;
   readonly bodyHtml: string;
+  readonly bodyHtmlUnfiltered?: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;
   /** Conversation sources only: the context and author needed for a Markdown re-render. */
@@ -370,6 +371,7 @@ interface ConversationMessageRow {
   readonly author_id: string;
   readonly body_md: string;
   readonly body_html: string;
+  readonly body_html_unfiltered: string | null;
   readonly body_text: string;
   readonly render_version: number;
   readonly sanitiser_version: number;
@@ -381,7 +383,7 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
   async listStale(sql, versions, options) {
     const rows = (await sql`
       SELECT id::text AS id, conversation_id::text AS conversation_id,
-        author_id::text AS author_id, body_md, body_html, body_text,
+        author_id::text AS author_id, body_md, body_html, body_html_unfiltered, body_text,
         render_version, sanitiser_version
       FROM core.conversation_messages
       WHERE id > ${options.afterId}
@@ -397,6 +399,9 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
       id: row.id,
       bodyMd: row.body_md,
       bodyHtml: row.body_html,
+      ...(row.body_html_unfiltered === null
+        ? {}
+        : { bodyHtmlUnfiltered: row.body_html_unfiltered }),
       renderVersion: row.render_version,
       sanitiserVersion: row.sanitiser_version,
       conversationId: row.conversation_id,
@@ -480,10 +485,14 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
         authorId: row.authorId ?? "0",
         ...renderInputs(options),
         quotes: quotePipeline as never,
+        keepUnfilteredHtml: true,
       });
 
       return {
         bodyHtml: rendered.bodyHtml,
+        ...(rendered.bodyHtmlUnfiltered === undefined
+          ? {}
+          : { bodyHtmlUnfiltered: rendered.bodyHtmlUnfiltered }),
         bodyText: rendered.bodyText,
         renderVersion: rendered.renderVersion,
         sanitiserVersion: rendered.sanitiserVersion,
@@ -495,7 +504,7 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
 
       // A quoted source that was removed while a held message survived keeps its stored
       // placeholder HTML; a refresh still applies the current sanitiser (ADR 0007).
-      const refreshed = await refreshStoredHtml(row.bodyHtml, {
+      const refreshed = await refreshStoredHtml(row.bodyHtmlUnfiltered ?? row.bodyHtml, {
         profile: "post",
         ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
         ...(options.embeds === undefined ? {} : { embedProviders: options.embeds }),
@@ -503,6 +512,7 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
 
       return {
         bodyHtml: refreshed.bodyHtml,
+        ...(row.bodyHtmlUnfiltered === null ? {} : { bodyHtmlUnfiltered: row.bodyHtmlUnfiltered }),
         bodyText: refreshed.bodyText,
         renderVersion: versions.renderVersion,
         sanitiserVersion: versions.sanitiserVersion,
@@ -513,6 +523,7 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
     const rows = (await sql`
       UPDATE core.conversation_messages
       SET body_html = ${value.bodyHtml},
+        body_html_unfiltered = ${value.bodyHtmlUnfiltered ?? null},
         body_text = ${value.bodyText ?? ""},
         render_version = ${value.renderVersion},
         sanitiser_version = ${value.sanitiserVersion}

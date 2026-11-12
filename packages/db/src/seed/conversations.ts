@@ -151,14 +151,17 @@ async function seedConversation(
       profile: "post",
       context: { kind: "conversation_message", conversationId },
       authorId,
+      keepUnfilteredHtml: true,
     });
     const [inserted] = (await sql`
       INSERT INTO core.conversation_messages (
-        conversation_id, author_id, body_md, body_html, body_text, created_at, lang
+        conversation_id, author_id, body_md, body_html, body_html_unfiltered, body_text,
+        created_at, lang
       )
       VALUES (
         ${conversationId}, ${authorId}, ${rendered.bodyMd}, ${rendered.bodyHtml},
-        ${rendered.bodyText}, ${createdAt}, ${await readMemberSearchConfig(sql, authorId)}::regconfig
+        ${rendered.bodyHtmlUnfiltered ?? null}, ${rendered.bodyText}, ${createdAt},
+        ${await readMemberSearchConfig(sql, authorId)}::regconfig
       )
       RETURNING id::text AS id
     `) as Array<{ id: string }>;

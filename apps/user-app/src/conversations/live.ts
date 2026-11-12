@@ -1,3 +1,4 @@
+import type { ReplaceWords } from "@bulletin/content";
 import { readConversationMessagesAfter, readParticipation } from "@bulletin/domain/conversations";
 import type { Locale, Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
@@ -15,6 +16,7 @@ export interface LiveMessagesInput {
   readonly translate: Translator;
   readonly attachmentsEnabled: boolean;
   readonly mentionsEnabled: boolean;
+  readonly replaceWords?: ReplaceWords;
 }
 
 export interface LiveMessagesResult {
@@ -49,6 +51,7 @@ export async function loadLiveConversationMessages(
     translate: input.translate,
     attachmentsEnabled: input.attachmentsEnabled,
     mentionsEnabled: input.mentionsEnabled,
+    ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
   });
 
   return { messages, hasMore: rows.length > LIVE_MESSAGE_BATCH };

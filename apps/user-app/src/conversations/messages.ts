@@ -70,9 +70,10 @@ export async function renderConversationMessages(
 
   return Promise.all(
     input.messages.map(async (message) => {
+      const unfilteredSource = message.bodyHtmlUnfiltered !== null;
       const current = await ensureCurrentRendering(
         {
-          bodyHtml: message.bodyHtml,
+          bodyHtml: message.bodyHtmlUnfiltered ?? message.bodyHtml,
           bodyText: message.bodyText,
           renderVersion: message.renderVersion,
           sanitiserVersion: message.sanitiserVersion,
@@ -82,6 +83,8 @@ export async function renderConversationMessages(
           embedProviders,
           mentions: input.mentionsEnabled,
           ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
+          // The stored unfiltered HTML always needs the current replacement list applied.
+          ...(unfilteredSource ? { versions: { renderVersion: -1, sanitiserVersion: -1 } } : {}),
         },
       );
       const bodyHtml = await resolveQuotePlaceholders(current.bodyHtml, {

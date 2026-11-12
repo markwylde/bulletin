@@ -2,6 +2,7 @@ import {
   currentContentVersions,
   ensureCurrentRendering,
   type QuotePipeline,
+  type ReplaceWords,
 } from "@bulletin/content";
 import type { SQL } from "bun";
 import { listEmbedProviders } from "../content/embeds.ts";
@@ -40,6 +41,8 @@ export interface ConversationMessage {
   readonly authorId: string;
   readonly authorName: string | null;
   readonly bodyHtml: string;
+  /** Pre-replace rendering; reads apply the current replacement list to this source. */
+  readonly bodyHtmlUnfiltered: string | null;
   readonly bodyText: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;
@@ -272,6 +275,7 @@ export async function insertConversationMessage(
     readonly authorId: string;
     readonly bodyMd: string;
     readonly bodyHtml: string;
+    readonly bodyHtmlUnfiltered?: string;
     readonly bodyText: string;
     readonly lang: SearchConfig;
     readonly renderVersion: number;
@@ -280,7 +284,7 @@ export async function insertConversationMessage(
 ): Promise<NewConversationMessage> {
   const [row] = (await sql`
     INSERT INTO core.conversation_messages (
-      conversation_id, author_id, body_md, body_html, body_text, lang,
+      conversation_id, author_id, body_md, body_html, body_html_unfiltered, body_text, lang,
       render_version, sanitiser_version
     )
     VALUES (
@@ -288,6 +292,7 @@ export async function insertConversationMessage(
       ${input.authorId},
       ${input.bodyMd},
       ${input.bodyHtml},
+      ${input.bodyHtmlUnfiltered ?? null},
       ${input.bodyText},
       ${input.lang}::regconfig,
       ${input.renderVersion},
@@ -375,6 +380,7 @@ export async function readConversationForParticipant(
       msg.author_id::text AS author_id,
       m.display_name AS author_name,
       msg.body_html,
+      msg.body_html_unfiltered,
       msg.body_text,
       msg.render_version,
       msg.sanitiser_version,
@@ -392,6 +398,7 @@ export async function readConversationForParticipant(
     author_id: string;
     author_name: string | null;
     body_html: string;
+    body_html_unfiltered: string | null;
     body_text: string;
     render_version: number;
     sanitiser_version: number;
@@ -426,6 +433,7 @@ export async function readConversationForParticipant(
       authorId: row.author_id,
       authorName: row.author_name,
       bodyHtml: row.body_html,
+      bodyHtmlUnfiltered: row.body_html_unfiltered,
       bodyText: row.body_text,
       renderVersion: row.render_version,
       sanitiserVersion: row.sanitiser_version,
@@ -438,24 +446,32 @@ export async function readConversationForParticipant(
 export async function refreshConversationMessagesForRead(
   sql: SQL,
   messages: readonly ConversationMessage[],
+  replaceWords?: ReplaceWords,
 ): Promise<readonly ConversationMessage[]> {
   if (messages.length === 0) {
     return [];
   }
 
   const embedProviders = await listEmbedProviders(sql);
-  const versions = currentContentVersions();
+  const versions = currentContentVersions(replaceWords);
 
   return Promise.all(
     messages.map(async (message) => {
+      const unfilteredSource = message.bodyHtmlUnfiltered !== null;
       const current = await ensureCurrentRendering(
         {
-          bodyHtml: message.bodyHtml,
+          bodyHtml: message.bodyHtmlUnfiltered ?? message.bodyHtml,
           bodyText: message.bodyText,
           renderVersion: message.renderVersion,
           sanitiserVersion: message.sanitiserVersion,
         },
-        { profile: "post", embedProviders },
+        {
+          profile: "post",
+          embedProviders,
+          ...(replaceWords === undefined ? {} : { replaceWords }),
+          // The stored unfiltered HTML always needs the current replacement list applied.
+          ...(unfilteredSource ? { versions: { renderVersion: -1, sanitiserVersion: -1 } } : {}),
+        },
       );
 
       return {
@@ -642,6 +658,7 @@ export async function readConversationMessagesAfter(
       msg.author_id::text AS author_id,
       m.display_name AS author_name,
       msg.body_html,
+      msg.body_html_unfiltered,
       msg.body_text,
       msg.render_version,
       msg.sanitiser_version,
@@ -661,6 +678,7 @@ export async function readConversationMessagesAfter(
     author_id: string;
     author_name: string | null;
     body_html: string;
+    body_html_unfiltered: string | null;
     body_text: string;
     render_version: number;
     sanitiser_version: number;
@@ -672,6 +690,7 @@ export async function readConversationMessagesAfter(
     authorId: row.author_id,
     authorName: row.author_name,
     bodyHtml: row.body_html,
+    bodyHtmlUnfiltered: row.body_html_unfiltered,
     bodyText: row.body_text,
     renderVersion: row.render_version,
     sanitiserVersion: row.sanitiser_version,

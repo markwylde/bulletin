@@ -129,6 +129,7 @@ export async function replyToConversation(
           embeds: dependencies.embeds,
           quotes: createConversationQuotePipeline(tx, input.conversationId),
           replaceWords,
+          keepUnfilteredHtml: true,
           checks: { blockedWords: blocked.whole, blockedAnyWords: blocked.any },
         });
       } catch (error) {
@@ -143,6 +144,9 @@ export async function replyToConversation(
         authorId: input.actorId,
         bodyMd: rendered.bodyMd,
         bodyHtml: rendered.bodyHtml,
+        ...(rendered.bodyHtmlUnfiltered === undefined
+          ? {}
+          : { bodyHtmlUnfiltered: rendered.bodyHtmlUnfiltered }),
         bodyText: rendered.bodyText,
         lang,
         renderVersion: rendered.renderVersion,

@@ -1,3 +1,4 @@
+import { loadReplaceWords } from "@bulletin/domain/filters";
 import { createServerT } from "@bulletin/i18n";
 import type { APIRoute } from "astro";
 import { USER_CATALOGS } from "../../../catalogs.ts";
@@ -49,6 +50,7 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
     translate: createServerT(locale, { shipped: USER_CATALOGS }),
     attachmentsEnabled: flags.values.attachments === true,
     mentionsEnabled: flags.values.mentions === true,
+    replaceWords: await loadReplaceWords(sql),
   });
 
   return result === null ? json({ code: "not_found" }, 404) : json(result, 200);

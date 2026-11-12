@@ -12,6 +12,7 @@ import {
   setParticipantFolder,
   startConversation,
 } from "@bulletin/domain/conversations";
+import { loadReplaceWords } from "@bulletin/domain/filters";
 import type { SQL } from "bun";
 
 /** Conversation responses are never storable, by any shared or private cache (design). */
@@ -102,7 +103,11 @@ export async function conversationResponse(
 
   return json({
     ...conversation,
-    messages: await refreshConversationMessagesForRead(sql, conversation.messages),
+    messages: await refreshConversationMessagesForRead(
+      sql,
+      conversation.messages,
+      await loadReplaceWords(sql),
+    ),
   });
 }
 

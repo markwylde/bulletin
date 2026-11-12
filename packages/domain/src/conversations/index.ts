@@ -188,6 +188,7 @@ export async function startConversation(
           mentions: dependencies.mentions,
           embeds: dependencies.embeds,
           replaceWords,
+          keepUnfilteredHtml: true,
           checks: { blockedWords: blocked.whole, blockedAnyWords: blocked.any },
         });
       } catch (error) {
@@ -207,6 +208,9 @@ export async function startConversation(
         authorId: input.actorId,
         bodyMd: rendered.bodyMd,
         bodyHtml: rendered.bodyHtml,
+        ...(rendered.bodyHtmlUnfiltered === undefined
+          ? {}
+          : { bodyHtmlUnfiltered: rendered.bodyHtmlUnfiltered }),
         bodyText: rendered.bodyText,
         lang,
         renderVersion: rendered.renderVersion,
