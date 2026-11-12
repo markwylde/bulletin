@@ -1,4 +1,5 @@
 import {
+  type ConversationMessage,
   type ConversationParticipantFailure,
   inviteConversationParticipant,
   isConversationMessageReadable,
@@ -101,13 +102,25 @@ export async function conversationResponse(
     return json({ code: "not_found" }, 404);
   }
 
+  const messages = await refreshConversationMessagesForRead(
+    sql,
+    conversation.messages,
+    await loadReplaceWords(sql),
+  );
+
   return json({
     ...conversation,
-    messages: await refreshConversationMessagesForRead(
-      sql,
-      conversation.messages,
-      await loadReplaceWords(sql),
-    ),
+    // The unfiltered source is internal: only the rendered message leaves the API.
+    messages: messages.map((message: ConversationMessage) => ({
+      id: message.id,
+      authorId: message.authorId,
+      authorName: message.authorName,
+      bodyHtml: message.bodyHtml,
+      bodyText: message.bodyText,
+      renderVersion: message.renderVersion,
+      sanitiserVersion: message.sanitiserVersion,
+      createdAt: message.createdAt,
+    })),
   });
 }
 

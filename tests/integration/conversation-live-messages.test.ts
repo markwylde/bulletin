@@ -253,6 +253,8 @@ integrationDescribe("live conversation message rendering", () => {
       };
       expect(apiBody.messages[1]?.bodyHtml).not.toContain("<script");
       expect(apiBody.messages[1]?.bodyHtml).toContain("safe");
+      // The pre-replacement source stays server-side.
+      expect(apiBody.messages[1]).not.toHaveProperty("bodyHtmlUnfiltered");
 
       const versions = currentContentVersions();
       const rerendered = await runContentRerenderJob(database.sql, {
