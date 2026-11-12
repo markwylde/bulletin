@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  isSearchId,
   isSimpleSearchQuery,
   normalizeSearchQuery,
   parseSearchDate,
@@ -35,6 +36,15 @@ describe("search input parsing", () => {
     expect(parseSearchId("12")).toBe("12");
     expect(parseSearchId("0")).toBeNull();
     expect(parseSearchIds(["1", "1", "2", "x", null])).toEqual(["1", "2"]);
+  });
+
+  test("rejects IDs above PostgreSQL's bigint maximum", () => {
+    expect(isSearchId("9223372036854775807")).toBe(true);
+    expect(parseSearchId("9223372036854775807")).toBe("9223372036854775807");
+    expect(isSearchId("9223372036854775808")).toBe(false);
+    expect(isSearchId("9999999999999999999")).toBe(false);
+    expect(parseSearchId("9223372036854775808")).toBeNull();
+    expect(parseSearchIds(["12", "9223372036854775808"])).toEqual(["12"]);
   });
 
   test("only treats plain words as simple queries", () => {

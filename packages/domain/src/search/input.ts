@@ -66,12 +66,18 @@ export function parseSearchDate(value: string | null | undefined): Date | null {
 }
 
 const ID = /^[1-9]\d{0,18}$/;
+/** PostgreSQL's bigint maximum: larger values cannot name a row and would fail in SQL. */
+const MAX_SEARCH_ID = 9_223_372_036_854_775_807n;
+
+export function isSearchId(value: string | null | undefined): value is string {
+  return value !== null && value !== undefined && ID.test(value) && BigInt(value) <= MAX_SEARCH_ID;
+}
 
 export function parseSearchIds(value: readonly (string | null | undefined)[]): readonly string[] {
   const ids = new Set<string>();
 
   for (const item of value) {
-    if (item !== null && item !== undefined && ID.test(item)) {
+    if (isSearchId(item)) {
       ids.add(item);
     }
   }
@@ -80,5 +86,5 @@ export function parseSearchIds(value: readonly (string | null | undefined)[]): r
 }
 
 export function parseSearchId(value: string | null | undefined): string | null {
-  return value !== null && value !== undefined && ID.test(value) ? value : null;
+  return isSearchId(value) ? value : null;
 }

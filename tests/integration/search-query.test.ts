@@ -343,6 +343,52 @@ integrationDescribe("search query", () => {
     });
   });
 
+  test("ignores out-of-range author, prefix and forum filters instead of failing", async () => {
+    await withSeededDb(async (database) => {
+      const announcements = await forumId(database, "announcements");
+      const author = await memberId(database, "member-1");
+      const content = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Bigint filter",
+        body: "bigintfilterword appears here.",
+        lang: "english",
+      });
+      const outOfRange = "9223372036854775808";
+
+      const valid = await search(database, author, {
+        query: "bigintfilterword",
+        kind: "posts",
+        authorId: author,
+      });
+      expect(valid.items.map((item) => item.kind === "post" && item.postId)).toContain(
+        content.postId,
+      );
+
+      const byAuthor = await search(database, author, {
+        query: "bigintfilterword",
+        kind: "posts",
+        authorId: outOfRange,
+      });
+      expect(byAuthor.items).toHaveLength(0);
+      expect(byAuthor.total).toBe(0);
+
+      const byPrefix = await search(database, author, {
+        query: "bigintfilterword",
+        kind: "posts",
+        prefixIds: [outOfRange],
+      });
+      expect(byPrefix.items).toHaveLength(0);
+
+      const byForum = await search(database, author, {
+        query: "bigintfilterword",
+        kind: "posts",
+        forumIds: [outOfRange],
+      });
+      expect(byForum.items).toHaveLength(0);
+    });
+  });
+
   test("never returns content from a forum the viewer cannot read", async () => {
     await withSeededDb(async (database) => {
       const staffRoom = await forumId(database, "staff-room");

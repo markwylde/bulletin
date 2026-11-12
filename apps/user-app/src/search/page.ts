@@ -2,6 +2,7 @@ import { listForumPrefixes, listVisibleForums } from "@bulletin/domain/forums";
 import { readMember } from "@bulletin/domain/member";
 import { type CapabilityView, can, type ViewerPrincipal } from "@bulletin/domain/permissions";
 import {
+  isSearchId,
   listMemberContent,
   listNewContent,
   normalizeSearchQuery,
@@ -368,11 +369,11 @@ export interface SearchMemberRef {
 export function parseSearchMemberRef(ref: string): SearchMemberRef | null {
   const match = /^([1-9]\d{0,18})(?:-([^/]*))?$/.exec(ref);
 
-  if (match === null) {
+  if (match === null || !isSearchId(match[1])) {
     return null;
   }
 
-  return { id: match[1] ?? "", slug: match[2] === undefined || match[2] === "" ? null : match[2] };
+  return { id: match[1], slug: match[2] === undefined || match[2] === "" ? null : match[2] };
 }
 
 export function memberContentPath(id: string, name: string): string {

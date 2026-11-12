@@ -8,6 +8,7 @@ import {
   permissionFixtureSeedModule,
   runSeeds,
   SeedRegistry,
+  themesSeedModule,
 } from "@bulletin/db/seed";
 import {
   CapabilityView,
@@ -45,6 +46,7 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
         groupsSeedModule,
         forumExtrasSeedModule,
         membersSeedModule,
+        themesSeedModule,
       ]),
     });
     await run(database);
@@ -521,6 +523,41 @@ integrationDescribe("search activity views", () => {
       });
 
       expect(view).toBeNull();
+    });
+  });
+
+  test("an out-of-range member ref is a not-found instead of a server error", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const capability = await capabilityFor(database, member);
+      const ref = "9223372036854775808-missing";
+      const view = await buildMemberContentPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: member,
+        capability,
+        params: new URLSearchParams(),
+        ref,
+      });
+
+      expect(view).toBeNull();
+
+      const route = await renderSearchRoute({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        session: null,
+        params: new URLSearchParams(),
+        mode: "member",
+        ref,
+      });
+
+      expect(route.kind).toBe("page");
+
+      if (route.kind === "page") {
+        expect(route.status).toBe(404);
+      }
     });
   });
 });

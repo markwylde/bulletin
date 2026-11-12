@@ -54,7 +54,7 @@ export function expandForumFilter(
   const readable = new Set<string>();
 
   for (const forumId of forumIds) {
-    if (!/^[1-9]\d{0,18}$/.test(forumId) || capability.tree.get(forumId) === undefined) {
+    if (parseSearchId(forumId) === null || capability.tree.get(forumId) === undefined) {
       continue;
     }
 
