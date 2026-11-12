@@ -24,6 +24,7 @@ import {
   createMaintenanceJobs,
   createPromotionJobs,
   createReputationJobs,
+  createSearchJobs,
   createUnfurlJobs,
   createWarningJobs,
 } from "@bulletin/db/jobs";
@@ -177,6 +178,7 @@ const banJobs = await createBanJobs({ boss: boss.boss, sql, logger });
 const warningJobs = await createWarningJobs({ boss: boss.boss, sql, logger });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
 const reputationJobs = await createReputationJobs({ boss: boss.boss, sql, logger });
+const searchJobs = await createSearchJobs({ boss: boss.boss, sql, logger });
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
 const forumJobs = await createForumJobs({ boss: boss.boss, sql, logger });
 const contentJobs = await createContentJobs({ boss: boss.boss, sql, logger });
@@ -247,6 +249,7 @@ await startService({
     await banJobs.stop();
     await promotionJobs.stop();
     await reputationJobs.stop();
+    await searchJobs.stop();
     await eventWorker.stop();
     await boss.stop();
   },
@@ -267,6 +270,7 @@ await startService({
   await warningJobs.stop();
   await promotionJobs.stop();
   await reputationJobs.stop();
+  await searchJobs.stop();
   await boss.stop();
   throw error;
 });

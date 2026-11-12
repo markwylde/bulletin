@@ -2,8 +2,8 @@
 
 ## 1. Index
 
-- [ ] 1.1 Migrations for `lang` and the generated `tsv`/`tsv_simple` columns on topics and posts, GIN and partial indexes, and `pg_trgm` on display names; integration test for immediate indexing
-- [ ] 1.2 Forum language change rebuild job, with an integration test
+- [x] 1.1 Migrations for `lang` and the generated `tsv`/`tsv_simple` columns on topics and posts, GIN and partial indexes, and `pg_trgm` on display names; integration test for immediate indexing
+- [x] 1.2 Forum language change rebuild job, with an integration test
 
 ## 2. Query
 

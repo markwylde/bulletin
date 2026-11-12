@@ -25,6 +25,7 @@
     "./visits": "./src/visits/index.ts",
     "./content": "./src/content/index.ts",
     "./conversations": "./src/conversations/index.ts",
+    "./search": "./src/search/index.ts",
     "./topics": "./src/topics/index.ts",
     "./polls": "./src/polls/index.ts",
     "./presence": "./src/presence/index.ts",

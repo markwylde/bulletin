@@ -5,6 +5,7 @@ import {
   listForumReputationReceivers,
   recountReputationReceivers,
 } from "@bulletin/domain/reputation";
+import { notifyForumLanguageChange } from "@bulletin/domain/search";
 import { slugify } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
@@ -744,6 +745,17 @@ export async function saveForumSettings(
 
       if (input.clearPassword === true) {
         await tx`UPDATE core.forums SET password_hash = NULL WHERE id = ${forumId}`;
+      }
+
+      // Search indexes carry the content language (ADR 0017); the worker rebuilds the rows
+      // in batches. The version is durable, so a missed NOTIFY is recovered by the sweep.
+      if (existing.language !== language) {
+        await tx`
+          UPDATE core.forums
+          SET search_lang_version = search_lang_version + 1
+          WHERE id = ${forumId}
+        `;
+        await notifyForumLanguageChange(tx, forumId);
       }
 
       await tx`DELETE FROM core.forum_prefixes WHERE forum_id = ${forumId}`;

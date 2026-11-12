@@ -308,11 +308,12 @@ export async function insertTopic(
 ): Promise<string> {
   const rows = (await tx`
     INSERT INTO core.topics (
-      forum_id, title, slug, prefix_id, starter_id, visibility, hold_reason
+      forum_id, title, slug, prefix_id, starter_id, visibility, hold_reason, lang
     )
     VALUES (
       ${input.forumId}, ${input.title}, ${input.slug}, ${input.prefixId}, ${input.starterId},
-      ${input.visibility ?? "visible"}, ${input.holdReason ?? null}
+      ${input.visibility ?? "visible"}, ${input.holdReason ?? null},
+      core.search_config((SELECT language FROM core.forums WHERE id = ${input.forumId}))
     )
     RETURNING id::text AS id
   `) as Array<{ id: string }>;
@@ -360,7 +361,7 @@ export async function insertPost(
     INSERT INTO core.posts (
       topic_id, author_id, body_md, body_html, body_html_unfiltered, body_text,
       render_version, sanitiser_version, quoted_forum_ids, mentioned_member_ids,
-      quoted_post_ids, position, visibility, hold_reason
+      quoted_post_ids, position, visibility, hold_reason, lang
     )
     VALUES (
       ${input.topicId}, ${input.authorId}, ${input.bodyMd}, ${input.bodyHtml},
@@ -368,7 +369,13 @@ export async function insertPost(
       ${input.renderVersion}, ${input.sanitiserVersion}, ${quoted}::bigint[],
       ${mentioned}::bigint[], ${quotedPosts}::bigint[],
       (SELECT COALESCE(MAX(position), 0) + 1 FROM core.posts WHERE topic_id = ${input.topicId}),
-      ${input.visibility ?? "visible"}, ${input.holdReason ?? null}
+      ${input.visibility ?? "visible"}, ${input.holdReason ?? null},
+      (
+        SELECT core.search_config(forum.language)
+        FROM core.topics AS topic
+        JOIN core.forums AS forum ON forum.id = topic.forum_id
+        WHERE topic.id = ${input.topicId}
+      )
     )
     RETURNING id::text AS id, position, created_at
   `) as Array<{ id: string; position: number; created_at: Date }>;

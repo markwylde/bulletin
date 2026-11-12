@@ -8,6 +8,7 @@ export * from "./leaderboards.ts";
 export * from "./maintenance.ts";
 export * from "./promotion.ts";
 export * from "./reputation.ts";
+export * from "./search.ts";
 export * from "./unfurl-images.ts";
 export * from "./unfurls.ts";
 export * from "./warnings.ts";

@@ -70,9 +70,11 @@
       "name": "@bulletin/user-api",
       "dependencies": {
         "@bulletin/config": "workspace:*",
+        "@bulletin/content": "workspace:*",
         "@bulletin/db": "workspace:*",
         "@bulletin/domain": "workspace:*",
         "@bulletin/flags": "workspace:*",
+        "@bulletin/i18n": "workspace:*",
         "@bulletin/storage": "workspace:*",
       },
     },

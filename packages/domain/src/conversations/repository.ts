@@ -11,6 +11,7 @@ import { can } from "../permissions/can.ts";
 import { type GroupSettingValue, mergeGroupSettings } from "../permissions/registry.ts";
 import { loadMemberGroups } from "../permissions/store.ts";
 import { isIgnoring } from "../relationships/repository.ts";
+import { type SearchConfig, textSearchConfig } from "../search/language.ts";
 
 /** `0` means unlimited for the PM quota and the daily start limit (group settings). */
 export interface PmPolicy {
@@ -91,21 +92,8 @@ export interface NewConversationMessage {
 const MEMBER_ID = /^[1-9]\d{0,18}$/;
 const CONVERSATION_ID = /^[1-9]\d{0,18}$/;
 
-export type SearchConfig = "english" | "spanish" | "french" | "simple";
-
-/** ADR 0017: content is indexed with a real language config, with `simple` as the fallback. */
-export function textSearchConfig(locale: string | null | undefined): SearchConfig {
-  switch (locale) {
-    case "es":
-      return "spanish";
-    case "fr":
-      return "french";
-    case "en":
-      return "english";
-    default:
-      return "simple";
-  }
-}
+export type { SearchConfig } from "../search/language.ts";
+export { textSearchConfig } from "../search/language.ts";
 
 export async function readMemberSearchConfig(sql: SQL, memberId: string): Promise<SearchConfig> {
   const [row] = (await sql`
