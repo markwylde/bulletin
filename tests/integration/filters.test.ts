@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRenderCache, createTagVersions } from "@bulletin/cache";
-import { replaceWordsInText } from "@bulletin/content";
+import { ensureCurrentRendering, replaceWordsInText } from "@bulletin/content";
 import { postRerenderSource, runContentRerenderJob } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
@@ -22,7 +22,7 @@ import {
   saveFilterSettings,
   saveFilterWord,
 } from "@bulletin/domain/filters";
-import { editPost, readTopic, reply, startTopic } from "@bulletin/domain/topics";
+import { editPost, readTopic, readTopicPostPage, reply, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
@@ -372,6 +372,113 @@ integrationDescribe("content filters", () => {
       });
       expect(await rendered()).toContain("OLDMARK");
       expect(await rendered()).not.toContain("SECONDMARK");
+    });
+  }, 60_000);
+
+  test("a changed or removed replacement applies on the next view before jobs run", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const viewer = await memberSession(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const rule = await saveFilterWord(database.sql, {
+        word: "OLDMARK",
+        mode: "replace",
+        replacement: "FIRSTMARK",
+        matchMode: "any",
+        enabled: true,
+      });
+
+      if (!rule.ok) {
+        throw new Error(`Could not save the filter word: ${rule.code}`);
+      }
+
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Immediate replacement view",
+          bodyMd: "Hello OLDMARK.",
+        }),
+      );
+      const [storedUnfiltered] = (await database.sql`
+        SELECT body_html_unfiltered FROM core.posts WHERE id = ${topic.postId}
+      `) as Array<{ body_html_unfiltered: string | null }>;
+      expect(storedUnfiltered?.body_html_unfiltered).toContain("OLDMARK");
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const view = async () => {
+          await versions.refresh();
+          const page = await renderTopicRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: viewer,
+            ref: `${topic.topicId}-immediate-replacement-view`,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache: createRenderCache({ tags: versions }),
+            tagVersions: versions,
+          });
+
+          if (page.kind !== "page") {
+            throw new Error("Expected a topic page");
+          }
+
+          return page.html;
+        };
+
+        expect(await view()).toContain("FIRSTMARK");
+
+        const changed = await saveFilterWord(database.sql, {
+          id: rule.id,
+          word: "OLDMARK",
+          mode: "replace",
+          replacement: "SECONDMARK",
+          matchMode: "any",
+          enabled: true,
+        });
+        expect(changed.ok).toBe(true);
+        const words = await loadReplaceWords(database.sql);
+        expect(words.rules.find((word) => word.word === "OLDMARK")?.replacement).toBe("SECONDMARK");
+        const pageRows = await readTopicPostPage(database.sql, {
+          topicId: topic.topicId,
+          limit: 10,
+          offset: 0,
+          seeUnapproved: true,
+          seeDeleted: true,
+        });
+        const row = pageRows.rows[0];
+        expect(row?.bodyHtmlUnfiltered).toContain("OLDMARK");
+
+        if (row === undefined) {
+          throw new Error("Missing the post row");
+        }
+
+        const direct = await ensureCurrentRendering(
+          { ...row, bodyHtml: row.bodyHtmlUnfiltered ?? row.bodyHtml },
+          {
+            profile: "post",
+            replaceWords: words,
+            versions: { renderVersion: -1, sanitiserVersion: -1 },
+          },
+        );
+        expect(direct.bodyHtml).toContain("SECONDMARK");
+        const second = await view();
+        expect(second).toContain("SECONDMARK");
+        expect(second).not.toContain("FIRSTMARK");
+
+        await deleteFilterWord(database.sql, rule.id);
+        const removed = await view();
+        expect(removed).toContain("OLDMARK");
+        expect(removed).not.toContain("SECONDMARK");
+      } finally {
+        await versions.close();
+      }
     });
   }, 60_000);
 

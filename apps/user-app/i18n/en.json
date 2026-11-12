@@ -561,6 +561,8 @@
   "topic.pin": "Pin topic",
   "topic.pinned": "Pinned",
   "topic.postFailed": "Could not post. Check the form and try again.",
+  "topic.acknowledgementRequired": "You must acknowledge your warning before posting.",
+  "topic.postingSuspendedUntil": "Posting is suspended until {date}.",
   "topic.prefix": "Prefix",
   "topic.previousPage": "Previous page",
   "topic.title": "Title",

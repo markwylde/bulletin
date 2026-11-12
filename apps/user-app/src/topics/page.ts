@@ -322,9 +322,10 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
   const pollsEnabled = input.pollsEnabled !== false;
   const rendered = await Promise.all(
     posts.rows.map(async (post) => {
+      const unfilteredSource = post.bodyHtmlUnfiltered !== null;
       const current = await ensureCurrentRendering(
         {
-          bodyHtml: post.bodyHtml,
+          bodyHtml: post.bodyHtmlUnfiltered ?? post.bodyHtml,
           bodyText: post.bodyText,
           renderVersion: post.renderVersion,
           sanitiserVersion: post.sanitiserVersion,
@@ -334,6 +335,9 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
           embedProviders,
           mentions: mentionsEnabled,
           ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
+          // The stored unfiltered HTML always needs the current replacement list applied;
+          // the stored filtered HTML only needs it when its versions are stale.
+          ...(unfilteredSource ? { versions: { renderVersion: -1, sanitiserVersion: -1 } } : {}),
         },
       );
 
@@ -474,9 +478,10 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
       return null;
     }
 
+    const unfilteredSource = fresh.bodyHtmlUnfiltered !== null;
     const current = await ensureCurrentRendering(
       {
-        bodyHtml: fresh.bodyHtml,
+        bodyHtml: fresh.bodyHtmlUnfiltered ?? fresh.bodyHtml,
         bodyText: fresh.bodyText,
         renderVersion: fresh.renderVersion,
         sanitiserVersion: fresh.sanitiserVersion,
@@ -486,6 +491,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
         embedProviders,
         mentions: mentionsEnabled,
         ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
+        ...(unfilteredSource ? { versions: { renderVersion: -1, sanitiserVersion: -1 } } : {}),
       },
     );
     const missing = quoteSourceIds(current.bodyHtml).filter((id) => !sources.has(id));

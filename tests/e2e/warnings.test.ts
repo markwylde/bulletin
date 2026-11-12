@@ -89,6 +89,52 @@ integrationDescribe("warnings at mobile360", () => {
 
     expect(memberId).toMatch(/^\d+$/);
 
+    await withPage(
+      {
+        url: USER_URL,
+        viewport: "mobile360",
+        allowConsoleErrors: [/403.*\/api\/topics\/\d+\/replies/],
+      },
+      async (view) => {
+        await loginAs(view, "new-member");
+        await view.navigate(FORUM_URL);
+        await waitForSelector(view, "[data-topic-list] [data-topic-link]", 20_000);
+        const href = await view.evaluate<string | null>(
+          'document.querySelector("[data-topic-list] [data-topic-link]")?.getAttribute("href") ?? null',
+        );
+
+        if (href === null) {
+          throw new Error("Missing a topic for the warning attempt");
+        }
+
+        await view.navigate(new URL(href, USER_URL).toString());
+        await waitForSelector(view, "[data-topic-page]", 20_000);
+        await clickSelector(view, "[data-reply-toggle]");
+        await waitForSelector(view, "[data-reply-form]:not([hidden])", 20_000);
+        await waitForSelector(view, '[data-reply-form] [data-editor-ready="true"]', 20_000);
+        await clickSelector(view, '[data-editor-mode="source"]');
+        await waitForSelector(view, "[data-reply-form] [data-editor-source]", 20_000);
+        await setInputValue(
+          view,
+          "[data-reply-form] [data-editor-source]",
+          "Draft kept while acknowledging",
+        );
+        await waitForSelector(view, "[data-reply-submit]:not([disabled])", 20_000);
+        await clickSelector(view, "[data-reply-submit]");
+        await waitForSelector(view, "[data-reply-form] > [data-form-error]:not([hidden])", 20_000);
+        expect(
+          await view.evaluate<string>(
+            'document.querySelector("[data-reply-form] > [data-form-error]")?.innerHTML ?? ""',
+          ),
+        ).toContain('href="/account/warnings"');
+        expect(
+          await view.evaluate<string>(
+            'document.querySelector("[data-reply-form] [data-editor-source]")?.value ?? ""',
+          ),
+        ).toBe("Draft kept while acknowledging");
+      },
+    );
+
     await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "new-member");
       await view.navigate(new URL("/account/warnings", USER_URL).toString());

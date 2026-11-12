@@ -1,7 +1,7 @@
 import type { SQL } from "bun";
 import { readBoardSettings } from "../../board/index.ts";
 import { can } from "../../permissions/can.ts";
-import { loadMergedGroupSettings } from "../../permissions/store.ts";
+import { loadActiveRestrictions, loadMergedGroupSettings } from "../../permissions/store.ts";
 import type { ForumTree } from "../../permissions/tree.ts";
 import { loadForumTree } from "../../permissions/tree-store.ts";
 import {
@@ -52,7 +52,10 @@ export async function loadApprovalInput(
 ): Promise<ApprovalInput> {
   const forum = await readForumApproval(sql, input.forumId);
   const board = await readBoardSettings(sql);
-  const settings = await loadMergedGroupSettings(sql, input.actorId);
+  const [settings, restrictions] = await Promise.all([
+    loadMergedGroupSettings(sql, input.actorId),
+    loadActiveRestrictions(sql, input.actorId),
+  ]);
   const memberRows = (await sql`
     SELECT post_count FROM core.members WHERE id = ${input.actorId}
   `) as Array<{ post_count: number }>;
@@ -72,7 +75,12 @@ export async function loadApprovalInput(
     },
     forum,
     board: { newMemberApprovalPosts: board.newMemberApprovalPosts },
-    content: input.content,
+    content: {
+      ...input.content,
+      ...(restrictions["posting.posts_require_approval"] === true
+        ? { warningModeration: true }
+        : {}),
+    },
   };
 }
 

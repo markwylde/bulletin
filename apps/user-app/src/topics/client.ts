@@ -156,6 +156,72 @@ function collectPoll(form: HTMLFormElement): Record<string, unknown> | null {
   };
 }
 
+interface WarningFailure {
+  readonly message: string;
+  readonly reviewLabel: string;
+}
+
+async function warningFailure(form: HTMLFormElement, code: string): Promise<WarningFailure | null> {
+  const reviewLabel = form.dataset.labelReviewWarnings ?? "";
+
+  if (code === "acknowledgement_required") {
+    return {
+      message: form.dataset.labelAcknowledgementRequired ?? "",
+      reviewLabel,
+    };
+  }
+
+  if (code !== "posting_suspended") {
+    return null;
+  }
+
+  const template = form.dataset.labelPostingSuspended ?? "";
+  let until: string | null = null;
+
+  try {
+    const response = await fetch("/api/me/warnings", { headers: { accept: "application/json" } });
+
+    if (response.ok) {
+      const body = (await response.json()) as {
+        readonly restrictions?: readonly { readonly kind: string; readonly until: string | null }[];
+      };
+      const restriction = body.restrictions?.find(
+        (entry) => entry.kind === "cannot_post" || entry.kind === "banned",
+      );
+      until = restriction?.until ?? null;
+    }
+  } catch {
+    // The suspension message still explains what happened without the exact end time.
+  }
+
+  const date =
+    until === null
+      ? ""
+      : new Intl.DateTimeFormat(document.documentElement.lang || undefined, {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(until));
+
+  return {
+    message:
+      date === "" ? template.replace(/\s*\{date\}\.?$/, "") : template.replace("{date}", date),
+    reviewLabel,
+  };
+}
+
+function showWarningFailure(form: HTMLFormElement, failure: WarningFailure): void {
+  const error = form.querySelector<HTMLElement>("[data-form-error]");
+
+  if (error === null) {
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.href = "/account/warnings";
+  link.textContent = failure.reviewLabel;
+  error.replaceChildren(document.createTextNode(`${failure.message} `), link);
+}
+
 async function submitForm(form: HTMLFormElement): Promise<void> {
   const data = new FormData(form);
   const bodyMd = data.get("bodyMd");
@@ -195,8 +261,11 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
     if (!response.ok) {
       const failure = (await response.json().catch(() => ({}))) as { readonly code?: string };
       const error = form.querySelector<HTMLElement>("[data-form-error]");
+      const warning = failure.code === undefined ? null : await warningFailure(form, failure.code);
 
-      if (error !== null) {
+      if (warning !== null) {
+        showWarningFailure(form, warning);
+      } else if (error !== null) {
         const key =
           failure.code === "blocked_word"
             ? "labelBlockedWord"

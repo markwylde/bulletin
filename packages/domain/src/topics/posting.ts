@@ -153,6 +153,7 @@ async function savePostContent(
     embeds: dependencies.embeds,
     quotes: createPostQuotePipeline(tx, input.tree, input.sessionId),
     replaceWords: overrideReplace,
+    keepUnfilteredHtml: true,
     checks: {
       blockedWords: blocked.whole,
       blockedAnyWords: blocked.any,
@@ -348,6 +349,9 @@ export async function startTopic(
           authorId: input.actorId,
           bodyMd: rendered.bodyMd,
           bodyHtml: rendered.bodyHtml,
+          ...(rendered.bodyHtmlUnfiltered === undefined
+            ? {}
+            : { bodyHtmlUnfiltered: rendered.bodyHtmlUnfiltered }),
           bodyText: rendered.bodyText,
           renderVersion: rendered.renderVersion,
           sanitiserVersion: rendered.sanitiserVersion,
@@ -600,6 +604,9 @@ export async function reply(
           authorId: input.actorId,
           bodyMd: rendered.bodyMd,
           bodyHtml: rendered.bodyHtml,
+          ...(rendered.bodyHtmlUnfiltered === undefined
+            ? {}
+            : { bodyHtmlUnfiltered: rendered.bodyHtmlUnfiltered }),
           bodyText: rendered.bodyText,
           renderVersion: rendered.renderVersion,
           sanitiserVersion: rendered.sanitiserVersion,
@@ -823,6 +830,9 @@ export async function editPost(
           postId: current.id,
           bodyMd: rendered.bodyMd,
           bodyHtml: rendered.bodyHtml,
+          ...(rendered.bodyHtmlUnfiltered === undefined
+            ? {}
+            : { bodyHtmlUnfiltered: rendered.bodyHtmlUnfiltered }),
           bodyText: rendered.bodyText,
           renderVersion: rendered.renderVersion,
           sanitiserVersion: rendered.sanitiserVersion,

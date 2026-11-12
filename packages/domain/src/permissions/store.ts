@@ -85,7 +85,7 @@ export async function loadMemberGroups(
  * Active warning restrictions overlay the group result as `restrict-any` booleans. They are
  * time-limited (or permanent) state, not group settings, so they are merged here once.
  */
-async function loadActiveRestrictions(
+export async function loadActiveRestrictions(
   sql: SQL,
   memberId: string | null,
 ): Promise<MergedGroupSettings> {

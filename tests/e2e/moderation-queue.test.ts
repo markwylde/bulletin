@@ -101,7 +101,7 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
         });
 
         await withPage({ url: USER_URL, viewport }, async (view) => {
-          await loginAs(view, "new-member");
+          await loginAs(view, "account-member");
           await view.evaluate('fetch("/api/test/reset-rate-buckets", { method: "POST" })');
           topicUrl = await openFirstTopic(view);
           await replyHeld(view, firstBody);
@@ -143,7 +143,7 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
         });
 
         await withPage({ url: USER_URL, viewport }, async (view) => {
-          await loginAs(view, "new-member");
+          await loginAs(view, "account-member");
           await view.evaluate('fetch("/api/test/reset-rate-buckets", { method: "POST" })');
           await view.navigate(`${topicUrl}/page/999`);
           await waitForSelector(view, "[data-post-list]", 20_000);

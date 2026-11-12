@@ -321,28 +321,58 @@ export async function unbanMember(
 
 /** Timed bans restore the exact previous groups and remove the ban row. */
 export async function restoreExpiredMemberBans(sql: SQL): Promise<number> {
-  const rows = (await sql`
-    SELECT member_id::text AS member_id, id::text AS id, previous_groups
+  const candidates = (await sql`
+    SELECT member_id::text AS member_id, id::text AS id
     FROM core.member_bans
     WHERE expires_at IS NOT NULL AND expires_at <= now()
     ORDER BY id
-  `) as Array<{ member_id: string; id: string; previous_groups: GroupRow[] }>;
+  `) as Array<{ member_id: string; id: string }>;
+  let restored = 0;
 
-  for (const ban of rows) {
-    await sql.begin(async (tx) => {
-      await tx`DELETE FROM core.member_groups WHERE member_id = ${ban.member_id}`;
+  for (const candidate of candidates) {
+    const didRestore = await sql.begin(async (tx) => {
+      // Serialize with ban/unban, then prove this exact row still exists and has expired.
+      const members = (await tx`
+        SELECT id FROM core.members WHERE id = ${candidate.member_id} FOR UPDATE
+      `) as unknown[];
+
+      if (members.length === 0) {
+        return false;
+      }
+
+      const rows = (await tx`
+        SELECT id::text AS id, previous_groups
+        FROM core.member_bans
+        WHERE id = ${candidate.id}
+          AND member_id = ${candidate.member_id}
+          AND expires_at IS NOT NULL
+          AND expires_at <= now()
+        FOR UPDATE
+      `) as Array<{ id: string; previous_groups: GroupRow[] }>;
+      const ban = rows[0];
+
+      if (ban === undefined) {
+        return false;
+      }
+
+      await tx`DELETE FROM core.member_groups WHERE member_id = ${candidate.member_id}`;
 
       for (const group of ban.previous_groups) {
         await tx`
           INSERT INTO core.member_groups (member_id, group_id, is_primary)
-          VALUES (${ban.member_id}, ${group.group_id}, ${group.is_primary})
+          VALUES (${candidate.member_id}, ${group.group_id}, ${group.is_primary})
           ON CONFLICT DO NOTHING
         `;
       }
 
       await tx`DELETE FROM core.member_bans WHERE id = ${ban.id}`;
+      return true;
     });
+
+    if (didRestore) {
+      restored += 1;
+    }
   }
 
-  return rows.length;
+  return restored;
 }

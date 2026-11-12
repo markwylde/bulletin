@@ -55,6 +55,8 @@ export interface RenderContentOptions {
   readonly unfurls?: boolean;
   readonly quotes?: QuotePipeline;
   readonly replaceWords?: ReplaceWords;
+  /** Also return the HTML before replace-word transformation (posts store it for reads). */
+  readonly keepUnfilteredHtml?: boolean;
 }
 
 function downgradeHeadings(parent: Parent): void {
@@ -120,6 +122,7 @@ function processorFor(
     readonly id: string;
     readonly snapshotId: string;
   }[],
+  applyReplaceWords: boolean,
 ) {
   return unified()
     .use(remarkParse)
@@ -128,7 +131,9 @@ function processorFor(
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw)
     .use(() => (tree: HastRoot) => {
-      transformReplaceWords(tree, options.replaceWords);
+      if (applyReplaceWords) {
+        transformReplaceWords(tree, options.replaceWords);
+      }
     })
     .use(rehypeSanitize, profileSchema(options.profile))
     .use(() => (tree: HastRoot) => {
@@ -187,7 +192,7 @@ async function renderMarkdown(
     readonly id: string;
     readonly snapshotId: string;
   }[] = [];
-  const processor = processorFor(options, () => quotePlaceholders);
+  const processor = processorFor(options, () => quotePlaceholders, true);
   const tree = processor.parse(bodyMd) as MdastRoot;
 
   if (options.profile === "signature") {
@@ -232,10 +237,22 @@ async function renderMarkdown(
   }
 
   quotePlaceholders = quotes.placeholders;
+  const { replaceWords: _ignoredReplaceWords, ...unfilteredOptions } = options;
+  const unfilteredProcessor =
+    options.keepUnfilteredHtml === true
+      ? processorFor(unfilteredOptions, () => quotePlaceholders, false)
+      : null;
+  const unfilteredHast =
+    unfilteredProcessor === null
+      ? null
+      : ((await unfilteredProcessor.run(structuredClone(tree))) as HastRoot);
   const hast = (await processor.run(tree)) as HastRoot;
 
   return {
     bodyHtml: processor.stringify(hast),
+    ...(unfilteredHast === null || unfilteredProcessor === null
+      ? {}
+      : { bodyHtmlUnfiltered: unfilteredProcessor.stringify(unfilteredHast) }),
     bodyText: toPlainText(hast),
     renderVersion: renderVersionFor(options.replaceWords),
     sanitiserVersion: SANITISER_VERSION,

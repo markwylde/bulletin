@@ -95,6 +95,8 @@ export interface ReplaceWords {
 export interface RenderResult {
   readonly bodyMd: string;
   readonly bodyHtml: string;
+  /** The same render before replace-word transformation, when requested by the writer. */
+  readonly bodyHtmlUnfiltered?: string;
   readonly bodyText: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;

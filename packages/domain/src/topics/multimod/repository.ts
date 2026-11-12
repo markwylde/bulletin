@@ -420,6 +420,19 @@ export async function applyMultimod(
           throw new Error("topic_not_found");
         }
 
+        const freshTree = await loadForumTree(tx);
+
+        if (
+          !action.forumIds.includes(topic.forumId) ||
+          !(await can(tx, input.actorId, "use_multimod", {
+            forumId: topic.forumId,
+            tree: freshTree,
+            sessionId: input.sessionId ?? null,
+          }))
+        ) {
+          throw new Error("forbidden");
+        }
+
         let currentForumId = topic.forumId;
         let currentTitle = topic.title;
         const forumIds = new Set<string>();
@@ -437,12 +450,12 @@ export async function applyMultimod(
               if (
                 !(await can(tx, input.actorId, "move", {
                   forumId: currentForumId,
-                  tree,
+                  tree: freshTree,
                   sessionId: input.sessionId ?? null,
                 })) ||
                 !(await can(tx, input.actorId, "move", {
                   forumId: destination.id,
-                  tree,
+                  tree: freshTree,
                   sessionId: input.sessionId ?? null,
                 }))
               ) {
@@ -502,7 +515,7 @@ export async function applyMultimod(
               emoticons: dependencies.emoticons,
               mentions: dependencies.mentions,
               embeds: dependencies.embeds,
-              quotes: createPostQuotePipeline(tx, tree, input.sessionId ?? null),
+              quotes: createPostQuotePipeline(tx, freshTree, input.sessionId ?? null),
             });
             const post = await insertPost(tx, {
               topicId: topic.id,
@@ -547,7 +560,6 @@ export async function applyMultimod(
           starterId: topic.starterId,
         });
 
-        const freshTree = await loadForumTree(tx);
         forumIds.add(currentForumId);
 
         return {

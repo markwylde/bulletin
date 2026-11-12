@@ -942,6 +942,79 @@ Holder body.`,
     });
   }, 60_000);
 
+  test("multi-moderation re-authorizes the locked topic after a concurrent move", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const author = await memberId(database, "member-1");
+      const moderator = await memberId(database, "forum-mod");
+      const tree = await loadForumTree(database.sql);
+      const moderated = new Set(
+        (await moderatedForums(database.sql, moderator, null, tree)).map((forum) => forum.id),
+      );
+      const forums = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE type = 'forum' ORDER BY id
+      `) as Array<{ id: string }>;
+      let source: { readonly id: string } | undefined;
+      let destination: { readonly id: string } | undefined;
+
+      for (const forum of forums) {
+        if (
+          moderated.has(forum.id) &&
+          (await can(database.sql, author, "start", { forumId: forum.id, tree }))
+        ) {
+          source = forum;
+          break;
+        }
+      }
+
+      destination = forums.find((forum) => !moderated.has(forum.id));
+
+      if (source === undefined || destination === undefined) {
+        throw new Error("Missing a moderated and an unmoderated forum");
+      }
+
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: source.id,
+          title: "Raced multimod topic",
+          bodyMd: "Opening.",
+        }),
+      );
+      const action = expectOk(
+        await saveMultimodAction(database.sql, admin, {
+          name: `Raced multimod ${Date.now()}`,
+          forumIds: [source.id],
+          steps: [{ type: "lock", locked: true }],
+        }),
+      );
+
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const moving = database.sql.begin(async (tx) => {
+        await tx`UPDATE core.topics SET forum_id = ${destination.id} WHERE id = ${topic.topicId}`;
+        await gate;
+      });
+      await Bun.sleep(50);
+      const applying = applyMultimod(database.sql, {
+        actorId: moderator,
+        actionId: action.id,
+        topicId: topic.topicId,
+      });
+      await Bun.sleep(100);
+      release();
+      await moving;
+
+      expect(await applying).toEqual({ ok: false, code: "forbidden" });
+      const [row] = (await database.sql`
+        SELECT forum_id::text AS forum_id, locked FROM core.topics WHERE id = ${topic.topicId}
+      `) as Array<{ forum_id: string; locked: boolean }>;
+      expect(row).toEqual({ forum_id: destination.id, locked: false });
+    });
+  }, 60_000);
+
   test("applies mark-solved as one logged multi-moderation action", async () => {
     await withSeededDb(async (database) => {
       const forum = await forumId(database, "off-topic");

@@ -5,14 +5,11 @@ import { moderationReportContract } from "../../../contracts.ts";
 import { readSql } from "../../../db.ts";
 import { loadViewerFlags } from "../../../flags.ts";
 import ThemeLayout from "../../../layouts/ThemeLayout.astro";
-import {
-  buildReportDetailView,
-  parseReportDetail,
-} from "../../../reports/page.ts";
+import { readReportDetail } from "@bulletin/domain/reports";
+import { buildReportDetailView } from "../../../reports/page.ts";
 import { pageVariant, renderCachedPage } from "../../../theme/cached-route.ts";
 import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../../theme/render.ts";
 
-const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
 const loginUrl = `/auth/login?return_to=${encodeURIComponent(Astro.url.pathname)}`;
 const session = Astro.locals.session ?? null;
 
@@ -29,21 +26,16 @@ let status = 200;
 let report = null;
 
 if (/^\d+$/.test(reportId)) {
-  try {
-    const response = await fetch(`${userApiUrl}/api/reports/${reportId}`, {
-      headers: {
-        accept: "application/json",
-        cookie: Astro.request.headers.get("cookie") ?? "",
-      },
-    });
+  const result = await readReportDetail(sql, {
+    actorId: session.memberId,
+    sessionId: session.sessionId,
+    reportId,
+  });
 
-    if (response.ok) {
-      report = parseReportDetail(await response.json());
-    } else {
-      status = response.status === 403 ? 403 : 404;
-    }
-  } catch {
-    status = 503;
+  if (result.ok) {
+    report = result.result;
+  } else {
+    status = result.code === "forbidden" ? 403 : 404;
   }
 } else {
   status = 404;

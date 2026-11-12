@@ -320,6 +320,7 @@ export async function insertPost(
     readonly authorId: string;
     readonly bodyMd: string;
     readonly bodyHtml: string;
+    readonly bodyHtmlUnfiltered?: string;
     readonly bodyText: string;
     readonly renderVersion: number;
     readonly sanitiserVersion: number;
@@ -339,12 +340,13 @@ export async function insertPost(
     input.quotedPostIds.length === 0 ? "{}" : `{${input.quotedPostIds.join(",")}}`;
   const rows = (await tx`
     INSERT INTO core.posts (
-      topic_id, author_id, body_md, body_html, body_text,
+      topic_id, author_id, body_md, body_html, body_html_unfiltered, body_text,
       render_version, sanitiser_version, quoted_forum_ids, mentioned_member_ids,
       quoted_post_ids, position, visibility, hold_reason
     )
     VALUES (
-      ${input.topicId}, ${input.authorId}, ${input.bodyMd}, ${input.bodyHtml}, ${input.bodyText},
+      ${input.topicId}, ${input.authorId}, ${input.bodyMd}, ${input.bodyHtml},
+      ${input.bodyHtmlUnfiltered ?? null}, ${input.bodyText},
       ${input.renderVersion}, ${input.sanitiserVersion}, ${quoted}::bigint[],
       ${mentioned}::bigint[], ${quotedPosts}::bigint[],
       (SELECT COALESCE(MAX(position), 0) + 1 FROM core.posts WHERE topic_id = ${input.topicId}),
@@ -503,6 +505,7 @@ export async function updatePostRendering(
     readonly postId: string;
     readonly bodyMd: string;
     readonly bodyHtml: string;
+    readonly bodyHtmlUnfiltered?: string;
     readonly bodyText: string;
     readonly renderVersion: number;
     readonly sanitiserVersion: number;
@@ -521,6 +524,7 @@ export async function updatePostRendering(
     UPDATE core.posts
     SET body_md = ${input.bodyMd},
         body_html = ${input.bodyHtml},
+        body_html_unfiltered = ${input.bodyHtmlUnfiltered ?? null},
         body_text = ${input.bodyText},
         render_version = ${input.renderVersion},
         sanitiser_version = ${input.sanitiserVersion},

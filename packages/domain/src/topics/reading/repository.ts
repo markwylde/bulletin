@@ -64,6 +64,7 @@ export interface TopicPostRow {
   readonly authorName: string | null;
   readonly bodyMd: string;
   readonly bodyHtml: string;
+  readonly bodyHtmlUnfiltered: string | null;
   readonly bodyText: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;
@@ -387,6 +388,7 @@ interface TopicPostRowSql {
   readonly author_name: string | null;
   readonly body_md: string;
   readonly body_html: string;
+  readonly body_html_unfiltered: string | null;
   readonly body_text: string;
   readonly render_version: number;
   readonly sanitiser_version: number;
@@ -406,6 +408,7 @@ function toTopicPost(row: TopicPostRowSql): TopicPostRow {
     authorName: row.author_name,
     bodyMd: row.body_md,
     bodyHtml: row.body_html,
+    bodyHtmlUnfiltered: row.body_html_unfiltered,
     bodyText: row.body_text,
     renderVersion: row.render_version,
     sanitiserVersion: row.sanitiser_version,
@@ -452,7 +455,8 @@ export async function readTopicPostById(
 ): Promise<TopicPostRow | null> {
   const rows = (await sql`
     SELECT
-      p.id, p.author_id, author.display_name AS author_name, p.body_md, p.body_html, p.body_text,
+      p.id, p.author_id, author.display_name AS author_name, p.body_md, p.body_html,
+      p.body_html_unfiltered, p.body_text,
       p.render_version, p.sanitiser_version, p.visibility, p.position,
       p.quoted_forum_ids::text[] AS quoted_forum_ids, p.created_at, p.edited_at,
       p.edited_by, editor.display_name AS edited_by_name
@@ -484,7 +488,8 @@ export async function readTopicPostPage(
 ): Promise<TopicPostPage> {
   const rows = (await sql`
     SELECT
-      p.id, p.author_id, author.display_name AS author_name, p.body_md, p.body_html, p.body_text,
+      p.id, p.author_id, author.display_name AS author_name, p.body_md, p.body_html,
+      p.body_html_unfiltered, p.body_text,
       p.render_version, p.sanitiser_version, p.visibility, p.position,
       p.quoted_forum_ids::text[] AS quoted_forum_ids, p.created_at, p.edited_at,
       p.edited_by, editor.display_name AS edited_by_name

@@ -561,6 +561,8 @@
   "topic.pin": "Fijar tema",
   "topic.pinned": "Fijado",
   "topic.postFailed": "No se pudo publicar. Revisa el formulario e inténtalo de nuevo.",
+  "topic.acknowledgementRequired": "Debes confirmar tu advertencia antes de publicar.",
+  "topic.postingSuspendedUntil": "No puedes publicar hasta el {date}.",
   "topic.prefix": "Prefijo",
   "topic.previousPage": "Página anterior",
   "topic.title": "Título",

@@ -745,6 +745,14 @@ export async function updateReport(
 
       const closing =
         CLOSED_STATUSES.includes(input.action.status) && !CLOSED_STATUSES.includes(current.status);
+      const reopening =
+        !CLOSED_STATUSES.includes(input.action.status) && CLOSED_STATUSES.includes(current.status);
+
+      // Closing deletes the PM access rows and message holds; reopening cannot recreate that
+      // evidence, so a closed PM report stays closed.
+      if (reopening && current.target_type === "pm") {
+        return { ok: false as const, code: "invalid_status" as const };
+      }
 
       await tx`
         UPDATE core.reports

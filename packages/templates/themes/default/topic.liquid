@@ -161,7 +161,10 @@
       <button class="bl-button" type="button" data-reply-toggle>{% t "post.reply" %}</button>
       <form class="bl-topic-form" data-reply-form data-topic-id="{{ topicId }}" hidden
         data-label-blocked-word="{% t "topic.blockedWord" %}"
-        data-label-too-many-links="{% t "topic.tooManyLinks" %}">
+        data-label-too-many-links="{% t "topic.tooManyLinks" %}"
+        data-label-acknowledgement-required="{% t "topic.acknowledgementRequired" %}"
+        data-label-posting-suspended="{% t "topic.postingSuspendedUntil" date: "__DATE__" %}"
+        data-label-review-warnings="{% t "warnings.title" %}">
         {% island "Editor" editor %}
         <button class="bl-button" type="submit" data-reply-submit>{% t "post.submitReply" %}</button>
         <p class="bl-error-text" data-form-error hidden>{% t "topic.postFailed" %}</p>

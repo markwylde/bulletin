@@ -11,7 +11,12 @@ import type { CapabilitySnapshot } from "./capability.ts";
 import { type ModeratorAssignment, memberBanned } from "./moderator.ts";
 import { GUEST_SNAPSHOT_MEMBER_ID, principalMemberId, type ViewerPrincipal } from "./principal.ts";
 import { type MergedGroupSettings, mergeGroupSettings } from "./registry.ts";
-import { loadMemberGroups, loadModeratorAssignments, loadSessionUnlocks } from "./store.ts";
+import {
+  loadActiveRestrictions,
+  loadMemberGroups,
+  loadModeratorAssignments,
+  loadSessionUnlocks,
+} from "./store.ts";
 import type { ForumTree } from "./tree.ts";
 import { loadForumTree } from "./tree-store.ts";
 
@@ -336,16 +341,20 @@ export async function loadPermissionSnapshot(
   options: LoadPermissionSnapshotOptions,
 ): Promise<PermissionSnapshot> {
   const memberId = principalMemberId(principal);
-  const [data, groups, assignments, unlocked] = await Promise.all([
+  const [data, groups, assignments, unlocked, restrictions] = await Promise.all([
     loadPermissionData(sql, options.tree),
     loadMemberGroups(sql, principal),
     loadModeratorAssignments(sql, principal),
     loadSessionUnlocks(sql, options.sessionId ?? null),
+    loadActiveRestrictions(sql, memberId),
   ]);
 
   const groupIds = groups.map((group) => group.groupId).sort();
   const groupSnapshot = compileGroupSnapshot(data, groupIds);
-  const settings = mergeGroupSettings(groups);
+  const settings =
+    Object.keys(restrictions).length === 0
+      ? mergeGroupSettings(groups)
+      : { ...mergeGroupSettings(groups), ...restrictions };
   const primaryGroupId = groups.find((group) => group.isPrimary)?.groupId ?? null;
   const banned = memberBanned(groups, settings);
 

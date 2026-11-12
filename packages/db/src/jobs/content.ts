@@ -58,6 +58,7 @@ export interface RerenderRow {
 
 export interface RenderedContent {
   readonly bodyHtml: string;
+  readonly bodyHtmlUnfiltered?: string;
   readonly bodyText?: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;
@@ -573,10 +574,14 @@ export const postRerenderSource: ContentRerenderSource = {
       authorId: row.authorId ?? "0",
       ...renderInputs(options),
       quotes: createPostQuotePipeline(sql, tree),
+      keepUnfilteredHtml: true,
     });
 
     return {
       bodyHtml: renderedPost.bodyHtml,
+      ...(renderedPost.bodyHtmlUnfiltered === undefined
+        ? {}
+        : { bodyHtmlUnfiltered: renderedPost.bodyHtmlUnfiltered }),
       bodyText: renderedPost.bodyText,
       renderVersion: renderedPost.renderVersion,
       sanitiserVersion: renderedPost.sanitiserVersion,
@@ -596,6 +601,7 @@ export const postRerenderSource: ContentRerenderSource = {
       const rows = (await tx`
         UPDATE core.posts
         SET body_html = ${value.bodyHtml},
+          body_html_unfiltered = ${value.bodyHtmlUnfiltered ?? null},
           body_text = ${value.bodyText ?? ""},
           render_version = ${value.renderVersion},
           sanitiser_version = ${value.sanitiserVersion},

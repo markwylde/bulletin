@@ -199,6 +199,54 @@ integrationDescribe("member bans", () => {
     });
   }, 60_000);
 
+  test("expiry does not undo a newer ban created in the same interleaving", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      expectOk(
+        await banMember(database.sql, {
+          actorId: admin,
+          memberId: member,
+          reason: "Old expired ban",
+          days: 1,
+        }),
+      );
+      await database.sql`
+        UPDATE core.member_bans SET expires_at = now() - interval '1 minute'
+        WHERE member_id = ${member}
+      `;
+
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const rebanning = database.sql.begin(async (tx) => {
+        await tx`SELECT id FROM core.members WHERE id = ${member} FOR UPDATE`;
+        await tx`DELETE FROM core.member_bans WHERE member_id = ${member}`;
+        await tx`
+          INSERT INTO core.member_bans (member_id, reason, expires_at, previous_groups, created_by)
+          VALUES (
+            ${member}, 'Newer ban', now() + interval '1 day', '[]'::jsonb, ${admin}
+          )
+        `;
+        await gate;
+      });
+      await Bun.sleep(50);
+      const expiring = restoreExpiredMemberBans(database.sql);
+      await Bun.sleep(100);
+      release();
+      await rebanning;
+
+      expect(await expiring).toBe(0);
+      expect((await activeMemberBan(database.sql, member))?.reason).toBe("Newer ban");
+      const groups = (await database.sql`
+        SELECT g.key FROM core.member_groups mg JOIN core.groups g ON g.id = mg.group_id
+        WHERE mg.member_id = ${member}
+      `) as Array<{ key: string }>;
+      expect(groups).toEqual([{ key: "banned" }]);
+    });
+  }, 60_000);
+
   test("unbans manually and denies a member without members.ban", async () => {
     await withSeededDb(async (database) => {
       const admin = await memberId(database, "admin");

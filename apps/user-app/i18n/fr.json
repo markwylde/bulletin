@@ -561,6 +561,8 @@
   "topic.pin": "Épingler le sujet",
   "topic.pinned": "Épinglé",
   "topic.postFailed": "Impossible de publier. Vérifiez le formulaire et réessayez.",
+  "topic.acknowledgementRequired": "Vous devez accuser réception de votre avertissement avant de publier.",
+  "topic.postingSuspendedUntil": "La publication est suspendue jusqu’au {date}.",
   "topic.prefix": "Préfixe",
   "topic.previousPage": "Page précédente",
   "topic.title": "Titre",

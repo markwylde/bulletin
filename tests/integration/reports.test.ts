@@ -614,6 +614,74 @@ integrationDescribe("reports", () => {
     });
   }, 90_000);
 
+  test("closed PM reports cannot be reopened without their access rows and holds", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const superMod = await memberId(database, "super-mod");
+      const started = expectOk(
+        await startConversation(database.sql, {
+          actorId: starter,
+          title: "Reopen PM report",
+          bodyMd: "First message.",
+          recipientIds: [recipient],
+        }),
+      );
+      expectOk(
+        await replyToConversation(database.sql, {
+          actorId: recipient,
+          conversationId: started.conversationId,
+          bodyMd: "Reported message.",
+        }),
+      );
+      const messageIds = await conversationMessageIds(database, started.conversationId);
+      const reported = messageIds.at(-1);
+
+      if (reported === undefined) {
+        throw new Error("Missing the reported message");
+      }
+
+      const report = expectOk(
+        await createReport(database.sql, {
+          actorId: starter,
+          targetType: "pm",
+          targetId: reported,
+          reason: "abuse",
+          comment: "",
+        }),
+      );
+      expectOk(
+        await updateReport(database.sql, {
+          actorId: superMod,
+          reportId: report.reportId,
+          action: { kind: "status", status: "resolved" },
+        }),
+      );
+      const [before] = (await database.sql`
+        SELECT
+          (SELECT count(*)::int FROM core.report_pm_access WHERE report_id = ${report.reportId}) AS access,
+          (SELECT count(*)::int FROM core.conversation_message_holds
+            WHERE holder = 'report' AND ref = ${report.reportId}) AS holds
+      `) as Array<{ access: number; holds: number }>;
+      expect(before).toEqual({ access: 0, holds: 0 });
+
+      expect(
+        await updateReport(database.sql, {
+          actorId: superMod,
+          reportId: report.reportId,
+          action: { kind: "status", status: "open" },
+        }),
+      ).toEqual({ ok: false, code: "invalid_status" });
+      const [after] = (await database.sql`
+        SELECT
+          (SELECT count(*)::int FROM core.report_pm_access WHERE report_id = ${report.reportId}) AS access,
+          (SELECT count(*)::int FROM core.conversation_message_holds
+            WHERE holder = 'report' AND ref = ${report.reportId}) AS holds
+      `) as Array<{ access: number; holds: number }>;
+      expect(after).toEqual({ access: 0, holds: 0 });
+    });
+  }, 60_000);
+
   test("notifies every reporter when a report is resolved or rejected", async () => {
     await withSeededDb(async (database) => {
       const reporterA = await memberId(database, "member-1");

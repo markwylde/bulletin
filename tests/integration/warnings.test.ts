@@ -11,7 +11,12 @@ import {
 } from "@bulletin/db/seed";
 import { loadEvent } from "@bulletin/domain/events";
 import { listNotifications } from "@bulletin/domain/notifications";
-import { can } from "@bulletin/domain/permissions";
+import {
+  can,
+  capabilityAnswer,
+  loadForumTree,
+  loadPermissionSnapshot,
+} from "@bulletin/domain/permissions";
 import { saveMemberProfile } from "@bulletin/domain/profiles";
 import { startTopic } from "@bulletin/domain/topics";
 import {
@@ -269,8 +274,9 @@ integrationDescribe("warnings", () => {
 
   test("a ban-only warning threshold blocks every capability and profile edits", async () => {
     await withSeededDb(async (database) => {
-      const member = await memberId(database, "member-2");
-      const moderator = await memberId(database, "super-mod");
+      const member = await memberId(database, "super-mod");
+      const moderator = await memberId(database, "admin");
+      const forum = await forumId(database, "off-topic");
       const reasonId = await seedReason(database, { key: "ban_only", points: 1 });
 
       expectOk(
@@ -295,6 +301,10 @@ integrationDescribe("warnings", () => {
       expect(await can(database.sql, member, "post")).toBe(false);
       expect(await can(database.sql, member, "react")).toBe(false);
       expect(await can(database.sql, member, "send_pm")).toBe(false);
+      const tree = await loadForumTree(database.sql);
+      const snapshot = await loadPermissionSnapshot(database.sql, member, { tree });
+      expect(capabilityAnswer(snapshot, forum, "lock")).toBe(false);
+      expect(capabilityAnswer(snapshot, forum, "use_multimod")).toBe(false);
       expect(
         await saveMemberProfile(database.sql, {
           memberId: member,
@@ -305,6 +315,39 @@ integrationDescribe("warnings", () => {
           fields: [],
         }),
       ).toEqual({ ok: false, code: "banned" });
+    });
+  }, 60_000);
+
+  test("a moderator on mandatory moderation is still held despite approve power", async () => {
+    await withSeededDb(async (database) => {
+      const moderator = await memberId(database, "super-mod");
+      const forum = await forumId(database, "off-topic");
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${moderator}, 'posts_require_approval', now() + interval '1 day')
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: moderator,
+          forumId: forum,
+          title: "Moderator mandatory moderation",
+          bodyMd: "Even moderators are held here.",
+        }),
+      );
+      const [row] = (await database.sql`
+        SELECT p.visibility, p.hold_reason, t.visibility AS topic_visibility
+        FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+        WHERE p.id = ${topic.postId}
+      `) as Array<{
+        visibility: string;
+        hold_reason: string | null;
+        topic_visibility: string;
+      }>;
+      expect(row).toEqual({
+        visibility: "unapproved",
+        hold_reason: "warning",
+        topic_visibility: "unapproved",
+      });
     });
   }, 60_000);
 
