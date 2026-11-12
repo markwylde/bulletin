@@ -7,6 +7,7 @@ import {
   type StreamNotificationPayload,
 } from "@bulletin/domain/events/stream";
 import { clearReauthDrafts } from "@bulletin/ui/islands/editor/drafts";
+import { drainLiveMessages } from "../conversations/drain.ts";
 import { clientCsrfToken } from "../csrf.ts";
 
 const ID = /^[1-9]\d{0,18}$/;
@@ -106,6 +107,7 @@ interface LiveConversationMessage {
   readonly authorId: string;
   readonly authorName: string | null;
   readonly bodyHtml: string;
+  readonly filesHtml: string | null;
   readonly createdAt: string;
 }
 
@@ -131,9 +133,16 @@ function appendConversationMessage(list: HTMLElement, message: LiveConversationM
 
   const body = document.createElement("div");
   body.className = "bl-message__body";
-  // The server sanitised this HTML in the content pipeline (ADR 0007).
+  // The shared server renderer sanitised the body and resolved quotes/attachments.
   body.innerHTML = message.bodyHtml;
   item.append(header, body);
+
+  if (message.filesHtml !== null) {
+    const files = document.createElement("div");
+    files.innerHTML = message.filesHtml;
+    item.append(files);
+  }
+
   list.append(item);
 }
 
@@ -146,32 +155,48 @@ async function appendConversationReplies(payload: StreamConversationRepliesPaylo
   }
 
   const list = page.querySelector<HTMLElement>("[data-conversation-messages]");
-  const last = lastConversationMessageId() ?? "0";
+  let after = lastConversationMessageId() ?? "0";
+  const initialAfter = after;
 
   if (list === null) {
     return;
   }
 
-  const response = await fetch(
-    `/api/conversations/${encodeURIComponent(conversationId)}/messages?after=${encodeURIComponent(last)}`,
-    { headers: { accept: "application/json" } },
-  );
+  const drained = await drainLiveMessages<LiveConversationMessage>({
+    after,
+    async fetchPage(cursor) {
+      const response = await fetch(
+        `/conversations/${encodeURIComponent(conversationId)}/messages?after=${encodeURIComponent(cursor)}`,
+        { headers: { accept: "application/json" } },
+      );
 
-  if (!response.ok) {
+      if (!response.ok) {
+        return null;
+      }
+
+      const body = (await response.json()) as {
+        readonly messages?: readonly LiveConversationMessage[];
+        readonly hasMore?: boolean;
+      };
+
+      return { messages: body.messages ?? [], hasMore: body.hasMore === true };
+    },
+    accept(message) {
+      if (
+        !ID.test(message.id) ||
+        document.querySelector(`[data-conversation-message="${message.id}"]`) !== null
+      ) {
+        return false;
+      }
+
+      appendConversationMessage(list, message);
+      return true;
+    },
+  });
+  after = drained.after;
+
+  if (after === initialAfter) {
     return;
-  }
-
-  const body = (await response.json()) as { messages?: readonly LiveConversationMessage[] };
-
-  for (const message of body.messages ?? []) {
-    if (
-      !ID.test(message.id) ||
-      document.querySelector(`[data-conversation-message="${message.id}"]`) !== null
-    ) {
-      continue;
-    }
-
-    appendConversationMessage(list, message);
   }
 
   const csrf = await clientCsrfToken();
@@ -179,8 +204,10 @@ async function appendConversationReplies(payload: StreamConversationRepliesPaylo
     method: "POST",
     headers: {
       accept: "application/json",
+      "content-type": "application/json",
       ...(csrf === null ? {} : { "x-bulletin-csrf": csrf }),
     },
+    body: JSON.stringify({ messageId: after }),
   }).catch(() => undefined);
 }
 

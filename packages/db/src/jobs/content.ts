@@ -7,7 +7,12 @@ import type {
   MentionResolver,
   ReplaceWords,
 } from "@bulletin/content";
-import { currentContentVersions, renderContent, renderSnapshot } from "@bulletin/content";
+import {
+  currentContentVersions,
+  refreshStoredHtml,
+  renderContent,
+  renderSnapshot,
+} from "@bulletin/content";
 import {
   listStaleQuoteSnapshots,
   loadContentRenderDependencies,
@@ -334,8 +339,79 @@ export const announcementRerenderSource: ContentRerenderSource = {
 };
 
 /** Every core content table the worker keeps current. */
+interface ConversationMessageRow {
+  readonly id: string;
+  readonly body_md: string;
+  readonly body_html: string;
+  readonly body_text: string;
+  readonly render_version: number;
+  readonly sanitiser_version: number;
+}
+
+/** Personal messages still need the current sanitiser before a live or cached read (ADR 0007). */
+export const conversationMessageRerenderSource: ContentRerenderSource = {
+  name: "conversation_messages",
+  async listStale(sql, versions, options) {
+    const rows = (await sql`
+      SELECT id::text AS id, body_md, body_html, body_text, render_version, sanitiser_version
+      FROM core.conversation_messages
+      WHERE id > ${options.afterId}
+        AND (
+          render_version <> ${versions.renderVersion}
+          OR sanitiser_version <> ${versions.sanitiserVersion}
+        )
+      ORDER BY id
+      LIMIT ${options.limit}
+    `) as ConversationMessageRow[];
+
+    return rows.map((row) => ({
+      id: row.id,
+      bodyMd: row.body_md,
+      bodyHtml: row.body_html,
+      renderVersion: row.render_version,
+      sanitiserVersion: row.sanitiser_version,
+    }));
+  },
+  async render(row, options) {
+    const refreshed = await refreshStoredHtml(row.bodyHtml, {
+      profile: "post",
+      ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+      ...(options.embeds === undefined ? {} : { embedProviders: options.embeds }),
+    });
+    const versions = currentContentVersions(options.replaceWords);
+
+    return {
+      bodyHtml: refreshed.bodyHtml,
+      bodyText: refreshed.bodyText,
+      renderVersion: versions.renderVersion,
+      sanitiserVersion: versions.sanitiserVersion,
+    };
+  },
+  async save(sql, row, value) {
+    const rows = (await sql`
+      UPDATE core.conversation_messages
+      SET body_html = ${value.bodyHtml},
+        body_text = ${value.bodyText ?? ""},
+        render_version = ${value.renderVersion},
+        sanitiser_version = ${value.sanitiserVersion}
+      WHERE id = ${row.id}
+        AND body_html = ${row.bodyHtml}
+        AND render_version = ${row.renderVersion}
+        AND sanitiser_version = ${row.sanitiserVersion}
+      RETURNING id
+    `) as Array<{ id: string }>;
+
+    return rows.length > 0;
+  },
+};
+
 export function contentRerenderSources(): readonly ContentRerenderSource[] {
-  return [quoteSnapshotRerenderSource, forumRulesRerenderSource, announcementRerenderSource];
+  return [
+    quoteSnapshotRerenderSource,
+    forumRulesRerenderSource,
+    announcementRerenderSource,
+    conversationMessageRerenderSource,
+  ];
 }
 
 export interface ContentRerenderOptions extends ContentRenderOptions {

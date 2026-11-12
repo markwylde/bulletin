@@ -94,7 +94,7 @@ async function planRemoval(sql: SQL, conversationId: string): Promise<RemovalPla
         WHERE conversation_id = ${conversationId}
           AND NOT (id = ANY(${bigintArray(held)}::bigint[]))
         RETURNING id
-      `) as unknown[];
+      `) as Array<{ id: bigint | string }>;
       deletedMessages = deleted.length;
 
       await tx`
@@ -116,6 +116,16 @@ async function planRemoval(sql: SQL, conversationId: string): Promise<RemovalPla
       // Deleting the row cascades participants, messages, attachment links and any holds.
       await tx`DELETE FROM core.conversations WHERE id = ${conversationId}`;
     }
+
+    // Quote snapshots hold complete PM text and have no source foreign key. Delete snapshots
+    // whose source message no longer exists; held messages keep their snapshots (finding P1).
+    await tx`
+      DELETE FROM core.quote_snapshots q
+      WHERE q.source_kind = 'message'
+        AND NOT EXISTS (
+          SELECT 1 FROM core.conversation_messages m WHERE m.id = q.source_id
+        )
+    `;
 
     const deletedAttachments =
       attachmentRows.length === 0
@@ -157,53 +167,70 @@ export async function runConversationRemoval(
   storage: StorageClient,
   options: ConversationRemovalOptions = {},
 ): Promise<ConversationRemovalResult> {
-  const candidates = (await sql`
-    SELECT c.id::text AS id
-    FROM core.conversations c
-    WHERE NOT EXISTS (
-      SELECT 1
-      FROM core.conversation_participants p
-      WHERE p.conversation_id = c.id AND p.state = 'active'
-    )
-    ORDER BY c.id
-    LIMIT ${options.limit ?? 50}
-  `) as Array<{ id: string }>;
+  const batchSize = options.limit ?? 50;
+  let afterId = "0";
   let removed = 0;
   let kept = 0;
   let messagesDeleted = 0;
   let attachmentsDeleted = 0;
   let objectsDeleted = 0;
 
-  for (const row of candidates) {
-    const plan = await planRemoval(sql, row.id);
+  // Held conversations stay candidates forever. Page by id so a first page full of holds can
+  // never starve later conversations (finding P1).
+  for (;;) {
+    const candidates = (await sql`
+      SELECT c.id::text AS id
+      FROM core.conversations c
+      WHERE c.id > ${afterId}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM core.conversation_participants p
+          WHERE p.conversation_id = c.id AND p.state = 'active'
+        )
+      ORDER BY c.id
+      LIMIT ${batchSize}
+    `) as Array<{ id: string }>;
 
-    if (plan === null) {
-      continue;
+    if (candidates.length === 0) {
+      break;
     }
 
-    if (plan.removed) {
-      removed += 1;
-    } else {
-      kept += 1;
-    }
+    for (const row of candidates) {
+      const plan = await planRemoval(sql, row.id);
+      afterId = row.id;
 
-    messagesDeleted += plan.deletedMessages;
-    attachmentsDeleted += plan.attachments.length;
+      if (plan === null) {
+        continue;
+      }
 
-    for (const attachment of plan.attachments) {
-      for (const key of attachmentObjectKeys(attachment)) {
-        try {
-          await storage.delete(key);
-          objectsDeleted += 1;
-        } catch (error) {
-          options.logger?.warn("conversation.attachment_object_failed", {
-            conversationId: row.id,
-            attachmentId: attachment.id,
-            key,
-            error,
-          });
+      if (plan.removed) {
+        removed += 1;
+      } else {
+        kept += 1;
+      }
+
+      messagesDeleted += plan.deletedMessages;
+      attachmentsDeleted += plan.attachments.length;
+
+      for (const attachment of plan.attachments) {
+        for (const key of attachmentObjectKeys(attachment)) {
+          try {
+            await storage.delete(key);
+            objectsDeleted += 1;
+          } catch (error) {
+            options.logger?.warn("conversation.attachment_object_failed", {
+              conversationId: row.id,
+              attachmentId: attachment.id,
+              key,
+              error,
+            });
+          }
         }
       }
+    }
+
+    if (candidates.length < batchSize) {
+      break;
     }
   }
 

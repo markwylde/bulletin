@@ -137,6 +137,7 @@ export async function renderConversationRoute(
           translate: input.translate,
           conversationId: parsed[1] ?? "",
           attachmentsEnabled: flags.values.attachments === true,
+          mentionsEnabled: flags.values.mentions === true,
         });
 
   if (page === null) {

@@ -1,5 +1,10 @@
-import type { QuotePipeline } from "@bulletin/content";
+import {
+  currentContentVersions,
+  ensureCurrentRendering,
+  type QuotePipeline,
+} from "@bulletin/content";
 import type { SQL } from "bun";
+import { listEmbedProviders } from "../content/embeds.ts";
 import { insertQuoteSnapshot } from "../content/quotes.ts";
 import { can } from "../permissions/can.ts";
 import { memberBanned } from "../permissions/moderator.ts";
@@ -36,6 +41,9 @@ export interface ConversationMessage {
   readonly authorId: string;
   readonly authorName: string | null;
   readonly bodyHtml: string;
+  readonly bodyText: string;
+  readonly renderVersion: number;
+  readonly sanitiserVersion: number;
   readonly createdAt: Date;
 }
 
@@ -180,11 +188,12 @@ export async function readStartUsage(sql: SQL, memberId: string): Promise<StartU
         FROM core.conversation_participants
         WHERE member_id = ${memberId} AND state = 'active'
       ) AS active,
-      (
-        SELECT count(*)::int
-        FROM core.conversations
-        WHERE starter_id = ${memberId}
-          AND created_at >= date_trunc('day', now())
+      COALESCE(
+        (
+          SELECT starts FROM core.conversation_daily_starts
+          WHERE member_id = ${memberId} AND day = current_date
+        ),
+        0
       ) AS started_today,
       date_trunc('day', now()) + interval '1 day' AS resets_at
   `) as Array<{ active: number; started_today: number; resets_at: Date }>;
@@ -194,6 +203,37 @@ export async function readStartUsage(sql: SQL, memberId: string): Promise<StartU
     startedToday: row?.started_today ?? 0,
     resetsAt: row?.resets_at ?? new Date(),
   };
+}
+
+/** Counts one successful start for the member's current day (review finding P2). */
+export async function recordConversationStart(sql: SQL, memberId: string): Promise<void> {
+  await sql`
+    INSERT INTO core.conversation_daily_starts (member_id, day, starts, updated_at)
+    VALUES (${memberId}, current_date, 1, now())
+    ON CONFLICT (member_id, day) DO UPDATE
+      SET starts = core.conversation_daily_starts.starts + 1, updated_at = now()
+  `;
+}
+
+/** True when the message belongs to the conversation and the viewer still participates. */
+export async function isConversationMessageReadable(
+  sql: SQL,
+  conversationId: string,
+  messageId: string,
+  memberId: string,
+): Promise<boolean> {
+  const rows = (await sql`
+    SELECT 1
+    FROM core.conversation_messages msg
+    JOIN core.conversation_participants p
+      ON p.conversation_id = msg.conversation_id
+     AND p.member_id = ${memberId}
+     AND p.state = 'active'
+    WHERE msg.id = ${messageId} AND msg.conversation_id = ${conversationId}
+    LIMIT 1
+  `) as unknown[];
+
+  return rows.length > 0;
 }
 
 export async function insertConversation(
@@ -232,11 +272,14 @@ export async function insertConversationMessage(
     readonly bodyHtml: string;
     readonly bodyText: string;
     readonly lang: SearchConfig;
+    readonly renderVersion: number;
+    readonly sanitiserVersion: number;
   },
 ): Promise<NewConversationMessage> {
   const [row] = (await sql`
     INSERT INTO core.conversation_messages (
-      conversation_id, author_id, body_md, body_html, body_text, lang
+      conversation_id, author_id, body_md, body_html, body_text, lang,
+      render_version, sanitiser_version
     )
     VALUES (
       ${input.conversationId},
@@ -244,7 +287,9 @@ export async function insertConversationMessage(
       ${input.bodyMd},
       ${input.bodyHtml},
       ${input.bodyText},
-      ${input.lang}::regconfig
+      ${input.lang}::regconfig,
+      ${input.renderVersion},
+      ${input.sanitiserVersion}
     )
     RETURNING id::text AS id, created_at
   `) as Array<{ id: string; created_at: Date }>;
@@ -328,6 +373,9 @@ export async function readConversationForParticipant(
       msg.author_id::text AS author_id,
       m.display_name AS author_name,
       msg.body_html,
+      msg.body_text,
+      msg.render_version,
+      msg.sanitiser_version,
       msg.created_at
     FROM core.conversation_messages msg
     JOIN core.conversation_participants viewer
@@ -342,6 +390,9 @@ export async function readConversationForParticipant(
     author_id: string;
     author_name: string | null;
     body_html: string;
+    body_text: string;
+    render_version: number;
+    sanitiser_version: number;
     created_at: Date;
   }>;
 
@@ -373,9 +424,47 @@ export async function readConversationForParticipant(
       authorId: row.author_id,
       authorName: row.author_name,
       bodyHtml: row.body_html,
+      bodyText: row.body_text,
+      renderVersion: row.render_version,
+      sanitiserVersion: row.sanitiser_version,
       createdAt: new Date(row.created_at),
     })),
   };
+}
+
+/** Re-sanitises stored message HTML for a JSON read before it leaves the API (ADR 0007). */
+export async function refreshConversationMessagesForRead(
+  sql: SQL,
+  messages: readonly ConversationMessage[],
+): Promise<readonly ConversationMessage[]> {
+  if (messages.length === 0) {
+    return [];
+  }
+
+  const embedProviders = await listEmbedProviders(sql);
+  const versions = currentContentVersions();
+
+  return Promise.all(
+    messages.map(async (message) => {
+      const current = await ensureCurrentRendering(
+        {
+          bodyHtml: message.bodyHtml,
+          bodyText: message.bodyText,
+          renderVersion: message.renderVersion,
+          sanitiserVersion: message.sanitiserVersion,
+        },
+        { profile: "post", embedProviders },
+      );
+
+      return {
+        ...message,
+        bodyHtml: current.bodyHtml,
+        bodyText: current.bodyText,
+        renderVersion: versions.renderVersion,
+        sanitiserVersion: versions.sanitiserVersion,
+      };
+    }),
+  );
 }
 
 /** Locks the conversation row so a reply, invite and removal cannot interleave. */
@@ -534,6 +623,7 @@ export async function readConversationMessagesAfter(
   conversationId: string,
   memberId: string,
   afterId: string,
+  limit = 100,
 ): Promise<readonly ConversationMessage[]> {
   if (
     !CONVERSATION_ID.test(conversationId) ||
@@ -543,12 +633,16 @@ export async function readConversationMessagesAfter(
     return [];
   }
 
+  const bounded = Math.min(Math.max(Math.trunc(limit), 1), 500);
   const rows = (await sql`
     SELECT
       msg.id::text AS id,
       msg.author_id::text AS author_id,
       m.display_name AS author_name,
       msg.body_html,
+      msg.body_text,
+      msg.render_version,
+      msg.sanitiser_version,
       msg.created_at
     FROM core.conversation_messages msg
     JOIN core.conversation_participants p
@@ -559,12 +653,15 @@ export async function readConversationMessagesAfter(
     WHERE msg.conversation_id = ${conversationId}
       AND msg.id > ${afterId}
     ORDER BY msg.id
-    LIMIT 100
+    LIMIT ${bounded}
   `) as Array<{
     id: string;
     author_id: string;
     author_name: string | null;
     body_html: string;
+    body_text: string;
+    render_version: number;
+    sanitiser_version: number;
     created_at: Date;
   }>;
 
@@ -573,6 +670,9 @@ export async function readConversationMessagesAfter(
     authorId: row.author_id,
     authorName: row.author_name,
     bodyHtml: row.body_html,
+    bodyText: row.body_text,
+    renderVersion: row.render_version,
+    sanitiserVersion: row.sanitiser_version,
     createdAt: new Date(row.created_at),
   }));
 }
@@ -582,11 +682,17 @@ export async function markConversationRead(
   sql: SQL,
   conversationId: string,
   memberId: string,
+  messageId: string | null = null,
 ): Promise<boolean> {
   const rows = (await sql`
     UPDATE core.conversation_participants p
     SET last_read_message_id = COALESCE(
-      (SELECT max(id) FROM core.conversation_messages WHERE conversation_id = ${conversationId}),
+      (
+        SELECT max(id)
+        FROM core.conversation_messages
+        WHERE conversation_id = ${conversationId}
+          AND (${messageId}::bigint IS NULL OR id <= ${messageId}::bigint)
+      ),
       p.last_read_message_id
     )
     WHERE p.conversation_id = ${conversationId}

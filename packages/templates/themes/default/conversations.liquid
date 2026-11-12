@@ -20,7 +20,8 @@
     <details class="bl-card" data-new-conversation>
       <summary class="bl-card__title">{% t "conversation.new" %}</summary>
       <form class="bl-form" data-new-conversation-form
-        data-label-recipient-limit="{% t "conversation.error.recipientLimit" %}"
+        data-label-recipient-limit="{% t "conversation.error.recipientLimit" limit: "__limit__" %}"
+        data-label-manage="{% t "conversation.error.manage" %}"
         data-label-daily-limit="{% t "conversation.error.dailyLimit" %}"
         data-label-quota="{% t "conversation.error.quota" %}"
         data-label-pm-disabled="{% t "conversation.error.pmDisabled" %}"

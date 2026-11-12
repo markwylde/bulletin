@@ -218,3 +218,109 @@ integrationDescribe("conversation inbox and folders", () => {
     }, 300_000);
   }
 });
+
+integrationDescribe("conversation leave controls", () => {
+  test("clicking the leave section checkbox or heading never leaves", async () => {
+    await withPage(
+      {
+        url: USER_URL,
+        viewport: "mobile360",
+        allowConsoleErrors: [/ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/],
+      },
+      async (view) => {
+        await loginAs(view, "member-1");
+        await view.navigate(new URL("/conversations", USER_URL).toString());
+        await waitForSelector(view, '[data-conversations-page][data-conversations-ready="true"]');
+
+        const href = await view.evaluate<string | null>(`(() => {
+          const link = [...document.querySelectorAll("[data-conversation-link]")].find(
+            (element) => element.textContent?.includes("Weekend plans")
+          );
+          return link?.getAttribute("href") ?? null;
+        })()`);
+
+        if (href === null) {
+          throw new Error("Missing the seeded Weekend plans conversation");
+        }
+
+        await view.navigate(new URL(href, USER_URL).toString());
+        await waitForSelector(view, '[data-conversation-page][data-conversation-ready="true"]');
+        const before = await view.evaluate<string>("window.location.href");
+
+        await clickSelector(view, "[data-leave-block]");
+        await clickSelector(view, "[data-conversation-leave] h2");
+        await clickSelector(view, "[data-conversation-leave] label");
+        await Bun.sleep(300);
+
+        expect(await view.evaluate<string>("window.location.href")).toBe(before);
+        await waitForSelector(view, "[data-conversation-page]");
+      },
+    );
+  }, 120_000);
+});
+
+integrationDescribe("conversation error feedback", () => {
+  test("shows the numeric recipient limit when too many members are added", async () => {
+    await withPage(
+      {
+        url: USER_URL,
+        viewport: "mobile360",
+        allowConsoleErrors: [
+          /ERR_INCOMPLETE_CHUNKED_ENCODING.*\/api\/stream/,
+          /400.*\/api\/conversations/,
+        ],
+      },
+      async (view) => {
+        await loginAs(view, "member-1");
+        await view.navigate(new URL("/conversations", USER_URL).toString());
+        await waitForSelector(view, '[data-conversations-page][data-conversations-ready="true"]');
+        await clickSelector(view, "[data-new-conversation] summary");
+        await waitForSelector(view, "[data-new-conversation-form]");
+        await view.evaluate(
+          `document.querySelector('[data-new-conversation-form] bl-island[data-name="Editor"]')?.scrollIntoView({ block: "center" })`,
+        );
+        await waitForSelector(view, '[data-new-conversation-form] [data-editor-ready="true"]');
+        await clickSelector(view, "[data-editor-mode=source]");
+        await waitForSelector(view, "[data-new-conversation-form] [data-editor-source]");
+
+        for (const [index, name] of ["Regular Member Two", "Miembro Español"].entries()) {
+          await setInputValue(view, "#new-conversation-recipient", name);
+          await waitForExpression(
+            view,
+            `[...document.querySelectorAll("[data-recipient-results] [data-suggest-id]")].some(
+              (element) => element.textContent?.includes(${JSON.stringify(name)}) === true
+            )`,
+            20_000,
+          );
+          await view.evaluate(`(() => {
+            const button = [...document.querySelectorAll("[data-recipient-results] [data-suggest-id]")].find(
+              (element) => element.textContent?.includes(${JSON.stringify(name)}) === true
+            );
+            button?.click();
+          })()`);
+          await waitForExpression(
+            view,
+            `document.querySelectorAll("[data-recipient-selected] [data-recipient-selected]").length === ${index + 1}`,
+            20_000,
+          );
+        }
+
+        await setInputValue(view, "#conversation-title", `Recipient limit ${Date.now()}`);
+        await setInputValue(
+          view,
+          "[data-new-conversation-form] [data-editor-source]",
+          "This should be refused.",
+        );
+        await waitForSelector(view, "[data-new-conversation-submit]:not([disabled])");
+        await clickSelector(view, "[data-new-conversation-submit]:not([disabled])");
+        await waitForSelector(view, "[data-form-error]:not([hidden])", 20_000);
+
+        const error = await view.evaluate<string>(
+          'document.querySelector("[data-new-conversation-form] [data-form-error]")?.textContent ?? ""',
+        );
+        expect(error).toContain("1");
+        expect(await view.evaluate<string>("window.location.pathname")).toBe("/conversations");
+      },
+    );
+  }, 180_000);
+});

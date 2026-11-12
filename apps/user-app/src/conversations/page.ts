@@ -1,4 +1,4 @@
-import { readConversationMessageAttachments, readUploadLimits } from "@bulletin/domain/attachments";
+import { readUploadLimits } from "@bulletin/domain/attachments";
 import {
   type ConversationFolder,
   type ConversationSummary,
@@ -13,7 +13,7 @@ import { type SafeHtml, safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { buildEditorView, type EditorView } from "../editor.ts";
 import type { BreadcrumbItem } from "../theme/render.ts";
-import { renderPostAttachments } from "../topics/attachments.ts";
+import { renderConversationMessages } from "./messages.ts";
 
 export interface InboxPageInput {
   readonly sql: SQL;
@@ -62,6 +62,7 @@ export interface InboxPageData {
     readonly conversations: readonly ConversationRowView[];
     readonly searchQuery: string;
     readonly canStart: boolean;
+    readonly recipientLimit: number;
     readonly editor: EditorView | null;
     readonly folderLabel: string;
     readonly emptyText: string;
@@ -99,6 +100,7 @@ export interface ConversationPageData {
     readonly isStarter: boolean;
     readonly archived: boolean;
     readonly canReply: boolean;
+    readonly recipientLimit: number;
     readonly messages: readonly MessageView[];
     readonly participants: readonly DetailParticipantView[];
     readonly editor: EditorView | null;
@@ -222,6 +224,7 @@ export async function buildInboxPage(input: InboxPageInput): Promise<InboxPageDa
       conversations,
       searchQuery: query,
       canStart: policy.canUse && editor !== null,
+      recipientLimit: policy.recipientLimit,
       editor,
       folderLabel: selectedLabel,
       emptyText: searching
@@ -240,6 +243,7 @@ export async function buildConversationPage(input: {
   readonly conversationId: string;
   /** False when the `attachments` flag is off: placeholders and uploads disappear. */
   readonly attachmentsEnabled?: boolean;
+  readonly mentionsEnabled?: boolean;
 }): Promise<ConversationPageData | null> {
   const detail = await readConversationForParticipant(
     input.sql,
@@ -253,13 +257,7 @@ export async function buildConversationPage(input: {
 
   const policy = await readPmPolicy(input.sql, input.memberId);
   const attachmentsEnabled = input.attachmentsEnabled !== false;
-  const [attachmentMap, limits] = await Promise.all([
-    readConversationMessageAttachments(
-      input.sql,
-      detail.messages.map((message) => message.id),
-    ),
-    attachmentsEnabled ? readUploadLimits(input.sql, input.memberId) : Promise.resolve(null),
-  ]);
+  const limits = attachmentsEnabled ? await readUploadLimits(input.sql, input.memberId) : null;
   const canUpload =
     policy.canUse &&
     limits !== null &&
@@ -267,31 +265,28 @@ export async function buildConversationPage(input: {
     limits.perFileBytes > 0 &&
     limits.allowedTypes.length > 0;
   const date = dateFormatter(input.locale);
-  const messages: MessageView[] = detail.messages.map((message) => {
-    const rendered = renderPostAttachments({
-      postId: message.id,
-      ownerKind: "message",
-      html: message.bodyHtml,
-      attachments: attachmentMap.get(message.id) ?? [],
-      locale: input.locale,
-      translate: input.translate,
-      canRemove: false,
-      enabled: attachmentsEnabled,
-    });
-
-    return {
-      id: message.id,
-      authorName: message.authorName ?? input.translate("member.deletedName"),
-      authorHref:
-        message.authorName === null
-          ? null
-          : canonicalUrl("profile", message.authorId, message.authorName),
-      body: safeHtml(rendered.bodyHtml),
-      files: rendered.files,
-      time: date.format(message.createdAt),
-      iso: message.createdAt.toISOString(),
-    };
+  const renderedMessages = await renderConversationMessages({
+    sql: input.sql,
+    conversationId: detail.id,
+    memberId: input.memberId,
+    messages: detail.messages,
+    locale: input.locale,
+    translate: input.translate,
+    attachmentsEnabled,
+    mentionsEnabled: input.mentionsEnabled !== false,
   });
+  const messages: MessageView[] = renderedMessages.map((message) => ({
+    id: message.id,
+    authorName: message.authorName ?? input.translate("member.deletedName"),
+    authorHref:
+      message.authorName === null
+        ? null
+        : canonicalUrl("profile", message.authorId, message.authorName),
+    body: safeHtml(message.bodyHtml),
+    files: message.filesHtml === null ? null : safeHtml(message.filesHtml),
+    time: date.format(message.createdAt),
+    iso: message.createdAt.toISOString(),
+  }));
   const participants: DetailParticipantView[] = detail.participants.map((participant) => ({
     id: participant.id,
     name: participant.displayName ?? input.translate("member.deletedName"),
@@ -327,6 +322,7 @@ export async function buildConversationPage(input: {
       isStarter: detail.viewer.isStarter,
       archived: detail.viewer.folder === "archive",
       canReply: policy.canUse,
+      recipientLimit: policy.recipientLimit,
       messages,
       participants,
       editor,

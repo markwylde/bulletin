@@ -47,7 +47,8 @@
 
   {% if isStarter %}
     <section class="bl-card" data-conversation-manage
-      data-label-recipient-limit="{% t "conversation.error.recipientLimit" %}"
+      data-label-recipient-limit="{% t "conversation.error.recipientLimit" limit: "__limit__" %}"
+      data-label-manage="{% t "conversation.error.manage" %}"
       data-label-recipient-unavailable="{% t "conversation.error.recipientUnavailable" %}"
       data-label-invite-blocked="{% t "conversation.error.inviteBlocked" %}"
       data-label-already-participant="{% t "conversation.error.alreadyParticipant" %}"

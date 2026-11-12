@@ -452,6 +452,44 @@ integrationDescribe("starting a conversation", () => {
     });
   }, 30_000);
 
+  test("cleanup does not restore the daily start allowance", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const first = await memberId(database, "member-2");
+      const second = await memberId(database, "member-es");
+      await setGroupSetting(database, "members", "posting.pm_daily_starts", 1);
+
+      const created = await createConversationResponse(
+        database.sql,
+        session(starter),
+        postRequest({ title: "Counted start", bodyMd: "Body.", recipientIds: [first] }),
+      );
+      expect(created.status).toBe(200);
+      const body = (await created.json()) as { conversationId: string };
+
+      await leaveConversation(database.sql, {
+        actorId: starter,
+        conversationId: body.conversationId,
+      });
+      await leaveConversation(database.sql, {
+        actorId: first,
+        conversationId: body.conversationId,
+      });
+      expect((await runConversationRemoval(database.sql, recordingStorage().storage)).removed).toBe(
+        1,
+      );
+      expect(await conversationCount(database)).toBe(0);
+
+      const afterCleanup = await createConversationResponse(
+        database.sql,
+        session(starter),
+        postRequest({ title: "Should still be limited", bodyMd: "Body.", recipientIds: [second] }),
+      );
+      expect(afterCleanup.status).toBe(429);
+      expect(await afterCleanup.json()).toMatchObject({ code: "daily_limit" });
+    });
+  }, 30_000);
+
   test("rejects a start at the conversation quota", async () => {
     await withSeededDb(async (database) => {
       const starter = await memberId(database, "member-1");
@@ -858,6 +896,53 @@ integrationDescribe("conversation folders and unread tracking", () => {
     });
   }, 30_000);
 
+  test("the read marker can stop at the last rendered message", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+      const reply = await replyToConversation(database.sql, {
+        actorId: recipient,
+        conversationId,
+        bodyMd: "Second message.",
+      });
+      expect(reply.ok).toBe(true);
+      const [first, second] = await conversationMessageIds(database, conversationId);
+
+      const partial = await readConversationResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ messageId: first }),
+      );
+      expect(partial.status).toBe(200);
+      expect(
+        (await readConversationForParticipant(database.sql, conversationId, starter))?.viewer
+          .unreadCount,
+      ).toBe(1);
+
+      const complete = await readConversationResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ messageId: second }),
+      );
+      expect(complete.status).toBe(200);
+      expect(
+        (await readConversationForParticipant(database.sql, conversationId, starter))?.viewer
+          .unreadCount,
+      ).toBe(0);
+
+      const foreign = await readConversationResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ messageId: "999999" }),
+      );
+      expect(foreign.status).toBe(404);
+    });
+  }, 30_000);
+
   test("archive and read refuse non-participants", async () => {
     await withSeededDb(async (database) => {
       const starter = await memberId(database, "member-1");
@@ -1133,6 +1218,122 @@ integrationDescribe("permanent conversation removal", () => {
       expect(await conversationCount(database)).toBe(0);
       expect(recording.deleted).toContain(held.storageKey);
       expect(await storageUsedBytes(database, starter)).toBe(0);
+    });
+  }, 30_000);
+
+  test("deletes quote snapshots for removed messages and keeps them for held messages", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+      const [first] = await conversationMessageIds(database, conversationId);
+
+      const reply = await replyToConversation(database.sql, {
+        actorId: recipient,
+        conversationId,
+        bodyMd: `:::quote{source="message:${first}"}\nquoted text\n:::\n\nA quoted reply.`,
+      });
+      expect(reply.ok).toBe(true);
+      const [snapshotCount] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'message' AND source_id = ${first}
+      `) as Array<{ count: number }>;
+      expect(snapshotCount?.count).toBe(1);
+
+      await leaveConversation(database.sql, { actorId: starter, conversationId });
+      await leaveConversation(database.sql, { actorId: recipient, conversationId });
+      await runConversationRemoval(database.sql, recordingStorage().storage);
+
+      const [after] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'message' AND source_id = ${first}
+      `) as Array<{ count: number }>;
+      expect(after?.count).toBe(0);
+    });
+  }, 30_000);
+
+  test("keeps a held source's quote snapshot until the hold is released", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+      const [first] = await conversationMessageIds(database, conversationId);
+      await database.sql`
+        INSERT INTO core.conversation_message_holds (message_id, holder, ref)
+        VALUES (${first}, 'report', 'quoted')
+      `;
+      const reply = await replyToConversation(database.sql, {
+        actorId: recipient,
+        conversationId,
+        bodyMd: `:::quote{source="message:${first}"}\nquoted text\n:::\n\nStill here.`,
+      });
+      expect(reply.ok).toBe(true);
+
+      await leaveConversation(database.sql, { actorId: starter, conversationId });
+      await leaveConversation(database.sql, { actorId: recipient, conversationId });
+      const recording = recordingStorage();
+      const kept = await runConversationRemoval(database.sql, recording.storage);
+      expect(kept.kept).toBe(1);
+
+      const [heldSnapshot] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'message' AND source_id = ${first}
+      `) as Array<{ count: number }>;
+      expect(heldSnapshot?.count).toBe(1);
+
+      await database.sql`
+        DELETE FROM core.conversation_message_holds
+        WHERE message_id = ${first} AND holder = 'report' AND ref = 'quoted'
+      `;
+      await runConversationRemoval(database.sql, recording.storage);
+
+      const [after] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'message' AND source_id = ${first}
+      `) as Array<{ count: number }>;
+      expect(after?.count).toBe(0);
+    });
+  }, 30_000);
+
+  test("a full first page of held conversations cannot starve later removals", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+
+      for (let index = 0; index < 55; index += 1) {
+        const [conversation] = (await database.sql`
+          INSERT INTO core.conversations (title, starter_id)
+          VALUES (${`Held backlog ${index}`}, ${member})
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+        const [message] = (await database.sql`
+          INSERT INTO core.conversation_messages (
+            conversation_id, author_id, body_md, body_html, body_text
+          )
+          VALUES (${conversation?.id}, ${member}, 'Held body.', '<p>Held body.</p>', 'Held body.')
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+        await database.sql`
+          INSERT INTO core.conversation_message_holds (message_id, holder, ref)
+          VALUES (${message?.id}, 'report', ${`backlog-${index}`})
+        `;
+      }
+
+      const [removable] = (await database.sql`
+        INSERT INTO core.conversations (title, starter_id)
+        VALUES ('Removable after holds', ${member})
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      const result = await runConversationRemoval(database.sql, recordingStorage().storage, {
+        limit: 50,
+      });
+      expect(result.kept).toBe(55);
+      expect(result.removed).toBe(1);
+      const [remaining] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.conversations
+        WHERE id = ${removable?.id}
+      `) as Array<{ count: number }>;
+      expect(remaining?.count).toBe(0);
     });
   }, 30_000);
 

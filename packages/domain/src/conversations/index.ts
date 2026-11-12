@@ -17,6 +17,7 @@ import {
   readStartUsage,
   recipientIgnores,
   recordConversationReply,
+  recordConversationStart,
 } from "./repository.ts";
 
 export * from "./manage.ts";
@@ -158,6 +159,7 @@ export async function startConversation(
         };
       }
 
+      await recordConversationStart(tx, input.actorId);
       const lang = await readMemberSearchConfig(tx, input.actorId);
       const conversation = await insertConversation(tx, {
         title,
@@ -185,6 +187,8 @@ export async function startConversation(
         bodyHtml: rendered.bodyHtml,
         bodyText: rendered.bodyText,
         lang,
+        renderVersion: rendered.renderVersion,
+        sanitiserVersion: rendered.sanitiserVersion,
       });
 
       await syncConversationMessageAttachments(tx, {

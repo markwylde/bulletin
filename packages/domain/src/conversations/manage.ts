@@ -126,6 +126,8 @@ export async function replyToConversation(
         bodyHtml: rendered.bodyHtml,
         bodyText: rendered.bodyText,
         lang,
+        renderVersion: rendered.renderVersion,
+        sanitiserVersion: rendered.sanitiserVersion,
       });
 
       await syncConversationMessageAttachments(tx, {

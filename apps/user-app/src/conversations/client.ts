@@ -1,4 +1,5 @@
 import { clientCsrfToken } from "../csrf.ts";
+import { type ConversationErrorLabels, conversationErrorPresentation } from "./errors.ts";
 
 interface PickedMember {
   readonly id: string;
@@ -31,35 +32,61 @@ function showError(element: Element | null, show: boolean): void {
   }
 }
 
-const ERROR_LABEL_KEYS: Readonly<Record<string, string>> = {
-  recipient_limit: "labelRecipientLimit",
-  daily_limit: "labelDailyLimit",
-  quota_reached: "labelQuota",
-  pm_disabled: "labelPmDisabled",
-  recipient_unavailable: "labelRecipientUnavailable",
-  invite_blocked: "labelInviteBlocked",
-  already_participant: "labelAlreadyParticipant",
-  not_found: "labelNotFound",
-};
+const genericErrors = new WeakMap<Element, string>();
 
-/** Prefer the code-specific translated label from the form, then the template's generic text. */
-async function errorText(
-  response: Response,
-  container: Element | null,
-  fallback: Element | null,
-): Promise<string> {
-  const generic = fallback instanceof HTMLElement ? (fallback.textContent ?? "") : "";
-  const body = (await response.json().catch(() => ({}))) as { readonly code?: string };
-  const key = body.code === undefined ? undefined : ERROR_LABEL_KEYS[body.code];
-  const label = key === undefined ? undefined : (container as HTMLElement | null)?.dataset[key];
-
-  return label ?? generic;
+function rememberGenericErrors(): void {
+  for (const element of document.querySelectorAll(
+    "[data-form-error], [data-invite-error], [data-leave-error], [data-conversation-error]",
+  )) {
+    genericErrors.set(element, element.textContent ?? "");
+  }
 }
 
-function setErrorText(element: Element | null, text: string): void {
-  if (element instanceof HTMLElement) {
-    element.textContent = text;
+function errorLabels(container: Element | null): ConversationErrorLabels {
+  const dataset = (container as HTMLElement | null)?.dataset;
+
+  return {
+    recipientLimit: dataset?.labelRecipientLimit ?? "",
+    dailyLimit: dataset?.labelDailyLimit ?? "",
+    quota: dataset?.labelQuota ?? "",
+    manage: dataset?.labelManage ?? "",
+    pmDisabled: dataset?.labelPmDisabled ?? "",
+    recipientUnavailable: dataset?.labelRecipientUnavailable ?? "",
+    inviteBlocked: dataset?.labelInviteBlocked ?? "",
+    alreadyParticipant: dataset?.labelAlreadyParticipant ?? "",
+    notFound: dataset?.labelNotFound ?? "",
+  };
+}
+
+async function showApiFailure(
+  response: Response,
+  container: Element | null,
+  element: Element | null,
+): Promise<void> {
+  if (!(element instanceof HTMLElement)) {
+    return;
   }
+
+  const body = (await response.json().catch(() => ({}))) as {
+    readonly code?: string;
+    readonly limit?: number;
+  };
+  const presentation = conversationErrorPresentation(body, errorLabels(container));
+  const generic = genericErrors.get(element) ?? element.textContent ?? "";
+
+  element.replaceChildren(
+    document.createTextNode(presentation === null ? generic : presentation.text),
+  );
+
+  if (presentation?.manageUrl !== null && presentation?.manageUrl !== undefined) {
+    const link = document.createElement("a");
+    link.href = presentation.manageUrl;
+    link.textContent = errorLabels(container).manage;
+    link.dataset.conversationManage = "true";
+    element.append(" ", link);
+  }
+
+  showError(element, true);
 }
 
 function buttonsIn(container: Element): readonly HTMLButtonElement[] {
@@ -190,6 +217,8 @@ function setupRecipientPicker(picker: HTMLElement): () => readonly PickedMember[
 
 const pickers = new WeakMap<HTMLElement, () => readonly PickedMember[]>();
 
+rememberGenericErrors();
+
 function pickerFor(container: Element | null): () => readonly PickedMember[] {
   const picker =
     container?.matches("[data-recipient-picker]") === true
@@ -232,8 +261,7 @@ function newConversation(form: HTMLFormElement): void {
     })
       .then(async (response) => {
         if (!response.ok) {
-          setErrorText(error, await errorText(response, form, error));
-          showError(error, true);
+          await showApiFailure(response, form, error);
           return;
         }
 
@@ -271,8 +299,7 @@ function reply(form: HTMLFormElement): void {
     })
       .then(async (response) => {
         if (!response.ok) {
-          setErrorText(error, await errorText(response, form, error));
-          showError(error, true);
+          await showApiFailure(response, form, error);
           return;
         }
 
@@ -385,8 +412,7 @@ function invite(button: HTMLButtonElement): void {
   })
     .then(async (response) => {
       if (!response.ok) {
-        setErrorText(error, await errorText(response, container, error));
-        showError(error, true);
+        await showApiFailure(response, container, error);
         return;
       }
 
@@ -398,8 +424,13 @@ function invite(button: HTMLButtonElement): void {
 
 function markRead(container: HTMLElement): void {
   const conversationId = container.dataset.conversationId ?? "";
+  const messages = [...container.querySelectorAll<HTMLElement>("[data-conversation-message]")];
+  const messageId = messages[messages.length - 1]?.dataset.conversationMessage;
 
-  void postJson(`/api/conversations/${conversationId}/read`, {}).catch(() => undefined);
+  void postJson(
+    `/api/conversations/${conversationId}/read`,
+    messageId === undefined ? {} : { messageId },
+  ).catch(() => undefined);
 }
 
 for (const picker of document.querySelectorAll<HTMLElement>("[data-recipient-picker]")) {
@@ -427,7 +458,7 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const leaveButton = target.closest<HTMLButtonElement>("[data-conversation-leave]");
+  const leaveButton = target.closest<HTMLButtonElement>("button[data-conversation-leave]");
   if (leaveButton !== null) {
     leave(leaveButton);
     return;

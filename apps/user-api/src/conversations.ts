@@ -1,11 +1,11 @@
 import {
   type ConversationParticipantFailure,
   inviteConversationParticipant,
+  isConversationMessageReadable,
   leaveConversation,
   markConversationRead,
   readConversationForParticipant,
-  readConversationMessagesAfter,
-  readParticipation,
+  refreshConversationMessagesForRead,
   removeConversationParticipant,
   replyToConversation,
   type StartConversationFailure,
@@ -96,7 +96,14 @@ export async function conversationResponse(
 ): Promise<Response> {
   const conversation = await readConversationForParticipant(sql, conversationId, session.memberId);
 
-  return conversation === null ? json({ code: "not_found" }, 404) : json(conversation);
+  if (conversation === null) {
+    return json({ code: "not_found" }, 404);
+  }
+
+  return json({
+    ...conversation,
+    messages: await refreshConversationMessagesForRead(sql, conversation.messages),
+  });
 }
 
 function participantFailure(outcome: ConversationParticipantFailure): Response {
@@ -196,28 +203,6 @@ export async function leaveConversationResponse(
   return outcome.ok ? json({ ok: true }) : participantFailure(outcome);
 }
 
-/** `GET /api/conversations/<id>/messages?after=` for the live reply append (task 3.2). */
-export async function conversationMessagesResponse(
-  sql: SQL,
-  session: Session,
-  conversationId: string,
-  url: URL,
-): Promise<Response> {
-  if ((await readParticipation(sql, conversationId, session.memberId)) === null) {
-    return json({ code: "not_found" }, 404);
-  }
-
-  const after = url.searchParams.get("after") ?? "0";
-
-  if (!/^\d+$/.test(after)) {
-    return json({ code: "invalid_request" }, 400);
-  }
-
-  return json({
-    messages: await readConversationMessagesAfter(sql, conversationId, session.memberId, after),
-  });
-}
-
 /** `POST /api/conversations/<id>/archive` with `{archived: boolean}` (task 2.2). */
 export async function archiveConversationResponse(
   sql: SQL,
@@ -242,8 +227,21 @@ export async function readConversationResponse(
   sql: SQL,
   session: Session,
   conversationId: string,
+  request?: Request,
 ): Promise<Response> {
-  const updated = await markConversationRead(sql, conversationId, session.memberId);
+  const body = request === undefined ? null : await bodyRecord(request);
+  const messageId = typeof body?.messageId === "string" ? body.messageId : null;
+
+  if (messageId !== null) {
+    if (
+      !/^\d+$/.test(messageId) ||
+      !(await isConversationMessageReadable(sql, conversationId, messageId, session.memberId))
+    ) {
+      return json({ code: "not_found" }, 404);
+    }
+  }
+
+  const updated = await markConversationRead(sql, conversationId, session.memberId, messageId);
 
   return updated ? json({ ok: true }) : json({ code: "not_found" }, 404);
 }
