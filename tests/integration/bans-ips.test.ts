@@ -720,6 +720,153 @@ integrationDescribe("IP bans and audited lookups", () => {
     });
   }, 60_000);
 
+  test("requires this session's password unlock for every IP lookup path", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const moderator = await memberId(database, "forum-mod");
+      const lockedForum = await forumId(database, "general-discussion");
+      const openForum = await forumId(database, "introductions");
+      const [userSession] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${member}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (userSession === undefined) {
+        throw new Error("Could not create the author session");
+      }
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${userSession.id}, 'forum_password', ${lockedForum})
+      `;
+      const lockedTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: lockedForum,
+          sessionId: userSession.id,
+          title: "Locked forum IP source",
+          bodyMd: "A post behind a password.",
+        }),
+      );
+      const openTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: openForum,
+          title: "Unlocked forum IP source",
+          bodyMd: "A post in an open child forum.",
+        }),
+      );
+      await withRole(database, "user_api", async (sql) => {
+        await recordPostIp(sql, lockedTopic.postId, "203.0.113.130");
+        await recordPostIp(sql, openTopic.postId, "203.0.113.130");
+      });
+
+      const token = await staffToken(database, moderator);
+      const [session] = (await database.sql`
+        SELECT id::text AS id FROM core.sessions WHERE token_hash = ${hashToken(token)}
+      `) as Array<{ id: string }>;
+
+      if (session === undefined) {
+        throw new Error("Could not find the moderator session");
+      }
+
+      // The member-level power reaches both forums, but this session has not unlocked the
+      // password forum, so neither a post-IP nor a reverse-IP grant may open.
+      expect(
+        await openIpAccess(database.sql, {
+          sessionToken: token,
+          purpose: "post_ip",
+          resourceType: "post",
+          resourceId: lockedTopic.postId,
+        }),
+      ).toBeNull();
+      expect(
+        await openIpAccess(database.sql, {
+          sessionToken: token,
+          purpose: "reverse_ip",
+          resourceType: "post",
+          resourceId: lockedTopic.postId,
+        }),
+      ).toBeNull();
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${session.id}, 'forum_password', ${lockedForum})
+      `;
+
+      const postGrant = await openIpAccess(database.sql, {
+        sessionToken: token,
+        purpose: "post_ip",
+        resourceType: "post",
+        resourceId: lockedTopic.postId,
+      });
+      expect(await readPostIp(database.sql, token, postGrant ?? "")).toEqual({
+        ip: "203.0.113.130",
+        expired: false,
+      });
+
+      const reverseGrant = await openIpAccess(database.sql, {
+        sessionToken: token,
+        purpose: "reverse_ip",
+        resourceType: "post",
+        resourceId: lockedTopic.postId,
+      });
+      expect(
+        (await readMembersByIp(database.sql, token, reverseGrant ?? ""))
+          .map((row) => row.forumId)
+          .sort(),
+      ).toEqual([lockedForum, openForum].sort());
+
+      // Open grants while the unlock is live, then expire it before redemption.
+      const pendingPostGrant = await openIpAccess(database.sql, {
+        sessionToken: token,
+        purpose: "post_ip",
+        resourceType: "post",
+        resourceId: lockedTopic.postId,
+      });
+      const pendingReverseGrant = await openIpAccess(database.sql, {
+        sessionToken: token,
+        purpose: "reverse_ip",
+        resourceType: "post",
+        resourceId: lockedTopic.postId,
+      });
+      expect(pendingPostGrant).toBeString();
+      expect(pendingReverseGrant).toBeString();
+
+      await database.sql`
+        UPDATE core.session_grants
+        SET expires_at = now() - interval '1 minute'
+        WHERE session_id = ${session.id} AND kind = 'forum_password'
+      `;
+
+      // Redemption rechecks the session, and reverse lookup filters each result row, so the
+      // password forum disappears while the open child forum stays.
+      expect(await readPostIp(database.sql, token, pendingPostGrant ?? "")).toBeNull();
+      expect(
+        (await readMembersByIp(database.sql, token, pendingReverseGrant ?? "")).map(
+          (row) => row.forumId,
+        ),
+      ).toEqual([openForum]);
+      expect(
+        await openIpAccess(database.sql, {
+          sessionToken: token,
+          purpose: "post_ip",
+          resourceType: "post",
+          resourceId: lockedTopic.postId,
+        }),
+      ).toBeNull();
+      expect(
+        await openIpAccess(database.sql, {
+          sessionToken: token,
+          purpose: "reverse_ip",
+          resourceType: "post",
+          resourceId: lockedTopic.postId,
+        }),
+      ).toBeNull();
+    });
+  }, 60_000);
+
   test("moving a post out of scope after a post-IP grant blocks redemption", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");
