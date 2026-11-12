@@ -22,10 +22,6 @@ async function purgeForumTree(): Promise<void> {
   expect(response.status).toBe(200);
 }
 
-interface Matrix {
-  readonly masks: ReadonlyArray<{ readonly id: string; readonly key: string }>;
-}
-
 /**
  * Saves one guest permission cell through the staff API from the authenticated staff page.
  * The request path must purge the CDN subtree before replying (best effort).

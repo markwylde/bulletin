@@ -12,6 +12,7 @@ import { replyToConversation, startConversation } from "@bulletin/domain/convers
 import { createServerT } from "@bulletin/i18n";
 import { type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import {
   attachmentDownloadCountResponse,
   attachmentRequestResponse,
@@ -88,6 +89,24 @@ function session(memberIdValue: string): {
   readonly sessionId: string;
 } {
   return { memberId: memberIdValue, sessionId: "0" };
+}
+
+/** A second pool that connects as the role user-api uses in production. */
+async function withRole(
+  database: TestDatabase,
+  role: string,
+  run: (sql: SQL) => Promise<void>,
+): Promise<void> {
+  const url = new URL(database.url);
+  url.username = role;
+  url.password = "";
+  const sql = new SQL(url.toString());
+
+  try {
+    await run(sql);
+  } finally {
+    await sql.close();
+  }
 }
 
 function uploadRequest(body: unknown): Request {
@@ -304,6 +323,38 @@ integrationDescribe("conversation attachments", () => {
       });
       expect(previewDenied.status).toBe(403);
       expect(thumbnailKeyFor(attachment.storageKey)).toContain("thumb");
+    });
+  }, 30_000);
+
+  test("a reply with an attachment succeeds under the user_api role", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, starter, recipient);
+      const attachment = await createReadyAttachment(database, recipient);
+
+      await withRole(database, "user_api", async (sql) => {
+        const [identity] = (await sql`SELECT current_user AS role`) as Array<{ role: string }>;
+        expect(identity?.role).toBe("user_api");
+
+        // Linking the upload upserts with `ON CONFLICT DO UPDATE`, which Postgres refuses
+        // without UPDATE even when no row conflicts (review finding P2).
+        const reply = await replyToConversation(sql, {
+          actorId: recipient,
+          conversationId,
+          bodyMd: `See [notes](attachment:${attachment.id}).`,
+        });
+        expect(reply.ok).toBe(true);
+      });
+
+      const [link] = (await database.sql`
+        SELECT message_id::text AS message_id,
+               attachment_id::text AS attachment_id,
+               position
+        FROM core.conversation_message_attachments
+        WHERE attachment_id = ${attachment.id}
+      `) as Array<{ message_id: string; attachment_id: string; position: number }>;
+      expect(link).toMatchObject({ attachment_id: attachment.id, position: 0 });
     });
   }, 30_000);
 });
