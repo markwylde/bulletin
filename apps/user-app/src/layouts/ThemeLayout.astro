@@ -51,12 +51,13 @@ const flagsJson =
     <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {robots === "noindex" ? <meta name="robots" content="noindex" /> : null}
-    <link rel="stylesheet" href="/theme-css" />
     <title>{title}</title>
   </head>
   <body>
     <div set:html={body} />
     <slot />
+    <!-- The theme layer must follow the app's emitted default stylesheet. -->
+    <link rel="stylesheet" href="/theme-css" />
     <script>import "../islands.ts";</script>
     <script>import "../visits.ts";</script>
     <script>import "../realtime/client.ts";</script>

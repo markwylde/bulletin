@@ -469,7 +469,9 @@ export async function readThemeDetail(sql: SQL, themeId: string): Promise<ThemeD
       (left, right) =>
         (parentDepth.get(left.theme_id) ?? 0) - (parentDepth.get(right.theme_id) ?? 0),
     )) {
-      parentByName.set(template.name, { body: template.body, version: template.version });
+      if (!parentByName.has(template.name)) {
+        parentByName.set(template.name, { body: template.body, version: template.version });
+      }
     }
   }
 
@@ -844,8 +846,21 @@ export async function revertThemeTemplate(
     }
 
     const [parent] = (await tx`
-      SELECT 1 FROM core.theme_templates
-      WHERE theme_id = ${theme.parent_id} AND name = ${name}
+      WITH RECURSIVE ancestors AS (
+        SELECT id, parent_id, ARRAY[id] AS path
+        FROM core.themes
+        WHERE id = ${theme.parent_id}
+        UNION ALL
+        SELECT child.id, child.parent_id, ancestor.path || child.id
+        FROM core.themes AS child
+        JOIN ancestors AS ancestor ON child.id = ancestor.parent_id
+        WHERE NOT child.id = ANY(ancestor.path)
+      )
+      SELECT 1
+      FROM core.theme_templates template
+      JOIN ancestors ON ancestors.id = template.theme_id
+      WHERE template.name = ${name}
+      LIMIT 1
     `) as unknown[];
 
     if (parent === undefined) {
@@ -898,7 +913,7 @@ export async function saveThemeTokens(
 
     await tx`
       INSERT INTO core.theme_tokens (theme_id, scheme, tokens, updated_at)
-      VALUES (${theme.id}, ${input.scheme}, ${JSON.stringify(tokens.tokens)}::jsonb, now())
+      VALUES (${theme.id}, ${input.scheme}, ${tokens.tokens}::jsonb, now())
       ON CONFLICT (theme_id, scheme) DO UPDATE
       SET tokens = EXCLUDED.tokens, updated_at = now()
     `;

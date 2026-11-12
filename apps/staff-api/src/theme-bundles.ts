@@ -1,3 +1,4 @@
+import { createPublicKey, type JsonWebKeyInput } from "node:crypto";
 import {
   DEV_THEME_PRIVATE_KEY,
   DEV_THEME_PUBLIC_KEY,
@@ -63,6 +64,30 @@ export function themeSigningKey(): JWK | null {
   }
 
   return process.env.NODE_ENV === "production" ? null : DEV_THEME_PRIVATE_KEY;
+}
+
+/** Public half of the board export key; explicit env wins, otherwise derive from the private key. */
+export function boardPublicKey(): JWK | null {
+  const configured = Bun.env.BULLETIN_THEME_EXPORT_PUBLIC_KEY;
+
+  if (configured !== undefined) {
+    return parseJwk(configured);
+  }
+
+  const privateKey = themeSigningKey();
+
+  if (privateKey === null) {
+    return null;
+  }
+
+  try {
+    return createPublicKey({
+      key: privateKey,
+      format: "jwk",
+    } as JsonWebKeyInput).export({ format: "jwk" }) as JWK;
+  } catch {
+    return null;
+  }
 }
 
 export function marketplacePublicKey(): JWK | null {
@@ -307,7 +332,7 @@ async function install(
         if (Object.keys(manifest.tokens[scheme]).length > 0) {
           await tx`
             INSERT INTO core.theme_tokens (theme_id, scheme, tokens)
-            VALUES (${theme.id}, ${scheme}, ${JSON.stringify(manifest.tokens[scheme])}::jsonb)
+            VALUES (${theme.id}, ${scheme}, ${manifest.tokens[scheme]}::jsonb)
           `;
         }
       }
@@ -351,10 +376,10 @@ export async function installThemeBundle(
   actorId: string,
   bundle: Uint8Array,
   signature: string,
-  publicKey: JWK,
+  trustedKeys: readonly JWK[],
   source: "upload" | "marketplace",
 ): Promise<BundleInstallResult> {
-  if (!verifyThemeBundle(bundle, signature, publicKey)) {
+  if (!trustedKeys.some((key) => verifyThemeBundle(bundle, signature, key))) {
     return { ok: false, code: "invalid_signature" };
   }
 
@@ -480,7 +505,7 @@ export async function installMarketplaceTheme(
     actorId,
     bundle,
     signature.trim(),
-    input.publicKey,
+    [input.publicKey],
     "marketplace",
   );
 }

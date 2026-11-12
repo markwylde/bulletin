@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { defaultThemeSourceHash, syncDefaultTheme } from "@bulletin/db/seed";
-import { loadDefaultThemeTemplates, loadTheme } from "@bulletin/templates";
+import { loadDefaultThemeTemplates, loadDefaultThemeTokens, loadTheme } from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -25,13 +25,16 @@ async function sourceHash(database: TestDatabase): Promise<string | null> {
 integrationDescribe("default theme repository sync", () => {
   test("installs the repository copy and records its hash", async () => {
     await withDb(async (database) => {
-      const templates = await loadDefaultThemeTemplates();
+      const [templates, tokens] = await Promise.all([
+        loadDefaultThemeTemplates(),
+        loadDefaultThemeTokens(),
+      ]);
       const result = await syncDefaultTheme(database.sql);
 
       expect(result).toEqual({
         changed: true,
         version: 1,
-        hash: defaultThemeSourceHash(templates),
+        hash: defaultThemeSourceHash(templates, tokens),
       });
       expect(await sourceHash(database)).toBe(result.hash);
 
@@ -46,6 +49,20 @@ integrationDescribe("default theme repository sync", () => {
       for (const [name, body] of Object.entries(templates)) {
         expect(theme.templates.get(name)?.[0]?.body).toBe(body);
       }
+
+      const [themeRow] = (await database.sql`
+        SELECT source, is_active FROM core.themes WHERE name = 'default'
+      `) as Array<{ source: string; is_active: boolean }>;
+      expect(themeRow).toEqual({ source: "core", is_active: true });
+
+      const tokenRows = (await database.sql`
+        SELECT scheme, tokens->>'accent' AS accent FROM core.theme_tokens
+        WHERE theme_id = (SELECT id FROM core.themes WHERE name = 'default')
+        ORDER BY scheme
+      `) as Array<{ scheme: string; accent: string | null }>;
+      expect(tokenRows).toHaveLength(2);
+      expect(tokenRows[0]?.scheme).toBe("dark");
+      expect(tokenRows[1]?.accent).toBe(tokens.light.accent);
     });
   });
 
@@ -71,7 +88,10 @@ integrationDescribe("default theme repository sync", () => {
   test("a changed repository hash replaces bodies, adds and removes templates", async () => {
     await withDb(async (database) => {
       const installed = await syncDefaultTheme(database.sql);
-      const repo = await loadDefaultThemeTemplates();
+      const [repo, tokens] = await Promise.all([
+        loadDefaultThemeTemplates(),
+        loadDefaultThemeTokens(),
+      ]);
       const footer = `${repo.footer ?? ""}\n<!-- repository change -->`;
       const updated = {
         ...repo,
@@ -105,7 +125,7 @@ integrationDescribe("default theme repository sync", () => {
       expect(restored).toEqual({
         changed: true,
         version: installed.version + 2,
-        hash: defaultThemeSourceHash(repo),
+        hash: defaultThemeSourceHash(repo, tokens),
       });
 
       const after = await loadTheme(database.sql, "default");
@@ -113,6 +133,47 @@ integrationDescribe("default theme repository sync", () => {
       expect(after?.templates.has("extra-template")).toBe(false);
     });
   });
+
+  test("an upgraded default theme is restored to core and active on sync", async () => {
+    await withDb(async (database) => {
+      await syncDefaultTheme(database.sql);
+      await database.sql`
+        UPDATE core.themes SET source = 'custom', is_active = false WHERE name = 'default'
+      `;
+
+      await syncDefaultTheme(database.sql);
+
+      const [row] = (await database.sql`
+        SELECT source, is_active FROM core.themes WHERE name = 'default'
+      `) as Array<{ source: string; is_active: boolean }>;
+      expect(row).toEqual({ source: "core", is_active: true });
+    });
+  }, 60_000);
+
+  test("a token-only repository change bumps the theme and updates storage", async () => {
+    await withDb(async (database) => {
+      const installed = await syncDefaultTheme(database.sql);
+      const [templates, tokens] = await Promise.all([
+        loadDefaultThemeTemplates(),
+        loadDefaultThemeTokens(),
+      ]);
+      const changed = {
+        light: { ...tokens.light, accent: "#112233" },
+        dark: { ...tokens.dark, accent: "#ddeeff" },
+      };
+      const result = await syncDefaultTheme(database.sql, { templates, tokens: changed });
+
+      expect(result.changed).toBe(true);
+      expect(result.version).toBe(installed.version + 1);
+
+      const [row] = (await database.sql`
+        SELECT tokens->>'accent' AS accent FROM core.theme_tokens
+        WHERE scheme = 'light'
+          AND theme_id = (SELECT id FROM core.themes WHERE name = 'default')
+      `) as Array<{ accent: string | null }>;
+      expect(row?.accent).toBe("#112233");
+    });
+  }, 60_000);
 
   test("concurrent startup syncs install the theme once", async () => {
     await withDb(async (database) => {

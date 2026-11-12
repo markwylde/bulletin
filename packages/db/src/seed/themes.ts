@@ -1,9 +1,11 @@
+import type { ThemeTokens } from "@bulletin/templates";
 import {
   DEFAULT_THEME_NAME,
   DEFAULT_THEME_VERSION,
   formatTemplateIssues,
   HOOK_NAMES,
   loadDefaultThemeTemplates,
+  loadDefaultThemeTokens,
   loadDemoHookFragments,
   validateTemplateMarkup,
 } from "@bulletin/templates";
@@ -16,6 +18,8 @@ export const SEEDED_PLUGIN_GENERATION = 1;
 export interface DefaultThemeSource {
   /** Every template the repository version defines, keyed by template name. */
   readonly templates: Readonly<Record<string, string>>;
+  /** The repository token sets; omitted by injected test sources that only change templates. */
+  readonly tokens?: ThemeTokens;
   /** Overrides the computed hash; tests use it to simulate an older or newer repo copy. */
   readonly hash?: string;
 }
@@ -30,7 +34,10 @@ export interface DefaultThemeSyncResult {
  * The repository hash the DB copy records (ADR 0008). Template names and bodies are sorted
  * into one canonical string, so reordering files or touching mtimes never triggers a sync.
  */
-export function defaultThemeSourceHash(templates: Readonly<Record<string, string>>): string {
+export function defaultThemeSourceHash(
+  templates: Readonly<Record<string, string>>,
+  tokens?: ThemeTokens,
+): string {
   const canonical = Object.keys(templates)
     .sort()
     .map((name) => [name, templates[name]]);
@@ -41,13 +48,19 @@ export function defaultThemeSourceHash(templates: Readonly<Record<string, string
         name: DEFAULT_THEME_NAME,
         version: DEFAULT_THEME_VERSION,
         templates: canonical,
+        ...(tokens === undefined ? {} : { tokens }),
       }),
     )
     .digest("hex");
 }
 
 async function repositorySource(): Promise<DefaultThemeSource> {
-  return { templates: await loadDefaultThemeTemplates() };
+  const [templates, tokens] = await Promise.all([
+    loadDefaultThemeTemplates(),
+    loadDefaultThemeTokens(),
+  ]);
+
+  return { templates, tokens };
 }
 
 function validate(templates: Readonly<Record<string, string>>): void {
@@ -66,6 +79,8 @@ interface ExistingTheme {
   readonly id: string;
   readonly version: number;
   readonly source_hash: string | null;
+  readonly source: string;
+  readonly is_active: boolean;
 }
 
 interface ExistingTemplate {
@@ -99,7 +114,7 @@ export async function syncDefaultThemeInTransaction(
 ): Promise<DefaultThemeSyncResult> {
   const resolved = source ?? (await repositorySource());
   validate(resolved.templates);
-  const hash = resolved.hash ?? defaultThemeSourceHash(resolved.templates);
+  const hash = resolved.hash ?? defaultThemeSourceHash(resolved.templates, resolved.tokens);
   const names = Object.keys(resolved.templates).sort();
 
   await tx`SELECT pg_advisory_xact_lock(hashtext('bulletin.theme_sync'))`;
@@ -113,8 +128,8 @@ export async function syncDefaultThemeInTransaction(
 
   if (theme === undefined) {
     const [created] = (await tx`
-      INSERT INTO core.themes (name, version, source_hash, source)
-      VALUES (${DEFAULT_THEME_NAME}, ${DEFAULT_THEME_VERSION}, ${hash}, 'core')
+      INSERT INTO core.themes (name, version, source_hash, source, is_active)
+      VALUES (${DEFAULT_THEME_NAME}, ${DEFAULT_THEME_VERSION}, ${hash}, 'core', true)
       RETURNING id::text AS id, version
     `) as Array<{ id: string; version: number }>;
 
@@ -129,16 +144,26 @@ export async function syncDefaultThemeInTransaction(
       `;
     }
 
+    await syncTokens(tx, created.id, resolved.tokens);
+
     return { changed: true, version: created.version, hash };
   }
 
   if (theme.source_hash === hash) {
+    if (theme.source !== "core" || !theme.is_active) {
+      await tx`
+        UPDATE core.themes SET source = 'core', is_active = true, updated_at = now()
+        WHERE id = ${theme.id}
+      `;
+    }
+
     return { changed: false, version: theme.version, hash };
   }
 
   const [updated] = (await tx`
     UPDATE core.themes
-    SET source_hash = ${hash}, version = version + 1
+    SET source_hash = ${hash}, source = 'core', is_active = true,
+      version = version + 1, updated_at = now()
     WHERE id = ${theme.id}
     RETURNING version
   `) as Array<{ version: number }>;
@@ -172,9 +197,30 @@ export async function syncDefaultThemeInTransaction(
     }
   }
 
+  await syncTokens(tx, theme.id, resolved.tokens);
   await recordVersionHistory(tx, theme.id);
 
   return { changed: true, version: updated.version, hash };
+}
+
+/** Writes the repository's light/dark token sets over the default theme's rows. */
+async function syncTokens(
+  tx: SQL,
+  themeId: string,
+  tokens: ThemeTokens | undefined,
+): Promise<void> {
+  if (tokens === undefined) {
+    return;
+  }
+
+  for (const scheme of ["light", "dark"] as const) {
+    await tx`
+      INSERT INTO core.theme_tokens (theme_id, scheme, tokens, updated_at)
+      VALUES (${themeId}, ${scheme}, ${tokens[scheme]}::jsonb, now())
+      ON CONFLICT (theme_id, scheme) DO UPDATE
+      SET tokens = EXCLUDED.tokens, updated_at = now()
+    `;
+  }
 }
 
 /** Makes every current template row restorable, including the repository's first install. */

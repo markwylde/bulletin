@@ -4,6 +4,7 @@ import {
   clickSelector,
   loginAs,
   setInputValue,
+  waitForExpression,
   waitForSelector,
   withPage,
 } from "@bulletin/test-utils/e2e";
@@ -28,7 +29,12 @@ const PAGES = [
   { path: "/conversations", marker: "[data-conversations-page]", member: true },
 ] as const;
 
-async function selectTheme(view: Bun.WebView, scope: string, name: string): Promise<void> {
+async function selectTheme(
+  view: Bun.WebView,
+  scope: string,
+  name: string,
+  expectedVariant?: string,
+): Promise<void> {
   await view.evaluate(
     `document.querySelector(${JSON.stringify(`${scope} bl-island[data-name="ThemeChooser"]`)})?.scrollIntoView({ block: "center" })`,
   );
@@ -88,7 +94,7 @@ integrationDescribe("seed theme smoke renders", () => {
       const defaultCss = await view.evaluate<string>(
         'fetch("/theme-css").then((response) => response.text())',
       );
-      await selectTheme(view, "[data-theme-footer]", "sunset");
+      await selectTheme(view, "[data-theme-footer]", "sunset", '[data-theme-variant="sunset"]');
       await waitForSelector(view, '[data-theme-footer][data-theme-variant="sunset"]', 20_000);
       const sunset = await view.evaluate<string>(`fetch("/theme-css").then(async (response) => {
         return response.headers.get("cache-control") + "|" + (await response.text());
@@ -96,7 +102,20 @@ integrationDescribe("seed theme smoke renders", () => {
       expect(sunset).toContain("max-age=0");
       expect(sunset).toContain("border-block-start-color");
       expect(sunset).not.toBe(defaultCss);
+      expect(
+        await view.evaluate<string>(
+          'getComputedStyle(document.querySelector("[data-theme-footer]")).borderTopColor',
+        ),
+      ).toMatch(/^rgb\(91, 63, 168\)|rgb\(196, 181, 253\)$/);
       await checkPages(view, false, '[data-theme-variant="sunset"]');
+
+      // The seeded footer keeps the chooser: switch back to the board default.
+      await selectTheme(view, "[data-theme-footer]", "default");
+      await waitForExpression(
+        view,
+        'document.querySelector("[data-theme-footer]")?.hasAttribute("data-theme-variant") === false',
+        20_000,
+      );
     });
   }, 180_000);
 
@@ -104,7 +123,12 @@ integrationDescribe("seed theme smoke renders", () => {
     await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "vip-member");
       await view.navigate(new URL("/account", USER_URL).toString());
-      await selectTheme(view, "[data-appearance-settings]", "vip-gold");
+      await selectTheme(
+        view,
+        "[data-appearance-settings]",
+        "vip-gold",
+        '[data-theme-variant="vip"]',
+      );
       await waitForSelector(view, '[data-theme-footer][data-theme-variant="vip"]', 20_000);
       await checkPages(view, false, '[data-theme-variant="vip"]');
       await checkPages(view, true, '[data-theme-variant="vip"]');

@@ -1,11 +1,13 @@
 import type { SeedModule } from "./framework.ts";
 
 const SUNSET_FOOTER = `<footer class="bl-footer" data-theme-footer data-theme-variant="sunset">
+  {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
   <p class="bl-footer__text">{% t "theme.footer" %} <span data-board-year>{{ year }}</span></p>
 </footer>
 `;
 
 const VIP_FOOTER = `<footer class="bl-footer" data-theme-footer data-theme-variant="vip">
+  {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
   <p class="bl-footer__text">{% t "theme.footer" %} <span data-board-year>{{ year }}</span></p>
 </footer>
 `;
@@ -74,22 +76,22 @@ export const demoThemesSeedModule: SeedModule = {
 
     await sql`
       INSERT INTO core.theme_tokens (theme_id, scheme, tokens)
-      VALUES (${sunset.id}, 'light', ${JSON.stringify({ accent: "#5b3fa8" })}::jsonb)
+      VALUES (${sunset.id}, 'light', ${{ accent: "#5b3fa8" }}::jsonb)
       ON CONFLICT (theme_id, scheme) DO UPDATE SET tokens = EXCLUDED.tokens, updated_at = now()
     `;
     await sql`
       INSERT INTO core.theme_tokens (theme_id, scheme, tokens)
-      VALUES (${sunset.id}, 'dark', ${JSON.stringify({ accent: "#c4b5fd" })}::jsonb)
+      VALUES (${sunset.id}, 'dark', ${{ accent: "#c4b5fd" }}::jsonb)
       ON CONFLICT (theme_id, scheme) DO UPDATE SET tokens = EXCLUDED.tokens, updated_at = now()
     `;
     await sql`
       INSERT INTO core.theme_tokens (theme_id, scheme, tokens)
-      VALUES (${vip.id}, 'light', ${JSON.stringify({ accent: "#8a6500" })}::jsonb)
+      VALUES (${vip.id}, 'light', ${{ accent: "#8a6500" }}::jsonb)
       ON CONFLICT (theme_id, scheme) DO UPDATE SET tokens = EXCLUDED.tokens, updated_at = now()
     `;
     await sql`
       INSERT INTO core.theme_tokens (theme_id, scheme, tokens)
-      VALUES (${vip.id}, 'dark', ${JSON.stringify({ accent: "#f2cf6b" })}::jsonb)
+      VALUES (${vip.id}, 'dark', ${{ accent: "#f2cf6b" }}::jsonb)
       ON CONFLICT (theme_id, scheme) DO UPDATE SET tokens = EXCLUDED.tokens, updated_at = now()
     `;
 

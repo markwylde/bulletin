@@ -169,7 +169,7 @@ integrationDescribe("theme management domain", () => {
         loaded.chain.map((entry) => entry.id),
       );
 
-      expect(resources.tokens.light).toEqual({ accent: "#222222", text: "#000000" });
+      expect(resources.tokens.light).toMatchObject({ accent: "#222222", text: "#000000" });
       expect(resources.css).toBe(":root { --x: 1; }");
       expect(resources.strings.en["theme.footer"]).toBe("Child footer");
       expect(resources.strings.es["theme.footer"]).toBe("Pie del padre");
@@ -251,6 +251,48 @@ integrationDescribe("theme management domain", () => {
       const footer = reverted?.templates.find((entry) => entry.name === "footer");
       expect(footer?.inheritedFrom).toBe("default");
       expect(footer?.parentBody).not.toBeNull();
+    });
+  }, 60_000);
+
+  test("reverts a grandchild override to an inherited parent template", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const middle = await child(database, "middle-theme", admin);
+      const grandchild = await childOf(database, "grandchild-theme", admin, middle);
+      expectOk(
+        await saveThemeTemplate(database.sql, {
+          themeId: middle,
+          name: "footer",
+          body: "<footer>middle footer</footer>",
+          actorId: admin,
+        }),
+      );
+      expectOk(
+        await saveThemeTemplate(database.sql, {
+          themeId: grandchild,
+          name: "footer",
+          body: "<footer>grandchild footer</footer>",
+          actorId: admin,
+        }),
+      );
+
+      const before = await readThemeDetail(database.sql, grandchild);
+      expect(before?.templates.find((entry) => entry.name === "footer")?.parentBody).toBe(
+        "<footer>middle footer</footer>",
+      );
+
+      expectOk(
+        await revertThemeTemplate(database.sql, {
+          themeId: grandchild,
+          name: "footer",
+          actorId: admin,
+        }),
+      );
+
+      const detail = await readThemeDetail(database.sql, grandchild);
+      const footer = detail?.templates.find((entry) => entry.name === "footer");
+      expect(footer?.body).toBe("<footer>middle footer</footer>");
+      expect(footer?.inheritedFrom).toBe("middle-theme");
     });
   }, 60_000);
 

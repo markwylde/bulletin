@@ -23,8 +23,9 @@ import {
   type ThemeBundleManifest,
 } from "@bulletin/domain/themes";
 import type { StorageClient } from "@bulletin/storage";
-import { loadDefaultThemeTemplates, loadTheme } from "@bulletin/templates";
+import { loadDefaultThemeTemplates, loadDefaultThemeTokens, loadTheme } from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { exportJWK, generateKeyPair, type JWK } from "jose";
 import {
   exportThemeBundle,
   installMarketplaceTheme,
@@ -177,7 +178,7 @@ integrationDescribe("theme bundles and distribution", () => {
         admin,
         exported.bundle,
         exported.signature,
-        DEV_THEME_PUBLIC_KEY,
+        [DEV_THEME_PUBLIC_KEY],
         "upload",
       );
 
@@ -202,6 +203,7 @@ integrationDescribe("theme bundles and distribution", () => {
         loaded?.chain.map((entry) => entry.id) ?? [],
       );
       expect(resources.tokens.light.accent).toBe("#123456");
+      expect(resources.tokens.light.text).toBe((await loadDefaultThemeTokens()).light.text);
       expect(resources.strings.en["theme.footer"]).toBe("Round trip footer");
     });
   }, 60_000);
@@ -233,7 +235,7 @@ integrationDescribe("theme bundles and distribution", () => {
           admin,
           bundle,
           "",
-          DEV_THEME_PUBLIC_KEY,
+          [DEV_THEME_PUBLIC_KEY],
           "upload",
         ),
       ).toEqual({ ok: false, code: "invalid_signature" });
@@ -247,7 +249,7 @@ integrationDescribe("theme bundles and distribution", () => {
           admin,
           tampered,
           signature,
-          DEV_THEME_PUBLIC_KEY,
+          [DEV_THEME_PUBLIC_KEY],
           "upload",
         ),
       ).toEqual({ ok: false, code: "invalid_signature" });
@@ -282,7 +284,7 @@ integrationDescribe("theme bundles and distribution", () => {
         admin,
         broken.bundle,
         broken.signature,
-        DEV_THEME_PUBLIC_KEY,
+        [DEV_THEME_PUBLIC_KEY],
         "upload",
       );
 
@@ -306,7 +308,7 @@ integrationDescribe("theme bundles and distribution", () => {
         admin,
         lowContrast.bundle,
         lowContrast.signature,
-        DEV_THEME_PUBLIC_KEY,
+        [DEV_THEME_PUBLIC_KEY],
         "upload",
       );
 
@@ -343,7 +345,7 @@ integrationDescribe("theme bundles and distribution", () => {
         admin,
         bundle.bundle,
         bundle.signature,
-        DEV_THEME_PUBLIC_KEY,
+        [DEV_THEME_PUBLIC_KEY],
         "upload",
       );
 
@@ -397,11 +399,61 @@ integrationDescribe("theme bundles and distribution", () => {
         admin,
         bundle.bundle,
         bundle.signature,
-        DEV_THEME_PUBLIC_KEY,
+        [DEV_THEME_PUBLIC_KEY],
         "upload",
       );
 
       expect(result).toMatchObject({ ok: false, code: "checks_failed" });
+    });
+  }, 60_000);
+
+  test("trusts the board export key alongside the marketplace key", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const storage = storageStub();
+      const boardPair = await generateKeyPair("EdDSA", { extractable: true });
+      const marketPair = await generateKeyPair("EdDSA", { extractable: true });
+      const board = (await exportJWK(boardPair.privateKey)) as JWK;
+      const market = (await exportJWK(marketPair.privateKey)) as JWK;
+      const manifest: ThemeBundleManifest = {
+        format: "bulletin-theme",
+        formatVersion: 1,
+        name: "board-signed-theme",
+        parent: "default",
+        description: "",
+        version: 1,
+        templates: { footer: "<footer>board signed</footer>" },
+        tokens: { light: {}, dark: {} },
+        css: "",
+        strings: [],
+        assets: [],
+      };
+      const bundle = encodeThemeBundle(manifest, new Map());
+      const signature = signThemeBundle(bundle, board);
+
+      expect(
+        await installThemeBundle(
+          database.sql,
+          storage,
+          admin,
+          bundle,
+          signature,
+          [market],
+          "upload",
+        ),
+      ).toEqual({ ok: false, code: "invalid_signature" });
+
+      expect(
+        await installThemeBundle(
+          database.sql,
+          storage,
+          admin,
+          bundle,
+          signature,
+          [market, board],
+          "upload",
+        ),
+      ).toMatchObject({ ok: true });
     });
   }, 60_000);
 

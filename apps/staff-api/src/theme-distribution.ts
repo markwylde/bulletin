@@ -3,6 +3,7 @@ import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
 import {
   type BundleInstallResult,
+  boardPublicKey,
   exportThemeBundle,
   installMarketplaceTheme,
   installThemeBundle,
@@ -115,7 +116,17 @@ export async function importThemeResponse(
     return respond({ code: "invalid_bundle" }, 400);
   }
 
-  const result = await installThemeBundle(sql, storage, actorId, bytes, signature, key, "upload");
+  const boardKey = boardPublicKey();
+  const trustedKeys = boardKey === null || boardKey.x === key.x ? [key] : [key, boardKey];
+  const result = await installThemeBundle(
+    sql,
+    storage,
+    actorId,
+    bytes,
+    signature,
+    trustedKeys,
+    "upload",
+  );
 
   if (!result.ok) {
     return installationFailure(result);
