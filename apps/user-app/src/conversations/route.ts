@@ -70,6 +70,7 @@ export async function renderConversationsRoute(
     locale: input.locale,
     translate: input.translate,
     folder: input.folder,
+    mentionsEnabled: flags.values.mentions === true,
     ...(input.query === undefined ? {} : { query: input.query }),
   });
   const rendered = await renderCachedPage({

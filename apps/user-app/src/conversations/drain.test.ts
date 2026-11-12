@@ -46,4 +46,32 @@ describe("live conversation drain", () => {
 
     expect(result).toEqual({ after: "42", appended: 0 });
   });
+
+  test("retries a transient fetch failure from the last rendered id", async () => {
+    let calls = 0;
+    const rendered: string[] = [];
+
+    const result = await drainLiveMessages({
+      after: "7",
+      async fetchPage(after) {
+        calls += 1;
+
+        if (calls === 1) {
+          return null;
+        }
+
+        expect(after).toBe("7");
+        return { messages: [{ id: "8" }], hasMore: false };
+      },
+      accept(message) {
+        rendered.push(message.id);
+        return true;
+      },
+      wait: async () => {},
+    });
+
+    expect(calls).toBe(2);
+    expect(rendered).toEqual(["8"]);
+    expect(result).toEqual({ after: "8", appended: 1 });
+  });
 });

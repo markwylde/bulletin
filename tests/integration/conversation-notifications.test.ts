@@ -25,6 +25,8 @@ import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { buildNotificationsPage } from "../../apps/user-app/src/account/notifications.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { deliverNotificationEmail } from "../../apps/workers/src/email.ts";
+import type { WorkerFlags } from "../../apps/workers/src/flags.ts";
 import { createNotificationsEventHandler } from "../../apps/workers/src/notifications.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -261,6 +263,57 @@ integrationDescribe("conversation notifications", () => {
 
       expect(entry?.href).toBe(`/conversations/${conversationId}`);
       expect(entry?.text).toContain("Notification conversation");
+    });
+  }, 30_000);
+
+  test("the conversations flag gates creation, display and email delivery", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      await startFixture(database, starter, recipient);
+      const event = await latestEvent(database, "pm.sent");
+      const offFlags: WorkerFlags = {
+        async enabled(key) {
+          return key !== "conversations";
+        },
+      };
+
+      await createNotificationsEventHandler({ sql: database.sql, flags: offFlags })(event);
+      expect(await listNotifications(database.sql, recipient)).toEqual([]);
+
+      await createNotificationsEventHandler({ sql: database.sql })(event);
+      const list = await listNotifications(database.sql, recipient);
+      expect(list).toHaveLength(1);
+
+      const page = await buildNotificationsPage({
+        sql: database.sql,
+        memberId: recipient,
+        sessionId: null,
+        locale: "en",
+        translate: createServerT("en", { shipped: USER_CATALOGS }),
+        conversationsEnabled: false,
+      });
+      expect(page.viewModel.sections.flatMap((section) => section.entries)).toEqual([]);
+      expect(page.viewModel.unreadCount).toBe(0);
+
+      const [intent] = (await database.sql`
+        SELECT id::text AS id FROM core.delivery_intents
+        WHERE member_id = ${recipient} AND kind = 'notification'
+        LIMIT 1
+      `) as Array<{ id: string }>;
+      expect(
+        await deliverNotificationEmail(
+          database.sql,
+          {
+            smtpUrl: "smtp://127.0.0.1:1",
+            mailFrom: "Bulletin <no-reply@bulletin.test>",
+            userOrigin: "http://user.test",
+            unsubscribeSecret: "secret",
+            flags: offFlags,
+          },
+          intent?.id ?? "0",
+        ),
+      ).toBe("skipped");
     });
   }, 30_000);
 });

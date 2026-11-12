@@ -8,6 +8,7 @@ import type {
   ReplaceWords,
 } from "@bulletin/content";
 import {
+  ContentError,
   currentContentVersions,
   refreshStoredHtml,
   renderContent,
@@ -35,6 +36,9 @@ export interface RerenderRow {
   readonly bodyHtml: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;
+  /** Conversation sources only: the context and author needed for a Markdown re-render. */
+  readonly conversationId?: string;
+  readonly authorId?: string;
 }
 
 export interface RenderedContent {
@@ -103,7 +107,7 @@ export interface ContentRerenderSource {
     versions: ContentVersions,
     options: { readonly afterId: string; readonly limit: number },
   ): Promise<readonly RerenderRow[]>;
-  render(row: RerenderRow, options: ContentRenderOptions): Promise<RenderedContent>;
+  render(sql: SQL, row: RerenderRow, options: ContentRenderOptions): Promise<RenderedContent>;
   /** Returns false when the source row changed while it was being rendered. */
   save(sql: SQL, row: RerenderRow, rendered: RenderedContent): Promise<boolean>;
 }
@@ -128,7 +132,7 @@ export const quoteSnapshotRerenderSource: ContentRerenderSource = {
       afterId: options.afterId,
       limit: options.limit,
     }),
-  async render(row, options) {
+  async render(_sql, row, options) {
     const rendered = await renderSnapshot(row.bodyMd, {
       profile: "post",
       context: { kind: "forum_post", forumId: "1" },
@@ -231,7 +235,7 @@ export const forumRulesRerenderSource: ContentRerenderSource = {
       sanitiserVersion: row.rules_sanitiser_version,
     }));
   },
-  async render(row, options) {
+  async render(_sql, row, options) {
     return rendered(
       await renderContent(row.bodyMd, {
         profile: "rules",
@@ -289,7 +293,7 @@ export const announcementRerenderSource: ContentRerenderSource = {
       sanitiserVersion: row.sanitiser_version,
     }));
   },
-  async render(row, options) {
+  async render(_sql, row, options) {
     return rendered(
       await renderContent(row.bodyMd, {
         profile: "rules",
@@ -341,6 +345,8 @@ export const announcementRerenderSource: ContentRerenderSource = {
 /** Every core content table the worker keeps current. */
 interface ConversationMessageRow {
   readonly id: string;
+  readonly conversation_id: string;
+  readonly author_id: string;
   readonly body_md: string;
   readonly body_html: string;
   readonly body_text: string;
@@ -353,7 +359,9 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
   name: "conversation_messages",
   async listStale(sql, versions, options) {
     const rows = (await sql`
-      SELECT id::text AS id, body_md, body_html, body_text, render_version, sanitiser_version
+      SELECT id::text AS id, conversation_id::text AS conversation_id,
+        author_id::text AS author_id, body_md, body_html, body_text,
+        render_version, sanitiser_version
       FROM core.conversation_messages
       WHERE id > ${options.afterId}
         AND (
@@ -370,22 +378,115 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
       bodyHtml: row.body_html,
       renderVersion: row.render_version,
       sanitiserVersion: row.sanitiser_version,
+      conversationId: row.conversation_id,
+      authorId: row.author_id,
     }));
   },
-  async render(row, options) {
-    const refreshed = await refreshStoredHtml(row.bodyHtml, {
-      profile: "post",
-      ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
-      ...(options.embeds === undefined ? {} : { embedProviders: options.embeds }),
-    });
+  async render(sql, row, options) {
     const versions = currentContentVersions(options.replaceWords);
+    const quotePipeline = {
+      resolver: {
+        async canRead(ref: { readonly kind: string; readonly id: string }): Promise<boolean> {
+          if (ref.kind !== "message" || row.conversationId === undefined) {
+            return false;
+          }
 
-    return {
-      bodyHtml: refreshed.bodyHtml,
-      bodyText: refreshed.bodyText,
-      renderVersion: versions.renderVersion,
-      sanitiserVersion: versions.sanitiserVersion,
+          const found = (await sql`
+            SELECT 1
+            FROM core.conversation_messages source
+            JOIN core.quote_snapshots snapshot
+              ON snapshot.source_kind = 'message' AND snapshot.source_id = source.id
+            WHERE source.id = ${ref.id}
+              AND source.conversation_id = ${row.conversationId}
+            LIMIT 1
+          `) as unknown[];
+
+          return found.length > 0;
+        },
+        async load(ref: { readonly kind: string; readonly id: string }) {
+          if (ref.kind !== "message" || row.conversationId === undefined) {
+            return null;
+          }
+
+          const [source] = (await sql`
+            SELECT id::text AS id, author_id::text AS author_id, body_md,
+              conversation_id::text AS conversation_id
+            FROM core.conversation_messages
+            WHERE id = ${ref.id} AND conversation_id = ${row.conversationId}
+          `) as Array<{
+            id: string;
+            author_id: string;
+            body_md: string;
+            conversation_id: string;
+          }>;
+
+          return source === undefined
+            ? null
+            : {
+                ref: { kind: "message" as const, id: source.id },
+                sourceAuthorId: source.author_id,
+                bodyMd: source.body_md,
+                contextId: source.conversation_id,
+              };
+        },
+      },
+      snapshots: {
+        async create(draft: { readonly sourceKind: string; readonly sourceId: string }) {
+          const [existing] = (await sql`
+            SELECT id::text AS id
+            FROM core.quote_snapshots
+            WHERE source_kind = ${draft.sourceKind} AND source_id = ${draft.sourceId}
+            ORDER BY id
+            LIMIT 1
+          `) as Array<{ id: string }>;
+
+          if (existing === undefined) {
+            throw new Error("A quote snapshot disappeared during re-render");
+          }
+
+          return existing.id;
+        },
+      },
     };
+
+    try {
+      const rendered = await renderContent(row.bodyMd, {
+        profile: "post",
+        context: {
+          kind: "conversation_message",
+          conversationId: row.conversationId ?? "0",
+        },
+        authorId: row.authorId ?? "0",
+        ...renderInputs(options),
+        quotes: quotePipeline as never,
+      });
+
+      return {
+        bodyHtml: rendered.bodyHtml,
+        bodyText: rendered.bodyText,
+        renderVersion: rendered.renderVersion,
+        sanitiserVersion: rendered.sanitiserVersion,
+      };
+    } catch (error) {
+      if (!(error instanceof ContentError)) {
+        throw error;
+      }
+
+      // A quoted source that was removed while a held message survived keeps its stored
+      // placeholder HTML; a refresh still applies the current sanitiser (ADR 0007).
+      const refreshed = await refreshStoredHtml(row.bodyHtml, {
+        profile: "post",
+        ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+        ...(options.embeds === undefined ? {} : { embedProviders: options.embeds }),
+      });
+
+      return {
+        bodyHtml: refreshed.bodyHtml,
+        bodyText: refreshed.bodyText,
+        renderVersion: versions.renderVersion,
+        sanitiserVersion: versions.sanitiserVersion,
+      };
+    }
   },
   async save(sql, row, value) {
     const rows = (await sql`
@@ -499,7 +600,7 @@ export async function runContentRerenderJob(
 
       for (const row of rows) {
         // The row id advances only after its write, so the cursor never skips a failure.
-        const value = await source.render(row, await renderOptions());
+        const value = await source.render(sql, row, await renderOptions());
         const saved = await source.save(sql, row, value);
         cursor = row.id;
 

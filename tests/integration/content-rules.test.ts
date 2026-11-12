@@ -225,7 +225,7 @@ integrationDescribe("rules and announcements through the pipeline", () => {
         WHERE id = ${forum.id}
       `;
 
-      const rendered = await forumRulesRerenderSource.render(stale, {});
+      const rendered = await forumRulesRerenderSource.render(database.sql, stale, {});
       const saved = await forumRulesRerenderSource.save(database.sql, stale, rendered);
       expect(saved).toBe(false);
 

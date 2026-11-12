@@ -641,6 +641,8 @@ export async function listNotifications(
     readonly offset?: number;
     readonly tree?: ForumTree;
     readonly snapshot?: PermissionSnapshot;
+    /** False hides conversation notifications when the conversations flag is off. */
+    readonly conversationsEnabled?: boolean;
   } = {},
 ): Promise<readonly NotificationEntry[]> {
   const limit = options.limit ?? 100;
@@ -681,6 +683,7 @@ export async function listNotifications(
       WHERE n.member_id = ${memberId}
         AND (n.post_id IS NULL OR p.visibility = 'visible')
         AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+        AND (${options.conversationsEnabled !== false} OR n.type <> 'conversation.message')
         AND (
           n.conversation_id IS NULL
           OR EXISTS (
@@ -758,7 +761,11 @@ export async function listNotifications(
 export async function unreadNotificationCount(
   sql: SQL,
   memberId: string,
-  options: { readonly tree?: ForumTree; readonly snapshot?: PermissionSnapshot } = {},
+  options: {
+    readonly tree?: ForumTree;
+    readonly snapshot?: PermissionSnapshot;
+    readonly conversationsEnabled?: boolean;
+  } = {},
 ): Promise<number> {
   const rows = (await sql`
     SELECT t.forum_id::text AS forum_id, count(*)::int AS count
@@ -769,6 +776,7 @@ export async function unreadNotificationCount(
       AND n.read_at IS NULL
       AND (n.post_id IS NULL OR p.visibility = 'visible')
       AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+      AND (${options.conversationsEnabled !== false} OR n.type <> 'conversation.message')
       AND (
         n.conversation_id IS NULL
         OR EXISTS (

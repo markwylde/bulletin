@@ -7,7 +7,6 @@ import type { SQL } from "bun";
 import { listEmbedProviders } from "../content/embeds.ts";
 import { insertQuoteSnapshot } from "../content/quotes.ts";
 import { can } from "../permissions/can.ts";
-import { memberBanned } from "../permissions/moderator.ts";
 import { type GroupSettingValue, mergeGroupSettings } from "../permissions/registry.ts";
 import { loadMemberGroups } from "../permissions/store.ts";
 import { isIgnoring } from "../relationships/repository.ts";
@@ -135,7 +134,7 @@ export async function readPmPolicy(sql: SQL, memberId: string): Promise<PmPolicy
   ]);
 
   return {
-    canUse: pmAllowed && sendAllowed && !memberBanned(groups, settings),
+    canUse: pmAllowed && sendAllowed,
     recipientLimit: numberSetting(settings, "posting.pm_recipients", 1),
     dailyLimit: numberSetting(settings, "posting.pm_daily_starts", 20),
     quota: numberSetting(settings, "posting.pm_quota", 0),

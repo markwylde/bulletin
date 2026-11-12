@@ -200,7 +200,9 @@ export async function deliverNotificationEmail(
 
     if (
       options.flags !== undefined &&
-      !(await options.flags.enabled("notifications", row.memberId))
+      (!(await options.flags.enabled("notifications", row.memberId)) ||
+        (row.type === "conversation.message" &&
+          !(await options.flags.enabled("conversations", row.memberId))))
     ) {
       return "skipped";
     }

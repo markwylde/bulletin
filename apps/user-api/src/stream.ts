@@ -221,7 +221,9 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
 
       const readNotifications = async (): Promise<void> => {
         const [count, latest] = await Promise.all([
-          unreadNotificationCount(sql, session.memberId),
+          unreadNotificationCount(sql, session.memberId, {
+            conversationsEnabled: options.conversationsEnabled !== false,
+          }),
           maxNotificationId(sql, session.memberId),
         ]);
 

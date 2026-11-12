@@ -204,6 +204,15 @@ export async function can(
     const capability = CAPABILITY_SETTINGS[action];
     const enabled = settings[capability.key] === true;
 
+    if (action === "use_pm" || action === "send_pm") {
+      // The Banned group is the board's hard sender restriction; keep it inside can() so no
+      // caller re-implements the ban check (ADR 0005).
+      const groups = await loadMemberGroups(sql, principal);
+      if (groups.some((group) => group.key === "banned")) {
+        return false;
+      }
+    }
+
     return capability.allows ? enabled : !enabled;
   }
 

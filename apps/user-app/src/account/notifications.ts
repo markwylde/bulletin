@@ -16,6 +16,8 @@ export interface NotificationsPageInput {
   readonly translate: Translator;
   /** One-based; page size is fixed so the query is bounded. */
   readonly page?: number;
+  /** False hides conversation entries when the conversations flag is off. */
+  readonly conversationsEnabled?: boolean;
 }
 
 export interface NotificationRow {
@@ -149,9 +151,12 @@ export async function buildNotificationsPage(
   const pageEntries = await listNotifications(input.sql, input.memberId, {
     limit: NOTIFICATIONS_PAGE_SIZE + 1,
     offset: (page - 1) * NOTIFICATIONS_PAGE_SIZE,
+    conversationsEnabled: input.conversationsEnabled !== false,
   });
   const entries = pageEntries.slice(0, NOTIFICATIONS_PAGE_SIZE);
-  const unreadCount = await unreadNotificationCount(input.sql, input.memberId);
+  const unreadCount = await unreadNotificationCount(input.sql, input.memberId, {
+    conversationsEnabled: input.conversationsEnabled !== false,
+  });
   const title = input.translate("notifications.title");
   const now = new Date();
   const dayStart = new Date(now);
@@ -164,6 +169,10 @@ export async function buildNotificationsPage(
   ]);
 
   for (const entry of entries) {
+    if (entry.type === "conversation.message" && input.conversationsEnabled === false) {
+      continue;
+    }
+
     const key = sectionKey(entry.updatedAt, dayStart, weekStart);
     const href =
       entry.conversationId !== null

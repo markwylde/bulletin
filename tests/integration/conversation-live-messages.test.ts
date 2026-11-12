@@ -21,7 +21,10 @@ import { SQL } from "bun";
 import { conversationResponse } from "../../apps/user-api/src/conversations.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { loadLiveConversationMessages } from "../../apps/user-app/src/conversations/live.ts";
-import { buildConversationPage } from "../../apps/user-app/src/conversations/page.ts";
+import {
+  buildConversationPage,
+  buildInboxPage,
+} from "../../apps/user-app/src/conversations/page.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -281,8 +284,9 @@ integrationDescribe("live conversation message rendering", () => {
       `) as Array<{ id: string }>;
       await database.sql`
         UPDATE core.conversation_messages
-        SET body_html = '<p>worker safe</p><script>alert(1)</script>',
-            body_text = 'worker safe',
+        SET body_md = '**worker bold**',
+            body_html = '<p>old html</p><script>alert(1)</script>',
+            body_text = 'worker bold',
             render_version = 1,
             sanitiser_version = 1
         WHERE id = ${message?.id}
@@ -304,7 +308,89 @@ integrationDescribe("live conversation message rendering", () => {
         WHERE id = ${message?.id}
       `) as Array<{ body_html: string; render_version: number }>;
       expect(saved?.body_html).not.toContain("<script");
+      expect(saved?.body_html).toContain("<strong>worker bold</strong>");
       expect(saved?.render_version).toBe(currentContentVersions().renderVersion);
+    });
+  }, 30_000);
+
+  test("both conversation editors use the viewer's mentions flag", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, starter, recipient);
+
+      const detail = await buildConversationPage({
+        sql: database.sql,
+        memberId: starter,
+        locale: "en",
+        translate,
+        conversationId,
+        mentionsEnabled: false,
+      });
+      const inbox = await buildInboxPage({
+        sql: database.sql,
+        memberId: starter,
+        locale: "en",
+        translate,
+        folder: "inbox",
+        mentionsEnabled: false,
+      });
+
+      expect(detail?.editor?.flags.mentions).toBe(false);
+      expect(inbox.editor?.flags.mentions).toBe(false);
+    });
+  }, 30_000);
+
+  test("the worker preserves an already-authorised quote reference", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, starter, recipient);
+      const [first] = (await database.sql`
+        SELECT id::text AS id FROM core.conversation_messages
+        WHERE conversation_id = ${conversationId} ORDER BY id LIMIT 1
+      `) as Array<{ id: string }>;
+      const reply = await replyToConversation(database.sql, {
+        actorId: recipient,
+        conversationId,
+        bodyMd: `:::quote{source="message:${first?.id}"}\nquoted text\n:::\n\nReply with quote.`,
+      });
+      expect(reply.ok).toBe(true);
+
+      const [message] = (await database.sql`
+        SELECT id::text AS id FROM core.conversation_messages
+        WHERE conversation_id = ${conversationId} ORDER BY id DESC LIMIT 1
+      `) as Array<{ id: string }>;
+      await database.sql`
+        UPDATE core.conversation_messages
+        SET body_html = '<p>old quote html</p>', render_version = 1, sanitiser_version = 1
+        WHERE id = ${message?.id}
+      `;
+      const [before] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'message' AND source_id = ${first?.id}
+      `) as Array<{ count: number }>;
+
+      const worker = new SQL(roleUrl(database.url, "workers"));
+
+      try {
+        await runContentRerenderJob(worker, {
+          sources: [conversationMessageRerenderSource],
+        });
+      } finally {
+        await worker.close();
+      }
+
+      const [saved] = (await database.sql`
+        SELECT body_html FROM core.conversation_messages WHERE id = ${message?.id}
+      `) as Array<{ body_html: string }>;
+      expect(saved?.body_html).toContain('data-source-kind="message"');
+      expect(saved?.body_html).not.toContain("quoted text");
+      const [after] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'message' AND source_id = ${first?.id}
+      `) as Array<{ count: number }>;
+      expect(after?.count).toBe(before?.count);
     });
   }, 30_000);
 });

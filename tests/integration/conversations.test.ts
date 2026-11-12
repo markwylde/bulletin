@@ -25,6 +25,7 @@ import {
   searchConversations,
   startConversation,
 } from "@bulletin/domain/conversations";
+import { can } from "@bulletin/domain/permissions";
 import { insertIgnore } from "@bulletin/domain/relationships";
 import { createServerT } from "@bulletin/i18n";
 import { type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
@@ -348,6 +349,7 @@ integrationDescribe("starting a conversation", () => {
     await withSeededDb(async (database) => {
       const banned = await memberId(database, "banned-member");
       const recipient = await memberId(database, "member-1");
+      expect(await can(database.sql, banned, "use_pm")).toBe(false);
 
       const response = await createConversationResponse(
         database.sql,

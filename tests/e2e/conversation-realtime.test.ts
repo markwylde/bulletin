@@ -103,6 +103,8 @@ integrationDescribe("live conversation replies", () => {
         const messagesBefore = await view.evaluate<number>(
           'document.querySelectorAll("[data-conversation-message]").length',
         );
+        const sentinel = `sentinel-${Date.now()}`;
+        await view.evaluate(`window.__bulletinConversationSentinel = ${JSON.stringify(sentinel)}`);
 
         await replyAsMemberTwo(conversationId, replyText);
 

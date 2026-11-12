@@ -23,6 +23,8 @@ export interface InboxPageInput {
   readonly folder: ConversationFolder;
   /** Present when the member searched their own conversations (task 2.3). */
   readonly query?: string;
+  /** The viewer's evaluated `mentions` flag for the editor island. */
+  readonly mentionsEnabled?: boolean;
 }
 
 export interface ConversationRowView {
@@ -196,7 +198,7 @@ export async function buildInboxPage(input: InboxPageInput): Promise<InboxPageDa
     policy.canUse && input.folder !== "archive"
       ? await buildEditorView(input.sql, input.translate, {
           contextKey: `conversation:new`,
-          mentions: true,
+          mentions: input.mentionsEnabled !== false,
           attachments: false,
           name: "bodyMd",
           forumId: "",
@@ -295,7 +297,7 @@ export async function buildConversationPage(input: {
   const editor = policy.canUse
     ? await buildEditorView(input.sql, input.translate, {
         contextKey: `conversation:reply:${detail.id}`,
-        mentions: true,
+        mentions: input.mentionsEnabled !== false,
         attachments: attachmentsEnabled,
         name: "bodyMd",
         forumId: "",

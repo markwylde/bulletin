@@ -592,9 +592,10 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         reactionPosts,
       );
       const viewerVotes = await readViewerVotes(options.sql, session.memberId, reactionPosts);
-      const [ignoreEnabled, signaturesEnabled] = await Promise.all([
+      const [ignoreEnabled, signaturesEnabled, conversationsEnabled] = await Promise.all([
         options.featureEnabled?.("ignore_list", session.memberId) ?? Promise.resolve(true),
         options.featureEnabled?.("signatures", session.memberId) ?? Promise.resolve(true),
+        options.featureEnabled?.("conversations", session.memberId) ?? Promise.resolve(true),
       ]);
       const payload = {
         ctx,
@@ -612,6 +613,7 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
           notifications: await unreadNotificationCount(options.sql, session.memberId, {
             tree,
             snapshot,
+            conversationsEnabled,
           }),
           // Conversations arrive with the `conversations` change.
           conversations: 0,

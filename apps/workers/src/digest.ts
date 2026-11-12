@@ -125,11 +125,14 @@ export async function deliverDigestEmail(
 
     const locale = localeOf(row.locale);
     const translate = createServerT(locale, { shipped: WORKER_CATALOGS });
-    const items = await digestItems(tx, row.member_id, {
+    const rawItems = await digestItems(tx, row.member_id, {
       since: new Date(row.period_start),
       until: new Date(row.period_end),
       limit: 20,
     });
+    const conversationsEnabled =
+      options.flags === undefined || (await options.flags.enabled("conversations", row.member_id));
+    const items = rawItems.filter((item) => item.kind !== "conversation" || conversationsEnabled);
 
     if (items.length === 0) {
       await finish();

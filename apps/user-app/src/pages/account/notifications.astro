@@ -29,6 +29,7 @@ const page = enabled ? await buildNotificationsPage({
     sessionId: session.sessionId,
     locale,
     translate,
+    conversationsEnabled: flags.values.conversations === true,
     ...(requestedPage === undefined ? {} : { page: requestedPage }),
   }) : null;
 const notFound = enabled

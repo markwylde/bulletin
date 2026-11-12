@@ -94,6 +94,13 @@ export async function eligibleRecipients(
       ) {
         continue;
       }
+
+      if (
+        recipient.type === "conversation.message" &&
+        !(await options.flags.enabled("conversations", recipient.memberId))
+      ) {
+        continue;
+      }
     }
 
     if (await memberIsActive(options.sql, recipient.memberId)) {
