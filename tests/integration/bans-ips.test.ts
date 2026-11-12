@@ -840,14 +840,11 @@ integrationDescribe("IP bans and audited lookups", () => {
         WHERE session_id = ${session.id} AND kind = 'forum_password'
       `;
 
-      // Redemption rechecks the session, and reverse lookup filters each result row, so the
-      // password forum disappears while the open child forum stays.
+      // Redemption rechecks the session for the source post as well as every returned row, so
+      // the reverse lookup returns nothing once the source forum's unlock expires: its IP is
+      // no longer a key the actor may use, even for matching posts in the open forum.
       expect(await readPostIp(database.sql, token, pendingPostGrant ?? "")).toBeNull();
-      expect(
-        (await readMembersByIp(database.sql, token, pendingReverseGrant ?? "")).map(
-          (row) => row.forumId,
-        ),
-      ).toEqual([openForum]);
+      expect(await readMembersByIp(database.sql, token, pendingReverseGrant ?? "")).toEqual([]);
       expect(
         await openIpAccess(database.sql, {
           sessionToken: token,
@@ -864,6 +861,81 @@ integrationDescribe("IP bans and audited lookups", () => {
           resourceId: lockedTopic.postId,
         }),
       ).toBeNull();
+    });
+  }, 60_000);
+
+  test("reverse lookups revalidate the source post before using its IP", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const moderator = await memberId(database, "forum-mod");
+      const scopes = await ipScopeForums(database, member, moderator);
+      const source = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: scopes.source,
+          title: "Reverse source",
+          bodyMd: "The post whose IP keys the lookup.",
+        }),
+      );
+      const witness = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: scopes.source,
+          title: "Reverse witness",
+          bodyMd: "Shares the source address and stays in scope.",
+        }),
+      );
+      await withRole(database, "user_api", async (sql) => {
+        await recordPostIp(sql, source.postId, "203.0.113.140");
+        await recordPostIp(sql, witness.postId, "203.0.113.140");
+      });
+
+      const token = await staffToken(database, moderator);
+      const openSourceGrant = async (): Promise<string | null> =>
+        openIpAccess(database.sql, {
+          sessionToken: token,
+          purpose: "reverse_ip",
+          resourceType: "post",
+          resourceId: source.postId,
+        });
+      const postIds = async (grant: string | null): Promise<string[]> =>
+        (await readMembersByIp(database.sql, token, grant ?? "")).map((row) => row.postId);
+
+      // With the source in scope its address correlates to the witness post.
+      expect(await postIds(await openSourceGrant())).toContain(witness.postId);
+
+      // Moving the source post to a forum the moderator cannot view-IPs revokes the use of its
+      // address, even though the witness post itself is still in scope.
+      const movedGrant = await openSourceGrant();
+      expect(movedGrant).toBeString();
+      await database.sql`
+        UPDATE core.topics SET forum_id = ${scopes.outside} WHERE id = ${source.topicId}
+      `;
+      expect(await postIds(movedGrant)).toEqual([]);
+      await database.sql`
+        UPDATE core.topics SET forum_id = ${scopes.source} WHERE id = ${source.topicId}
+      `;
+
+      // A source post older than the IP retention window may not key a lookup either.
+      const agedGrant = await openSourceGrant();
+      expect(agedGrant).toBeString();
+      await database.sql`
+        UPDATE core.posts SET created_at = now() - interval '120 days' WHERE id = ${source.postId}
+      `;
+      expect(await postIds(agedGrant)).toEqual([]);
+      await database.sql`
+        UPDATE core.posts SET created_at = now() WHERE id = ${source.postId}
+      `;
+
+      // Revoking the moderator's view-IPs power closes an outstanding reverse grant.
+      const revokedGrant = await openSourceGrant();
+      expect(revokedGrant).toBeString();
+      await database.sql`
+        UPDATE core.moderators
+        SET powers = array_remove(powers, 'view_ips')
+        WHERE member_id = ${moderator}
+      `;
+      expect(await postIds(revokedGrant)).toEqual([]);
     });
   }, 60_000);
 
