@@ -161,6 +161,164 @@ async function savePostContent(
   });
 }
 
+export interface GuardedReplyInput {
+  /** The member whose posting restrictions, filters and approval state apply. */
+  readonly actorId: string;
+  /** The member credited on the post; a multi-moderation step may pin a service member. */
+  readonly authorId: string;
+  readonly topicId: string;
+  readonly forumId: string;
+  readonly bodyMd: string;
+  readonly tree: ForumTree;
+  readonly sessionId: string | null;
+  readonly options?: PostWriteOptions;
+  readonly autoFollow?: boolean;
+}
+
+export interface GuardedReplyResult {
+  readonly postId: string;
+  readonly position: number;
+  readonly createdAt: Date;
+  readonly held: boolean;
+}
+
+/**
+ * The one guarded reply write (warnings, posting restrictions, filters and approval). Callers
+ * already hold the topic lock and pass their own transaction, so a multi-moderation reply is
+ * held or rejected together with the rest of the action's steps.
+ */
+export async function writeGuardedReply(
+  tx: SQL,
+  input: GuardedReplyInput,
+): Promise<GuardedReplyResult> {
+  for (const memberId of new Set([input.actorId, input.authorId])) {
+    const blocked = await postingBlockedByWarning(tx, memberId);
+
+    if (blocked !== null) {
+      reject(blocked);
+    }
+  }
+
+  const linkPolicy = await readLinkPolicy(tx, input.actorId);
+  const links = countContentLinks(input.bodyMd);
+  const images = countContentImages(input.bodyMd);
+  const linkViolation =
+    !linkPolicy.exempt &&
+    ((linkPolicy.maxLinks > 0 && links > linkPolicy.maxLinks) ||
+      (!linkPolicy.imagesAllowed && images > 0));
+
+  if (linkViolation && linkPolicy.action === "reject") {
+    reject("too_many_links");
+  }
+
+  let filterReason: string | null = linkViolation ? "link_limit" : null;
+  let rendered: RenderResult;
+
+  try {
+    rendered = await savePostContent(tx, {
+      bodyMd: input.bodyMd,
+      authorId: input.authorId,
+      forumId: input.forumId,
+      tree: input.tree,
+      sessionId: input.sessionId,
+      options: input.options ?? {},
+    });
+  } catch (error) {
+    if (
+      error instanceof ContentError &&
+      (error.code === "blocked_word" || error.code === "too_many_links")
+    ) {
+      reject(error.code);
+    }
+
+    throw error;
+  }
+
+  const spam = await evaluateSpam(tx, {
+    authorId: input.actorId,
+    bodyText: rendered.bodyText,
+    bodyMd: rendered.bodyMd,
+    hash: bodyHash(rendered.bodyText),
+  });
+
+  if (spam.rule !== null) {
+    filterReason = spam.rule;
+  }
+
+  const approval = await decideApproval(tx, {
+    actorId: input.actorId,
+    forumId: input.forumId,
+    content: { kind: "post", filterFlagged: filterReason !== null },
+    tree: input.tree,
+    sessionId: input.sessionId,
+  });
+  const hold = approval.hold || filterReason !== null;
+  const holdReason = filterReason ?? approval.reason;
+  const post = await insertPost(tx, {
+    topicId: input.topicId,
+    authorId: input.authorId,
+    bodyMd: rendered.bodyMd,
+    bodyHtml: rendered.bodyHtml,
+    ...(rendered.bodyHtmlUnfiltered === undefined
+      ? {}
+      : { bodyHtmlUnfiltered: rendered.bodyHtmlUnfiltered }),
+    bodyText: rendered.bodyText,
+    renderVersion: rendered.renderVersion,
+    sanitiserVersion: rendered.sanitiserVersion,
+    quotedForumIds: rendered.quotedForumIds,
+    mentionedMemberIds: rendered.mentionedMemberIds,
+    quotedPostIds: rendered.quoteSources
+      .filter((source) => source.kind === "post")
+      .map((source) => source.id),
+    visibility: hold ? "unapproved" : "visible",
+    holdReason,
+  });
+
+  await syncPostAttachments(tx, {
+    postId: post.id,
+    authorId: input.actorId,
+    forumId: input.forumId,
+    sessionId: input.sessionId,
+    bodyHtml: rendered.bodyHtml,
+  });
+
+  await recordDuplicate(tx, input.actorId, bodyHash(rendered.bodyText));
+
+  await recordReply(tx, {
+    topicId: input.topicId,
+    forumId: input.forumId,
+    postId: post.id,
+    authorId: input.authorId,
+    createdAt: post.createdAt,
+    visible: !hold,
+  });
+
+  if (!hold) {
+    await emit(tx, {
+      type: "post.created",
+      aggregateId: BigInt(post.id),
+      aggregateVersion: 1n,
+      payloadIds: {
+        postId: BigInt(post.id),
+        topicId: BigInt(input.topicId),
+        forumId: BigInt(input.forumId),
+        authorId: BigInt(input.authorId),
+      },
+    });
+  }
+
+  if (input.autoFollow !== false) {
+    await autoFollowTopic(tx, input.actorId, input.topicId);
+  }
+
+  return {
+    postId: post.id,
+    position: post.position,
+    createdAt: post.createdAt,
+    held: hold,
+  };
+}
+
 export async function startTopic(
   sql: SQL,
   input: StartTopicInput,
@@ -538,128 +696,22 @@ export async function reply(
           reject("locked");
         }
 
-        const blocked = await postingBlockedByWarning(tx, input.actorId);
-
-        if (blocked !== null) {
-          reject(blocked);
-        }
-
-        const linkPolicy = await readLinkPolicy(tx, input.actorId);
-        const links = countContentLinks(bodyMd);
-        const images = countContentImages(bodyMd);
-        const linkViolation =
-          !linkPolicy.exempt &&
-          ((linkPolicy.maxLinks > 0 && links > linkPolicy.maxLinks) ||
-            (!linkPolicy.imagesAllowed && images > 0));
-
-        if (linkViolation && linkPolicy.action === "reject") {
-          reject("too_many_links");
-        }
-
-        let filterReason: string | null = linkViolation ? "link_limit" : null;
-        let rendered: RenderResult;
-
-        try {
-          rendered = await savePostContent(tx, {
-            bodyMd,
-            authorId: input.actorId,
-            forumId: current.forumId,
-            tree,
-            sessionId: input.sessionId ?? null,
-            options,
-          });
-        } catch (error) {
-          if (
-            error instanceof ContentError &&
-            (error.code === "blocked_word" || error.code === "too_many_links")
-          ) {
-            reject(error.code);
-          }
-
-          throw error;
-        }
-
-        const spam = await evaluateSpam(tx, {
-          authorId: input.actorId,
-          bodyText: rendered.bodyText,
-          bodyMd: rendered.bodyMd,
-          hash: bodyHash(rendered.bodyText),
-        });
-
-        if (spam.rule !== null) {
-          filterReason = spam.rule;
-        }
-
-        const approval = await decideApproval(tx, {
+        const written = await writeGuardedReply(tx, {
           actorId: input.actorId,
+          authorId: input.actorId,
+          topicId: current.id,
           forumId: current.forumId,
-          content: { kind: "post", filterFlagged: filterReason !== null },
+          bodyMd,
           tree: freshTree,
           sessionId: input.sessionId ?? null,
+          options,
+          ...(input.autoFollow === undefined ? {} : { autoFollow: input.autoFollow }),
         });
-        const hold = approval.hold || filterReason !== null;
-        const holdReason = filterReason ?? approval.reason;
-        const post = await insertPost(tx, {
-          topicId: current.id,
-          authorId: input.actorId,
-          bodyMd: rendered.bodyMd,
-          bodyHtml: rendered.bodyHtml,
-          ...(rendered.bodyHtmlUnfiltered === undefined
-            ? {}
-            : { bodyHtmlUnfiltered: rendered.bodyHtmlUnfiltered }),
-          bodyText: rendered.bodyText,
-          renderVersion: rendered.renderVersion,
-          sanitiserVersion: rendered.sanitiserVersion,
-          quotedForumIds: rendered.quotedForumIds,
-          mentionedMemberIds: rendered.mentionedMemberIds,
-          quotedPostIds: rendered.quoteSources
-            .filter((source) => source.kind === "post")
-            .map((source) => source.id),
-          visibility: hold ? "unapproved" : "visible",
-          holdReason,
-        });
-
-        await syncPostAttachments(tx, {
-          postId: post.id,
-          authorId: input.actorId,
-          forumId: current.forumId,
-          sessionId: input.sessionId ?? null,
-          bodyHtml: rendered.bodyHtml,
-        });
-
-        await recordDuplicate(tx, input.actorId, bodyHash(rendered.bodyText));
-
-        await recordReply(tx, {
-          topicId: current.id,
-          forumId: current.forumId,
-          postId: post.id,
-          authorId: input.actorId,
-          createdAt: post.createdAt,
-          visible: !hold,
-        });
-
-        if (!hold) {
-          await emit(tx, {
-            type: "post.created",
-            aggregateId: BigInt(post.id),
-            aggregateVersion: 1n,
-            payloadIds: {
-              postId: BigInt(post.id),
-              topicId: BigInt(current.id),
-              forumId: BigInt(current.forumId),
-              authorId: BigInt(input.actorId),
-            },
-          });
-        }
-        // Replying follows the topic unless the member turned auto-follow off.
-        if (input.autoFollow !== false) {
-          await autoFollowTopic(tx, input.actorId, current.id);
-        }
 
         return {
           topicId: current.id,
-          postId: post.id,
-          position: post.position,
+          postId: written.postId,
+          position: written.position,
           forumIds: forumChain(tree, current.forumId),
           memberIds: [input.actorId],
         } satisfies TopicWriteResult;

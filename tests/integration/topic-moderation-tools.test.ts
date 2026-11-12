@@ -1252,6 +1252,95 @@ Holder body.`,
     });
   }, 60_000);
 
+  test("a suspended moderator cannot publish a multi-moderation reply", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Suspended multi-mod topic",
+          bodyMd: "Opening.",
+        }),
+      );
+      const definition = expectOk(
+        await saveMultimodAction(database.sql, admin, {
+          name: `Suspended reply ${Date.now()}`,
+          forumIds: [forum],
+          steps: [{ type: "reply", bodyMd: "This must not publish", authorId: null }],
+        }),
+      );
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${admin}, 'cannot_post', now() + interval '1 day')
+      `;
+
+      expect(
+        await applyMultimod(database.sql, {
+          actorId: admin,
+          actionId: definition.id,
+          topicId: topic.topicId,
+        }),
+      ).toEqual({ ok: false, code: "posting_suspended" });
+
+      const posts = (await database.sql`
+        SELECT 1 FROM core.posts WHERE body_md = 'This must not publish'
+      `) as unknown[];
+      expect(posts).toHaveLength(0);
+    });
+  }, 60_000);
+
+  test("a multi-moderation reply is held when the moderator needs approval", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const admin = await memberId(database, "admin");
+      const moderator = await memberId(database, "super-mod");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Held multi-mod topic",
+          bodyMd: "Opening.",
+        }),
+      );
+      const definition = expectOk(
+        await saveMultimodAction(database.sql, admin, {
+          name: `Held reply ${Date.now()}`,
+          forumIds: [forum],
+          steps: [{ type: "reply", bodyMd: "Held macro reply", authorId: null }],
+        }),
+      );
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${moderator}, 'posts_require_approval', now() + interval '1 day')
+      `;
+
+      expectOk(
+        await applyMultimod(database.sql, {
+          actorId: moderator,
+          actionId: definition.id,
+          topicId: topic.topicId,
+        }),
+      );
+
+      const [post] = (await database.sql`
+        SELECT id::text AS id, visibility, hold_reason
+        FROM core.posts WHERE body_md = 'Held macro reply'
+      `) as Array<{ id: string; visibility: string; hold_reason: string | null }>;
+      expect(post).toMatchObject({ visibility: "unapproved", hold_reason: "warning" });
+
+      const [row] = (await database.sql`
+        SELECT reply_count, last_post_id::text AS last_post_id
+        FROM core.topics WHERE id = ${topic.topicId}
+      `) as Array<{ reply_count: number; last_post_id: string | null }>;
+      expect(row).toEqual({ reply_count: 0, last_post_id: topic.postId });
+      expect(post?.id).not.toBe(topic.postId);
+    });
+  }, 60_000);
+
   test("rejects a reply step author who is not a service member", async () => {
     await withSeededDb(async (database) => {
       const forum = await forumId(database, "off-topic");

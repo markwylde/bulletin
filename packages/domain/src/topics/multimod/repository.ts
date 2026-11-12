@@ -1,31 +1,26 @@
-import { saveContent } from "@bulletin/content";
 import type { SQL } from "bun";
-import { loadContentRenderDependencies } from "../../content/rendering.ts";
-import { emit } from "../../events/outbox.ts";
 import { writeModerationLog } from "../../moderation/log/repository.ts";
 import { runMutation } from "../../mutations/index.ts";
 import { multimodApplyMutation } from "../../mutations/topics.ts";
 import { can } from "../../permissions/can.ts";
 import { loadForumTree } from "../../permissions/tree-store.ts";
 import { slugify } from "../../urls/index.ts";
+import { writeGuardedReply } from "../posting.ts";
 import {
   adjustForumPostCount,
   adjustForumTopicCount,
-  createPostQuotePipeline,
-  insertPost,
   loadForumTarget,
   loadTopicForWrite,
   lockTopicForWrite,
   moveTopicRow,
   prefixEnabledForForum,
-  recordReply,
   recountTopic,
   refreshForumLastPost,
   setTopicLocked,
   setTopicPinned,
   visiblePostCount,
 } from "../repository.ts";
-import type { TopicMutationOutcome } from "../result.ts";
+import { rejectOutcome, type TopicMutationOutcome } from "../result.ts";
 
 export type MultimodStep =
   | { readonly type: "move"; readonly forumId: string }
@@ -507,47 +502,17 @@ export async function applyMultimod(
           } else {
             const authorId = step.authorId ?? input.actorId;
             memberIds.push(authorId);
-            const dependencies = await loadContentRenderDependencies(tx);
-            const rendered = await saveContent(step.bodyMd, {
-              profile: "post",
-              context: { kind: "forum_post", forumId: currentForumId },
+            // The same guarded path as a normal reply: suspension/filters/approval apply
+            // before the multi-moderation reply becomes visible.
+            await writeGuardedReply(tx, {
+              actorId: input.actorId,
               authorId,
-              emoticons: dependencies.emoticons,
-              mentions: dependencies.mentions,
-              embeds: dependencies.embeds,
-              quotes: createPostQuotePipeline(tx, freshTree, input.sessionId ?? null),
-            });
-            const post = await insertPost(tx, {
-              topicId: topic.id,
-              authorId,
-              bodyMd: rendered.bodyMd,
-              bodyHtml: rendered.bodyHtml,
-              bodyText: rendered.bodyText,
-              renderVersion: rendered.renderVersion,
-              sanitiserVersion: rendered.sanitiserVersion,
-              quotedForumIds: rendered.quotedForumIds,
-              mentionedMemberIds: rendered.mentionedMemberIds,
-              quotedPostIds: rendered.quoteSources
-                .filter((source) => source.kind === "post")
-                .map((source) => source.id),
-            });
-            await recordReply(tx, {
               topicId: topic.id,
               forumId: currentForumId,
-              postId: post.id,
-              authorId,
-              createdAt: post.createdAt,
-            });
-            await emit(tx, {
-              type: "post.created",
-              aggregateId: BigInt(post.id),
-              aggregateVersion: 1n,
-              payloadIds: {
-                postId: BigInt(post.id),
-                topicId: BigInt(topic.id),
-                forumId: BigInt(currentForumId),
-                authorId: BigInt(authorId),
-              },
+              bodyMd: step.bodyMd,
+              tree: freshTree,
+              sessionId: input.sessionId ?? null,
+              autoFollow: false,
             });
           }
         }
@@ -574,6 +539,12 @@ export async function applyMultimod(
 
     return { ok: true, result };
   } catch (error) {
+    const rejected = rejectOutcome(error);
+
+    if (rejected !== null) {
+      return rejected;
+    }
+
     if (error instanceof Error && error.message === "topic_not_found") {
       return { ok: false, code: "topic_not_found" };
     }
