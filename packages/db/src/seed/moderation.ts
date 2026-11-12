@@ -1,5 +1,6 @@
 import { renderContent } from "@bulletin/content";
 import { loadReplaceWords } from "@bulletin/domain/filters";
+import { textSearchConfig } from "@bulletin/domain/search";
 import type { SQL } from "bun";
 import type { SeedModule } from "./framework.ts";
 
@@ -74,12 +75,12 @@ async function seedHeldPost(
   );
   const [topic] = (await sql`
     INSERT INTO core.topics (
-      forum_id, title, slug, starter_id, visibility, hold_reason, created_at, updated_at
+      forum_id, title, slug, starter_id, visibility, hold_reason, lang, created_at, updated_at
     )
     VALUES (
       ${forumId}, 'New member introduction awaiting approval',
       'new-member-introduction-awaiting-approval', ${authorId}, 'unapproved', 'new_member',
-      now() - interval '2 days', now() - interval '2 days'
+      ${textSearchConfig("en")}::regconfig, now() - interval '2 days', now() - interval '2 days'
     )
     RETURNING id::text AS id
   `) as Array<{ id: string }>;
@@ -91,12 +92,13 @@ async function seedHeldPost(
   const [post] = (await sql`
     INSERT INTO core.posts (
       topic_id, author_id, body_md, body_html, body_text, render_version,
-      sanitiser_version, visibility, hold_reason, position, created_at
+      sanitiser_version, visibility, hold_reason, position, lang, created_at
     )
     VALUES (
       ${topic.id}, ${authorId}, ${rendered.bodyMd}, ${rendered.bodyHtml},
       ${rendered.bodyText}, ${rendered.renderVersion}, ${rendered.sanitiserVersion},
-      'unapproved', 'new_member', 1, now() - interval '2 days'
+      'unapproved', 'new_member', 1, ${textSearchConfig("en")}::regconfig,
+      now() - interval '2 days'
     )
     RETURNING id::text AS id
   `) as Array<{ id: string }>;

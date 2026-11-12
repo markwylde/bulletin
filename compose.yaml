@@ -22,7 +22,7 @@ x-app-environment: &app-environment
   # Local-only defaults (ADR 0002). packages/config rejects them in production.
   SESSION_SECRET: bulletin-development-only-session-secret
   SEED: "42"
-  SEED_SIZE: default
+  SEED_SIZE: "${SEED_SIZE:-default}"
 
 x-depends-on-postgres: &depends-on-postgres
   postgres:

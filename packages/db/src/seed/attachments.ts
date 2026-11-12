@@ -4,6 +4,7 @@ import {
   processAttachmentBytes,
   processAvatarImage,
 } from "@bulletin/domain/attachments/processing";
+import { textSearchConfig } from "@bulletin/domain/search";
 import { slugify } from "@bulletin/domain/urls";
 import {
   attachmentKey,
@@ -197,9 +198,12 @@ async function seedTopic(
   });
   const createdAt = new Date(Date.now() - 30 * 60 * 1_000);
   const [topic] = (await sql`
-    INSERT INTO core.topics (forum_id, title, slug, starter_id, created_at, updated_at)
+    INSERT INTO core.topics (
+      forum_id, title, slug, starter_id, lang, created_at, updated_at
+    )
     VALUES (
-      ${forum}, ${input.title}, ${slugify(input.title)}, ${author}, ${createdAt}, ${createdAt}
+      ${forum}, ${input.title}, ${slugify(input.title)}, ${author},
+      ${textSearchConfig("en")}::regconfig, ${createdAt}, ${createdAt}
     )
     RETURNING id::text AS id
   `) as Array<{ id: string }>;
@@ -211,12 +215,12 @@ async function seedTopic(
   const [post] = (await sql`
     INSERT INTO core.posts (
       topic_id, author_id, body_md, body_html, body_text, render_version,
-      sanitiser_version, position, created_at
+      sanitiser_version, position, lang, created_at
     )
     VALUES (
       ${topic.id}, ${author}, ${rendered.bodyMd}, ${rendered.bodyHtml},
       ${rendered.bodyText}, ${rendered.renderVersion}, ${rendered.sanitiserVersion},
-      1, ${createdAt}
+      1, ${textSearchConfig("en")}::regconfig, ${createdAt}
     )
     RETURNING id::text AS id
   `) as Array<{ id: string }>;

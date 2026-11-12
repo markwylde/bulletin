@@ -1,4 +1,5 @@
 import { renderContent } from "@bulletin/content";
+import { textSearchConfig } from "@bulletin/domain/search";
 import { slugify } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
 import type { SeedModule } from "./framework.ts";
@@ -146,11 +147,12 @@ export const topicsSeedModule: SeedModule = {
       const createdAt = new Date(start + topicIndex * 45 * 60 * 1_000);
       const [topic] = (await sql`
         INSERT INTO core.topics (
-          forum_id, title, slug, starter_id, pinned, locked, created_at, updated_at
+          forum_id, title, slug, starter_id, lang, pinned, locked, created_at, updated_at
         )
         VALUES (
           ${forumId}, ${seed.title}, ${slugify(seed.title)}, ${starterId},
-          ${seed.pinned ?? false}, ${seed.locked ?? false}, ${createdAt}, ${createdAt}
+          ${textSearchConfig("en")}::regconfig, ${seed.pinned ?? false}, ${seed.locked ?? false},
+          ${createdAt}, ${createdAt}
         )
         RETURNING id::text AS id
       `) as Array<{ id: string }>;
@@ -184,12 +186,12 @@ export const topicsSeedModule: SeedModule = {
         const [row] = (await sql`
           INSERT INTO core.posts (
             topic_id, author_id, body_md, body_html, body_text, render_version,
-            sanitiser_version, position, created_at
+            sanitiser_version, position, lang, created_at
           )
           VALUES (
             ${topic.id}, ${authorId}, ${rendered.bodyMd}, ${rendered.bodyHtml},
             ${rendered.bodyText}, ${rendered.renderVersion}, ${rendered.sanitiserVersion},
-            ${index + 1}, ${postedAt}
+            ${index + 1}, ${textSearchConfig("en")}::regconfig, ${postedAt}
           )
           RETURNING id::text AS id
         `) as Array<{ id: string }>;

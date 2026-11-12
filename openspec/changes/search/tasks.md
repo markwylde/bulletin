@@ -19,9 +19,9 @@
 
 ## 4. Performance, strings and seed
 
-- [ ] 4.1 Benchmark search on the `SEED_SIZE=large` dataset (p95 < 300 ms for common queries), and record the results
-- [ ] 4.2 Add en/es/fr strings for search UI and errors; verify completeness
-- [ ] 4.3 Make sure seeded content in all three languages is searchable, and verify a sample query per language after `docker compose up --watch`
+- [x] 4.1 Benchmark search on the `SEED_SIZE=large` dataset (p95 < 300 ms for common queries), and record the results
+- [x] 4.2 Add en/es/fr strings for search UI and errors; verify completeness
+- [x] 4.3 Make sure seeded content in all three languages is searchable, and verify a sample query per language after `docker compose up --watch`
 
 ## 5. Route contracts
 

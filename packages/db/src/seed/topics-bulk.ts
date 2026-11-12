@@ -5,6 +5,7 @@ import {
   listEmbedProviders,
   listRenderEmoticons,
 } from "@bulletin/domain/content";
+import { textSearchConfig } from "@bulletin/domain/search";
 import { slugify } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
 import type { SeedContext } from "./framework.ts";
@@ -295,10 +296,11 @@ export async function seedBulkTopics(
     const locked = index % 67 === 0;
     const [topic] = (await sql`
       INSERT INTO core.topics (
-        forum_id, title, slug, starter_id, pinned, locked, created_at, updated_at
+        forum_id, title, slug, starter_id, lang, pinned, locked, created_at, updated_at
       )
       VALUES (
-        ${forum.id}, ${title}, ${slug}, ${starterId}, ${pinned}, ${locked},
+        ${forum.id}, ${title}, ${slug}, ${starterId},
+        ${textSearchConfig(locale)}::regconfig, ${pinned}, ${locked},
         ${createdAt}, ${createdAt}
       )
       RETURNING id::text AS id
@@ -351,13 +353,13 @@ export async function seedBulkTopics(
       const [row] = (await sql`
         INSERT INTO core.posts (
           topic_id, author_id, body_md, body_html, body_text, render_version,
-          sanitiser_version, position, visibility, created_at, edited_at, edited_by
+          sanitiser_version, position, visibility, lang, created_at, edited_at, edited_by
         )
         VALUES (
           ${topic.id}, ${authorId}, ${rendering.bodyMd}, ${rendering.bodyHtml},
           ${rendering.bodyText}, ${rendering.renderVersion}, ${rendering.sanitiserVersion},
-          ${position + 1}, ${visibility}, ${postedAt}, ${editedAt},
-          ${edited ? authorId : null}
+          ${position + 1}, ${visibility}, ${textSearchConfig(locale)}::regconfig,
+          ${postedAt}, ${editedAt}, ${edited ? authorId : null}
         )
         RETURNING id::text AS id
       `) as Array<{ id: string }>;
