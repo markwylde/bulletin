@@ -1,7 +1,11 @@
 import type { QuotePipeline, QuoteSource, QuoteSourceRef } from "@bulletin/content";
 import type { SQL } from "bun";
 import { restartOrphanClock } from "../attachments/store.ts";
-import { findQuoteSnapshotBySource, insertQuoteSnapshot } from "../content/quotes.ts";
+import {
+  findQuoteSnapshotBySource,
+  insertQuoteSnapshot,
+  loadQuoteSnapshot,
+} from "../content/quotes.ts";
 import type { ForumAction, ModeratorPower } from "../permissions/actions.ts";
 import { can } from "../permissions/can.ts";
 import { loadMergedGroupSettings } from "../permissions/store.ts";
@@ -893,19 +897,36 @@ export function createPostQuotePipeline(
  * of re-validating the source (ADR 0007). A filter change must still rebuild the surrounding
  * Markdown when a quoted post was deleted or became unreadable; read-time quote resolution
  * rechecks access for the viewer anyway.
+ *
+ * The stored HTML is the only place each quoting post records which snapshot it referenced:
+ * one source may have several snapshots after edits, and a re-render must not silently swap
+ * in the earliest one.
  */
-export function createPostRerenderQuotePipeline(sql: SQL): QuotePipeline {
+export function createPostRerenderQuotePipeline(sql: SQL, storedBodyHtml?: string): QuotePipeline {
+  const storedSnapshots = storedQuoteSnapshotIds(storedBodyHtml);
+
   return {
     resolver: {
       async canRead(ref: QuoteSourceRef): Promise<boolean> {
-        return ref.kind === "post" && (await findQuoteSnapshotBySource(sql, ref)) !== null;
+        if (ref.kind !== "post") {
+          return false;
+        }
+
+        return (
+          storedSnapshots.has(`${ref.kind}:${ref.id}`) ||
+          (await findQuoteSnapshotBySource(sql, ref)) !== null
+        );
       },
       async load(ref: QuoteSourceRef): Promise<QuoteSource | null> {
         if (ref.kind !== "post") {
           return null;
         }
 
-        const snapshot = await findQuoteSnapshotBySource(sql, ref);
+        const snapshotId = storedSnapshots.get(`${ref.kind}:${ref.id}`);
+        const snapshot =
+          snapshotId === undefined
+            ? await findQuoteSnapshotBySource(sql, ref)
+            : await loadQuoteSnapshot(sql, snapshotId);
 
         if (snapshot === null) {
           return null;
@@ -928,6 +949,12 @@ export function createPostRerenderQuotePipeline(sql: SQL): QuotePipeline {
     },
     snapshots: {
       async create(draft): Promise<string> {
+        const storedId = storedSnapshots.get(`${draft.sourceKind}:${draft.sourceId}`);
+
+        if (storedId !== undefined) {
+          return storedId;
+        }
+
         const snapshot = await findQuoteSnapshotBySource(sql, {
           kind: "post",
           id: draft.sourceId,
@@ -941,4 +968,32 @@ export function createPostRerenderQuotePipeline(sql: SQL): QuotePipeline {
       },
     },
   };
+}
+
+/** Snapshot IDs already stored in a post's HTML, keyed by source kind and ID. */
+function storedQuoteSnapshotIds(html: string | undefined): ReadonlyMap<string, string> {
+  const snapshots = new Map<string, string>();
+
+  if (html === undefined) {
+    return snapshots;
+  }
+
+  for (const match of html.matchAll(/<bl-quote\b[^>]*>/gi)) {
+    const tag = match[0];
+    const kind = /\bdata-source-kind="(post|message)"/i.exec(tag)?.[1];
+    const source = /\bdata-source="(\d+)"/i.exec(tag)?.[1];
+    const snapshot = /\bdata-snapshot="(\d+)"/i.exec(tag)?.[1];
+
+    if (kind === undefined || source === undefined || snapshot === undefined) {
+      continue;
+    }
+
+    const key = `${kind}:${source}`;
+
+    if (!snapshots.has(key)) {
+      snapshots.set(key, snapshot);
+    }
+  }
+
+  return snapshots;
 }

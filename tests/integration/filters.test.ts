@@ -511,6 +511,82 @@ integrationDescribe("content filters", () => {
     });
   }, 60_000);
 
+  test("a re-render keeps the snapshot each quoting post references", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const source = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Multi-snapshot source",
+          bodyMd: "The original source body.",
+        }),
+      );
+      const first = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "First quotation",
+          bodyMd: `:::quote{source="post:${source.postId}"}\nfirst\n:::`,
+        }),
+      );
+
+      expectOk(
+        await editPost(database.sql, {
+          actorId: member,
+          postId: source.postId,
+          bodyMd: "The edited source body.",
+        }),
+      );
+      const second = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Second quotation",
+          bodyMd: `:::quote{source="post:${source.postId}"}\nsecond\n:::`,
+        }),
+      );
+      const snapshotOf = async (postId: string): Promise<string | undefined> => {
+        const [row] = (await database.sql`
+          SELECT body_html FROM core.posts WHERE id = ${postId}
+        `) as Array<{ body_html: string }>;
+
+        return /data-snapshot="(\d+)"/.exec(row?.body_html ?? "")?.[1];
+      };
+      const firstSnapshot = await snapshotOf(first.postId);
+      const secondSnapshot = await snapshotOf(second.postId);
+
+      expect(firstSnapshot).toBeString();
+      expect(secondSnapshot).toBeString();
+      expect(firstSnapshot).not.toBe(secondSnapshot);
+
+      expectOk(
+        await saveFilterWord(database.sql, {
+          word: "SnapshotWord",
+          mode: "replace",
+          replacement: "ChangedWord",
+          matchMode: "any",
+          enabled: true,
+        }),
+      );
+      const result = await runContentRerenderJob(database.sql, {
+        sources: [postRerenderSource],
+        batchSize: 5_000,
+      });
+      expect(result.rerendered).toBeGreaterThan(0);
+
+      expect(await snapshotOf(first.postId)).toBe(firstSnapshot);
+      expect(await snapshotOf(second.postId)).toBe(secondSnapshot);
+
+      const snapshots = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'post' AND source_id = ${source.postId}
+      `) as Array<{ count: number }>;
+      expect(snapshots[0]?.count).toBe(2);
+    });
+  }, 60_000);
+
   test("a changed or removed replacement applies on the next view before jobs run", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");

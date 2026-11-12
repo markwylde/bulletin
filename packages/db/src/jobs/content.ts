@@ -575,7 +575,7 @@ export const postRerenderSource: ContentRerenderSource = {
       context: { kind: "forum_post", forumId: row.forumId ?? "0" },
       authorId: row.authorId ?? "0",
       ...renderInputs(options),
-      quotes: createPostRerenderQuotePipeline(sql),
+      quotes: createPostRerenderQuotePipeline(sql, row.bodyHtml),
       keepUnfilteredHtml: true,
     });
 
