@@ -151,4 +151,20 @@ describe("route contracts", () => {
     expect(callbackContract.cdnCacheable).toBe(false);
     expect(accountContract.cdnCacheable).toBe(false);
   });
+
+  test("the search and activity routes are registered as private, no-store pages", () => {
+    const routes = [
+      { path: "/search", contract: searchContract },
+      { path: "/search/member/12-regular-member", contract: searchMemberContract },
+      { path: "/search/new", contract: searchNewContract },
+    ] as const;
+
+    for (const { path, contract } of routes) {
+      expect(findContract(ROUTE_CONTRACTS, path)).toBe(contract);
+      expect(contract.cdnCacheable).toBe(false);
+      expect(contract.tags).toEqual([]);
+      expect(contract.templates.page).toBe("search");
+      expect(contract.requiredIslands).toContain("LanguageSwitcher");
+    }
+  });
 });

@@ -43,6 +43,11 @@ integrationDescribe("search page", () => {
         );
         await waitForSelector(view, "[data-search-result]", 20_000);
         await waitForText(view, "Show us your desk setup", 20_000);
+        const cacheControl = await view.evaluate<string | null>(
+          'fetch("/search?q=keyboard").then((response) => response.headers.get("cache-control"))',
+        );
+        expect(cacheControl).toContain("private");
+        expect(cacheControl).toContain("no-store");
         await expectNoOverflow(view);
       });
     }, 180_000);

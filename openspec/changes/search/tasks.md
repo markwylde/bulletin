@@ -25,7 +25,7 @@
 
 ## 5. Route contracts
 
-- [ ] 5.1 View-model contracts for the search, content-by-member and new-content routes (`private, no-store` where results depend on the viewer) registered with the harness
+- [x] 5.1 View-model contracts for the search, content-by-member and new-content routes (`private, no-store` where results depend on the viewer) registered with the harness
 
 ## 6. Feature flag
 
