@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_THEME_NAME } from "@bulletin/templates";
 import { loginAs, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
 
-// Task 1.3: a 360 px smoke render for every theme the seed installs. `themes` grows when
+// Task 1.3: a 360 px smoke render for every theme the seed installs. `THEMES` grows when
 // task 5.2 adds the child theme and the member chooser serves it; until then the default
 // theme is the only reachable one.
 //   docker compose up -d
@@ -12,7 +13,7 @@ const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
 const USER_URL = userBaseUrl();
 
-const THEMES = ["default"] as const;
+const THEMES = [DEFAULT_THEME_NAME] as const;
 
 const PAGES = [
   { path: "/", marker: "[data-board-index]", member: false },
