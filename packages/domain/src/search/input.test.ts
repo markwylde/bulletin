@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  isSimpleSearchQuery,
   normalizeSearchQuery,
   parseSearchDate,
   parseSearchId,
@@ -34,5 +35,14 @@ describe("search input parsing", () => {
     expect(parseSearchId("12")).toBe("12");
     expect(parseSearchId("0")).toBeNull();
     expect(parseSearchIds(["1", "1", "2", "x", null])).toEqual(["1", "2"]);
+  });
+
+  test("only treats plain words as simple queries", () => {
+    expect(isSimpleSearchQuery("maintanance")).toBe(true);
+    expect(isSimpleSearchQuery("power-supply")).toBe(true);
+    expect(isSimpleSearchQuery('"power supply"')).toBe(false);
+    expect(isSimpleSearchQuery("power -laptop")).toBe(false);
+    expect(isSimpleSearchQuery("power OR laptop")).toBe(false);
+    expect(isSimpleSearchQuery("power or laptop")).toBe(false);
   });
 });

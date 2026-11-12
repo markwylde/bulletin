@@ -290,6 +290,59 @@ integrationDescribe("search query", () => {
     });
   });
 
+  test("applies phrases and exclusions to fuzzy topic titles", async () => {
+    await withSeededDb(async (database) => {
+      const announcements = await forumId(database, "announcements");
+      const author = await memberId(database, "member-1");
+      const adjacent = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Power supply guide",
+        body: "Unrelated body text.",
+        lang: "english",
+      });
+      const laptop = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Power supply laptop",
+        body: "Unrelated body text.",
+        lang: "english",
+      });
+      const nonadjacent = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Power from the supply guide",
+        body: "Unrelated body text.",
+        lang: "english",
+      });
+      const reversed = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "The supply of power guide",
+        body: "Unrelated body text.",
+        lang: "english",
+      });
+
+      const phrase = await search(database, author, {
+        query: '"power supply"',
+        kind: "topics",
+      });
+      const phraseIds = phrase.items.map((item) => item.kind === "topic" && item.topicId);
+      expect(phraseIds).toContain(adjacent.topicId);
+      expect(phraseIds).toContain(laptop.topicId);
+      expect(phraseIds).not.toContain(nonadjacent.topicId);
+      expect(phraseIds).not.toContain(reversed.topicId);
+
+      const excluded = await search(database, author, {
+        query: '"power supply" -laptop',
+        kind: "topics",
+      });
+      const excludedIds = excluded.items.map((item) => item.kind === "topic" && item.topicId);
+      expect(excludedIds).toContain(adjacent.topicId);
+      expect(excludedIds).not.toContain(laptop.topicId);
+    });
+  });
+
   test("never returns content from a forum the viewer cannot read", async () => {
     await withSeededDb(async (database) => {
       const staffRoom = await forumId(database, "staff-room");

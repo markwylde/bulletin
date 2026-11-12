@@ -45,6 +45,15 @@ export function parseSearchPageSize(value: string | null | undefined): number {
   return Math.min(SEARCH_MAX_PAGE_SIZE, Math.max(1, Number(value)));
 }
 
+/**
+ * True when the query is plain words only, with no phrase quotes, `-exclusion` or `OR`.
+ * The trigram title fallback is only safe for plain queries: it cannot see the parsed
+ * syntax, so it could otherwise return a topic the full-text query excluded (ADR 0017).
+ */
+export function isSimpleSearchQuery(query: string): boolean {
+  return !/["()&|!]|(^|[^\p{L}\p{N}_])-|(^|[^\p{L}\p{N}_])or([^\p{L}\p{N}_]|$)/iu.test(query);
+}
+
 /** A `YYYY-MM-DD` query value as a UTC date, or null when absent/invalid. */
 export function parseSearchDate(value: string | null | undefined): Date | null {
   if (value === null || value === undefined || !DATE.test(value)) {

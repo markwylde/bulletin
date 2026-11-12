@@ -21,6 +21,8 @@ export interface SearchRepositoryInput {
   readonly query: string;
   /** The viewer's locale config, ORed with `simple` (ADR 0017). */
   readonly queryConfig: SearchConfig;
+  /** Only plain-word queries may add the trigram title fallback; operators must be honoured. */
+  readonly fuzzyTitle: boolean;
   /** Every forum bit the query filters by comes from this accessor (ADR 0005). */
   readonly capability: CapabilityView;
   /** Expanded forum filter (the forum and its descendants); null means no forum filter. */
@@ -144,6 +146,22 @@ function postScore(sql: SQL) {
   )`;
 }
 
+/** Full-text match, plus the trigram title fallback for plain-word queries only (ADR 0017). */
+function topicMatches(sql: SQL, input: SearchRepositoryInput) {
+  if (!input.fuzzyTitle) {
+    return sql`(
+      topic.tsv @@ search_query.stemmed
+      OR topic.tsv_simple @@ search_query.simple
+    )`;
+  }
+
+  return sql`(
+    topic.tsv @@ search_query.stemmed
+    OR topic.tsv_simple @@ search_query.simple
+    OR lower(${input.query}) <% lower(topic.title)
+  )`;
+}
+
 /** The capped number of matching topics. The cap stops collection, not just display. */
 export async function countTopicHits(sql: SQL, input: SearchRepositoryInput): Promise<number> {
   const { readableForumIds, seeUnapprovedForumIds, seeDeletedForumIds } = searchClearance(
@@ -173,11 +191,7 @@ export async function countTopicHits(sql: SQL, input: SearchRepositoryInput): Pr
         AND (${prefixes}::bigint[] IS NULL OR topic.prefix_id = ANY(${prefixes}::bigint[]))
         AND (${input.createdFrom}::timestamptz IS NULL OR topic.created_at >= ${input.createdFrom})
         AND (${input.createdTo}::timestamptz IS NULL OR topic.created_at < ${input.createdTo})
-        AND (
-      topic.tsv @@ search_query.stemmed
-      OR topic.tsv_simple @@ search_query.simple
-      OR lower(${input.query}) <% lower(topic.title)
-    )
+        AND ${topicMatches(sql, input)}
       LIMIT ${SEARCH_RESULT_CAP}
     ) AS capped
   `) as Array<{ total: number }>;
@@ -206,11 +220,7 @@ export async function searchTopicPage(
     AND (${prefixes}::bigint[] IS NULL OR topic.prefix_id = ANY(${prefixes}::bigint[]))
     AND (${input.createdFrom}::timestamptz IS NULL OR topic.created_at >= ${input.createdFrom})
     AND (${input.createdTo}::timestamptz IS NULL OR topic.created_at < ${input.createdTo})
-    AND (
-      topic.tsv @@ search_query.stemmed
-      OR topic.tsv_simple @@ search_query.simple
-      OR lower(${input.query}) <% lower(topic.title)
-    )
+    AND ${topicMatches(sql, input)}
   `;
   const rows = (await sql`
     WITH search_query AS (

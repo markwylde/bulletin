@@ -1,6 +1,11 @@
 import type { SQL } from "bun";
 import type { CapabilityView } from "../permissions/capability.ts";
-import { normalizeSearchQuery, parseSearchId, parseSearchIds } from "./input.ts";
+import {
+  isSimpleSearchQuery,
+  normalizeSearchQuery,
+  parseSearchId,
+  parseSearchIds,
+} from "./input.ts";
 import { textSearchConfig } from "./language.ts";
 import {
   countPostHits,
@@ -105,6 +110,7 @@ export async function searchContent(
   const repositoryInput = {
     query,
     queryConfig: textSearchConfig(scope.locale),
+    fuzzyTitle: isSimpleSearchQuery(query),
     capability: scope.capability,
     forumIds,
     authorId: parseSearchId(input.authorId),
