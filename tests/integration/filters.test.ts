@@ -37,6 +37,8 @@ import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { buildConversationPage } from "../../apps/user-app/src/conversations/page.ts";
+import { renderForumRoute } from "../../apps/user-app/src/forums/route.ts";
+import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
 import { renderTopicRoute } from "../../apps/user-app/src/topics/route.ts";
 
@@ -1061,6 +1063,94 @@ integrationDescribe("content filters", () => {
       expect(persisted.forumTopics).toBe(heldAgain.forumTopics);
       expect(persisted.authorPosts).toBe(heldAgain.authorPosts);
       expect(persisted.replierPosts).toBe(heldAgain.replierPosts);
+    });
+  }, 60_000);
+
+  test("holding an edited opener invalidates the forum list and board preview caches", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const viewer = await memberSession(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const [forumRow] = (await database.sql`
+        SELECT slug FROM core.forums WHERE id = ${forum}
+      `) as Array<{ slug: string }>;
+      const forumRef = `/forum/${forum}-${forumRow?.slug ?? ""}`;
+      await setMemberSetting(database, "members", "posting.link_limit", 1);
+      await setMemberSetting(database, "members", "posting.link_limit_action", "hold");
+      const title = `Cache leak ${Date.now()}`;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title,
+          bodyMd: "A cached opening.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const forumPage = () =>
+          renderForumRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: viewer,
+            ref: forumRef,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+        const homePage = () =>
+          renderHomeRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: viewer,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+
+        const firstForum = await forumPage();
+        expect(firstForum.kind).toBe("page");
+
+        if (firstForum.kind === "page") {
+          expect(firstForum.html).toContain(title);
+        }
+
+        await homePage();
+        expect(await forumPage()).toMatchObject({ kind: "page", cache: "hit" });
+        expect((await homePage()).cache).toBe("hit");
+
+        expectOk(
+          await editPost(database.sql, {
+            actorId: member,
+            postId: topic.postId,
+            bodyMd: "[one](https://one.example) [two](https://two.example)",
+          }),
+        );
+        await versions.refresh();
+
+        const afterForum = await forumPage();
+        const afterHome = await homePage();
+        expect(afterForum.kind).toBe("page");
+        expect(afterHome.cache).toBe("miss");
+        expect(afterHome.html).not.toContain(title);
+
+        if (afterForum.kind === "page") {
+          expect(afterForum.cache).toBe("miss");
+          expect(afterForum.html).not.toContain(title);
+        }
+      } finally {
+        await versions.close();
+      }
     });
   }, 60_000);
 

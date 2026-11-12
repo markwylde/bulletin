@@ -898,7 +898,14 @@ export async function editPost(
           editedBy: input.actorId,
         });
 
+        let visibilityChanged = false;
+        const visibilityForumIds: string[] = [];
+        const visibilityMemberIds: string[] = [];
+
         if (holdReason !== null) {
+          visibilityChanged = true;
+          visibilityForumIds.push(...forumChain(freshTree, current.forumId));
+
           if (current.position > 1) {
             await setPostVisibility(tx, current.id, "unapproved");
             await setPostHoldReason(tx, current.id, holdReason);
@@ -907,6 +914,7 @@ export async function editPost(
 
             if (current.authorId !== null) {
               await adjustMemberPostCount(tx, current.authorId, -1);
+              visibilityMemberIds.push(current.authorId);
             }
           } else {
             // Holding the opener hides the whole topic. Every visible post leaves the public
@@ -919,6 +927,7 @@ export async function editPost(
             await setPostHoldReason(tx, current.id, holdReason);
             await adjustForumPostCount(tx, current.forumId, -total);
             await adjustMemberPostCounts(tx, counts, -1);
+            visibilityMemberIds.push(...counts.keys());
 
             if (topic !== null && topic.visibility === "visible") {
               await setTopicVisibility(tx, current.topicId, "unapproved");
@@ -964,6 +973,9 @@ export async function editPost(
           topicId: current.topicId,
           postId: current.id,
           redacted: currentRedact,
+          visibilityChanged,
+          forumIds: [...new Set(visibilityForumIds)],
+          memberIds: [...new Set(visibilityMemberIds)],
         } satisfies PostEditSummary;
       },
     });

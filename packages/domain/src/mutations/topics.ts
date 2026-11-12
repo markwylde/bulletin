@@ -26,6 +26,11 @@ export interface PostEditSummary {
   readonly postId: string;
   /** True when earlier versions were redacted, which rebuilds every quoting fragment. */
   readonly redacted: boolean;
+  /** True when the edit held the post or hid its topic, changing public counters. */
+  readonly visibilityChanged: boolean;
+  /** The forum chain and members whose lists, previews or author cards changed. */
+  readonly forumIds: readonly string[];
+  readonly memberIds: readonly string[];
 }
 
 /** What a successful new topic/reply returns, alongside the tags it invalidated. */
@@ -70,10 +75,18 @@ export const postReplyMutation: Mutation<PostReplyInput, TopicWriteResult> = {
 };
 
 /**
- * An edit rebuilds the topic page (the post block is part of it) but not the forum's
+ * An ordinary edit rebuilds the topic page (the post block is part of it) but not the forum's
  * last-post preview or the author card. A redaction also rebuilds every quote of the post.
+ * An edit that hides content changes visibility, counters and the forum's last post, so it
+ * invalidates the forum chain, the board preview and every affected author card too.
  */
-export const postEditMutation: Mutation<PostEditSummary, PostEditSummary> = {
+export interface PostEditInput {
+  readonly topicId: string;
+  readonly postId: string;
+  readonly redacted: boolean;
+}
+
+export const postEditMutation: Mutation<PostEditInput, PostEditSummary> = {
   name: "post.edit",
   tags: (_input, result) =>
     uniqueTags([
@@ -81,6 +94,13 @@ export const postEditMutation: Mutation<PostEditSummary, PostEditSummary> = {
       topicPagesTag(result.topicId),
       postTag(result.postId),
       ...(result.redacted ? [postSnapshotsTag(result.postId)] : []),
+      ...(result.visibilityChanged
+        ? [
+            ...result.forumIds.map(forumTag),
+            GLOBAL_CACHE_TAGS.board,
+            ...result.memberIds.map(memberTag),
+          ]
+        : []),
     ]),
 };
 
