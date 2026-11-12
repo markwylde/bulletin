@@ -1,0 +1,33 @@
+{{ header }}
+<main id="main" class="bl-main" data-moderation-log-page>
+  {{ breadcrumbs }}
+  <header class="bl-page__header">
+    <h1 class="bl-page__title">{{ title }}</h1>
+    <p class="bl-muted">{% t "modlog.intro" %}</p>
+    <form class="bl-form" data-modlog-filter-form method="get">
+      <label class="bl-label" for="modlog-action">{% t "modlog.action" %}</label>
+      <input class="bl-input" id="modlog-action" name="action" value="{{ action }}" />
+      <label class="bl-label" for="modlog-forum">{% t "modlog.forum" %}</label>
+      <input class="bl-input" id="modlog-forum" name="forumId" value="{{ forumId }}" />
+      <label class="bl-label" for="modlog-member">{% t "modlog.member" %}</label>
+      <input class="bl-input" id="modlog-member" name="memberId" value="{{ memberId }}" />
+      <button class="bl-button" type="submit">{% t "modlog.filter" %}</button>
+    </form>
+  </header>
+
+  {% if hasEntries %}
+    <ul class="log-list" data-modlog-list>
+      {% for entry in entries %}
+        <li data-modlog-entry="{{ entry.id }}">
+          <span class="log-action">{{ entry.action }}</span>
+          <span class="log-actor">{{ entry.actorName }}</span>
+          <span class="bl-muted">{{ entry.forumTitle }}{% if entry.memberName %} · {{ entry.memberName }}{% endif %}</span>
+          <time class="bl-muted" datetime="{{ entry.iso }}">{{ entry.time }}</time>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    {{ emptyState }}
+  {% endif %}
+</main>
+{{ footer }}

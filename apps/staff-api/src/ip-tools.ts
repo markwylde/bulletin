@@ -1,4 +1,5 @@
 import { parseCookieHeader, sessionCookieName } from "@bulletin/domain/auth";
+import { writeModerationLog } from "@bulletin/domain/moderation";
 import {
   type IpAccessPurpose,
   openIpAccess,
@@ -20,7 +21,11 @@ function sessionToken(request: Request): string | null {
   return parseCookieHeader(request.headers.get("cookie"))[sessionCookieName("staff", env)] ?? null;
 }
 
-export async function openIpAccessResponse(sql: SQL, request: Request): Promise<Response> {
+export async function openIpAccessResponse(
+  sql: SQL,
+  actorId: string,
+  request: Request,
+): Promise<Response> {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
 
   if (
@@ -46,8 +51,19 @@ export async function openIpAccessResponse(sql: SQL, request: Request): Promise<
     resourceId: body.resourceId,
   });
 
-  // The permission and step-up checks live inside the definer function (ADR 0012).
-  return grantId === null ? json({ code: "forbidden" }, 403) : json({ grantId });
+  if (grantId === null) {
+    return json({ code: "forbidden" }, 403);
+  }
+
+  await writeModerationLog(sql, {
+    actorId,
+    action: "ip.lookup",
+    targetType: body.resourceType,
+    targetId: body.resourceId,
+    details: { purpose: body.purpose, grantId },
+  });
+
+  return json({ grantId });
 }
 
 export async function readIpAccessResponse(sql: SQL, request: Request): Promise<Response> {

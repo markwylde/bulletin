@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { writeModerationLog } from "../moderation/log/repository.ts";
 import { runMutation } from "../mutations/index.ts";
 import {
   postDeleteMutation,
@@ -160,6 +161,15 @@ export async function softDelete(
 
         if (current.visibility === "visible") {
           await setPostVisibility(tx, current.id, "soft_deleted");
+          await writeModerationLog(tx, {
+            actorId: input.actorId,
+            action: "post.delete",
+            targetType: "post",
+            targetId: current.id,
+            forumId: current.forumId,
+            memberId: current.authorId,
+            details: { topicId: current.topicId, authorAction: currentIsAuthor },
+          });
           await adjustForumPostCount(tx, current.forumId, -1);
 
           if (current.authorId !== null) {
@@ -259,6 +269,15 @@ export async function restore(
           }
 
           await setPostVisibility(tx, current.id, "visible");
+          await writeModerationLog(tx, {
+            actorId: input.actorId,
+            action: current.visibility === "unapproved" ? "post.approve" : "post.restore",
+            targetType: "post",
+            targetId: current.id,
+            forumId: current.forumId,
+            memberId: current.authorId,
+            details: { topicId: current.topicId },
+          });
           await adjustForumPostCount(tx, current.forumId, 1);
 
           if (current.authorId !== null) {
@@ -357,6 +376,15 @@ async function hardDeletePost(
         }
 
         await deletePostRow(tx, current.id);
+        await writeModerationLog(tx, {
+          actorId: input.actorId,
+          action: "post.hard_delete",
+          targetType: "post",
+          targetId: current.id,
+          forumId: current.forumId,
+          memberId: current.authorId,
+          details: { topicId: current.topicId },
+        });
 
         if (current.visibility === "visible") {
           await adjustForumPostCount(tx, current.forumId, -1);
@@ -445,6 +473,15 @@ async function hardDeleteTopic(
         const authorCounts = await visiblePostCountsByAuthor(tx, current.id);
 
         await deleteTopicRow(tx, current.id);
+        await writeModerationLog(tx, {
+          actorId: input.actorId,
+          action: "topic.hard_delete",
+          targetType: "topic",
+          targetId: current.id,
+          forumId: current.forumId,
+          memberId: current.starterId,
+          details: { title: current.title },
+        });
 
         // A redirect stub never contributed to the source forum's topic count.
         if (current.movedTo === null) {
@@ -538,6 +575,15 @@ export async function lock(
     input: { topicId: topic.id, locked: input.locked },
     apply: async (tx) => {
       await setTopicLocked(tx, topic.id, input.locked);
+      await writeModerationLog(tx, {
+        actorId: input.actorId,
+        action: "topic.lock",
+        targetType: "topic",
+        targetId: topic.id,
+        forumId: topic.forumId,
+        memberId: topic.starterId,
+        details: { locked: input.locked },
+      });
       return summary;
     },
   });
@@ -582,6 +628,15 @@ export async function pin(
     input: { topicId: topic.id, pinned: input.pinned },
     apply: async (tx) => {
       await setTopicPinned(tx, topic.id, input.pinned);
+      await writeModerationLog(tx, {
+        actorId: input.actorId,
+        action: "topic.pin",
+        targetType: "topic",
+        targetId: topic.id,
+        forumId: topic.forumId,
+        memberId: topic.starterId,
+        details: { pinned: input.pinned },
+      });
       return summary;
     },
   });
@@ -686,6 +741,19 @@ export async function move(
         await adjustForumTopicCount(tx, current.forumId, -1);
         await adjustForumPostCount(tx, current.forumId, -postCount);
         await moveTopicRow(tx, current.id, destination.id);
+        await writeModerationLog(tx, {
+          actorId: input.actorId,
+          action: "topic.move",
+          targetType: "topic",
+          targetId: current.id,
+          forumId: destination.id,
+          memberId: current.starterId,
+          details: {
+            fromForumId: current.forumId,
+            toForumId: destination.id,
+            stubDays,
+          },
+        });
         await adjustForumTopicCount(tx, destination.id, 1);
         await adjustForumPostCount(tx, destination.id, postCount);
 

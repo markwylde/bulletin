@@ -1,0 +1,108 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { listModerationLog } from "@bulletin/domain/moderation";
+import { USER_CATALOGS } from "../../catalogs.ts";
+import { moderationLogContract } from "../../contracts.ts";
+import { readSql } from "../../db.ts";
+import { loadViewerFlags } from "../../flags.ts";
+import ThemeLayout from "../../layouts/ThemeLayout.astro";
+import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
+import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
+
+const loginUrl = `/auth/login?return_to=${encodeURIComponent("/moderation/log")}`;
+const session = Astro.locals.session ?? null;
+
+if (session === null) {
+  return Astro.redirect(loginUrl, 303);
+}
+
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const sql = readSql();
+const flags = await loadViewerFlags(sql, session);
+const url = Astro.url;
+const id = (name: string): string | null => {
+  const value = url.searchParams.get(name);
+  return value !== null && /^\d+$/.test(value) ? value : null;
+};
+const action = url.searchParams.get("action");
+const page = await listModerationLog(sql, {
+  actorId: session.memberId,
+  sessionId: session.sessionId,
+  filters: {
+    action: action !== null && /^[a-z][a-z0-9_.]*$/.test(action) ? action : null,
+    forumId: id("forumId"),
+    memberId: id("memberId"),
+    actorId: id("actorId"),
+    limit: 100,
+    offset: 0,
+  },
+});
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+const formatDate = (value: Date): string =>
+  new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value);
+
+const rendered = await renderCachedPage({
+  tags: ["moderation-log"],
+  cache: null,
+  tagVersions: null,
+  shell: { visitor: "member", authState: "authenticated" },
+  prepare: async () => ({
+    variant: pageVariant({
+      route: moderationLogContract.route,
+      visibilityKey: "member",
+      theme: null,
+      pluginsGeneration: PLUGIN_GENERATION,
+      locale,
+      colourScheme: "system",
+      renderFlagsHash: flags.hash,
+    }),
+    data: undefined,
+  }),
+  render: async () => {
+    const themed = await renderThemedPage({
+      sql,
+      boardName,
+      locale,
+      translate,
+      template: page.allowed ? moderationLogContract.templates.page : "error",
+      viewModel: page.allowed
+        ? {
+            title: translate("modlog.title"),
+            action: action ?? "",
+            forumId: id("forumId") ?? "",
+            memberId: id("memberId") ?? "",
+            hasEntries: page.entries.length > 0,
+            entries: page.entries.map((entry) => ({
+              id: entry.id,
+              action: entry.action,
+              actorName: entry.actorName ?? translate("member.deletedName"),
+              forumTitle: entry.forumTitle ?? "",
+              memberName: entry.memberName ?? "",
+              iso: entry.createdAt.toISOString(),
+              time: formatDate(entry.createdAt),
+            })),
+            flags: flags.values,
+          }
+        : {
+            code: "forbidden",
+            message: translate("theme.error.forbidden"),
+            flags: flags.values,
+          },
+      breadcrumbs: page.allowed
+        ? [{ label: translate("modlog.title"), href: null }]
+        : [],
+      route: moderationLogContract,
+    });
+
+    return { html: themed.html, errors: themed.errors };
+  },
+});
+
+Astro.response.status = page.allowed ? 200 : 403;
+Astro.response.headers.set("cache-control", "private, no-store");
+const title = page.allowed ? translate("modlog.title") : translate("theme.error.title");
+---
+
+<ThemeLayout title={`${title} · ${boardName}`} locale={locale} body={rendered.html} authState="authenticated" visitor="member">
+</ThemeLayout>

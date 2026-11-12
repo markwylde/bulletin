@@ -68,6 +68,7 @@ import {
   staffQueueCountResponse,
   staffQueueResponse,
 } from "./moderation.ts";
+import { staffModerationLogResponse } from "./moderation-log.ts";
 import {
   deleteModerator,
   listModerators,
@@ -1022,6 +1023,13 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     handler: async ({ sql, session }) => staffQueueCountResponse(sql, session),
   },
   {
+    id: "moderation.log",
+    method: "GET",
+    path: "/api/staff/moderation-log",
+    permission: "acp.log",
+    handler: async ({ sql, session, request }) => staffModerationLogResponse(sql, session, request),
+  },
+  {
     id: "bans.list",
     method: "GET",
     path: "/api/staff/bans",
@@ -1041,7 +1049,8 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/ips/open",
     permission: "acp.members",
     requiresStepUp: true,
-    handler: async ({ sql, request }) => openIpAccessResponse(sql, request),
+    handler: async ({ sql, session, request }) =>
+      openIpAccessResponse(sql, session.memberId, request),
   },
   {
     id: "ips.read",

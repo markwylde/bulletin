@@ -42,7 +42,7 @@
 
 ## 7. Moderation log
 
-- [ ] 7.1 Append-only moderation log (INSERT/SELECT grants only), wired into every moderation mutation, with scoped viewing; tests that every action in the spec list writes an entry, and that UPDATE/DELETE are denied
+- [x] 7.1 Append-only moderation log (INSERT/SELECT grants only), wired into every moderation mutation, with scoped viewing; tests that every action in the spec list writes an entry, and that UPDATE/DELETE are denied
 
 ## 8. Strings and seed
 

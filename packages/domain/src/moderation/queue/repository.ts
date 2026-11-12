@@ -22,6 +22,7 @@ import {
   refreshForumLastPost,
   setPostVisibility,
 } from "../../topics/repository.ts";
+import { writeModerationLog } from "../log/repository.ts";
 
 export type { HoldReason } from "../needs-approval.ts";
 export * from "../needs-approval.ts";
@@ -420,6 +421,16 @@ export async function approveHeldPosts(
             },
           });
 
+          await writeModerationLog(tx, {
+            actorId: input.actorId,
+            action: "post.approve",
+            targetType: "post",
+            targetId: target.postId,
+            forumId: target.forumId,
+            memberId: target.authorId,
+            details: { topicId: target.topicId, position: target.position },
+          });
+
           approved.push(target.postId);
           topicIds.push(target.topicId);
           forumIds.push(...forumChain(freshTree, target.forumId));
@@ -529,6 +540,16 @@ export async function rejectHeldPosts(
               authorId: BigInt(target.authorId ?? "0"),
               actorId: BigInt(input.actorId),
             },
+          });
+
+          await writeModerationLog(tx, {
+            actorId: input.actorId,
+            action: "post.reject",
+            targetType: "post",
+            targetId: target.postId,
+            forumId: target.forumId,
+            memberId: target.authorId,
+            details: { topicId: target.topicId, position: target.position },
           });
 
           removed.push(target.postId);

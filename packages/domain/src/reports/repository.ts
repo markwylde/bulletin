@@ -1,5 +1,6 @@
 import type { SQL } from "bun";
 import { emit } from "../events/outbox.ts";
+import { writeModerationLog } from "../moderation/log/repository.ts";
 import { moderatedForums } from "../moderation/queue/repository.ts";
 import { can } from "../permissions/can.ts";
 import type { ForumTree } from "../permissions/tree.ts";
@@ -409,15 +410,13 @@ async function recordPmView(
   report: ReportRow,
   messageIds: readonly string[],
 ): Promise<void> {
-  await sql`
-    INSERT INTO core.moderation_log (
-      actor_member_id, action, target_type, target_id, summary
-    )
-    VALUES (
-      ${actorId}, 'report.pm_access', 'report', ${report.id},
-      ${{ reportId: report.id, messageIds }}::jsonb
-    )
-  `;
+  await writeModerationLog(sql, {
+    actorId,
+    action: "report.pm_access",
+    targetType: "report",
+    targetId: report.id,
+    details: { reportId: report.id, messageIds },
+  });
 }
 
 /** One report with its PM context. Reading PM context writes the audit row first. */
@@ -734,6 +733,21 @@ export async function updateReport(
       return { ok: false as const, code: "forbidden" as const };
     }
 
+    const [targetForum] =
+      current.target_type === "post"
+        ? ((await tx`
+            SELECT t.forum_id::text AS forum_id
+            FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+            WHERE p.id = ${current.target_id}
+          `) as Array<{ forum_id: string }>)
+        : [];
+    const logTarget = {
+      forumId: targetForum?.forum_id ?? null,
+      memberId: current.target_type === "member" ? current.target_id : null,
+      targetType: "report",
+      targetId: current.id,
+    } as const;
+
     if (input.action.kind === "status") {
       if (!isReportStatus(input.action.status)) {
         return { ok: false as const, code: "invalid_status" as const };
@@ -750,6 +764,13 @@ export async function updateReport(
             updated_at = now()
         WHERE id = ${current.id}
       `;
+
+      await writeModerationLog(tx, {
+        actorId: input.actorId,
+        action: "report.status",
+        ...logTarget,
+        details: { from: current.status, to: input.action.status },
+      });
 
       if (closing) {
         await tx`
@@ -776,12 +797,24 @@ export async function updateReport(
         }
       }
     } else if (input.action.kind === "assign") {
+      await writeModerationLog(tx, {
+        actorId: input.actorId,
+        action: "report.assign",
+        ...logTarget,
+        details: { assign: input.action.assign },
+      });
       await tx`
         UPDATE core.reports
         SET assignee_id = ${input.action.assign ? input.actorId : null}, updated_at = now()
         WHERE id = ${current.id}
       `;
     } else {
+      await writeModerationLog(tx, {
+        actorId: input.actorId,
+        action: "report.comment",
+        ...logTarget,
+        details: { body: input.action.body.trim() },
+      });
       await tx`
         INSERT INTO core.report_comments (report_id, actor_id, body)
         VALUES (${current.id}, ${input.actorId}, ${input.action.body.trim()})

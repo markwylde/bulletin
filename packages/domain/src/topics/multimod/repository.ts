@@ -2,6 +2,7 @@ import { saveContent } from "@bulletin/content";
 import type { SQL } from "bun";
 import { loadContentRenderDependencies } from "../../content/rendering.ts";
 import { emit } from "../../events/outbox.ts";
+import { writeModerationLog } from "../../moderation/log/repository.ts";
 import { runMutation } from "../../mutations/index.ts";
 import { multimodApplyMutation } from "../../mutations/topics.ts";
 import { can } from "../../permissions/can.ts";
@@ -344,17 +345,17 @@ async function logMultimod(
   tx: SQL,
   actorId: string,
   action: MultimodActionRecord,
-  topicId: string,
+  topic: { readonly id: string; readonly forumId: string; readonly starterId: string | null },
 ): Promise<void> {
-  await tx`
-    INSERT INTO core.moderation_log (
-      actor_member_id, action, target_type, target_id, summary
-    )
-    VALUES (
-      ${actorId}, 'multimod.apply', 'topic', ${topicId},
-      ${{ actionId: action.id, name: action.name, steps: action.steps.length }}::jsonb
-    )
-  `;
+  await writeModerationLog(tx, {
+    actorId,
+    action: "multimod.apply",
+    targetType: "topic",
+    targetId: topic.id,
+    forumId: topic.forumId,
+    memberId: topic.starterId,
+    details: { actionId: action.id, name: action.name, steps: action.steps.length },
+  });
 }
 
 /**
@@ -525,7 +526,11 @@ export async function applyMultimod(
 
         await recountTopic(tx, topic.id);
         await refreshForumLastPost(tx, currentForumId);
-        await logMultimod(tx, input.actorId, action, topic.id);
+        await logMultimod(tx, input.actorId, action, {
+          id: topic.id,
+          forumId: currentForumId,
+          starterId: topic.starterId,
+        });
 
         const freshTree = await loadForumTree(tx);
         forumIds.add(currentForumId);

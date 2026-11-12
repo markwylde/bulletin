@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { writeModerationLog } from "../../moderation/log/repository.ts";
 import { approveHeldPosts } from "../../moderation/queue/repository.ts";
 import { runMutation } from "../../mutations/index.ts";
 import {
@@ -276,6 +277,21 @@ export async function mergeTopics(
           }
         }
 
+        await writeModerationLog(tx, {
+          actorId: input.actorId,
+          action: "topic.merge",
+          targetType: "topic",
+          targetId: destinationCurrent.id,
+          forumId: destinationCurrent.forumId,
+          memberId: destinationCurrent.starterId,
+          details: {
+            sourceTopicIds: sourceIds,
+            destinationTopicId: destinationCurrent.id,
+            title,
+            stubDays: input.stubDays ?? 0,
+          },
+        });
+
         await recountTopic(tx, destinationCurrent.id);
         await refreshForumLastPost(tx, destinationCurrent.forumId);
 
@@ -442,6 +458,20 @@ export async function splitTopic(
         if (currentTarget === null) {
           await adjustForumTopicCount(tx, targetForumId, 1);
         }
+
+        await writeModerationLog(tx, {
+          actorId: input.actorId,
+          action: "topic.split",
+          targetType: "topic",
+          targetId: targetId,
+          forumId: targetForumId,
+          memberId: rows[0]?.author_id ?? input.actorId,
+          details: {
+            sourceTopicId: currentSource.id,
+            targetTopicId: targetId,
+            postIds: rows.map((row) => row.id),
+          },
+        });
 
         await recountTopic(tx, currentSource.id);
         await recountTopic(tx, targetId);

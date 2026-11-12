@@ -1,5 +1,6 @@
 import type { SQL } from "bun";
 import { emit } from "../events/outbox.ts";
+import { writeModerationLog } from "../moderation/log/repository.ts";
 import { can } from "../permissions/can.ts";
 import type { ForumTree } from "../permissions/tree.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
@@ -702,6 +703,16 @@ export async function issueWarning(
       `;
     }
 
+    await writeModerationLog(tx, {
+      actorId: input.actorId,
+      action: "warning.issue",
+      targetType: "warning",
+      targetId: warningId,
+      forumId,
+      memberId: input.memberId,
+      details: { points, expiresAt: expiresAt.toISOString(), reasonId: input.reasonId },
+    });
+
     await emit(tx, {
       type: "warning.issued",
       aggregateId: BigInt(warningId),
@@ -762,6 +773,18 @@ export async function revokeWarning(
     WHERE id = ${input.warningId} AND revoked_at IS NULL
     RETURNING id
   `) as unknown[];
+
+  if (rows.length > 0) {
+    await writeModerationLog(sql, {
+      actorId: input.actorId,
+      action: "warning.revoke",
+      targetType: "warning",
+      targetId: input.warningId,
+      forumId,
+      memberId: warning.member_id,
+      details: { reason: input.reason.slice(0, 1_000) },
+    });
+  }
 
   return { ok: true, result: { revoked: rows.length > 0 } };
 }

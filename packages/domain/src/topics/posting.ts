@@ -23,6 +23,7 @@ import {
 } from "../filters/repository.ts";
 import { autoFollowTopic } from "../follows/repository.ts";
 import { decideApproval } from "../moderation/approval/repository.ts";
+import { writeModerationLog } from "../moderation/log/repository.ts";
 import { runMutation } from "../mutations/index.ts";
 import {
   type PostEditSummary,
@@ -814,6 +815,18 @@ export async function editPost(
 
         const currentRedact =
           (input.redact ?? !currentIsAuthor) && currentCanModerate && !currentIsAuthor;
+
+        if (!currentIsAuthor && currentCanModerate) {
+          await writeModerationLog(tx, {
+            actorId: input.actorId,
+            action: "post.edit",
+            targetType: "post",
+            targetId: current.id,
+            forumId: current.forumId,
+            memberId: current.authorId,
+            details: { topicId: current.topicId, redacted: currentRedact },
+          });
+        }
 
         if (currentRedact) {
           await protectPostRevisions(tx, current.id);

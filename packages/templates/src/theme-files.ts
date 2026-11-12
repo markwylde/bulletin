@@ -38,6 +38,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "moderation-reports",
   "moderation-report",
   "moderation-warnings",
+  "moderation-log",
   "unsubscribe",
 ] as const;
 

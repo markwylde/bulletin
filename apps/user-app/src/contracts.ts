@@ -299,6 +299,19 @@ export const moderationQueueContract = defineContract<AccountViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/** A forum moderator's scoped moderation log; admins see every entry through the API. */
+export const moderationLogContract = defineContract<AccountViewModel>({
+  route: "/moderation/log",
+  templates: {
+    page: "moderation-log",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: () => ["moderation-log"],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 /** The report centre list; participants see only reports their permissions scope. */
 export const moderationReportsContract = defineContract<AccountViewModel>({
   route: "/moderation/reports",
@@ -394,6 +407,7 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [followsContract.route]: followsContract,
   [attachmentsContract.route]: attachmentsContract,
   [moderationQueueContract.route]: moderationQueueContract,
+  [moderationLogContract.route]: moderationLogContract,
   [warningsContract.route]: warningsContract,
   [moderationWarningsContract.route]: moderationWarningsContract,
   [moderationReportsContract.route]: moderationReportsContract,

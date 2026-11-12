@@ -1,5 +1,6 @@
 import type { SQL } from "bun";
 import { emit } from "../events/outbox.ts";
+import { writeModerationLog } from "../moderation/log/repository.ts";
 import { can } from "../permissions/can.ts";
 
 export interface IpBanRecord {
@@ -110,6 +111,14 @@ export async function banIp(
       throw new Error("Could not save the IP ban");
     }
 
+    await writeModerationLog(tx, {
+      actorId: input.actorId,
+      action: "ip.ban",
+      targetType: "ip_ban",
+      targetId: rows[0].id,
+      details: { cidr: input.cidr, expiresAt: expiresAt?.toISOString() ?? null },
+    });
+
     return { ok: true as const, result: { id: rows[0].id } };
   });
 }
@@ -123,8 +132,18 @@ export async function removeIpBan(
   }
 
   const rows = (await sql`
-    DELETE FROM core.ip_bans WHERE id = ${input.id} RETURNING 1
-  `) as unknown[];
+    DELETE FROM core.ip_bans WHERE id = ${input.id} RETURNING cidr::text AS cidr
+  `) as Array<{ cidr: string }>;
+
+  if (rows.length > 0) {
+    await writeModerationLog(sql, {
+      actorId: input.actorId,
+      action: "ip.remove",
+      targetType: "ip_ban",
+      targetId: input.id,
+      details: { cidr: rows[0]?.cidr ?? "" },
+    });
+  }
 
   return { ok: true, result: { deleted: rows.length > 0 } };
 }
@@ -228,6 +247,15 @@ export async function banMember(
       VALUES (${input.memberId}, ${banned.id}, true)
     `;
 
+    await writeModerationLog(tx, {
+      actorId: input.actorId,
+      action: "member.ban",
+      targetType: "member",
+      targetId: input.memberId,
+      memberId: input.memberId,
+      details: { reason: input.reason.trim(), expiresAt: expiresAt?.toISOString() ?? null },
+    });
+
     await emit(tx, {
       type: "member.banned",
       aggregateId: BigInt(input.memberId),
@@ -272,6 +300,14 @@ export async function unbanMember(
     }
 
     await tx`DELETE FROM core.member_bans WHERE id = ${ban.id}`;
+    await writeModerationLog(tx, {
+      actorId: input.actorId,
+      action: "member.unban",
+      targetType: "member",
+      targetId: input.memberId,
+      memberId: input.memberId,
+      details: {},
+    });
     await emit(tx, {
       type: "member.unbanned",
       aggregateId: BigInt(input.memberId),

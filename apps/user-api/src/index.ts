@@ -40,6 +40,7 @@ import { followResponse, followSettingsResponse } from "./follows.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 import { memberSuggestResponse } from "./members.ts";
 import { moderationActionResponse, queueCountResponse, queueResponse } from "./moderation.ts";
+import { moderationLogResponse } from "./moderation-log.ts";
 import {
   notificationDigestResponse,
   notificationPreferencesResponse,
@@ -748,6 +749,18 @@ await startService({
         }
 
         return Response.json({ code: "method_not_allowed" }, { status: 405 });
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/moderation/log") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return moderationLogResponse(sql, session, request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

@@ -68,6 +68,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     labelKey: "staff.nav.multimod",
   },
   {
+    id: "moderationLog",
+    path: "/moderation/log",
+    navGroup: "overview",
+    permission: "acp.log",
+    icon: "log",
+    labelKey: "staff.nav.moderationLog",
+  },
+  {
     id: "adminLog",
     path: "/log",
     navGroup: "overview",
