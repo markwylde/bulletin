@@ -133,6 +133,38 @@ async function staffToken(
   return token;
 }
 
+/** One forum the moderator moderates with view-ips and one the member may post in without it. */
+async function ipScopeForums(
+  database: TestDatabase,
+  member: string,
+  moderator: string,
+): Promise<{ readonly source: string; readonly outside: string }> {
+  const loaded = await loadForumTree(database.sql);
+  const forums = (await database.sql`
+    SELECT id::text AS id FROM core.forums WHERE type = 'forum' ORDER BY id
+  `) as Array<{ id: string }>;
+  const source: string[] = [];
+  const outside: string[] = [];
+
+  for (const forum of forums) {
+    if (!(await can(database.sql, member, "start", { forumId: forum.id, tree: loaded }))) {
+      continue;
+    }
+
+    if (await can(database.sql, moderator, "view_ips", { forumId: forum.id, tree: loaded })) {
+      source.push(forum.id);
+    } else {
+      outside.push(forum.id);
+    }
+  }
+
+  if (source[0] === undefined || outside[0] === undefined) {
+    throw new Error("Missing scoped/unscoped forums for view-ips");
+  }
+
+  return { source: source[0], outside: outside[0] };
+}
+
 async function callStaffRoute(
   database: TestDatabase,
   id: string,
@@ -640,4 +672,85 @@ integrationDescribe("IP bans and audited lookups", () => {
       expect(loginAudit).toEqual({ purpose: "login_ips", resource_id: member });
     });
   }, 90_000);
+
+  test("revoking view-ips after a post-IP grant blocks redemption", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const moderator = await memberId(database, "forum-mod");
+      const scopes = await ipScopeForums(database, member, moderator);
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: scopes.source,
+          title: "Revoked IP grant target",
+          bodyMd: "A post with an IP.",
+        }),
+      );
+      await withRole(database, "user_api", async (sql) => {
+        await recordPostIp(sql, topic.postId, "203.0.113.121");
+      });
+
+      const token = await staffToken(database, moderator);
+      const allowed = await openIpAccess(database.sql, {
+        sessionToken: token,
+        purpose: "post_ip",
+        resourceType: "post",
+        resourceId: topic.postId,
+      });
+      expect(await readPostIp(database.sql, token, allowed ?? "")).toEqual({
+        ip: "203.0.113.121",
+        expired: false,
+      });
+
+      const grant = await openIpAccess(database.sql, {
+        sessionToken: token,
+        purpose: "post_ip",
+        resourceType: "post",
+        resourceId: topic.postId,
+      });
+      expect(grant).toBeString();
+
+      await database.sql`
+        UPDATE core.moderators
+        SET powers = array_remove(powers, 'view_ips')
+        WHERE member_id = ${moderator}
+      `;
+
+      expect(await readPostIp(database.sql, token, grant ?? "")).toBeNull();
+    });
+  }, 60_000);
+
+  test("moving a post out of scope after a post-IP grant blocks redemption", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const moderator = await memberId(database, "forum-mod");
+      const scopes = await ipScopeForums(database, member, moderator);
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: scopes.source,
+          title: "Moved IP grant target",
+          bodyMd: "A post that will move.",
+        }),
+      );
+      await withRole(database, "user_api", async (sql) => {
+        await recordPostIp(sql, topic.postId, "203.0.113.122");
+      });
+
+      const token = await staffToken(database, moderator);
+      const grant = await openIpAccess(database.sql, {
+        sessionToken: token,
+        purpose: "post_ip",
+        resourceType: "post",
+        resourceId: topic.postId,
+      });
+      expect(grant).toBeString();
+
+      await database.sql`
+        UPDATE core.topics SET forum_id = ${scopes.outside} WHERE id = ${topic.topicId}
+      `;
+
+      expect(await readPostIp(database.sql, token, grant ?? "")).toBeNull();
+    });
+  }, 60_000);
 });
