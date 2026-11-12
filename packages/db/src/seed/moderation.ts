@@ -45,7 +45,7 @@ async function seedFilters(sql: SQL): Promise<void> {
   await sql`
     UPDATE core.filter_settings
     SET version = version + 1, duplicate_enabled = true, duplicate_count = 2,
-        rate_enabled = true, rate_count = 5, rate_minutes = 1
+        rate_enabled = false, rate_count = 5, rate_minutes = 1
     WHERE id = 1
   `;
 }
@@ -74,11 +74,12 @@ async function seedHeldPost(
   );
   const [topic] = (await sql`
     INSERT INTO core.topics (
-      forum_id, title, slug, starter_id, visibility, hold_reason
+      forum_id, title, slug, starter_id, visibility, hold_reason, created_at, updated_at
     )
     VALUES (
       ${forumId}, 'New member introduction awaiting approval',
-      'new-member-introduction-awaiting-approval', ${authorId}, 'unapproved', 'new_member'
+      'new-member-introduction-awaiting-approval', ${authorId}, 'unapproved', 'new_member',
+      now() - interval '2 days', now() - interval '2 days'
     )
     RETURNING id::text AS id
   `) as Array<{ id: string }>;
@@ -90,20 +91,19 @@ async function seedHeldPost(
   const [post] = (await sql`
     INSERT INTO core.posts (
       topic_id, author_id, body_md, body_html, body_text, render_version,
-      sanitiser_version, visibility, hold_reason, position
+      sanitiser_version, visibility, hold_reason, position, created_at
     )
     VALUES (
       ${topic.id}, ${authorId}, ${rendered.bodyMd}, ${rendered.bodyHtml},
       ${rendered.bodyText}, ${rendered.renderVersion}, ${rendered.sanitiserVersion},
-      'unapproved', 'new_member', 1
+      'unapproved', 'new_member', 1, now() - interval '2 days'
     )
     RETURNING id::text AS id
   `) as Array<{ id: string }>;
 
   await sql`
     UPDATE core.topics
-    SET first_post_id = ${post?.id ?? null}, last_post_id = ${post?.id ?? null},
-        updated_at = now()
+    SET first_post_id = ${post?.id ?? null}, last_post_id = ${post?.id ?? null}
     WHERE id = ${topic.id}
   `;
 }

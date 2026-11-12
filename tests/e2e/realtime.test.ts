@@ -168,6 +168,9 @@ integrationDescribe("realtime stream in the browser", () => {
         await waitForSelector(user, "[data-topic-page]");
         await waitForExpression(user, 'document.documentElement.dataset.stream === "open"', 20_000);
 
+        // The moderation seed enables the posting-rate filter; a fresh bucket keeps these
+        // replies visible so the stream has an event to announce.
+        await user.evaluate('fetch("/api/test/reset-rate-buckets", { method: "POST" })');
         await loginAs(replier, "member-2");
         await waitForSelector(replier, '[data-auth-state="authenticated"]');
         await replyFromPage(replier, topic.id, replyText);

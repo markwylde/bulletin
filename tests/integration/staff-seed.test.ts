@@ -116,6 +116,7 @@ integrationDescribe("flags seed", () => {
         "leaderboards",
         "member_directory",
         "mentions",
+        "multimod",
         "newEditor",
         "notifications",
         "polls",
@@ -125,6 +126,7 @@ integrationDescribe("flags seed", () => {
         "reputation",
         "signatures",
         "unfurls",
+        "warnings",
         "whos_online",
       ]);
 

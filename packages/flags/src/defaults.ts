@@ -255,6 +255,26 @@ export const badgesFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Warning points, thresholds, acknowledgements and member warning history (change `moderation`). */
+export const warningsFlag = defineFlag({
+  key: "warnings",
+  description: "Member warnings, warning history and acknowledgement gates.",
+  owner: "moderation",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** Saved multi-moderation actions applied by moderators (change `moderation`). */
+export const multimodFlag = defineFlag({
+  key: "multimod",
+  description: "Saved multi-moderation actions and one-click application.",
+  owner: "moderation",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
@@ -278,4 +298,6 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   whosOnlineFlag,
   leaderboardsFlag,
   badgesFlag,
+  warningsFlag,
+  multimodFlag,
 ]);

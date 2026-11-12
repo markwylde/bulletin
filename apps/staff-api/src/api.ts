@@ -1079,28 +1079,40 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "GET",
     path: "/api/staff/warnings",
     permission: "acp.warnings",
-    handler: async ({ sql }) => warningSettingsResponse(sql),
+    handler: async ({ sql, session }) =>
+      (await staffFlagEnabled(sql, session.memberId, "warnings"))
+        ? warningSettingsResponse(sql)
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "warnings.settings.mutate",
     method: "POST",
     path: "/api/staff/warnings",
     permission: "acp.warnings",
-    handler: async ({ sql, request }) => mutateWarningSettingResponse(sql, request),
+    handler: async ({ sql, session, request }) =>
+      (await staffFlagEnabled(sql, session.memberId, "warnings"))
+        ? mutateWarningSettingResponse(sql, request)
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "moderation.multimod",
     method: "GET",
     path: "/api/staff/multimod",
     permission: "acp.groups",
-    handler: async ({ sql }) => listMultimodForStaff(sql),
+    handler: async ({ sql, session }) =>
+      (await staffFlagEnabled(sql, session.memberId, "multimod"))
+        ? listMultimodForStaff(sql)
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "moderation.multimod.serviceMembers",
     method: "GET",
     path: "/api/staff/multimod/service-members",
     permission: "acp.groups",
-    handler: async ({ sql }) => listServiceMembersForStaff(sql),
+    handler: async ({ sql, session }) =>
+      (await staffFlagEnabled(sql, session.memberId, "multimod"))
+        ? listServiceMembersForStaff(sql)
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "moderation.multimod.mutate",
@@ -1108,7 +1120,9 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/multimod",
     permission: "acp.groups",
     handler: async ({ sql, session, request }) =>
-      mutateMultimodForStaff(sql, session.memberId, request),
+      (await staffFlagEnabled(sql, session.memberId, "multimod"))
+        ? mutateMultimodForStaff(sql, session.memberId, request)
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "moderation.queue",

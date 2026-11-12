@@ -253,6 +253,13 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
   },
 ];
 
+/** Sections that only exist while their feature flag is on (ADR 0010). */
+const SECTION_FLAG_KEYS: Readonly<Record<string, string>> = {
+  announcements: "announcements",
+  warnings: "warnings",
+  multimod: "multimod",
+};
+
 export function canAccessSection(permissions: readonly string[], section: StaffSection): boolean {
   return permissions.includes(section.permission);
 }
@@ -262,4 +269,16 @@ export function visibleSections(
   sections: readonly StaffSection[] = STAFF_SECTIONS,
 ): StaffSection[] {
   return sections.filter((section) => canAccessSection(permissions, section));
+}
+
+/** Drops sections whose feature flag is off; every other section is flag-independent. */
+export function sectionsWithFlags(
+  sections: readonly StaffSection[],
+  flags: Readonly<Record<string, boolean>>,
+): StaffSection[] {
+  return sections.filter((section) => {
+    const key = SECTION_FLAG_KEYS[section.id];
+
+    return key === undefined || flags[key] === true;
+  });
 }

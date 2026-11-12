@@ -45,7 +45,7 @@
     {% endif %}
   </header>
 
-  {% if topicTools.pin or topicTools.lock or topicTools.move or topicTools.merge or topicTools.split or topicTools.multimod %}
+  {% if topicTools.pin or topicTools.lock or topicTools.move or topicTools.merge or topicTools.split or topicTools.multimod and flags.multimod %}
     <details class="bl-card" data-topic-tools
       data-label-failed="{% t "moderation.tools.failed" %}"
       data-label-saved="{% t "moderation.tools.saved" %}"
@@ -99,7 +99,7 @@
         </form>
       {% endif %}
 
-      {% if topicTools.multimod and multimodActions.size > 0 %}
+      {% if flags.multimod and topicTools.multimod and multimodActions.size > 0 %}
         <form class="bl-form" data-topic-multimod-form data-topic-id="{{ topicId }}">
           <label class="bl-label" for="topic-multimod-action">{% t "moderation.tools.multimod" %}</label>
           <select class="bl-input" id="topic-multimod-action" name="actionId" required>

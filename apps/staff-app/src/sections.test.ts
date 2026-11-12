@@ -3,6 +3,7 @@ import {
   canAccessSection,
   STAFF_SECTIONS,
   type StaffSection,
+  sectionsWithFlags,
   visibleSections,
 } from "./sections.ts";
 
@@ -44,6 +45,27 @@ describe("staff section registry", () => {
     expect(visibleSections(["acp.access", "acp.flags"]).map((section) => section.id)).toContain(
       "flags",
     );
+  });
+
+  test("hides warnings and multimod sections while their flags are off", () => {
+    const permissions = ["acp.access", "acp.warnings", "acp.groups", "acp.announcements"];
+    const withoutFlags = sectionsWithFlags(visibleSections(permissions), {}).map(
+      (section) => section.id,
+    );
+
+    expect(withoutFlags).not.toContain("warnings");
+    expect(withoutFlags).not.toContain("multimod");
+    expect(withoutFlags).not.toContain("announcements");
+
+    const withFlags = sectionsWithFlags(visibleSections(permissions), {
+      warnings: true,
+      multimod: true,
+      announcements: true,
+    }).map((section) => section.id);
+
+    expect(withFlags).toContain("warnings");
+    expect(withFlags).toContain("multimod");
+    expect(withFlags).toContain("announcements");
   });
 
   test("shows dead letters only with acp.system", () => {

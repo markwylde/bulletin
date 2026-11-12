@@ -637,7 +637,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return ownWarningsResponse(sql, session);
+        return flags.guard("warnings", session.memberId)(request, () =>
+          ownWarningsResponse(sql, session),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -649,7 +651,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return acknowledgeWarningsResponse(sql, session);
+        return flags.guard("warnings", session.memberId)(request, () =>
+          acknowledgeWarningsResponse(sql, session),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -661,7 +665,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return warningReasonsResponse(sql);
+        return flags.guard("warnings", session.memberId)(request, () =>
+          warningReasonsResponse(sql),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -675,7 +681,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return memberWarningHistoryResponse(sql, session, warningHistoryMatch[1] ?? "", request);
+        return flags.guard("warnings", session.memberId)(request, () =>
+          memberWarningHistoryResponse(sql, session, warningHistoryMatch[1] ?? "", request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -687,7 +695,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return issueWarningResponse(sql, session, request);
+        return flags.guard("warnings", session.memberId)(request, () =>
+          issueWarningResponse(sql, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -701,7 +711,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return revokeWarningResponse(sql, session, revokeWarningMatch[1] ?? "", request);
+        return flags.guard("warnings", session.memberId)(request, () =>
+          revokeWarningResponse(sql, session, revokeWarningMatch[1] ?? "", request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -920,7 +932,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return multimodApplyResponse(sql, session, request);
+        return flags.guard("multimod", session.memberId)(request, () =>
+          multimodApplyResponse(sql, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

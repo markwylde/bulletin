@@ -11,6 +11,7 @@ import {
   canAccessSection,
   type StaffIcon,
   type StaffSection,
+  sectionsWithFlags,
   visibleSections,
 } from "../sections.ts";
 import { useSession } from "../session.tsx";
@@ -255,8 +256,9 @@ export function Shell() {
   }
 
   const session = state.session;
-  const sections = visibleSections(session.permissions).filter(
-    (section) => section.id !== "announcements" || features.data?.flags.announcements === true,
+  const sections = sectionsWithFlags(
+    visibleSections(session.permissions),
+    features.data?.flags ?? {},
   );
 
   return (
