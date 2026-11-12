@@ -11,6 +11,7 @@ import {
 } from "@bulletin/db/seed";
 import {
   CapabilityView,
+  GUEST_PRINCIPAL,
   loadForumTree,
   loadPermissionSnapshot,
   type ViewerPrincipal,
@@ -407,6 +408,99 @@ integrationDescribe("search activity views", () => {
         params: new URLSearchParams("q=jhon&kind=members"),
       });
       expect(adminView.members.map((entry) => entry.name)).toContain("Jhon");
+    });
+  });
+
+  test("filters search results by an author name from the form", async () => {
+    await withSeededDb(async (database) => {
+      const announcements = await forumId(database, "announcements");
+      const memberOne = await memberId(database, "member-1");
+      const memberTwo = await memberId(database, "member-2");
+
+      await insertContent(database, {
+        forumId: announcements,
+        authorId: memberOne,
+        title: "Author filter one",
+        body: "authorfilterword by member one.",
+      });
+      await insertContent(database, {
+        forumId: announcements,
+        authorId: memberTwo,
+        title: "Author filter two",
+        body: "authorfilterword by member two.",
+      });
+
+      const capability = await capabilityFor(database, memberOne);
+      const one = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: memberOne,
+        capability,
+        params: new URLSearchParams("q=authorfilterword&author=Regular Member One"),
+      });
+      expect(one.results.map((result) => result.title)).toEqual(["Author filter one"]);
+      expect(one.query.authorName).toBe("Regular Member One");
+
+      const two = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: memberOne,
+        capability,
+        params: new URLSearchParams("q=authorfilterword&author=Regular Member Two"),
+      });
+      expect(two.results.map((result) => result.title)).toEqual(["Author filter two"]);
+
+      const missing = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: memberOne,
+        capability,
+        params: new URLSearchParams("q=authorfilterword&author=No Such Member"),
+      });
+      expect(missing.authorMissing).toBe(true);
+      expect(missing.results).toHaveLength(0);
+    });
+  });
+
+  test("never exposes prefix options for hidden or locked forums", async () => {
+    await withSeededDb(async (database) => {
+      const staffRoom = await forumId(database, "staff-room");
+      const lockedForum = await forumId(database, "general-discussion");
+      const readableForum = await forumId(database, "help-questions");
+      const capability = await capabilityFor(database, GUEST_PRINCIPAL);
+
+      const hidden = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: GUEST_PRINCIPAL,
+        capability,
+        params: new URLSearchParams(`forum=${staffRoom}`),
+      });
+      expect(hidden.prefixes).toHaveLength(0);
+
+      const locked = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: GUEST_PRINCIPAL,
+        capability,
+        params: new URLSearchParams(`forum=${lockedForum}`),
+      });
+      expect(locked.prefixes).toHaveLength(0);
+
+      const readable = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: GUEST_PRINCIPAL,
+        capability,
+        params: new URLSearchParams(`forum=${readableForum}`),
+      });
+      expect(readable.prefixes.length).toBeGreaterThan(0);
     });
   });
 

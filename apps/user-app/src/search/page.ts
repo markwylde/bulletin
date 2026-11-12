@@ -65,6 +65,7 @@ export interface SearchView {
     readonly prefixId: string;
     readonly authorId: string;
     readonly authorName: string | null;
+    readonly authorValue: string;
     readonly createdFrom: string;
     readonly createdTo: string;
   };
@@ -74,6 +75,7 @@ export interface SearchView {
   readonly prefixes: readonly SearchOption[];
   readonly results: readonly SearchResultView[];
   readonly members: readonly SearchMemberView[];
+  readonly authorMissing: boolean;
   readonly floodWaitSeconds: number | null;
   readonly pagination: {
     readonly page: number;
@@ -161,11 +163,13 @@ async function visibleForumOptions(
 async function prefixOptions(
   sql: SQL,
   principal: ViewerPrincipal,
+  capability: CapabilityView,
   locale: Locale,
   forumId: string,
   selectedId: string,
 ): Promise<readonly SearchOption[]> {
-  if (forumId === "") {
+  // A prefix list is forum metadata: never load it for a forum the viewer cannot read.
+  if (forumId === "" || !capability.read(forumId)) {
     return [];
   }
 
@@ -185,6 +189,48 @@ async function prefixOptions(
   return options;
 }
 
+interface ResolvedAuthor {
+  readonly id: string | null;
+  readonly name: string | null;
+  readonly value: string;
+  readonly missing: boolean;
+}
+
+/** Accepts a member ID or a display name, so the form can filter by author by name. */
+async function resolveAuthor(
+  sql: SQL,
+  principal: ViewerPrincipal,
+  raw: string | null,
+): Promise<ResolvedAuthor> {
+  const value = (raw ?? "").trim().slice(0, 80);
+
+  if (value === "") {
+    return { id: null, name: null, value: "", missing: false };
+  }
+
+  const id = parseSearchId(value);
+
+  if (id !== null) {
+    const member = await readMember(sql, id);
+
+    return member === null
+      ? { id: null, name: null, value, missing: true }
+      : { id, name: member.displayName ?? id, value, missing: false };
+  }
+
+  const matches = await searchMembers(sql, principal, { query: value, limit: 5 });
+  const lower = value.toLowerCase();
+  const exact = matches.find((member) => member.displayName.toLowerCase() === lower);
+  const prefixMatches = matches.filter((member) =>
+    member.displayName.toLowerCase().startsWith(lower),
+  );
+  const match = exact ?? (prefixMatches.length === 1 ? prefixMatches[0] : undefined);
+
+  return match === undefined
+    ? { id: null, name: null, value, missing: true }
+    : { id: match.id, name: match.displayName, value, missing: false };
+}
+
 export async function buildSearchPage(input: SearchPageInput): Promise<SearchView> {
   const rawQuery = input.params.get("q") ?? "";
   const query = normalizeSearchQuery(rawQuery);
@@ -193,13 +239,12 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
   const sort = parseSearchSort(input.params.get("sort"));
   const forumId = parseSearchId(input.params.get("forum")) ?? "";
   const prefixId = parseSearchId(input.params.get("prefix")) ?? "";
-  const authorId = parseSearchId(input.params.get("author")) ?? "";
+  const author = await resolveAuthor(input.sql, input.principal, input.params.get("author"));
   const createdFrom = parseSearchDate(input.params.get("from"));
   const createdToInput = parseSearchDate(input.params.get("to"));
   // The input is a whole day; the query uses an exclusive next-midnight boundary.
   const createdTo =
     createdToInput === null ? null : new Date(createdToInput.getTime() + 86_400_000);
-  const author = authorId === "" ? null : await readMember(input.sql, authorId);
   let result: {
     readonly items: readonly SearchHit[];
     readonly page: number;
@@ -207,7 +252,10 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
   } = { items: [], page: 1, pageCount: 1 };
   let members: readonly SearchMemberView[] = [];
 
-  if (input.floodWaitSeconds === null || input.floodWaitSeconds === undefined) {
+  if (
+    (input.floodWaitSeconds === null || input.floodWaitSeconds === undefined) &&
+    !author.missing
+  ) {
     if (kind === "members") {
       const found = await searchMembers(input.sql, input.principal, {
         query,
@@ -232,7 +280,7 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
           perPage: input.perPage ?? 20,
           forumIds: forumId === "" ? null : [forumId],
           prefixIds: prefixId === "" ? null : [prefixId],
-          authorId: authorId === "" ? null : authorId,
+          authorId: author.id,
           createdFrom,
           createdTo,
         },
@@ -242,7 +290,7 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
 
   const [forums, prefixes] = await Promise.all([
     visibleForumOptions(input.sql, input.capability, forumId),
-    prefixOptions(input.sql, input.principal, input.locale, forumId, prefixId),
+    prefixOptions(input.sql, input.principal, input.capability, input.locale, forumId, prefixId),
   ]);
   const pageParams = new URLSearchParams(input.params);
   pageParams.delete("page");
@@ -261,8 +309,9 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
       sort,
       forumId,
       prefixId,
-      authorId,
-      authorName: author?.displayName ?? null,
+      authorId: author.id ?? "",
+      authorName: author.name,
+      authorValue: author.value,
       createdFrom: createdFrom === null ? "" : (input.params.get("from") ?? ""),
       createdTo: createdToInput === null ? "" : (input.params.get("to") ?? ""),
     },
@@ -295,6 +344,7 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
     prefixes,
     results: resultViews(result.items, input.locale, input.translate),
     members,
+    authorMissing: author.missing,
     floodWaitSeconds: input.floodWaitSeconds ?? null,
     pagination: pagination(base, result.page, result.pageCount),
     noResults: {
@@ -367,6 +417,7 @@ export async function buildMemberContentPage(
       prefixId: "",
       authorId: parsed.id,
       authorName: member.displayName,
+      authorValue: "",
       createdFrom: "",
       createdTo: "",
     },
@@ -376,6 +427,7 @@ export async function buildMemberContentPage(
     prefixes: [],
     results: resultViews(result.items, input.locale, input.translate),
     members: [],
+    authorMissing: false,
     floodWaitSeconds: null,
     pagination: pagination(base, result.page, result.pageCount),
     noResults: {
@@ -424,6 +476,7 @@ export async function buildNewContentPage(input: NewContentPageInput): Promise<S
       prefixId: "",
       authorId: "",
       authorName: null,
+      authorValue: "",
       createdFrom: "",
       createdTo: "",
     },
@@ -433,6 +486,7 @@ export async function buildNewContentPage(input: NewContentPageInput): Promise<S
     prefixes: [],
     results: resultViews(result.items, input.locale, input.translate),
     members: [],
+    authorMissing: false,
     floodWaitSeconds: null,
     pagination: pagination("/search/new", result.page, result.pageCount),
     noResults: {

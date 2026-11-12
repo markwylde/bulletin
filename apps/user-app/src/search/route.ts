@@ -5,7 +5,7 @@ import {
   loadForumTree,
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
-import { consumeSearchFlood, normalizeSearchQuery, parseSearchPage } from "@bulletin/domain/search";
+import { consumeSearchFlood, normalizeSearchQuery } from "@bulletin/domain/search";
 import type { Locale, Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { searchContract, searchMemberContract, searchNewContract } from "../contracts.ts";
@@ -124,11 +124,7 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
   };
   let floodWaitSeconds: number | null = null;
 
-  if (
-    input.mode === "search" &&
-    normalizeSearchQuery(input.params.get("q") ?? "") !== "" &&
-    parseSearchPage(input.params.get("page")) <= 1
-  ) {
+  if (input.mode === "search" && normalizeSearchQuery(input.params.get("q") ?? "") !== "") {
     const flood = await consumeSearchFlood(input.sql, principal, {
       ...(input.viewerKey === null || input.viewerKey === undefined
         ? {}

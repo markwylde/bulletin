@@ -54,11 +54,14 @@
           {% endfor %}
         </select>
 
-        {% if query.authorId != "" %}
-          <input type="hidden" name="author" value="{{ query.authorId }}">
-          {% if query.authorName %}
-            <p class="bl-note" data-search-author-filter>{% t "search.author.filter" name: query.authorName %}</p>
-          {% endif %}
+        <label class="bl-label" for="search-author">{% t "search.author.label" %}</label>
+        <input class="bl-input" id="search-author" type="search" name="author" value="{{ query.authorValue }}"
+          maxlength="80" placeholder="{% t "search.author.placeholder" %}" data-search-author>
+        {% if query.authorName and query.authorId != "" %}
+          <p class="bl-note" data-search-author-filter>{% t "search.author.filter" name: query.authorName %}</p>
+        {% endif %}
+        {% if authorMissing %}
+          <p class="bl-note" data-search-author-missing>{% t "search.author.noMatch" %}</p>
         {% endif %}
       {% endif %}
 

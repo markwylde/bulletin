@@ -78,6 +78,8 @@ integrationDescribe("search page", () => {
           await view.evaluate<string>('document.querySelector("[data-search-sort]")?.value ?? ""'),
         ).toBe("date");
 
+        // Pagination is a search request too: wait out the default 5 s interval.
+        await Bun.sleep(5_500);
         await clickSelector(view, "[data-search-next]");
         await waitForExpression(
           view,
@@ -106,8 +108,8 @@ integrationDescribe("search page", () => {
           readonly flooded: boolean;
         }>(
           `(async () => {
-          const first = await fetch("/search?q=floodtest&kind=posts");
-          const second = await fetch("/search?q=floodtest&kind=posts");
+          const first = await fetch("/search?q=floodtest&kind=posts&page=2");
+          const second = await fetch("/search?q=floodtest&kind=posts&page=2");
           const body = await second.text();
           return { first: first.status, second: second.status, flooded: body.includes("data-search-flood") };
         })()`,
@@ -118,6 +120,48 @@ integrationDescribe("search page", () => {
         expect(result.flooded).toBe(true);
       },
     );
+  }, 180_000);
+
+  test("filters by author and clears the author field", async () => {
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await useFreshGuest(view);
+      await view.navigate(`${SEARCH_URL}?q=the&kind=posts`);
+      await waitForSelector(view, "[data-search-result]", 20_000);
+
+      // Wait out the initial search's flood interval before the author submit.
+      await Bun.sleep(5_500);
+      await setInputValue(view, "[data-search-author]", "Regular Member One");
+      await waitForSelector(view, "[data-search-submit]:not([disabled])");
+      await clickSelector(view, "[data-search-submit]");
+      await waitForExpression(
+        view,
+        'new URLSearchParams(window.location.search).get("author") === "Regular Member One"',
+        20_000,
+      );
+      await waitForSelector(view, "[data-search-result]", 20_000);
+      const authors = await view.evaluate<string[]>(
+        'Array.from(document.querySelectorAll("[data-search-result] .bl-search-result__meta")).map((node) => node.textContent ?? "")',
+      );
+      expect(authors.length).toBeGreaterThan(0);
+      expect(authors.every((author) => !author.includes("Regular Member Two"))).toBe(true);
+      expect(authors.some((author) => author.includes("Regular Member One"))).toBe(true);
+
+      await Bun.sleep(5_500);
+      await setInputValue(view, "[data-search-author]", "");
+      await waitForSelector(view, "[data-search-submit]:not([disabled])");
+      await clickSelector(view, "[data-search-submit]");
+      await waitForExpression(
+        view,
+        'new URLSearchParams(window.location.search).get("author") === ""',
+        20_000,
+      );
+      await waitForSelector(view, "[data-search-result]", 20_000);
+      expect(
+        await view.evaluate<boolean>(
+          'document.querySelector("[data-search-author-filter]") === null',
+        ),
+      ).toBe(true);
+    });
   }, 180_000);
 
   test("uses the header quick-search box", async () => {

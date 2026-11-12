@@ -106,6 +106,7 @@ async function insertContent(
     readonly body: string;
     readonly lang?: string;
     readonly visibility?: "visible" | "unapproved" | "soft_deleted";
+    readonly topicVisibility?: "visible" | "unapproved" | "soft_deleted";
     readonly prefixId?: string | null;
     readonly createdAt?: Date;
   },
@@ -114,11 +115,12 @@ async function insertContent(
   const createdAt = input.createdAt ?? new Date();
   const [topic] = (await database.sql`
     INSERT INTO core.topics (
-      forum_id, title, slug, starter_id, prefix_id, lang, created_at, updated_at, last_post_at
+      forum_id, title, slug, starter_id, prefix_id, visibility, lang,
+      created_at, updated_at, last_post_at
     )
     VALUES (
       ${input.forumId}, ${input.title}, ${`search-test-${sequence}`}, ${input.authorId},
-      ${input.prefixId ?? null}, ${input.lang ?? "simple"}::regconfig,
+      ${input.prefixId ?? null}, ${input.topicVisibility ?? "visible"}, ${input.lang ?? "simple"}::regconfig,
       ${createdAt}, ${createdAt}, ${createdAt}
     )
     RETURNING id::text AS id
@@ -313,6 +315,99 @@ integrationDescribe("search query", () => {
       expect(moderatorHeld.items.map((item) => item.kind === "post" && item.postId)).toContain(
         held.postId,
       );
+    });
+  });
+
+  test("filters held and deleted topics for ordinary viewers and each moderator power", async () => {
+    await withSeededDb(async (database) => {
+      const announcements = await forumId(database, "announcements");
+      const author = await memberId(database, "member-1");
+      const unapprovedMod = await memberId(database, "member-2");
+      const deletedMod = await memberId(database, "new-member");
+      const held = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Held topic heldtopicword",
+        body: "A reply inside the held topic.",
+        topicVisibility: "unapproved",
+      });
+      const deleted = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Deleted topic deletedtopicword",
+        body: "A reply inside the deleted topic.",
+        topicVisibility: "soft_deleted",
+      });
+
+      const heldTopic = await search(database, author, {
+        query: "heldtopicword",
+        kind: "topics",
+      });
+      const heldPost = await search(database, author, {
+        query: "A reply inside the held topic",
+        kind: "posts",
+      });
+      const deletedTopic = await search(database, author, {
+        query: "deletedtopicword",
+        kind: "topics",
+      });
+      const deletedPost = await search(database, author, {
+        query: "A reply inside the deleted topic",
+        kind: "posts",
+      });
+      expect(heldTopic.items).toHaveLength(0);
+      expect(heldPost.items).toHaveLength(0);
+      expect(deletedTopic.items).toHaveLength(0);
+      expect(deletedPost.items).toHaveLength(0);
+
+      await database.sql`
+        INSERT INTO core.moderators (forum_id, member_id, powers, this_forum_only)
+        VALUES (${announcements}, ${unapprovedMod}, ${"{see_unapproved}"}::text[], true)
+      `;
+      await database.sql`
+        INSERT INTO core.moderators (forum_id, member_id, powers, this_forum_only)
+        VALUES (${announcements}, ${deletedMod}, ${"{see_deleted}"}::text[], true)
+      `;
+
+      const unapprovedTopics = await search(database, unapprovedMod, {
+        query: "heldtopicword",
+        kind: "topics",
+      });
+      const unapprovedPosts = await search(database, unapprovedMod, {
+        query: "A reply inside the held topic",
+        kind: "posts",
+      });
+      const unapprovedDeleted = await search(database, unapprovedMod, {
+        query: "deletedtopicword",
+        kind: "topics",
+      });
+      expect(unapprovedTopics.items.map((item) => item.kind === "topic" && item.topicId)).toContain(
+        held.topicId,
+      );
+      expect(unapprovedPosts.items.map((item) => item.kind === "post" && item.postId)).toContain(
+        held.postId,
+      );
+      expect(unapprovedDeleted.items).toHaveLength(0);
+
+      const deletedTopics = await search(database, deletedMod, {
+        query: "deletedtopicword",
+        kind: "topics",
+      });
+      const deletedPosts = await search(database, deletedMod, {
+        query: "A reply inside the deleted topic",
+        kind: "posts",
+      });
+      const deletedHeld = await search(database, deletedMod, {
+        query: "heldtopicword",
+        kind: "topics",
+      });
+      expect(deletedTopics.items.map((item) => item.kind === "topic" && item.topicId)).toContain(
+        deleted.topicId,
+      );
+      expect(deletedPosts.items.map((item) => item.kind === "post" && item.postId)).toContain(
+        deleted.postId,
+      );
+      expect(deletedHeld.items).toHaveLength(0);
     });
   });
 
