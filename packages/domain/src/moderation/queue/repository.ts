@@ -512,10 +512,11 @@ export async function rejectHeldPosts(
 
           if (post.position === 1) {
             await deleteTopicRow(tx, target.topicId);
-            topicIds.push(target.topicId);
           } else {
             await deletePostRow(tx, target.postId);
           }
+
+          topicIds.push(target.topicId);
 
           await emit(tx, {
             type: "post.deleted",

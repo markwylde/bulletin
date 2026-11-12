@@ -379,22 +379,37 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
         if (!freshReadable) {
           error = { status: 403 };
         } else {
-          pageData = await buildTopicPage({
-            sql: input.sql,
-            locale: input.locale,
-            translate: input.translate,
-            principal,
+          const freshSeeUnapproved = await can(input.sql, principal, "see_unapproved", {
+            forumId: freshForum.id,
+            tree: freshTree,
             sessionId,
             snapshot: freshSnapshot,
-            topic: freshTopic,
-            page: parsed.page ?? 1,
-            perPage: freshSettings.postsPerPage,
-            quotedForumIds,
-            mentionsEnabled: flags.values.mentions === true,
-            pollsEnabled: flags.values.polls === true,
-            attachmentsEnabled: flags.values.attachments === true,
-            publicEditHistory: freshSettings.publicEditHistory,
           });
+          const freshHeldAuthor =
+            freshTopic.visibility === "unapproved" &&
+            freshTopic.starterId !== null &&
+            freshTopic.starterId === principalMemberId(principal);
+
+          if (freshTopic.visibility === "unapproved" && !freshSeeUnapproved && !freshHeldAuthor) {
+            error = { status: 404 };
+          } else {
+            pageData = await buildTopicPage({
+              sql: input.sql,
+              locale: input.locale,
+              translate: input.translate,
+              principal,
+              sessionId,
+              snapshot: freshSnapshot,
+              topic: freshTopic,
+              page: parsed.page ?? 1,
+              perPage: freshSettings.postsPerPage,
+              quotedForumIds,
+              mentionsEnabled: flags.values.mentions === true,
+              pollsEnabled: flags.values.polls === true,
+              attachmentsEnabled: flags.values.attachments === true,
+              publicEditHistory: freshSettings.publicEditHistory,
+            });
+          }
         }
       }
 
