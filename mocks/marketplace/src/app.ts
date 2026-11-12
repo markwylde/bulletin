@@ -1,11 +1,12 @@
 import { escapeHtml, htmlResponse, jsonResponse, renderPage } from "@bulletin/mock-ui";
 import { CompactSign, importJWK } from "jose";
 import { DEV_KEY_ID, DEV_PRIVATE_KEY, DEV_PUBLIC_KEY } from "./keys.ts";
+import type { CatalogPackage, MarketplacePackage } from "./packages.ts";
 
 export interface Catalog {
   readonly version: 1;
   readonly generatedAt: string;
-  readonly packages: readonly unknown[];
+  readonly packages: readonly CatalogPackage[];
 }
 
 export async function signCatalog(catalog: Catalog): Promise<string> {
@@ -19,6 +20,7 @@ export async function signCatalog(catalog: Catalog): Promise<string> {
 export function createMarketplaceHandler(
   catalog: Catalog,
   signedCatalog: string,
+  packages: readonly MarketplacePackage[] = [],
 ): (request: Request) => Promise<Response> {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
@@ -39,6 +41,21 @@ export function createMarketplaceHandler(
 
     if (url.pathname === "/catalog.json") {
       return jsonResponse(catalog);
+    }
+
+    const bundle = /^\/packages\/([a-z0-9_-]+)\.(tar|sig)$/.exec(url.pathname);
+    const themePackage = packages.find((entry) => entry.package.id === bundle?.[1]);
+
+    if (bundle !== null && themePackage !== undefined) {
+      if (bundle[2] === "tar") {
+        return new Response(themePackage.bundle, {
+          headers: { "content-type": "application/x-tar", "cache-control": "no-store" },
+        });
+      }
+
+      return new Response(themePackage.signature, {
+        headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+      });
     }
 
     if (url.pathname !== "/" && url.pathname !== "") {

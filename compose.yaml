@@ -491,6 +491,7 @@ services:
       S3_REGION: us-east-1
       BULLETIN_AUTH_JWKS_URL: http://darkauth-mock:3020/.well-known/jwks.json
       BULLETIN_AUTH_TOKEN_URL: http://darkauth-mock:3020/token
+      BULLETIN_MARKETPLACE_URL: http://marketplace:4007
       BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}|admin"
     healthcheck: *service-healthcheck
     restart: unless-stopped
@@ -636,6 +637,7 @@ services:
       S3_REGION: us-east-1
       BULLETIN_AUTH_JWKS_URL: http://darkauth-mock:3020/.well-known/jwks.json
       BULLETIN_AUTH_TOKEN_URL: http://darkauth-mock:3020/token
+      BULLETIN_MARKETPLACE_URL: http://marketplace:4007
       BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}|admin"
     healthcheck: *service-healthcheck
     restart: unless-stopped

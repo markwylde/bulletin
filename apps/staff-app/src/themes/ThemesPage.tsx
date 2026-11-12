@@ -69,6 +69,13 @@ interface ThemeDetail {
   readonly strings: readonly StringView[];
 }
 
+interface MarketplacePackage {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly description: string;
+}
+
 interface TemplateIssue {
   readonly code: string;
   readonly line: number;
@@ -147,6 +154,16 @@ function bytesLabel(value: number): string {
   return value >= 1024 ? `${Math.round(value / 1024)} kB` : `${value} B`;
 }
 
+function downloadBase64(filename: string, value: string): void {
+  const bytes = Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/x-tar" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 function base64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -180,6 +197,8 @@ export function ThemesPage() {
   const [css, setCss] = useState("");
   const [strings, setStrings] = useState<StringView[]>([]);
   const [assetName, setAssetName] = useState("");
+  const [importBundle, setImportBundle] = useState<File | null>(null);
+  const [importSignature, setImportSignature] = useState<File | null>(null);
 
   const list = useQuery({
     queryKey: ["staff", "themes"],
@@ -189,6 +208,11 @@ export function ThemesPage() {
     queryKey: ["staff", "themes", selected],
     queryFn: () => apiGet<{ theme: ThemeDetail }>(`/api/staff/themes/detail?id=${selected ?? ""}`),
     enabled: selected !== null,
+  });
+  const marketplace = useQuery({
+    queryKey: ["staff", "themes", "marketplace"],
+    queryFn: () =>
+      apiGet<{ packages: readonly MarketplacePackage[] }>("/api/staff/themes/marketplace"),
   });
   const theme = detail.data?.theme ?? null;
 
@@ -210,6 +234,37 @@ export function ThemesPage() {
 
   const refresh = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ["staff", "themes"] });
+  };
+
+  const describeChecks = (caught: unknown): string => {
+    const body = errorBody(caught);
+    const issues = Array.isArray(body.issues)
+      ? (body.issues as Array<Record<string, unknown>>)
+      : [];
+
+    return issues
+      .map((issue) => {
+        switch (issue.code) {
+          case "missing_template":
+            return t("staff.themes.check.missingTemplate", { template: String(issue.template) });
+          case "missing_island":
+            return t("staff.themes.check.missingIsland", {
+              template: String(issue.template),
+              island: String(issue.island),
+            });
+          case "invalid_template":
+            return t("staff.themes.check.invalidTemplate", { template: String(issue.template) });
+          case "invalid_css":
+            return t("staff.themes.check.invalidCss");
+          case "contrast":
+            return t("staff.themes.check.contrast", { scheme: String(issue.scheme) });
+          case "invalid_string":
+            return t("staff.themes.check.invalidString", { key: String(issue.key) });
+          default:
+            return String(issue.code);
+        }
+      })
+      .join("; ");
   };
 
   const describeError = (caught: unknown): string => {
@@ -245,6 +300,34 @@ export function ThemesPage() {
 
     if (code === "invalid_key") {
       return t("staff.themes.strings.invalid");
+    }
+
+    if (code === "invalid_signature") {
+      return t("staff.themes.import.invalidSignature");
+    }
+
+    if (code === "invalid_bundle") {
+      return t("staff.themes.import.invalidBundle");
+    }
+
+    if (code === "checks_failed") {
+      return t("staff.themes.import.checksFailed", { details: describeChecks(caught) });
+    }
+
+    if (code === "parent_not_found") {
+      return t("staff.themes.error.parent_not_found");
+    }
+
+    if (code === "package_not_found") {
+      return t("staff.themes.error.package_not_found");
+    }
+
+    if (code === "marketplace_unavailable") {
+      return t("staff.themes.error.marketplace_unavailable");
+    }
+
+    if (code === "signature_unavailable" || code === "signing_unavailable") {
+      return t("staff.themes.error.signature_unavailable");
     }
 
     if (code === "not_found") {
@@ -482,6 +565,64 @@ export function ThemesPage() {
     );
   };
 
+  const exportTheme = (): void => {
+    if (theme === null) {
+      return;
+    }
+
+    void run(
+      async () => {
+        const result = await apiGet<{
+          filename: string;
+          bundle: string;
+          signature: string;
+        }>(`/api/staff/themes/export?id=${theme.id}`);
+        downloadBase64(result.filename, result.bundle);
+        const signature = new Blob([result.signature], { type: "text/plain" });
+        const signatureUrl = URL.createObjectURL(signature);
+        const link = document.createElement("a");
+        link.href = signatureUrl;
+        link.download = `${result.filename.replace(/\.tar$/, "")}.sig`;
+        link.click();
+        URL.revokeObjectURL(signatureUrl);
+      },
+      () => toast.pushToast({ messageKey: "staff.themes.export", tone: "success" }),
+    );
+  };
+
+  const importTheme = (): void => {
+    if (importBundle === null || importSignature === null) {
+      return;
+    }
+
+    void run(
+      async () => {
+        const result = await apiPost<{ id: string }>("/api/staff/themes/import", {
+          bundle: await base64(importBundle),
+          signature: (await importSignature.text()).trim(),
+        });
+        setImportBundle(null);
+        setImportSignature(null);
+        setSelected(result.id);
+        setTab("templates");
+      },
+      () => toast.pushToast({ messageKey: "staff.themes.import.saved", tone: "success" }),
+    );
+  };
+
+  const installPackage = (packageId: string): void => {
+    void run(
+      async () => {
+        const result = await apiPost<{ id: string }>("/api/staff/themes/marketplace", {
+          packageId,
+        });
+        setSelected(result.id);
+        setTab("templates");
+      },
+      () => toast.pushToast({ messageKey: "staff.themes.marketplace.installed", tone: "success" }),
+    );
+  };
+
   const preview = (): void => {
     if (theme === null) {
       return;
@@ -588,6 +729,70 @@ export function ThemesPage() {
               <p className="widget-muted">{t("staff.themes.empty")}</p>
             ) : null}
           </section>
+
+          <section className="admin-panel" data-theme-import>
+            <h2>{t("staff.themes.import.title")}</h2>
+            <p className="widget-muted">{t("staff.themes.import.intro")}</p>
+            <div className="admin-form">
+              <label>
+                <span>{t("staff.themes.import.bundle")}</span>
+                <input
+                  type="file"
+                  accept=".tar,application/x-tar"
+                  data-theme-import-bundle
+                  onChange={(event) => setImportBundle(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <label>
+                <span>{t("staff.themes.import.signature")}</span>
+                <input
+                  type="file"
+                  accept=".sig,text/plain"
+                  data-theme-import-signature
+                  onChange={(event) => setImportSignature(event.target.files?.[0] ?? null)}
+                />
+              </label>
+              <div className="admin-form__actions">
+                <button
+                  type="button"
+                  data-theme-import-submit
+                  disabled={busy || importBundle === null || importSignature === null}
+                  onClick={importTheme}
+                >
+                  {t("staff.themes.import.submit")}
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="admin-panel" data-theme-marketplace>
+            <h2>{t("staff.themes.marketplace.title")}</h2>
+            <p className="widget-muted">{t("staff.themes.marketplace.intro")}</p>
+            {marketplace.isError ? (
+              <p className="form-error">{t("staff.themes.marketplace.unavailable")}</p>
+            ) : null}
+            <ul className="admin-list">
+              {(marketplace.data?.packages ?? []).map((entry) => (
+                <li key={entry.id} data-marketplace-package={entry.id}>
+                  <strong>{entry.name}</strong>
+                  <span className="widget-muted">
+                    {entry.version} · {entry.description}
+                  </span>
+                  <button
+                    type="button"
+                    data-marketplace-install={entry.id}
+                    disabled={busy}
+                    onClick={() => installPackage(entry.id)}
+                  >
+                    {t("staff.themes.marketplace.install")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {marketplace.isSuccess && (marketplace.data?.packages ?? []).length === 0 ? (
+              <p className="widget-muted">{t("staff.themes.marketplace.empty")}</p>
+            ) : null}
+          </section>
         </>
       ) : null}
 
@@ -614,6 +819,9 @@ export function ThemesPage() {
                 {t("staff.themes.preview.link")}
               </a>
             ) : null}
+            <button type="button" data-theme-export disabled={busy} onClick={exportTheme}>
+              {t("staff.themes.export")}
+            </button>
           </header>
 
           <nav className="theme-tabs" data-theme-tabs>

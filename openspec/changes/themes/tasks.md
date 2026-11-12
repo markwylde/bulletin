@@ -16,8 +16,8 @@
 
 ## 3. Distribution
 
-- [ ] 3.1 Bundle export/import with Ed25519 signatures, with tests for the unsigned-bundle scenario
-- [ ] 3.2 Marketplace theme install via `mocks/marketplace`, running all static checks (layout rules, required islands, CSS validation, token contrast); tests for the failing-check scenario
+- [x] 3.1 Bundle export/import with Ed25519 signatures, with tests for the unsigned-bundle scenario
+- [x] 3.2 Marketplace theme install via `mocks/marketplace`, running all static checks (layout rules, required islands, CSS validation, token contrast); tests for the failing-check scenario
 
 ## 4. Availability and choice
 

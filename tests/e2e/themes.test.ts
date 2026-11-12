@@ -66,6 +66,24 @@ async function selectFooter(view: Bun.WebView): Promise<void> {
 }
 
 integrationDescribe("theme management", () => {
+  test("installs a signed marketplace theme at mobile360", async () => {
+    await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "admin");
+      await view.navigate(THEMES_URL);
+      await waitForSelector(view, '[data-marketplace-package="aurora"]', 20_000);
+      await waitForSelector(view, '[data-marketplace-install="aurora"]:not([disabled])', 20_000);
+      await clickSelector(view, '[data-marketplace-install="aurora"]');
+      await waitForSelector(view, "[data-theme-editor]", 20_000);
+      expect(await view.evaluate<string>("document.body.innerText")).toContain("aurora");
+
+      expect(
+        await view.evaluate<number>(
+          "document.documentElement.scrollWidth - document.documentElement.clientWidth",
+        ),
+      ).toBeLessThanOrEqual(1);
+    });
+  }, 120_000);
+
   for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
     test(`edits, versions, reverts and previews a child theme at ${VIEWPORTS[viewportName].width}px`, async () => {
       const name = `e2e-theme-${viewportName}-${Date.now()}`;

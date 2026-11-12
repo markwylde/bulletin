@@ -100,6 +100,12 @@ import {
   searchOverrideKeys,
 } from "./string-overrides.ts";
 import {
+  exportThemeResponse,
+  importThemeResponse,
+  marketplaceInstallResponse,
+  marketplaceListResponse,
+} from "./theme-distribution.ts";
+import {
   createThemeResponse,
   deleteAssetResponse,
   listThemesResponse,
@@ -1632,6 +1638,52 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
       }
 
       return deleteAssetResponse(sql, storage, session.memberId, request);
+    },
+  },
+  {
+    id: "themes.export",
+    method: "GET",
+    path: "/api/staff/themes/export",
+    permission: "acp.themes",
+    handler: async ({ sql, url, storage }) => {
+      if (storage === undefined) {
+        return json({ code: "storage_unavailable" }, 503);
+      }
+
+      return exportThemeResponse(sql, storage, url);
+    },
+  },
+  {
+    id: "themes.import",
+    method: "POST",
+    path: "/api/staff/themes/import",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request, storage }) => {
+      if (storage === undefined) {
+        return json({ code: "storage_unavailable" }, 503);
+      }
+
+      return importThemeResponse(sql, storage, session.memberId, request);
+    },
+  },
+  {
+    id: "themes.marketplace.list",
+    method: "GET",
+    path: "/api/staff/themes/marketplace",
+    permission: "acp.themes",
+    handler: async () => marketplaceListResponse(),
+  },
+  {
+    id: "themes.marketplace.install",
+    method: "POST",
+    path: "/api/staff/themes/marketplace",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request, storage }) => {
+      if (storage === undefined) {
+        return json({ code: "storage_unavailable" }, 503);
+      }
+
+      return marketplaceInstallResponse(sql, storage, session.memberId, request);
     },
   },
   {

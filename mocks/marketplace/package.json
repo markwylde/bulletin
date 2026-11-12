@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@bulletin/mock-ui": "workspace:*",
-    "jose": "6.2.16"
+    "jose": "6.2.16",
+    "@bulletin/domain": "workspace:*",
+    "@bulletin/templates": "workspace:*"
   }
 }

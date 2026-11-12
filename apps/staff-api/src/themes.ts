@@ -19,7 +19,7 @@ import {
   verifyThemePreviewToken,
 } from "@bulletin/domain/themes";
 import { filterThemeCss } from "@bulletin/domain/themes/css";
-import { type Catalog, isLocale, validateRuntimeCatalog } from "@bulletin/i18n";
+import { isLocale, validateRuntimeCatalog } from "@bulletin/i18n";
 import { opaqueKey, type StorageClient } from "@bulletin/storage";
 import {
   createTemplateEngine,
@@ -30,6 +30,7 @@ import {
 import type { SQL } from "bun";
 import { fileTypeFromBuffer } from "file-type";
 import { writeAdminLog } from "./admin-log.ts";
+import { userAppBaseCatalog } from "./theme-catalog.ts";
 
 const MAX_TEMPLATE_BYTES = 1_000_000;
 const MAX_ASSET_BYTES = 2 * 1024 * 1024;
@@ -47,22 +48,6 @@ const ASSET_TYPES = new Set([
 ]);
 
 const engine = createTemplateEngine({ islands: {} });
-
-let userCatalog: Promise<Catalog | null> | null = null;
-
-/** The user-app's shipped English catalog, so theme overrides keep known keys and placeholders. */
-function userAppBaseCatalog(): Promise<Catalog | null> {
-  userCatalog ??= Bun.file(new URL("../../user-app/i18n/merged/en.json", import.meta.url))
-    .json()
-    .then((value: unknown) =>
-      typeof value === "object" && value !== null && !Array.isArray(value)
-        ? (value as Catalog)
-        : null,
-    )
-    .catch(() => null);
-
-  return userCatalog;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
