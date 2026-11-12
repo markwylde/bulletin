@@ -277,7 +277,10 @@ export async function mergeTopics(
             WHERE topic_id = ${source.id}
           `;
 
+          // Hidden topics were never counted in their forum, so only a visible source loses a
+          // topic; counting every source would subtract the hidden ones a second time.
           if (source.visibility === "visible") {
+            sourceForumCounts.set(source.forumId, (sourceForumCounts.get(source.forumId) ?? 0) + 1);
             sourcePostCounts.set(
               source.forumId,
               (sourcePostCounts.get(source.forumId) ?? 0) + visible,
@@ -287,8 +290,6 @@ export async function mergeTopics(
           if (destinationVisible) {
             movedVisible += visible;
           }
-
-          sourceForumCounts.set(source.forumId, (sourceForumCounts.get(source.forumId) ?? 0) + 1);
         }
 
         await tx`

@@ -92,6 +92,25 @@ function expectOk<T>(
   return outcome.result;
 }
 
+/** Replaces seeded synthetic counters with a fresh count of the forum's visible rows. */
+async function syncForumCounters(database: TestDatabase, forum: string): Promise<void> {
+  await database.sql`
+    UPDATE core.forums f
+    SET topic_count = (
+          SELECT count(*)::int FROM core.topics t
+          WHERE t.forum_id = f.id AND t.visibility = 'visible'
+        ),
+        post_count = (
+          SELECT count(*)::int
+          FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+          WHERE t.forum_id = f.id
+            AND t.visibility = 'visible'
+            AND p.visibility = 'visible'
+        )
+    WHERE f.id = ${forum}
+  `;
+}
+
 async function topicBodyOrder(database: TestDatabase, topicId: string): Promise<string[]> {
   const rows = (await database.sql`
     SELECT body_text FROM core.posts WHERE topic_id = ${topicId} ORDER BY position
@@ -384,6 +403,7 @@ integrationDescribe("topic moderation tools", () => {
       expectOk(
         await softDeleteTopic(database.sql, { actorId: admin, topicId: mergeSource.topicId }),
       );
+      await syncForumCounters(database, forum);
 
       const [mergeBefore] = (await database.sql`
         SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
@@ -423,7 +443,25 @@ integrationDescribe("topic moderation tools", () => {
       const [mergeAfter] = (await database.sql`
         SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
       `) as Array<{ topic_count: number; post_count: number }>;
-      expect(mergeAfter?.topic_count).toBe((mergeBefore?.topic_count ?? 0) - 1);
+      const [mergeFresh] = (await database.sql`
+        SELECT
+          (
+            SELECT count(*)::int FROM core.topics
+            WHERE forum_id = ${forum} AND visibility = 'visible'
+          ) AS topic_count,
+          (
+            SELECT count(*)::int
+            FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+            WHERE t.forum_id = ${forum}
+              AND t.visibility = 'visible'
+              AND p.visibility = 'visible'
+          ) AS post_count
+      `) as Array<{ topic_count: number; post_count: number }>;
+
+      // The soft-deleted source was never in the forum's counts, so the merge leaves the topic
+      // count alone; its post becomes visible through the destination and adds one.
+      expect(mergeAfter).toEqual(mergeFresh);
+      expect(mergeAfter?.topic_count).toBe(mergeBefore?.topic_count);
       expect(mergeAfter?.post_count).toBe((mergeBefore?.post_count ?? 0) + 1);
 
       const splitSource = expectOk(
@@ -494,6 +532,76 @@ integrationDescribe("topic moderation tools", () => {
       `) as Array<{ topic_count: number; post_count: number }>;
       expect(splitAfter?.topic_count).toBe((splitBefore?.topic_count ?? 0) + 1);
       expect(splitAfter?.post_count).toBe((splitBefore?.post_count ?? 0) + 2);
+    });
+  }, 60_000);
+
+  test("merging a held source does not subtract an uncounted topic", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const heldAuthor = await memberId(database, "new-member");
+
+      await database.sql`UPDATE core.members SET post_count = 0 WHERE id = ${heldAuthor}`;
+      await database.sql`
+        UPDATE core.board_settings SET new_member_approval_posts = 1 WHERE id = 1
+      `;
+
+      const destination = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Held merge destination",
+          bodyMd: "Destination opening.",
+        }),
+      );
+      const heldSource = expectOk(
+        await startTopic(database.sql, {
+          actorId: heldAuthor,
+          forumId: forum,
+          title: "Held merge source",
+          bodyMd: "Held merge body.",
+        }),
+      );
+      expect(
+        (await database.sql`
+          SELECT visibility FROM core.topics WHERE id = ${heldSource.topicId}
+        `)[0],
+      ).toMatchObject({ visibility: "unapproved" });
+      await syncForumCounters(database, forum);
+
+      const [before] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+
+      expectOk(
+        await mergeTopics(database.sql, {
+          actorId: admin,
+          destinationTopicId: destination.topicId,
+          sourceTopicIds: [heldSource.topicId],
+        }),
+      );
+
+      const [after] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+      const [fresh] = (await database.sql`
+        SELECT
+          (
+            SELECT count(*)::int FROM core.topics
+            WHERE forum_id = ${forum} AND visibility = 'visible'
+          ) AS topic_count,
+          (
+            SELECT count(*)::int
+            FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+            WHERE t.forum_id = ${forum}
+              AND t.visibility = 'visible'
+              AND p.visibility = 'visible'
+          ) AS post_count
+      `) as Array<{ topic_count: number; post_count: number }>;
+
+      expect(after).toEqual(fresh);
+      expect(after).toEqual(before);
     });
   }, 60_000);
 
