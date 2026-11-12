@@ -82,15 +82,14 @@ async function followedTopic(): Promise<TopicTarget> {
 }
 
 // Each reply comes from a different member: flood control is per member and the whole file
-// replies several times in a row.
+// replies several times in a row. Members that moderation E2E tests warn, suspend or ban
+// (new-member, warned-member) are deliberately absent: the guards still apply to them.
 const REPLIERS = [
   "member-2",
   "member-fr",
   "member-es",
-  "new-member",
   "forum-mod",
   "member-mod",
-  "warned-member",
   "account-member",
 ];
 let replyIndex = 0;
