@@ -554,6 +554,32 @@ integrationDescribe("search query", () => {
     });
   });
 
+  test("counts concurrent searches atomically", async () => {
+    await withSeededDb(async (database) => {
+      const [guestGroup] = (await database.sql`
+        SELECT id FROM core.groups WHERE key = 'guests'
+      `) as Array<{ id: string }>;
+
+      if (guestGroup === undefined) {
+        throw new Error("Missing guest group");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${guestGroup.id}, 'members.search_flood_seconds', '10'::jsonb)
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+
+      const now = new Date("2026-01-01T00:00:00.000Z");
+      const outcomes = await Promise.all(
+        Array.from({ length: 6 }, () => consumeSearchFlood(database.sql, GUEST_PRINCIPAL, { now })),
+      );
+
+      expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1);
+      expect(outcomes.filter((outcome) => !outcome.ok)).toHaveLength(5);
+    });
+  });
+
   test("refuses searches inside the group's search interval", async () => {
     await withSeededDb(async (database) => {
       const [guestGroup] = (await database.sql`

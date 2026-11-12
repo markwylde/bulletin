@@ -22,41 +22,43 @@
         {% endfor %}
       </select>
 
-      <label class="bl-label" for="search-forum">{% t "search.forum.label" %}</label>
-      <select class="bl-input" id="search-forum" name="forum" data-search-forum>
-        <option value="">{% t "search.forum.all" %}</option>
-        {% for forum in forums %}
-          <option value="{{ forum.value }}"{% if forum.selected %} selected{% endif %}>{{ forum.label }}</option>
-        {% endfor %}
-      </select>
-
-      {% if prefixes.size > 0 %}
-        <label class="bl-label" for="search-prefix">{% t "search.prefix.label" %}</label>
-        <select class="bl-input" id="search-prefix" name="prefix" data-search-prefix>
-          <option value="">{% t "search.prefix.all" %}</option>
-          {% for prefix in prefixes %}
-            <option value="{{ prefix.value }}"{% if prefix.selected %} selected{% endif %}>{{ prefix.label }}</option>
+      {% if query.kind != "members" %}
+        <label class="bl-label" for="search-forum">{% t "search.forum.label" %}</label>
+        <select class="bl-input" id="search-forum" name="forum" data-search-forum>
+          <option value="">{% t "search.forum.all" %}</option>
+          {% for forum in forums %}
+            <option value="{{ forum.value }}"{% if forum.selected %} selected{% endif %}>{{ forum.label }}</option>
           {% endfor %}
         </select>
-      {% endif %}
 
-      <label class="bl-label" for="search-from">{% t "search.from.label" %}</label>
-      <input class="bl-input" id="search-from" type="date" name="from" value="{{ query.createdFrom }}" data-search-from>
+        {% if prefixes.size > 0 %}
+          <label class="bl-label" for="search-prefix">{% t "search.prefix.label" %}</label>
+          <select class="bl-input" id="search-prefix" name="prefix" data-search-prefix>
+            <option value="">{% t "search.prefix.all" %}</option>
+            {% for prefix in prefixes %}
+              <option value="{{ prefix.value }}"{% if prefix.selected %} selected{% endif %}>{{ prefix.label }}</option>
+            {% endfor %}
+          </select>
+        {% endif %}
 
-      <label class="bl-label" for="search-to">{% t "search.to.label" %}</label>
-      <input class="bl-input" id="search-to" type="date" name="to" value="{{ query.createdTo }}" data-search-to>
+        <label class="bl-label" for="search-from">{% t "search.from.label" %}</label>
+        <input class="bl-input" id="search-from" type="date" name="from" value="{{ query.createdFrom }}" data-search-from>
 
-      <label class="bl-label" for="search-sort">{% t "search.sort.label" %}</label>
-      <select class="bl-input" id="search-sort" name="sort" data-search-sort>
-        {% for option in sorts %}
-          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-        {% endfor %}
-      </select>
+        <label class="bl-label" for="search-to">{% t "search.to.label" %}</label>
+        <input class="bl-input" id="search-to" type="date" name="to" value="{{ query.createdTo }}" data-search-to>
 
-      {% if query.authorId != "" %}
-        <input type="hidden" name="author" value="{{ query.authorId }}">
-        {% if query.authorName %}
-          <p class="bl-note" data-search-author-filter>{% t "search.author.filter" name: query.authorName %}</p>
+        <label class="bl-label" for="search-sort">{% t "search.sort.label" %}</label>
+        <select class="bl-input" id="search-sort" name="sort" data-search-sort>
+          {% for option in sorts %}
+            <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+
+        {% if query.authorId != "" %}
+          <input type="hidden" name="author" value="{{ query.authorId }}">
+          {% if query.authorName %}
+            <p class="bl-note" data-search-author-filter>{% t "search.author.filter" name: query.authorName %}</p>
+          {% endif %}
         {% endif %}
       {% endif %}
 
@@ -70,7 +72,27 @@
     </p>
   {% endif %}
 
-  {% if results.size > 0 %}
+  {% if floodWaitSeconds %}
+    <section class="bl-card bl-search-flood" role="alert" data-search-flood>
+      <p>{% t "search.error.flood" seconds: floodWaitSeconds %}</p>
+    </section>
+  {% elsif query.kind == "members" %}
+    {% if members.size > 0 %}
+      <ul class="bl-search-members" data-search-members aria-label="{% t "search.members.title" %}">
+        {% for member in members %}
+          <li class="bl-search-member" data-search-member="{{ member.id }}">
+            <a class="bl-search-member__name" href="{{ member.href }}"{% if member.groupColour %} style="color: {{ member.groupColour }}"{% endif %}>{{ member.name }}</a>
+            {% if member.groupTitle %}<span class="bl-muted">{{ member.groupTitle }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <section class="bl-card" data-search-empty>
+        <h2 class="bl-card__title">{{ noResults.title }}</h2>
+        <p class="bl-muted">{{ noResults.body }}</p>
+      </section>
+    {% endif %}
+  {% elsif results.size > 0 %}
     <ol class="bl-search-results" data-search-results aria-label="{% t "search.results" %}">
       {% for result in results %}
         <li class="bl-search-result" data-search-result="{{ result.key }}" data-search-result-kind="{{ result.kindLabel }}">

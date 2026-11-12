@@ -7,6 +7,8 @@ export type SearchSort = (typeof SEARCH_SORTS)[number];
 
 /** The hard cap on matching rows for one search (ADR 0017, design). */
 export const SEARCH_RESULT_CAP = 1_000;
+/** Rank at most this many recent matches; common terms can otherwise match the whole table. */
+export const SEARCH_CANDIDATE_CAP = 10_000;
 export const SEARCH_DEFAULT_PAGE_SIZE = 20;
 export const SEARCH_MAX_PAGE_SIZE = 100;
 export const SEARCH_MAX_QUERY_LENGTH = 200;
@@ -19,7 +21,7 @@ export interface SearchFilters {
   readonly prefixIds?: readonly string[] | null;
   /** Inclusive lower bound on the content's created_at. */
   readonly createdFrom?: Date | null;
-  /** Inclusive upper bound on the content's created_at. */
+  /** Exclusive upper bound on the content's created_at (a whole-day UI passes next midnight). */
   readonly createdTo?: Date | null;
   readonly sort?: SearchSort;
   readonly page?: number;

@@ -318,6 +318,98 @@ integrationDescribe("search activity views", () => {
     });
   });
 
+  test("treats the end-date filter as a whole inclusive day", async () => {
+    await withSeededDb(async (database) => {
+      const announcements = await forumId(database, "announcements");
+      const member = await memberId(database, "member-1");
+
+      await insertContent(database, {
+        forumId: announcements,
+        authorId: member,
+        title: "Start of day",
+        body: "daytestword at midnight.",
+        createdAt: new Date("2026-01-15T00:00:00.000Z"),
+      });
+      await insertContent(database, {
+        forumId: announcements,
+        authorId: member,
+        title: "End of day",
+        body: "daytestword late at night.",
+        createdAt: new Date("2026-01-15T23:59:59.000Z"),
+      });
+      await insertContent(database, {
+        forumId: announcements,
+        authorId: member,
+        title: "Next day",
+        body: "daytestword after midnight.",
+        createdAt: new Date("2026-01-16T00:00:00.000Z"),
+      });
+
+      const capability = await capabilityFor(database, member);
+      const view = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: member,
+        capability,
+        params: new URLSearchParams("q=daytestword&kind=posts&from=2026-01-15&to=2026-01-15"),
+      });
+
+      expect(view.results.map((result) => result.title).sort()).toEqual([
+        "End of day",
+        "Start of day",
+      ]);
+    });
+  });
+
+  test("member search is available on the search page and respects the list opt-out", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const admin = await memberId(database, "admin");
+      const [adminGroup] = (await database.sql`
+        SELECT id FROM core.groups WHERE key = 'administrators'
+      `) as Array<{ id: string }>;
+
+      if (adminGroup === undefined) {
+        throw new Error("Missing administrators group");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${adminGroup.id}, 'members.view_hidden', 'true'::jsonb)
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      await database.sql`
+        INSERT INTO core.members (display_name, locale)
+        VALUES ('John', 'en'), ('Johnny', 'en'), ('Jhon', 'en')
+      `;
+      await database.sql`UPDATE core.members SET hide_from_member_list = true WHERE display_name = 'Jhon'`;
+
+      const memberCapability = await capabilityFor(database, member);
+      const memberView = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: member,
+        capability: memberCapability,
+        params: new URLSearchParams("q=jhon&kind=members"),
+      });
+      expect(memberView.members.map((entry) => entry.name)).toContain("John");
+      expect(memberView.members.map((entry) => entry.name)).not.toContain("Jhon");
+
+      const adminCapability = await capabilityFor(database, admin);
+      const adminView = await buildSearchPage({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        principal: admin,
+        capability: adminCapability,
+        params: new URLSearchParams("q=jhon&kind=members"),
+      });
+      expect(adminView.members.map((entry) => entry.name)).toContain("Jhon");
+    });
+  });
+
   test("an unknown member ref is a themed not-found", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");

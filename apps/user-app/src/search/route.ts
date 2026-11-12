@@ -5,6 +5,7 @@ import {
   loadForumTree,
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
+import { consumeSearchFlood, normalizeSearchQuery, parseSearchPage } from "@bulletin/domain/search";
 import type { Locale, Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { searchContract, searchMemberContract, searchNewContract } from "../contracts.ts";
@@ -31,12 +32,16 @@ export interface SearchRouteInput {
   readonly mode: SearchRouteMode;
   /** The member ref for the content-by-member route. */
   readonly ref?: string;
+  /** A stable guest identity for the search flood bucket; members use their member ID. */
+  readonly viewerKey?: string | null;
+  /** Test seam for the flood interval. */
+  readonly now?: Date;
 }
 
 export type SearchRouteResult =
   | {
       readonly kind: "page";
-      readonly status: 200 | 404;
+      readonly status: 200 | 404 | 429;
       readonly html: string;
       readonly title: string;
       readonly boardName: string;
@@ -117,12 +122,34 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
     capability,
     params: input.params,
   };
+  let floodWaitSeconds: number | null = null;
+
+  if (
+    input.mode === "search" &&
+    normalizeSearchQuery(input.params.get("q") ?? "") !== "" &&
+    parseSearchPage(input.params.get("page")) <= 1
+  ) {
+    const flood = await consumeSearchFlood(input.sql, principal, {
+      ...(input.viewerKey === null || input.viewerKey === undefined
+        ? {}
+        : { viewerKey: input.viewerKey }),
+      ...(input.now === undefined ? {} : { now: input.now }),
+    });
+
+    if (!flood.ok) {
+      floodWaitSeconds = flood.retryAfterSeconds;
+    }
+  }
+
   const view =
     input.mode === "search"
-      ? await buildSearchPage(common)
+      ? await buildSearchPage({ ...common, floodWaitSeconds })
       : input.mode === "member"
         ? await buildMemberContentPage({ ...common, ref: input.ref ?? "" })
-        : await buildNewContentPage({ ...common, memberId: principal as string });
+        : await buildNewContentPage({
+            ...common,
+            memberId: input.session?.memberId ?? (principal as string),
+          });
 
   if (view === null) {
     const notFound = await renderThemedNotFound({
@@ -149,7 +176,7 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
 
   return {
     kind: "page",
-    status: 200,
+    status: floodWaitSeconds === null ? 200 : 429,
     html: page.html,
     title: view.title,
     boardName,

@@ -44,31 +44,38 @@ export async function consumeSearchFlood(
   const now = options.now ?? new Date();
   const key = searchFloodKey(principal, options.viewerKey);
   const since = new Date(now.getTime() - seconds * 1_000);
-  const [row] = (await sql`
-    SELECT max(window_start) AS last
-    FROM core.rate_buckets
-    WHERE key = ${key}
-      AND window_start > ${since}
-  `) as Array<{ last: Date | null }>;
-  const last = row?.last;
 
-  if (last !== null && last !== undefined) {
-    return {
-      ok: false,
-      retryAfterSeconds: Math.max(
-        1,
-        Math.ceil((last.getTime() + seconds * 1_000 - now.getTime()) / 1_000),
-      ),
-    };
-  }
+  // The advisory lock serialises the check and the insert for one identity (ADR 0003):
+  // concurrent requests cannot all observe an empty bucket. Refused searches are not recorded.
+  return sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 
-  const windowStart = new Date(Math.floor(now.getTime() / 1_000) * 1_000);
-  await sql`
-    INSERT INTO core.rate_buckets (key, window_start, count)
-    VALUES (${key}, ${windowStart}, 1)
-    ON CONFLICT (key, window_start) DO UPDATE
-      SET count = core.rate_buckets.count + 1
-  `;
+    const [row] = (await tx`
+      SELECT max(window_start) AS last
+      FROM core.rate_buckets
+      WHERE key = ${key}
+        AND window_start > ${since}
+    `) as Array<{ last: Date | null }>;
+    const last = row?.last;
 
-  return { ok: true, retryAfterSeconds: 0 };
+    if (last !== null && last !== undefined) {
+      return {
+        ok: false,
+        retryAfterSeconds: Math.max(
+          1,
+          Math.ceil((last.getTime() + seconds * 1_000 - now.getTime()) / 1_000),
+        ),
+      };
+    }
+
+    const windowStart = new Date(Math.floor(now.getTime() / 1_000) * 1_000);
+    await tx`
+      INSERT INTO core.rate_buckets (key, window_start, count)
+      VALUES (${key}, ${windowStart}, 1)
+      ON CONFLICT (key, window_start) DO UPDATE
+        SET count = core.rate_buckets.count + 1
+    `;
+
+    return { ok: true, retryAfterSeconds: 0 };
+  });
 }

@@ -12,9 +12,9 @@ import {
   parseSearchSort,
   readMemberActivityWindow,
   type SearchHit,
-  type SearchKind,
   type SearchSort,
   searchContent,
+  searchMembers,
 } from "@bulletin/domain/search";
 import { canonicalUrl, slugify } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
@@ -40,6 +40,16 @@ export interface SearchOption {
   readonly selected: boolean;
 }
 
+export type SearchUiKind = "topics" | "posts" | "members";
+
+export interface SearchMemberView {
+  readonly id: string;
+  readonly name: string;
+  readonly href: string;
+  readonly groupTitle: string | null;
+  readonly groupColour: string | null;
+}
+
 export interface SearchView {
   readonly mode: "search" | "member" | "new";
   readonly title: string;
@@ -49,7 +59,7 @@ export interface SearchView {
   readonly showFilters: boolean;
   readonly query: {
     readonly value: string;
-    readonly kind: SearchKind;
+    readonly kind: SearchUiKind;
     readonly sort: SearchSort;
     readonly forumId: string;
     readonly prefixId: string;
@@ -63,6 +73,8 @@ export interface SearchView {
   readonly forums: readonly SearchOption[];
   readonly prefixes: readonly SearchOption[];
   readonly results: readonly SearchResultView[];
+  readonly members: readonly SearchMemberView[];
+  readonly floodWaitSeconds: number | null;
   readonly pagination: {
     readonly page: number;
     readonly pageCount: number;
@@ -82,6 +94,8 @@ export interface SearchPageInput {
   readonly capability: CapabilityView;
   readonly params: URLSearchParams;
   readonly perPage?: number;
+  /** Set by the route when the group's search interval refused this request. */
+  readonly floodWaitSeconds?: number | null;
 }
 
 function resultViews(
@@ -174,30 +188,58 @@ async function prefixOptions(
 export async function buildSearchPage(input: SearchPageInput): Promise<SearchView> {
   const rawQuery = input.params.get("q") ?? "";
   const query = normalizeSearchQuery(rawQuery);
-  const kind = parseSearchKind(input.params.get("kind"));
+  const kind: SearchUiKind =
+    input.params.get("kind") === "members" ? "members" : parseSearchKind(input.params.get("kind"));
   const sort = parseSearchSort(input.params.get("sort"));
   const forumId = parseSearchId(input.params.get("forum")) ?? "";
   const prefixId = parseSearchId(input.params.get("prefix")) ?? "";
   const authorId = parseSearchId(input.params.get("author")) ?? "";
   const createdFrom = parseSearchDate(input.params.get("from"));
-  const createdTo = parseSearchDate(input.params.get("to"));
+  const createdToInput = parseSearchDate(input.params.get("to"));
+  // The input is a whole day; the query uses an exclusive next-midnight boundary.
+  const createdTo =
+    createdToInput === null ? null : new Date(createdToInput.getTime() + 86_400_000);
   const author = authorId === "" ? null : await readMember(input.sql, authorId);
-  const result = await searchContent(
-    input.sql,
-    { capability: input.capability, locale: input.locale },
-    {
-      query,
-      kind,
-      sort,
-      page: parseSearchPage(input.params.get("page")),
-      perPage: input.perPage ?? 20,
-      forumIds: forumId === "" ? null : [forumId],
-      prefixIds: prefixId === "" ? null : [prefixId],
-      authorId: authorId === "" ? null : authorId,
-      createdFrom,
-      createdTo,
-    },
-  );
+  let result: {
+    readonly items: readonly SearchHit[];
+    readonly page: number;
+    readonly pageCount: number;
+  } = { items: [], page: 1, pageCount: 1 };
+  let members: readonly SearchMemberView[] = [];
+
+  if (input.floodWaitSeconds === null || input.floodWaitSeconds === undefined) {
+    if (kind === "members") {
+      const found = await searchMembers(input.sql, input.principal, {
+        query,
+        limit: input.perPage ?? 20,
+      });
+      members = found.map((member) => ({
+        id: member.id,
+        name: member.displayName,
+        href: canonicalUrl("profile", member.id, member.displayName),
+        groupTitle: member.groupTitle,
+        groupColour: member.groupColour,
+      }));
+    } else {
+      result = await searchContent(
+        input.sql,
+        { capability: input.capability, locale: input.locale },
+        {
+          query,
+          kind,
+          sort,
+          page: parseSearchPage(input.params.get("page")),
+          perPage: input.perPage ?? 20,
+          forumIds: forumId === "" ? null : [forumId],
+          prefixIds: prefixId === "" ? null : [prefixId],
+          authorId: authorId === "" ? null : authorId,
+          createdFrom,
+          createdTo,
+        },
+      );
+    }
+  }
+
   const [forums, prefixes] = await Promise.all([
     visibleForumOptions(input.sql, input.capability, forumId),
     prefixOptions(input.sql, input.principal, input.locale, forumId, prefixId),
@@ -222,7 +264,7 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
       authorId,
       authorName: author?.displayName ?? null,
       createdFrom: createdFrom === null ? "" : (input.params.get("from") ?? ""),
-      createdTo: createdTo === null ? "" : (input.params.get("to") ?? ""),
+      createdTo: createdToInput === null ? "" : (input.params.get("to") ?? ""),
     },
     kinds: [
       {
@@ -234,6 +276,11 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
         value: "topics",
         label: input.translate("search.kind.topics"),
         selected: kind === "topics",
+      },
+      {
+        value: "members",
+        label: input.translate("search.kind.members"),
+        selected: kind === "members",
       },
     ],
     sorts: [
@@ -247,6 +294,8 @@ export async function buildSearchPage(input: SearchPageInput): Promise<SearchVie
     forums,
     prefixes,
     results: resultViews(result.items, input.locale, input.translate),
+    members,
+    floodWaitSeconds: input.floodWaitSeconds ?? null,
     pagination: pagination(base, result.page, result.pageCount),
     noResults: {
       title: input.translate("search.empty.title"),
@@ -326,6 +375,8 @@ export async function buildMemberContentPage(
     forums: [],
     prefixes: [],
     results: resultViews(result.items, input.locale, input.translate),
+    members: [],
+    floodWaitSeconds: null,
     pagination: pagination(base, result.page, result.pageCount),
     noResults: {
       title: input.translate("search.member.empty.title"),
@@ -381,6 +432,8 @@ export async function buildNewContentPage(input: NewContentPageInput): Promise<S
     forums: [],
     prefixes: [],
     results: resultViews(result.items, input.locale, input.translate),
+    members: [],
+    floodWaitSeconds: null,
     pagination: pagination("/search/new", result.page, result.pageCount),
     noResults: {
       title: input.translate("search.new.empty.title"),

@@ -52,7 +52,8 @@ function percentile(sorted: readonly number[], value: number): number {
 async function measure(baseUrl: string, path: string): Promise<Sample> {
   const started = performance.now();
   const response = await fetch(`${baseUrl}${path}`, {
-    headers: { accept: "text/html" },
+    // A fresh guest identity keeps the flood bucket out of the latency measurement.
+    headers: { accept: "text/html", cookie: `bl_guest=${crypto.randomUUID()}` },
     redirect: "manual",
   });
   // TTFB, as in the route benchmark: the body is drained after the headers arrive.

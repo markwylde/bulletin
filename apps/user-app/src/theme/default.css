@@ -1757,3 +1757,32 @@ html[data-hide-signatures] [data-signature] {
   background: var(--bl-accent-soft);
   color: inherit;
 }
+
+.bl-search-flood {
+  border-color: var(--bl-danger);
+}
+
+.bl-search-members {
+  display: grid;
+  gap: var(--bl-space-small);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bl-search-member {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--bl-space-small);
+  min-width: 0;
+  padding: var(--bl-space);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius);
+  background: var(--bl-surface);
+}
+
+.bl-search-member__name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}

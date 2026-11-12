@@ -150,6 +150,57 @@ integrationDescribe("search feature flag", () => {
     });
   });
 
+  test("member search results are available through the gated route", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const admin = await memberSession(database, "admin");
+      const [adminGroup] = (await database.sql`
+        SELECT id FROM core.groups WHERE key = 'administrators'
+      `) as Array<{ id: string }>;
+
+      if (adminGroup === undefined) {
+        throw new Error("Missing administrators group");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${adminGroup.id}, 'members.view_hidden', 'true'::jsonb)
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      await database.sql`
+        INSERT INTO core.members (display_name, locale)
+        VALUES ('John', 'en'), ('Jhon', 'en')
+      `;
+      await database.sql`UPDATE core.members SET hide_from_member_list = true WHERE display_name = 'Jhon'`;
+
+      const render = (session: UserAppSessionContext) =>
+        renderSearchRoute({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session,
+          params: new URLSearchParams("q=jhon&kind=members"),
+          mode: "search",
+        });
+
+      const visible = await render(member);
+      expect(visible.kind).toBe("page");
+
+      if (visible.kind === "page") {
+        expect(visible.html).toContain("John");
+        expect(visible.html).not.toContain("Jhon");
+        expect(visible.html).toContain("data-search-member");
+      }
+
+      const withHidden = await render(admin);
+      expect(withHidden.kind).toBe("page");
+
+      if (withHidden.kind === "page") {
+        expect(withHidden.html).toContain("Jhon");
+      }
+    });
+  });
+
   test("the cached shell varies with the search flag and never leaks the quick search", async () => {
     await withSeededDb(async (database) => {
       const versions = await createTagVersions({

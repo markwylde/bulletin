@@ -14,6 +14,7 @@ const ALLOWED_WRITES = [
   "attachment_download_buffer",
   "forum_redirect_clicks",
   "presence",
+  "rate_buckets",
   "system_audit_buffer",
   "topic_view_buffer",
 ];
@@ -61,6 +62,12 @@ integrationDescribe("user_app database role", () => {
           INSERT INTO core.topic_view_buffer (topic_id, viewer_key, bucket)
           VALUES (1, 'member:1', now())
         `;
+          // The search flood interval records accepted searches in the same UNLOGGED buffer.
+          await sql`
+            INSERT INTO core.rate_buckets (key, window_start, count)
+            VALUES ('search:test', now(), 1)
+            ON CONFLICT (key, window_start) DO UPDATE SET count = core.rate_buckets.count + 1
+          `;
           // Writes outside the buffers are denied by role grants.
           expect(
             await denied(() => sql`INSERT INTO core.members (display_name) VALUES ('Nope')`),
@@ -91,7 +98,9 @@ integrationDescribe("user_app database role", () => {
         expect([...new Set(grants.map((grant) => grant.table_name))].sort()).toEqual(
           ALLOWED_WRITES,
         );
-        expect(grants.some((grant) => grant.privilege_type === "DELETE")).toBe(false);
+        expect(grants.filter((grant) => grant.privilege_type === "DELETE")).toEqual([
+          { table_name: "rate_buckets", privilege_type: "DELETE" },
+        ]);
         expect(grants.filter((grant) => grant.table_name === "system_audit_buffer")).toEqual([
           { table_name: "system_audit_buffer", privilege_type: "INSERT" },
         ]);

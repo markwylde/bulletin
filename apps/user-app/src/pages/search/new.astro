@@ -4,17 +4,26 @@ import { USER_CATALOGS } from "../../catalogs.ts";
 import { readSql } from "../../db.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { renderSearchRoute } from "../../search/route.ts";
+import { searchViewerKey } from "../../search/viewer-key.ts";
 
 const sql = readSql();
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const session = Astro.locals.session ?? null;
+const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
+const viewerKey = searchViewerKey(
+  Astro.request,
+  session !== null,
+  nodeEnv,
+  process.env.SESSION_SECRET ?? "bulletin-search-rate-limit",
+);
 const result = await renderSearchRoute({
   sql,
   locale,
   translate,
   session,
   params: Astro.url.searchParams,
+  viewerKey: viewerKey ?? null,
   mode: "new",
 });
 

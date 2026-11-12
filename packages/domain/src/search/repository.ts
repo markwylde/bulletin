@@ -11,6 +11,7 @@ import {
 } from "./snippet.ts";
 import {
   type PostSearchHit,
+  SEARCH_CANDIDATE_CAP,
   SEARCH_RESULT_CAP,
   type SearchSort,
   type TopicSearchHit,
@@ -170,7 +171,7 @@ export async function countTopicHits(sql: SQL, input: SearchRepositoryInput): Pr
         AND (${input.authorId}::bigint IS NULL OR topic.starter_id = ${input.authorId}::bigint)
         AND (${prefixes}::bigint[] IS NULL OR topic.prefix_id = ANY(${prefixes}::bigint[]))
         AND (${input.createdFrom}::timestamptz IS NULL OR topic.created_at >= ${input.createdFrom})
-        AND (${input.createdTo}::timestamptz IS NULL OR topic.created_at <= ${input.createdTo})
+        AND (${input.createdTo}::timestamptz IS NULL OR topic.created_at < ${input.createdTo})
         AND (topic.tsv @@ search_query.stemmed OR topic.tsv_simple @@ search_query.simple)
       LIMIT ${SEARCH_RESULT_CAP}
     ) AS capped
@@ -199,7 +200,7 @@ export async function searchTopicPage(
     AND (${input.authorId}::bigint IS NULL OR topic.starter_id = ${input.authorId}::bigint)
     AND (${prefixes}::bigint[] IS NULL OR topic.prefix_id = ANY(${prefixes}::bigint[]))
     AND (${input.createdFrom}::timestamptz IS NULL OR topic.created_at >= ${input.createdFrom})
-    AND (${input.createdTo}::timestamptz IS NULL OR topic.created_at <= ${input.createdTo})
+    AND (${input.createdTo}::timestamptz IS NULL OR topic.created_at < ${input.createdTo})
     AND (topic.tsv @@ search_query.stemmed OR topic.tsv_simple @@ search_query.simple)
   `;
   const rows = (await sql`
@@ -207,14 +208,20 @@ export async function searchTopicPage(
       SELECT
         websearch_to_tsquery(${input.queryConfig}::regconfig, ${input.query}) AS stemmed,
         websearch_to_tsquery('simple', ${input.query}) AS simple
+    ),
+    candidates AS (
+      SELECT
+        topic.id,
+        ${topicScore(sql)} AS score,
+        COALESCE(topic.last_post_at, topic.created_at) AS sort_at
+      FROM core.topics AS topic
+      CROSS JOIN search_query
+      WHERE ${conditions}
+      ORDER BY COALESCE(topic.last_post_at, topic.created_at) DESC, topic.id DESC
+      LIMIT ${SEARCH_CANDIDATE_CAP}
     )
-    SELECT
-      topic.id::text AS id,
-      ${topicScore(sql)} AS score,
-      COALESCE(topic.last_post_at, topic.created_at) AS sort_at
-    FROM core.topics AS topic
-    CROSS JOIN search_query
-    WHERE ${conditions}
+    SELECT id::text AS id, score, sort_at
+    FROM candidates
     ORDER BY
       ${input.sort === "date" ? sql`sort_at DESC` : sql`score DESC`},
       sort_at DESC,
@@ -314,7 +321,7 @@ export async function countPostHits(sql: SQL, input: SearchRepositoryInput): Pro
         AND (${input.authorId}::bigint IS NULL OR post.author_id = ${input.authorId}::bigint)
         AND (${prefixes}::bigint[] IS NULL OR topic.prefix_id = ANY(${prefixes}::bigint[]))
         AND (${input.createdFrom}::timestamptz IS NULL OR post.created_at >= ${input.createdFrom})
-        AND (${input.createdTo}::timestamptz IS NULL OR post.created_at <= ${input.createdTo})
+        AND (${input.createdTo}::timestamptz IS NULL OR post.created_at < ${input.createdTo})
         AND (post.tsv @@ search_query.stemmed OR post.tsv_simple @@ search_query.simple)
       LIMIT ${SEARCH_RESULT_CAP}
     ) AS capped
@@ -344,7 +351,7 @@ export async function searchPostPage(
     AND (${input.authorId}::bigint IS NULL OR post.author_id = ${input.authorId}::bigint)
     AND (${prefixes}::bigint[] IS NULL OR topic.prefix_id = ANY(${prefixes}::bigint[]))
     AND (${input.createdFrom}::timestamptz IS NULL OR post.created_at >= ${input.createdFrom})
-    AND (${input.createdTo}::timestamptz IS NULL OR post.created_at <= ${input.createdTo})
+    AND (${input.createdTo}::timestamptz IS NULL OR post.created_at < ${input.createdTo})
     AND (post.tsv @@ search_query.stemmed OR post.tsv_simple @@ search_query.simple)
   `;
   const rows = (await sql`
@@ -352,15 +359,21 @@ export async function searchPostPage(
       SELECT
         websearch_to_tsquery(${input.queryConfig}::regconfig, ${input.query}) AS stemmed,
         websearch_to_tsquery('simple', ${input.query}) AS simple
+    ),
+    candidates AS (
+      SELECT
+        post.id,
+        ${postScore(sql)} AS score,
+        post.created_at AS sort_at
+      FROM core.posts AS post
+      JOIN core.topics AS topic ON topic.id = post.topic_id
+      CROSS JOIN search_query
+      WHERE ${conditions}
+      ORDER BY post.created_at DESC, post.id DESC
+      LIMIT ${SEARCH_CANDIDATE_CAP}
     )
-    SELECT
-      post.id::text AS id,
-      ${postScore(sql)} AS score,
-      post.created_at AS sort_at
-    FROM core.posts AS post
-    JOIN core.topics AS topic ON topic.id = post.topic_id
-    CROSS JOIN search_query
-    WHERE ${conditions}
+    SELECT id::text AS id, score, sort_at
+    FROM candidates
     ORDER BY
       ${input.sort === "date" ? sql`sort_at DESC` : sql`score DESC`},
       sort_at DESC,
