@@ -33,6 +33,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "online",
   "leaderboards",
   "profile",
+  "moderation-queue",
   "unsubscribe",
 ] as const;
 

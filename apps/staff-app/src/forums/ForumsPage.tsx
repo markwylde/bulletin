@@ -20,6 +20,8 @@ interface ForumRecord {
   readonly language: string | null;
   readonly defaultSort: "last_post" | "start_date" | "title";
   readonly prefixMode: "none" | "optional" | "required";
+  readonly requireApprovalTopics: boolean;
+  readonly requireApprovalPosts: boolean;
   readonly redirectUrl: string | null;
   readonly redirectClicks: number;
   readonly topicCount: number;
@@ -52,6 +54,8 @@ interface SettingsDraft {
   readonly language: string;
   readonly defaultSort: ForumRecord["defaultSort"];
   readonly prefixMode: ForumRecord["prefixMode"];
+  readonly requireApprovalTopics: boolean;
+  readonly requireApprovalPosts: boolean;
   readonly prefixIds: readonly string[];
 }
 
@@ -68,6 +72,8 @@ function settingsFrom(forum: ForumRecord): SettingsDraft {
     language: forum.language ?? "",
     defaultSort: forum.defaultSort,
     prefixMode: forum.prefixMode,
+    requireApprovalTopics: forum.requireApprovalTopics,
+    requireApprovalPosts: forum.requireApprovalPosts,
     prefixIds: forum.prefixIds,
   };
 }
@@ -520,6 +526,36 @@ export function ForumsPage() {
                     <option value="required">{t("staff.forums.prefixMode.required")}</option>
                   </select>
                 </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    data-forum-setting="require-approval-topics"
+                    checked={settings.requireApprovalTopics}
+                    onChange={(event) =>
+                      setSettings((current) =>
+                        current === null
+                          ? current
+                          : { ...current, requireApprovalTopics: event.target.checked },
+                      )
+                    }
+                  />
+                  <span>{t("staff.forums.field.requireApprovalTopics")}</span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    data-forum-setting="require-approval-posts"
+                    checked={settings.requireApprovalPosts}
+                    onChange={(event) =>
+                      setSettings((current) =>
+                        current === null
+                          ? current
+                          : { ...current, requireApprovalPosts: event.target.checked },
+                      )
+                    }
+                  />
+                  <span>{t("staff.forums.field.requireApprovalPosts")}</span>
+                </label>
                 <fieldset>
                   <legend>{t("staff.forums.field.prefixes")}</legend>
                   <ul className="check-list">
@@ -567,6 +603,8 @@ export function ForumsPage() {
                         language: settings.language === "" ? null : settings.language,
                         defaultSort: settings.defaultSort,
                         prefixMode: settings.prefixMode,
+                        requireApprovalTopics: settings.requireApprovalTopics,
+                        requireApprovalPosts: settings.requireApprovalPosts,
                         prefixIds: settings.prefixIds,
                         ...(selected.type === "redirect"
                           ? { redirectUrl: selected.redirectUrl ?? "" }

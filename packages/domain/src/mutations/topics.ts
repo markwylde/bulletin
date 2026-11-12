@@ -94,6 +94,45 @@ export const postRestoreMutation: Mutation<{ readonly postId: string }, TopicCon
   tags: (input, result) => uniqueTags([postTag(input.postId), ...contentTags(result)]),
 };
 
+/** Several posts (possibly across topics) held in one bulk action. */
+export interface BulkHeldContentSummary {
+  readonly topicIds: readonly string[];
+  readonly forumIds: readonly string[];
+  readonly memberIds: readonly string[];
+}
+
+/** Approval changes counters and the forum's last post, exactly like a restore. */
+export const postApproveMutation: Mutation<
+  { readonly postIds: readonly string[] },
+  BulkHeldContentSummary
+> = {
+  name: "post.approve",
+  tags: (input, result) =>
+    uniqueTags([
+      ...input.postIds.map(postTag),
+      ...result.topicIds.flatMap((topicId) => [topicTag(topicId), topicPagesTag(topicId)]),
+      ...result.forumIds.map(forumTag),
+      GLOBAL_CACHE_TAGS.board,
+      ...result.memberIds.map(memberTag),
+    ]),
+};
+
+/** Rejection hard-deletes held rows, so it invalidates the same content as a hard delete. */
+export const postRejectMutation: Mutation<
+  { readonly postIds: readonly string[] },
+  BulkHeldContentSummary
+> = {
+  name: "post.reject",
+  tags: (input, result) =>
+    uniqueTags([
+      ...input.postIds.map(postTag),
+      ...result.topicIds.flatMap((topicId) => [topicTag(topicId), topicPagesTag(topicId)]),
+      ...result.forumIds.map(forumTag),
+      GLOBAL_CACHE_TAGS.board,
+      ...result.memberIds.map(memberTag),
+    ]),
+};
+
 export const topicHardDeleteMutation: Mutation<{ readonly topicId: string }, TopicContentSummary> =
   {
     name: "topic.hard_delete",

@@ -2,10 +2,10 @@
 
 ## 1. Moderation queue
 
-- [ ] 1.1 Add visibility and hold_reason handling to topics/posts, `needsApproval()` with exhaustive unit tests, and the board/forum/group settings for approval (new-member N off by default)
-- [ ] 1.2 Held-content visibility (see-unapproved for moderators in shared fragments; the author's own held posts and topics delivered via the private overlay; excluded from counters, lists, search and feeds) with the cache variant harness; integration tests including the two-authors scenario
-- [ ] 1.3 Approval queue UI (user-app moderator view and staff-app section) with bulk approve/reject, notifications and live counts; tests including permission denial; E2E at 360 and 1440
-- [ ] 1.4 Register the pending moderation counts dashboard widget for moderators, with a permission test
+- [x] 1.1 Add visibility and hold_reason handling to topics/posts, `needsApproval()` with exhaustive unit tests, and the board/forum/group settings for approval (new-member N off by default)
+- [x] 1.2 Held-content visibility (see-unapproved for moderators in shared fragments; the author's own held posts and topics delivered via the private overlay; excluded from counters, lists, search and feeds) with the cache variant harness; integration tests including the two-authors scenario
+- [x] 1.3 Approval queue UI (user-app moderator view and staff-app section) with bulk approve/reject, notifications and live counts; tests including permission denial; E2E at 360 and 1440
+- [x] 1.4 Register the pending moderation counts dashboard widget for moderators, with a permission test
 
 ## 2. Reports
 

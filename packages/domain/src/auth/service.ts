@@ -1,4 +1,4 @@
-import { isLocale, type Locale } from "@bulletin/i18n";
+import { isLocale, type Locale, type Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { readBoardSettings } from "../board/index.ts";
 import { readDraft, validDraftContext } from "../content/drafts.ts";
@@ -11,6 +11,7 @@ import {
   saveMemberLocale,
   updateDisplayName,
 } from "../member/store.ts";
+import { heldPostsForOverlay, heldTopicsForOverlay } from "../moderation/overlay/repository.ts";
 import { unreadNotificationCount } from "../notifications/repository.ts";
 import {
   acpPermissionsFor,
@@ -72,6 +73,8 @@ export interface AuthServiceOptions extends AuthRouterOptions {
   readonly onStaffLocaleChange?: (sql: SQL, change: StaffLocaleChange) => Promise<void>;
   /** Evaluates a member-facing flag for overlay personalisation (ADR 0010). */
   readonly featureEnabled?: (key: string, memberId: string | null) => Promise<boolean>;
+  /** App catalogs for overlay-only rendered content (held post quote labels). */
+  readonly translateFor?: (locale: Locale) => Translator;
 }
 
 export interface StaffLocaleChange {
@@ -597,6 +600,29 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         options.featureEnabled?.("signatures", session.memberId) ?? Promise.resolve(true),
         options.featureEnabled?.("conversations", session.memberId) ?? Promise.resolve(true),
       ]);
+      const memberLocale = await resolveMemberLocale(options.sql, session.memberId);
+      const overlayTranslate = options.translateFor?.(memberLocale) ?? ((key: string) => key);
+      const [heldPosts, heldTopics] = await Promise.all([
+        visitContext?.kind === "topic"
+          ? heldPostsForOverlay(options.sql, {
+              memberId: session.memberId,
+              topicId: visitContext.id,
+              translate: overlayTranslate,
+              sessionId: session.id,
+              tree,
+              snapshot,
+            })
+          : Promise.resolve([]),
+        visitContext?.kind === "forum"
+          ? heldTopicsForOverlay(options.sql, {
+              memberId: session.memberId,
+              forumId: visitContext.id,
+              sessionId: session.id,
+              tree,
+              snapshot,
+            })
+          : Promise.resolve([]),
+      ]);
       const payload = {
         ctx,
         csrfToken: csrfToken ?? createCsrfToken(session.id, options.sessionSecret),
@@ -622,6 +648,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         hideSignatures: signaturesEnabled && signaturePrivacy[0]?.hide_signatures === true,
         ignored: ignoreEnabled ? ignored : [],
         editablePosts,
+        heldPosts,
+        heldTopics,
         reactions: viewerReactions,
         reputation: viewerVotes,
         ...(draft === null ? {} : { draft }),

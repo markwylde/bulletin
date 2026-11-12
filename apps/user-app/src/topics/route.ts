@@ -7,6 +7,7 @@ import {
   GUEST_PRINCIPAL,
   loadForumTree,
   loadPermissionSnapshot,
+  principalMemberId,
 } from "@bulletin/domain/permissions";
 import {
   countTopicPosts,
@@ -250,12 +251,22 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     snapshot,
   });
 
+  const heldTopicAuthor =
+    topic.visibility === "unapproved" &&
+    topic.starterId !== null &&
+    topic.starterId === principalMemberId(principal);
+
+  if (topic.visibility === "unapproved" && !seeUnapproved && !heldTopicAuthor) {
+    return renderErrorPage(input, 404);
+  }
+
   if (
     (await countTopicPosts(input.sql, {
       topicId: topic.id,
       seeUnapproved,
       seeDeleted,
-    })) === 0
+    })) === 0 &&
+    !(topic.visibility === "unapproved" && (seeUnapproved || heldTopicAuthor))
   ) {
     return renderErrorPage(input, 404);
   }

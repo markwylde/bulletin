@@ -34,6 +34,8 @@ export interface TopicWriteRecord {
   readonly lastPostId: string | null;
   readonly lastPostAt: Date | null;
   readonly movedTo: string | null;
+  readonly visibility: PostVisibility;
+  readonly holdReason: string | null;
 }
 
 export interface PostWriteRecord {
@@ -42,6 +44,7 @@ export interface PostWriteRecord {
   readonly forumId: string;
   readonly authorId: string | null;
   readonly visibility: PostVisibility;
+  readonly holdReason: string | null;
   readonly position: number;
   readonly createdAt: Date;
   readonly editedAt: Date | null;
@@ -74,6 +77,8 @@ interface TopicRow {
   readonly last_post_id: string | null;
   readonly last_post_at: Date | null;
   readonly moved_to: string | null;
+  readonly visibility: PostVisibility;
+  readonly hold_reason: string | null;
 }
 
 interface PostRow {
@@ -82,6 +87,7 @@ interface PostRow {
   readonly forum_id: string;
   readonly author_id: string | null;
   readonly visibility: PostVisibility;
+  readonly hold_reason: string | null;
   readonly position: number;
   readonly created_at: Date;
   readonly edited_at: Date | null;
@@ -109,6 +115,8 @@ function topicRecord(row: TopicRow): TopicWriteRecord {
     lastPostId: row.last_post_id,
     lastPostAt: row.last_post_at,
     movedTo: row.moved_to,
+    visibility: row.visibility,
+    holdReason: row.hold_reason,
   };
 }
 
@@ -119,6 +127,7 @@ function postRecord(row: PostRow): PostWriteRecord {
     forumId: row.forum_id,
     authorId: row.author_id,
     visibility: row.visibility,
+    holdReason: row.hold_reason,
     position: row.position,
     createdAt: row.created_at,
     editedAt: row.edited_at,
@@ -205,7 +214,8 @@ export async function loadTopicForWrite(
   const rows = (await sql`
     SELECT
       t.id, t.forum_id, t.title, t.slug, t.prefix_id, t.starter_id, t.pinned, t.locked,
-      t.first_post_id, t.last_post_id, t.last_post_at, t.moved_to
+      t.first_post_id, t.last_post_id, t.last_post_at, t.moved_to, t.visibility,
+      t.hold_reason
     FROM core.topics t
     WHERE t.id = ${topicId}
   `) as TopicRow[];
@@ -222,7 +232,8 @@ export async function lockTopicForWrite(
   const rows = (await tx`
     SELECT
       t.id, t.forum_id, t.title, t.slug, t.prefix_id, t.starter_id, t.pinned, t.locked,
-      t.first_post_id, t.last_post_id, t.last_post_at, t.moved_to
+      t.first_post_id, t.last_post_id, t.last_post_at, t.moved_to, t.visibility,
+      t.hold_reason
     FROM core.topics t
     WHERE t.id = ${topicId}
     FOR UPDATE
@@ -235,8 +246,8 @@ export async function lockTopicForWrite(
 export async function loadPostForWrite(sql: SQL, postId: string): Promise<PostWriteRecord | null> {
   const rows = (await sql`
     SELECT
-      p.id, p.topic_id, t.forum_id, p.author_id, p.visibility, p.position, p.created_at,
-      p.edited_at, p.edited_by, p.body_md, p.body_html, p.body_text,
+      p.id, p.topic_id, t.forum_id, p.author_id, p.visibility, p.hold_reason, p.position,
+      p.created_at, p.edited_at, p.edited_by, p.body_md, p.body_html, p.body_text,
       p.render_version, p.sanitiser_version, t.locked AS topic_locked,
       t.moved_to AS topic_moved_to
     FROM core.posts p
@@ -251,8 +262,8 @@ export async function loadPostForWrite(sql: SQL, postId: string): Promise<PostWr
 export async function lockPostForWrite(tx: SQL, postId: string): Promise<PostWriteRecord | null> {
   const rows = (await tx`
     SELECT
-      p.id, p.topic_id, t.forum_id, p.author_id, p.visibility, p.position, p.created_at,
-      p.edited_at, p.edited_by, p.body_md, p.body_html, p.body_text,
+      p.id, p.topic_id, t.forum_id, p.author_id, p.visibility, p.hold_reason, p.position,
+      p.created_at, p.edited_at, p.edited_by, p.body_md, p.body_html, p.body_text,
       p.render_version, p.sanitiser_version, t.locked AS topic_locked,
       t.moved_to AS topic_moved_to
     FROM core.posts p
@@ -273,11 +284,18 @@ export async function insertTopic(
     readonly slug: string;
     readonly prefixId: string | null;
     readonly starterId: string;
+    readonly visibility?: PostVisibility;
+    readonly holdReason?: string | null;
   },
 ): Promise<string> {
   const rows = (await tx`
-    INSERT INTO core.topics (forum_id, title, slug, prefix_id, starter_id)
-    VALUES (${input.forumId}, ${input.title}, ${input.slug}, ${input.prefixId}, ${input.starterId})
+    INSERT INTO core.topics (
+      forum_id, title, slug, prefix_id, starter_id, visibility, hold_reason
+    )
+    VALUES (
+      ${input.forumId}, ${input.title}, ${input.slug}, ${input.prefixId}, ${input.starterId},
+      ${input.visibility ?? "visible"}, ${input.holdReason ?? null}
+    )
     RETURNING id::text AS id
   `) as Array<{ id: string }>;
   const id = rows[0]?.id;
@@ -310,6 +328,8 @@ export async function insertPost(
     readonly mentionedMemberIds: readonly string[];
     /** Posts this post quotes, for quote notifications. */
     readonly quotedPostIds: readonly string[];
+    readonly visibility?: PostVisibility;
+    readonly holdReason?: string | null;
   },
 ): Promise<NewPostRecord> {
   const quoted = input.quotedForumIds.length === 0 ? "{}" : `{${input.quotedForumIds.join(",")}}`;
@@ -321,13 +341,14 @@ export async function insertPost(
     INSERT INTO core.posts (
       topic_id, author_id, body_md, body_html, body_text,
       render_version, sanitiser_version, quoted_forum_ids, mentioned_member_ids,
-      quoted_post_ids, position
+      quoted_post_ids, position, visibility, hold_reason
     )
     VALUES (
       ${input.topicId}, ${input.authorId}, ${input.bodyMd}, ${input.bodyHtml}, ${input.bodyText},
       ${input.renderVersion}, ${input.sanitiserVersion}, ${quoted}::bigint[],
       ${mentioned}::bigint[], ${quotedPosts}::bigint[],
-      (SELECT COALESCE(MAX(position), 0) + 1 FROM core.posts WHERE topic_id = ${input.topicId})
+      (SELECT COALESCE(MAX(position), 0) + 1 FROM core.posts WHERE topic_id = ${input.topicId}),
+      ${input.visibility ?? "visible"}, ${input.holdReason ?? null}
     )
     RETURNING id::text AS id, position, created_at
   `) as Array<{ id: string; position: number; created_at: Date }>;
@@ -350,16 +371,23 @@ export async function completeNewTopic(
     readonly postId: string;
     readonly authorId: string;
     readonly createdAt: Date;
+    /** Held content keeps its pointers for the queue but never touches public counters. */
+    readonly visible?: boolean;
   },
 ): Promise<void> {
   await tx`
     UPDATE core.topics
     SET first_post_id = ${input.postId},
         last_post_id = ${input.postId},
-        last_post_at = ${input.createdAt},
+        last_post_at = ${input.visible === false ? null : input.createdAt},
         updated_at = now()
     WHERE id = ${input.topicId}
   `;
+
+  if (input.visible === false) {
+    return;
+  }
+
   await tx`
     UPDATE core.forums
     SET topic_count = topic_count + 1,
@@ -397,8 +425,14 @@ export async function recordReply(
     readonly postId: string;
     readonly authorId: string;
     readonly createdAt: Date;
+    /** Held replies are not counted and do not become the forum's last post. */
+    readonly visible?: boolean;
   },
 ): Promise<void> {
+  if (input.visible === false) {
+    return;
+  }
+
   await tx`
     UPDATE core.topics
     SET reply_count = reply_count + 1,

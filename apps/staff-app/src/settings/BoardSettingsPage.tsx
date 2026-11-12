@@ -12,6 +12,7 @@ interface BoardSettings {
   readonly defaultLocale: "en" | "es" | "fr";
   readonly offline: boolean;
   readonly offlineMessage: string;
+  readonly newMemberApprovalPosts: number;
   readonly attachmentAllowedTypes: readonly string[];
   readonly reactionsAffectReputation: boolean;
   readonly reputationDisplay: boolean;
@@ -76,6 +77,7 @@ const EMPTY_VALUES: FormValues = {
   defaultLocale: "en",
   offline: false,
   offlineMessage: "",
+  newMemberApprovalPosts: 0,
   attachmentAllowedTypes: ATTACHMENT_TYPE_OPTIONS.map((option) => option.value),
   reactionsAffectReputation: false,
   reputationDisplay: true,
@@ -115,6 +117,21 @@ const BOARD_FORM: FormDefinition = {
             { value: "es", labelKey: "staff.locale.es" },
             { value: "fr", labelKey: "staff.locale.fr" },
           ],
+        },
+      ],
+    },
+    {
+      id: "moderation",
+      titleKey: "staff.settings.board.section.moderation",
+      descriptionKey: "staff.settings.board.section.moderationHelp",
+      fields: [
+        {
+          id: "newMemberApprovalPosts",
+          type: "number",
+          labelKey: "staff.settings.board.newMemberApprovalPosts",
+          helpKey: "staff.settings.board.newMemberApprovalPostsHelp",
+          min: 0,
+          max: 1_000,
         },
       ],
     },
@@ -191,6 +208,7 @@ function toValues(settings: BoardSettings): FormValues {
     defaultLocale: settings.defaultLocale,
     offline: settings.offline,
     offlineMessage: settings.offlineMessage,
+    newMemberApprovalPosts: settings.newMemberApprovalPosts,
     attachmentAllowedTypes: settings.attachmentAllowedTypes,
     reactionsAffectReputation: settings.reactionsAffectReputation,
     reputationDisplay: settings.reputationDisplay,
@@ -214,6 +232,10 @@ function toPayload(values: FormValues): BoardSettings {
     defaultLocale: isLocale(rawLocale) ? rawLocale : "en",
     offline: values.offline === true,
     offlineMessage: typeof values.offlineMessage === "string" ? values.offlineMessage : "",
+    newMemberApprovalPosts:
+      typeof values.newMemberApprovalPosts === "number"
+        ? values.newMemberApprovalPosts
+        : Number(values.newMemberApprovalPosts ?? 0),
     attachmentAllowedTypes: Array.isArray(values.attachmentAllowedTypes)
       ? values.attachmentAllowedTypes
       : [],

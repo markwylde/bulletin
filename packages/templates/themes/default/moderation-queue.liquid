@@ -1,0 +1,47 @@
+{{ header }}
+<main id="main" class="bl-main" data-moderation-queue
+  data-label-approve="{% t "moderation.queue.approve" %}"
+  data-label-reject="{% t "moderation.queue.reject" %}"
+  data-label-approved="{% t "moderation.queue.approved" %}"
+  data-label-rejected="{% t "moderation.queue.rejected" %}"
+  data-label-failed="{% t "moderation.queue.failed" %}"
+  data-label-nothing="{% t "moderation.queue.nothingSelected" %}">
+  {{ breadcrumbs }}
+  <header class="bl-page__header">
+    <h1 class="bl-page__title">{{ title }}</h1>
+    <p class="bl-muted">{% t "moderation.queue.intro" %}</p>
+    <p class="bl-muted">
+      {% t "moderation.queue.pending" %} <strong data-moderation-count>{{ total }}</strong>
+    </p>
+  </header>
+
+  <div class="bl-moderation-actions">
+    <label class="bl-check"><input type="checkbox" data-moderation-select-all /> {% t "moderation.queue.selectAll" %}</label>
+    <button class="bl-button" type="button" data-moderation-approve disabled>{% t "moderation.queue.approve" %}</button>
+    <button class="bl-button bl-button--quiet" type="button" data-moderation-reject disabled>{% t "moderation.queue.reject" %}</button>
+  </div>
+  <p class="bl-muted" data-moderation-status hidden></p>
+
+  {% if hasItems %}
+    <ul class="bl-moderation-list" data-moderation-list>
+      {% for item in items %}
+        <li class="bl-card bl-moderation-item" data-moderation-item="{{ item.postId }}">
+          <label class="bl-check">
+            <input type="checkbox" data-moderation-check value="{{ item.postId }}" />
+            <span>{% if item.kind == "topic" %}{% t "moderation.queue.kindTopic" %}{% else %}{% t "moderation.queue.kindPost" %}{% endif %}</span>
+          </label>
+          <h2 class="bl-moderation-item__title">
+            <a href="{{ item.href }}" data-moderation-topic="{{ item.postId }}">{{ item.title }}</a>
+          </h2>
+          <p class="bl-moderation-item__preview">{{ item.preview }}</p>
+          <p class="bl-muted">
+            {{ item.author }} · {{ item.forumTitle }} · {{ item.reason }} · {{ item.createdAt }}
+          </p>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div data-moderation-empty>{{ emptyState }}</div>
+  {% endif %}
+</main>
+{{ footer }}

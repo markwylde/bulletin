@@ -12,6 +12,8 @@ import {
   applyOverlay,
   type OverlayCount,
   type OverlayDraft,
+  type OverlayHeldPost,
+  type OverlayHeldTopic,
   type OverlayPayload,
   type OverlayTarget,
 } from "./overlay/apply.ts";
@@ -93,6 +95,140 @@ function pageTopicIds(): string[] {
 }
 
 /** The DOM adapter for the pure overlay applier (unread markers, counts and the CSRF token). */
+function heldLabel(): string {
+  return (
+    document.querySelector("[data-label-unapproved]")?.getAttribute("data-label-unapproved") ?? ""
+  );
+}
+
+function heldPostBlock(post: OverlayHeldPost): HTMLElement {
+  const row = document.createElement("li");
+  row.className = "bl-post bl-post--unapproved";
+  row.id = `post-${post.postId}`;
+  row.dataset.post = post.postId;
+  row.dataset.postPosition = String(post.position);
+  row.dataset.postHeld = "true";
+
+  const author = document.createElement("div");
+  author.className = "bl-post__author";
+  author.textContent = post.authorName;
+
+  const main = document.createElement("div");
+  main.className = "bl-post__main";
+
+  const meta = document.createElement("div");
+  meta.className = "bl-post__meta";
+
+  const time = document.createElement("span");
+  time.className = "bl-muted";
+  time.dataset.postTime = "true";
+  time.textContent = post.createdAt;
+
+  const badge = document.createElement("span");
+  badge.className = "bl-badge bl-badge--danger";
+  badge.dataset.postUnapproved = "true";
+  badge.textContent = heldLabel();
+
+  meta.append(time, badge);
+
+  const body = document.createElement("div");
+  body.className = "bl-post__body";
+  body.dataset.postBody = "true";
+  body.innerHTML = post.bodyHtml;
+
+  main.append(meta, body);
+  row.append(author, main);
+
+  return row;
+}
+
+/** Held posts are inserted in position order among the visible blocks the page rendered. */
+function insertHeldPosts(posts: readonly OverlayHeldPost[]): void {
+  const page = document.querySelector("[data-topic-page]");
+
+  if (page === null) {
+    return;
+  }
+
+  let list = page.querySelector<HTMLElement>("[data-post-list]");
+
+  if (list === null) {
+    list = document.createElement("ol");
+    list.className = "bl-post-list";
+    list.dataset.postList = "true";
+    const reply = page.querySelector("[data-reply-section]");
+    page.insertBefore(list, reply);
+  }
+
+  page.querySelector<HTMLElement>("[data-topic-empty]")?.setAttribute("hidden", "");
+
+  for (const post of [...posts].sort((left, right) => left.position - right.position)) {
+    if (list.querySelector(`[data-post="${CSS.escape(post.postId)}"]`) !== null) {
+      continue;
+    }
+
+    const block = heldPostBlock(post);
+    const next = [...list.querySelectorAll<HTMLElement>("[data-post]")].find(
+      (element) => Number(element.dataset.postPosition ?? "0") > post.position,
+    );
+    list.insertBefore(block, next ?? null);
+  }
+}
+
+function heldTopicRow(topic: OverlayHeldTopic): HTMLElement {
+  const row = document.createElement("li");
+  row.className = "bl-topic-list__item";
+  row.dataset.topicRow = topic.topicId;
+  row.dataset.topicHeld = "true";
+
+  const main = document.createElement("div");
+  main.className = "bl-topic-row__main";
+
+  const link = document.createElement("a");
+  link.className = "bl-topic-list__title";
+  link.href = topic.href;
+  link.dataset.topicLink = topic.topicId;
+  link.textContent = topic.title;
+
+  const badge = document.createElement("span");
+  badge.className = "bl-badge bl-badge--danger";
+  badge.dataset.topicUnapproved = "true";
+  badge.textContent = heldLabel();
+
+  main.append(link, badge);
+  row.append(main);
+
+  return row;
+}
+
+function insertHeldTopics(topics: readonly OverlayHeldTopic[]): void {
+  const content = document.querySelector("[data-forum-content]");
+
+  if (content === null) {
+    return;
+  }
+
+  let list = content.querySelector<HTMLElement>("[data-topic-list]");
+
+  if (list === null) {
+    list = document.createElement("ol");
+    list.className = "bl-topic-list";
+    list.dataset.topicList = "true";
+    const subforums = content.querySelector("[data-subforums-block]");
+    content.insertBefore(list, subforums);
+  }
+
+  content.querySelector<HTMLElement>("[data-topic-list-empty]")?.setAttribute("hidden", "");
+
+  for (const topic of topics) {
+    if (list.querySelector(`[data-topic-row="${CSS.escape(topic.topicId)}"]`) !== null) {
+      continue;
+    }
+
+    list.append(heldTopicRow(topic));
+  }
+}
+
 const overlayTarget: OverlayTarget = {
   unreadSlots(topicId) {
     return [
@@ -173,6 +309,14 @@ const overlayTarget: OverlayTarget = {
 
   setEditablePosts(posts) {
     window.dispatchEvent(new CustomEvent("bulletin:editable-posts", { detail: posts }));
+  },
+
+  setHeldPosts(posts) {
+    insertHeldPosts(posts);
+  },
+
+  setHeldTopics(topics) {
+    insertHeldTopics(topics);
   },
 
   setFollow(context, following) {

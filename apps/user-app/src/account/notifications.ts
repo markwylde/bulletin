@@ -84,6 +84,8 @@ function notificationText(translate: Translator, entry: NotificationEntry): stri
         : translate("notification.text.topic.reply", { actor, topic });
     case "topic.created":
       return translate("notification.text.topic.created", { actor, topic });
+    case "post.approved":
+      return translate("notification.text.post.approved", { topic });
     case "post.mention":
       return entry.count > 1
         ? translate("notification.text.post.mentionMany", { count: entry.count, topic })

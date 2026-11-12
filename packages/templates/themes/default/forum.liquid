@@ -1,5 +1,5 @@
 {{ header }}
-<main id="main" class="bl-main" data-forum-page data-forum-id="{{ forumId }}"{% if locked %}{% else %} data-overlay-ctx="forum:{{ forumId }}" data-overlay-forum="{{ forumId }}"{% endif %}>
+<main id="main" class="bl-main" data-forum-page data-forum-id="{{ forumId }}" data-label-unapproved="{% t "post.unapproved" %}"{% if locked %}{% else %} data-overlay-ctx="forum:{{ forumId }}" data-overlay-forum="{{ forumId }}"{% endif %}>
   {{ breadcrumbs }}
   <header class="bl-page__header">
     <h1 class="bl-page__title" data-forum-title>{{ title }}</h1>
@@ -22,7 +22,7 @@
   </header>
 
   {% if isModerator %}
-    <p class="bl-note" data-forum-mod-note>{% t "forum.modNote" %}</p>
+    <p class="bl-note" data-forum-mod-note>{% t "forum.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a></p>
   {% endif %}
 
   {% if locked %}

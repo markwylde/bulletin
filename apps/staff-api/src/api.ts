@@ -61,6 +61,11 @@ import {
 } from "./masks.ts";
 import { removeMemberAvatarForStaff } from "./members.ts";
 import {
+  staffModerationActionResponse,
+  staffQueueCountResponse,
+  staffQueueResponse,
+} from "./moderation.ts";
+import {
   deleteModerator,
   listModerators,
   type ModeratorMutation,
@@ -999,6 +1004,28 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/dashboard/topics",
     permission: "acp.members",
     handler: async ({ sql }) => json(await topicStats(sql)),
+  },
+  {
+    id: "dashboard.moderation",
+    method: "GET",
+    path: "/api/staff/dashboard/moderation",
+    permission: "acp.members",
+    handler: async ({ sql, session }) => staffQueueCountResponse(sql, session),
+  },
+  {
+    id: "moderation.queue",
+    method: "GET",
+    path: "/api/staff/moderation/queue",
+    permission: "acp.members",
+    handler: async ({ sql, session, request }) => staffQueueResponse(sql, session, request),
+  },
+  {
+    id: "moderation.actions",
+    method: "POST",
+    path: "/api/staff/moderation/actions",
+    permission: "acp.members",
+    handler: async ({ sql, session, request }) =>
+      staffModerationActionResponse(sql, session, request),
   },
   {
     id: "dashboard.log",

@@ -6,6 +6,7 @@ import { redactQuoteSnapshotsInTransaction } from "../content/quotes.ts";
 import { loadContentRenderDependencies } from "../content/rendering.ts";
 import { emit } from "../events/outbox.ts";
 import { autoFollowTopic } from "../follows/repository.ts";
+import { decideApproval } from "../moderation/approval/repository.ts";
 import { runMutation } from "../mutations/index.ts";
 import {
   type PostEditSummary,
@@ -217,6 +218,14 @@ export async function startTopic(
           reject("forbidden");
         }
 
+        const approval = await decideApproval(tx, {
+          actorId: input.actorId,
+          forumId: forum.id,
+          content: { kind: "topic" },
+          tree: freshTree,
+          sessionId: input.sessionId ?? null,
+        });
+        const visibility = approval.hold ? "unapproved" : "visible";
         const rendered = await savePostContent(tx, {
           bodyMd,
           authorId: input.actorId,
@@ -231,6 +240,8 @@ export async function startTopic(
           slug,
           prefixId,
           starterId: input.actorId,
+          visibility,
+          holdReason: approval.reason,
         });
         const post = await insertPost(tx, {
           topicId,
@@ -245,6 +256,8 @@ export async function startTopic(
           quotedPostIds: rendered.quoteSources
             .filter((source) => source.kind === "post")
             .map((source) => source.id),
+          visibility,
+          holdReason: approval.reason,
         });
 
         await syncPostAttachments(tx, {
@@ -265,31 +278,34 @@ export async function startTopic(
           postId: post.id,
           authorId: input.actorId,
           createdAt: post.createdAt,
+          visible: !approval.hold,
         });
 
-        // The topic and its first post are both new domain facts (ADR 0011).
-        await emit(tx, {
-          type: "topic.created",
-          aggregateId: BigInt(topicId),
-          aggregateVersion: 1n,
-          payloadIds: {
-            topicId: BigInt(topicId),
-            postId: BigInt(post.id),
-            forumId: BigInt(forum.id),
-            authorId: BigInt(input.actorId),
-          },
-        });
-        await emit(tx, {
-          type: "post.created",
-          aggregateId: BigInt(post.id),
-          aggregateVersion: 1n,
-          payloadIds: {
-            postId: BigInt(post.id),
-            topicId: BigInt(topicId),
-            forumId: BigInt(forum.id),
-            authorId: BigInt(input.actorId),
-          },
-        });
+        // Held content is not a public domain fact yet; approval emits `post.approved`.
+        if (!approval.hold) {
+          await emit(tx, {
+            type: "topic.created",
+            aggregateId: BigInt(topicId),
+            aggregateVersion: 1n,
+            payloadIds: {
+              topicId: BigInt(topicId),
+              postId: BigInt(post.id),
+              forumId: BigInt(forum.id),
+              authorId: BigInt(input.actorId),
+            },
+          });
+          await emit(tx, {
+            type: "post.created",
+            aggregateId: BigInt(post.id),
+            aggregateVersion: 1n,
+            payloadIds: {
+              postId: BigInt(post.id),
+              topicId: BigInt(topicId),
+              forumId: BigInt(forum.id),
+              authorId: BigInt(input.actorId),
+            },
+          });
+        }
         // Starting a topic follows it when the member left auto-follow on (follows spec).
         if (input.autoFollow !== false) {
           await autoFollowTopic(tx, input.actorId, topicId);
@@ -406,6 +422,13 @@ export async function reply(
           reject("locked");
         }
 
+        const approval = await decideApproval(tx, {
+          actorId: input.actorId,
+          forumId: current.forumId,
+          content: { kind: "post" },
+          tree: freshTree,
+          sessionId: input.sessionId ?? null,
+        });
         const rendered = await savePostContent(tx, {
           bodyMd,
           authorId: input.actorId,
@@ -427,6 +450,8 @@ export async function reply(
           quotedPostIds: rendered.quoteSources
             .filter((source) => source.kind === "post")
             .map((source) => source.id),
+          visibility: approval.hold ? "unapproved" : "visible",
+          holdReason: approval.reason,
         });
 
         await syncPostAttachments(tx, {
@@ -443,19 +468,22 @@ export async function reply(
           postId: post.id,
           authorId: input.actorId,
           createdAt: post.createdAt,
+          visible: !approval.hold,
         });
 
-        await emit(tx, {
-          type: "post.created",
-          aggregateId: BigInt(post.id),
-          aggregateVersion: 1n,
-          payloadIds: {
-            postId: BigInt(post.id),
-            topicId: BigInt(current.id),
-            forumId: BigInt(current.forumId),
-            authorId: BigInt(input.actorId),
-          },
-        });
+        if (!approval.hold) {
+          await emit(tx, {
+            type: "post.created",
+            aggregateId: BigInt(post.id),
+            aggregateVersion: 1n,
+            payloadIds: {
+              postId: BigInt(post.id),
+              topicId: BigInt(current.id),
+              forumId: BigInt(current.forumId),
+              authorId: BigInt(input.actorId),
+            },
+          });
+        }
         // Replying follows the topic unless the member turned auto-follow off.
         if (input.autoFollow !== false) {
           await autoFollowTopic(tx, input.actorId, current.id);

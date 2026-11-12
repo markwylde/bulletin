@@ -22,6 +22,7 @@ import {
 import { avatarRemoveRoute, avatarUploadRoute } from "./avatars.ts";
 import { beaconResponse } from "./beacon.ts";
 import { boardView } from "./board.ts";
+import { apiTranslator } from "./catalogs.ts";
 import {
   archiveConversationResponse,
   conversationResponse,
@@ -37,6 +38,7 @@ import { createUserApiFlags } from "./flag-guard.ts";
 import { followResponse, followSettingsResponse } from "./follows.ts";
 import { forumUnlockResponse } from "./forum-unlock.ts";
 import { memberSuggestResponse } from "./members.ts";
+import { moderationActionResponse, queueCountResponse, queueResponse } from "./moderation.ts";
 import {
   notificationDigestResponse,
   notificationPreferencesResponse,
@@ -94,6 +96,7 @@ const auth = await createAuthService({
   bootstrapAdmins: config.bootstrapAdmins,
   testEndpoints: config.nodeEnv !== "production",
   featureEnabled: (key, memberId) => flags.enabled(key, memberId),
+  translateFor: apiTranslator,
 });
 
 await startService({
@@ -574,6 +577,42 @@ await startService({
         return flags.guard("conversations", session.memberId)(request, () =>
           leaveConversationResponse(sql, session, conversationLeaveMatch[1] ?? "", request),
         );
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/moderation/queue") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return queueResponse(sql, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/moderation/count") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return queueCountResponse(sql, session);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/moderation/actions") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return moderationActionResponse(sql, session, request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

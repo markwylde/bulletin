@@ -77,6 +77,8 @@ function subjectFor(translate: Translator, type: NotificationType, topic: string
       return translate("email.subject.badge.awarded");
     case "conversation.message":
       return translate("email.subject.conversation.message", { topic });
+    case "post.approved":
+      return translate("email.subject.post.approved", { topic });
   }
 }
 
@@ -107,6 +109,8 @@ function bodyFor(
       return translate("email.body.badge.awarded", { actor });
     case "conversation.message":
       return translate("email.body.conversation.message", { actor, topic });
+    case "post.approved":
+      return translate("email.body.post.approved", { topic });
   }
 }
 

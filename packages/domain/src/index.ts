@@ -4,6 +4,7 @@ export * from "./board/index.ts";
 export * from "./content/index.ts";
 export * from "./conversations/index.ts";
 export * from "./member/index.ts";
+export * from "./moderation/index.ts";
 export * from "./mutations/index.ts";
 export * from "./permissions/index.ts";
 export * from "./polls/index.ts";

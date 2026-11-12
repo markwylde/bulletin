@@ -21,6 +21,8 @@ const REQUIRED_EMAIL_KEYS = [
   "email.body.reaction.added",
   "email.body.reputation.given",
   "email.body.member.promoted",
+  "email.subject.post.approved",
+  "email.body.post.approved",
   "email.greeting",
   "email.fallbackName",
   "email.fallbackActor",

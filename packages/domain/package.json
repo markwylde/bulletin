@@ -35,7 +35,8 @@
     "./reputation": "./src/reputation/index.ts",
     "./attachments": "./src/attachments/index.ts",
     "./attachments/processing": "./src/attachments/processing.ts",
-    "./events/stream": "./src/events/stream.ts"
+    "./events/stream": "./src/events/stream.ts",
+    "./moderation": "./src/moderation/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

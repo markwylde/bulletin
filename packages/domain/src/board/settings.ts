@@ -23,6 +23,8 @@ export interface BoardSettings {
   readonly topicsPerPage: number;
   readonly postsPerPage: number;
   readonly publicEditHistory: boolean;
+  /** Hold a new member's first N approved posts and topics; zero is off. */
+  readonly newMemberApprovalPosts: number;
   readonly attachmentAllowedTypes: readonly AttachmentContentType[];
   /** Reactions with a non-zero weight add reputation entries (reputation spec). */
   readonly reactionsAffectReputation: boolean;
@@ -40,6 +42,8 @@ export interface BoardSettingsInput {
   readonly topicsPerPage: number;
   readonly postsPerPage: number;
   readonly publicEditHistory: boolean;
+  /** Hold a new member's first N approved posts and topics; zero is off. */
+  readonly newMemberApprovalPosts: number;
   readonly attachmentAllowedTypes: readonly AttachmentContentType[];
   readonly reactionsAffectReputation: boolean;
   readonly reputationDisplay: boolean;
@@ -55,6 +59,7 @@ export const EMPTY_BOARD_SETTINGS: BoardSettings = {
   topicsPerPage: 20,
   postsPerPage: 20,
   publicEditHistory: false,
+  newMemberApprovalPosts: 0,
   attachmentAllowedTypes: DEFAULT_ATTACHMENT_TYPES,
   reactionsAffectReputation: false,
   reputationDisplay: true,
@@ -64,8 +69,9 @@ export const EMPTY_BOARD_SETTINGS: BoardSettings = {
 export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
   const rows = (await sql`
     SELECT board_name, board_description, default_locale, offline, offline_message,
-      topics_per_page, posts_per_page, public_edit_history, attachment_allowed_types,
-      reactions_affect_reputation, reputation_display, reputation_label_scale
+      topics_per_page, posts_per_page, public_edit_history, new_member_approval_posts,
+      attachment_allowed_types, reactions_affect_reputation, reputation_display,
+      reputation_label_scale
     FROM core.board_settings
     WHERE id = 1
   `) as Array<{
@@ -77,6 +83,7 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     topics_per_page: number;
     posts_per_page: number;
     public_edit_history: boolean;
+    new_member_approval_posts: number;
     attachment_allowed_types: string[] | null;
     reactions_affect_reputation: boolean;
     reputation_display: boolean;
@@ -93,6 +100,7 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     topicsPerPage: row?.topics_per_page ?? 20,
     postsPerPage: row?.posts_per_page ?? 20,
     publicEditHistory: row?.public_edit_history ?? false,
+    newMemberApprovalPosts: row?.new_member_approval_posts ?? 0,
     attachmentAllowedTypes:
       row?.attachment_allowed_types === null || row?.attachment_allowed_types === undefined
         ? DEFAULT_ATTACHMENT_TYPES
@@ -206,6 +214,16 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
   const topicsPerPage = pageSize(value.topicsPerPage);
   const postsPerPage = pageSize(value.postsPerPage);
   const publicEditHistory = value.publicEditHistory === true;
+  const approvalValue = value.newMemberApprovalPosts;
+  const newMemberApprovalPosts =
+    approvalValue === undefined
+      ? 0
+      : typeof approvalValue === "number" &&
+          Number.isInteger(approvalValue) &&
+          approvalValue >= 0 &&
+          approvalValue <= 1_000
+        ? approvalValue
+        : null;
   const reactionsAffectReputation = value.reactionsAffectReputation === true;
   const reputationDisplay = value.reputationDisplay !== false;
   let reputationLabelScale: readonly ReputationLabel[] = DEFAULT_REPUTATION_LABEL_SCALE;
@@ -245,6 +263,10 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
     fields.push("postsPerPage");
   }
 
+  if (newMemberApprovalPosts === null) {
+    fields.push("newMemberApprovalPosts");
+  }
+
   if (value.defaultLocale !== undefined && !isLocale(String(value.defaultLocale))) {
     fields.push("defaultLocale");
   }
@@ -264,6 +286,7 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
       topicsPerPage: topicsPerPage ?? 20,
       postsPerPage: postsPerPage ?? 20,
       publicEditHistory,
+      newMemberApprovalPosts: newMemberApprovalPosts ?? 0,
       attachmentAllowedTypes,
       reactionsAffectReputation,
       reputationDisplay,

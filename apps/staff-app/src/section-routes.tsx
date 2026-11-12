@@ -14,6 +14,7 @@ import { MemberGroupsPage } from "./members/MemberGroupsPage.tsx";
 import { MemberProfilesPage } from "./members/MemberProfilesPage.tsx";
 import { MemberReputationPage } from "./members/MemberReputationPage.tsx";
 import { ProfileFieldsPage } from "./members/ProfileFieldsPage.tsx";
+import { ModerationPage } from "./moderation/ModerationPage.tsx";
 import { ModeratorsPage } from "./moderators/ModeratorsPage.tsx";
 import { MasksPage } from "./permissions/MasksPage.tsx";
 import { PromotionsPage } from "./promotions/PromotionsPage.tsx";
@@ -26,6 +27,7 @@ import { StringOverridesPage } from "./strings/StringOverridesPage.tsx";
 /** The route component for each section id. */
 export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   dashboard: DashboardPage,
+  moderation: ModerationPage,
   adminLog: AdminLogPage,
   deadLetters: DeadLettersPage,
   boardSettings: BoardSettingsPage,

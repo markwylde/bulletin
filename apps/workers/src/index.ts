@@ -88,6 +88,7 @@ const subscribers: EventSubscriber[] = [
       "friend.accepted",
       "badge.awarded",
       "pm.sent",
+      "post.approved",
     ],
   },
   {

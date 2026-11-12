@@ -28,6 +28,8 @@ export interface TopicRecord {
   readonly movedTo: string | null;
   readonly stubExpiresAt: Date | null;
   readonly createdAt: Date;
+  readonly visibility: TopicPostVisibility;
+  readonly holdReason: string | null;
 }
 
 export interface TopicListRow {
@@ -150,6 +152,8 @@ interface TopicRow {
   readonly moved_to: string | null;
   readonly stub_expires_at: Date | null;
   readonly created_at: Date;
+  readonly visibility: TopicPostVisibility;
+  readonly hold_reason: string | null;
 }
 
 function toTopic(row: TopicRow): TopicRecord {
@@ -170,6 +174,8 @@ function toTopic(row: TopicRow): TopicRecord {
     movedTo: row.moved_to,
     stubExpiresAt: row.stub_expires_at,
     createdAt: row.created_at,
+    visibility: row.visibility,
+    holdReason: row.hold_reason,
   };
 }
 
@@ -182,7 +188,8 @@ export async function readTopic(sql: SQL, topicId: string): Promise<TopicRecord 
     SELECT
       t.id, t.forum_id, t.title, t.slug, t.prefix_id, t.starter_id, t.pinned, t.locked,
       t.reply_count, t.view_count::text AS view_count, t.first_post_id, t.last_post_id,
-      t.last_post_at, t.moved_to, t.stub_expires_at, t.created_at
+      t.last_post_at, t.moved_to, t.stub_expires_at, t.created_at, t.visibility,
+      t.hold_reason
     FROM core.topics t
     WHERE t.id = ${topicId}
   `) as TopicRow[];
@@ -311,18 +318,25 @@ export async function readTopicList(
     LEFT JOIN core.members last_member ON last_member.id = last_post.author_id
     WHERE t.forum_id = ${input.forumId}
       AND (
-        EXISTS (
-          SELECT 1 FROM core.posts p
-          WHERE p.topic_id = t.id AND p.visibility = 'visible'
+        (
+          t.visibility = 'visible'
+          AND (
+            EXISTS (
+              SELECT 1 FROM core.posts p
+              WHERE p.topic_id = t.id AND p.visibility = 'visible'
+            )
+            OR (${input.seeUnapproved} AND EXISTS (
+              SELECT 1 FROM core.posts p
+              WHERE p.topic_id = t.id AND p.visibility = 'unapproved'
+            ))
+            OR (${input.seeDeleted} AND EXISTS (
+              SELECT 1 FROM core.posts p
+              WHERE p.topic_id = t.id AND p.visibility = 'soft_deleted'
+            ))
+          )
         )
-        OR (${input.seeUnapproved} AND EXISTS (
-          SELECT 1 FROM core.posts p
-          WHERE p.topic_id = t.id AND p.visibility = 'unapproved'
-        ))
-        OR (${input.seeDeleted} AND EXISTS (
-          SELECT 1 FROM core.posts p
-          WHERE p.topic_id = t.id AND p.visibility = 'soft_deleted'
-        ))
+        OR (${input.seeUnapproved} AND t.visibility = 'unapproved')
+        OR (${input.seeDeleted} AND t.visibility = 'soft_deleted')
         OR (t.moved_to IS NOT NULL AND t.stub_expires_at > now())
       )
       AND (${input.prefixId}::bigint IS NULL OR t.prefix_id = ${input.prefixId})
@@ -339,18 +353,25 @@ export async function readTopicList(
     FROM core.topics t
     WHERE t.forum_id = ${input.forumId}
       AND (
-        EXISTS (
-          SELECT 1 FROM core.posts p
-          WHERE p.topic_id = t.id AND p.visibility = 'visible'
+        (
+          t.visibility = 'visible'
+          AND (
+            EXISTS (
+              SELECT 1 FROM core.posts p
+              WHERE p.topic_id = t.id AND p.visibility = 'visible'
+            )
+            OR (${input.seeUnapproved} AND EXISTS (
+              SELECT 1 FROM core.posts p
+              WHERE p.topic_id = t.id AND p.visibility = 'unapproved'
+            ))
+            OR (${input.seeDeleted} AND EXISTS (
+              SELECT 1 FROM core.posts p
+              WHERE p.topic_id = t.id AND p.visibility = 'soft_deleted'
+            ))
+          )
         )
-        OR (${input.seeUnapproved} AND EXISTS (
-          SELECT 1 FROM core.posts p
-          WHERE p.topic_id = t.id AND p.visibility = 'unapproved'
-        ))
-        OR (${input.seeDeleted} AND EXISTS (
-          SELECT 1 FROM core.posts p
-          WHERE p.topic_id = t.id AND p.visibility = 'soft_deleted'
-        ))
+        OR (${input.seeUnapproved} AND t.visibility = 'unapproved')
+        OR (${input.seeDeleted} AND t.visibility = 'soft_deleted')
         OR (t.moved_to IS NOT NULL AND t.stub_expires_at > now())
       )
       AND (${input.prefixId}::bigint IS NULL OR t.prefix_id = ${input.prefixId})

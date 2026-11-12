@@ -12,6 +12,8 @@ function target(): {
   readonly unreadForums: string[];
   readonly firstUnread: string[];
   readonly editable: string[];
+  readonly heldPosts: string[];
+  readonly heldTopics: string[];
   readonly follows: string[];
   readonly reactions: string[];
   readonly reputation: string[];
@@ -27,6 +29,8 @@ function target(): {
   const unreadForums: string[] = [];
   const firstUnread: string[] = [];
   const editable: string[] = [];
+  const heldPosts: string[] = [];
+  const heldTopics: string[] = [];
   const follows: string[] = [];
   const reactions: string[] = [];
   const reputation: string[] = [];
@@ -43,6 +47,8 @@ function target(): {
     unreadForums,
     firstUnread,
     editable,
+    heldPosts,
+    heldTopics,
     follows,
     reactions,
     reputation,
@@ -62,6 +68,8 @@ function target(): {
       setFirstUnread: (topicId, url) => firstUnread.push(`${topicId}:${url}`),
       setEditablePosts: (posts) =>
         editable.push(...posts.map((post) => `${post.postId}:${post.canEdit ? "edit" : "read"}`)),
+      setHeldPosts: (posts) => heldPosts.push(...posts.map((post) => post.postId)),
+      setHeldTopics: (topics) => heldTopics.push(...topics.map((topic) => topic.topicId)),
       setFollow: (context, following) => follows.push(`${context}:${following ? "yes" : "no"}`),
       setReactions: (states) =>
         reactions.push(

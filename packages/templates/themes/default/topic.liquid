@@ -1,5 +1,5 @@
 {{ header }}
-<main id="main" class="bl-main" data-topic-page data-topic-id="{{ topicId }}" data-forum-id="{{ forumId }}" data-overlay-ctx="topic:{{ topicId }}"{% if readMarkerAt %} data-overlay-last-post-at="{{ readMarkerAt }}" data-overlay-last-post-id="{{ readMarkerPostId }}"{% endif %}>
+<main id="main" class="bl-main" data-topic-page data-topic-id="{{ topicId }}" data-forum-id="{{ forumId }}" data-overlay-ctx="topic:{{ topicId }}" data-label-unapproved="{% t "post.unapproved" %}"{% if readMarkerAt %} data-overlay-last-post-at="{{ readMarkerAt }}" data-overlay-last-post-id="{{ readMarkerPostId }}"{% endif %}>
   {{ breadcrumbs }}
   <header class="bl-page__header">
     <p class="bl-muted">
@@ -16,7 +16,7 @@
       {{ viewsSlot }}
     </p>
     {% if isModerator %}
-      <p class="bl-note" data-topic-mod-note>{% t "topic.modNote" %}</p>
+      <p class="bl-note" data-topic-mod-note>{% t "topic.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a></p>
     {% endif %}
     {% if flags.follows %}
     <span class="bl-follow" data-overlay-member-only hidden data-follow-context="topic:{{ topicId }}">
@@ -56,7 +56,7 @@
       </nav>
     {% endif %}
   {% else %}
-    {{ emptyState }}
+    <div data-topic-empty>{{ emptyState }}</div>
   {% endif %}
 
   {% if canReply and editor %}

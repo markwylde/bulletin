@@ -252,6 +252,19 @@ export const attachmentsContract = defineContract<AccountViewModel>({
 });
 
 /** Personal conversation lists and pages are never shared or stored (design). */
+/** The moderator's personal approval queue; never shared or stored (ADR 0006). */
+export const moderationQueueContract = defineContract<AccountViewModel>({
+  route: "/moderation/queue",
+  templates: {
+    page: "moderation-queue",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const conversationsContract = defineContract<AccountViewModel>({
   route: "/conversations",
   templates: { page: "conversations", regions: ["header", "breadcrumbs", "empty", "footer"] },
@@ -320,6 +333,7 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [notificationsContract.route]: notificationsContract,
   [followsContract.route]: followsContract,
   [attachmentsContract.route]: attachmentsContract,
+  [moderationQueueContract.route]: moderationQueueContract,
   [conversationsContract.route]: conversationsContract,
   [conversationContract.route]: conversationContract,
 };

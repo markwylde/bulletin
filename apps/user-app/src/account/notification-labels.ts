@@ -12,4 +12,5 @@ export const NOTIFICATION_TYPE_LABELS = {
   "friend.accepted": { labelKey: "notification.type.friend.accepted" },
   "badge.awarded": { labelKey: "notification.type.badge.awarded" },
   "conversation.message": { labelKey: "notification.type.conversation.message" },
+  "post.approved": { labelKey: "notification.type.post.approved" },
 } satisfies Record<NotificationType, { labelKey: string }>;

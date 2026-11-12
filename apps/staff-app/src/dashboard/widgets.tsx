@@ -134,6 +134,28 @@ function TopicStatsWidget() {
   );
 }
 
+function PendingModerationWidget() {
+  const t = useT();
+  const locale = useLocale();
+  const query = useQuery({
+    queryKey: ["staff", "dashboard", "moderation"],
+    queryFn: () => apiGet<{ count: number }>("/api/staff/dashboard/moderation"),
+  });
+
+  if (query.isPending || query.isError) {
+    return <WidgetState error={query.isError} retry={() => void query.refetch()} />;
+  }
+
+  return (
+    <dl className="stat-grid" data-widget-body="moderation">
+      <div>
+        <dt>{t("staff.dashboard.moderation.pending")}</dt>
+        <dd data-moderation-pending-count>{formatNumber(query.data.count, locale)}</dd>
+      </div>
+    </dl>
+  );
+}
+
 function AdminLogWidget() {
   const t = useT();
   const locale = useLocale();
@@ -227,6 +249,12 @@ export const DASHBOARD_WIDGETS: readonly DashboardWidget[] = [
     permission: "acp.members",
     titleKey: "staff.dashboard.topics.title",
     component: TopicStatsWidget,
+  },
+  {
+    id: "moderation",
+    permission: "acp.members",
+    titleKey: "staff.dashboard.moderation.title",
+    component: PendingModerationWidget,
   },
   {
     id: "log",

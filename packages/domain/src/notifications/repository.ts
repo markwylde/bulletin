@@ -19,6 +19,7 @@ export const NOTIFICATION_TYPES = [
   "friend.accepted",
   "badge.awarded",
   "conversation.message",
+  "post.approved",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -32,7 +33,8 @@ export type NotificationRecipientSource =
   | "reputation"
   | "friend"
   | "badge"
-  | "conversation";
+  | "conversation"
+  | "moderation";
 
 /** These types are about one post, so an unread entry coalesces per post, not per topic. */
 const POST_COALESCED_TYPES = ["reaction.added", "reputation.given"] as const;
@@ -314,6 +316,7 @@ export async function eventRecipients(
     "badge.awarded": 1,
     "reaction.added": 0,
     "reputation.given": 0,
+    "post.approved": 0,
   };
   let tree: ForumTree | null = null;
 
@@ -358,6 +361,31 @@ export async function eventRecipients(
         postId: null,
         conversationId: conversationId.toString(),
       }));
+    }
+    case "post.approved": {
+      const postId = event.payloadIds.postId;
+
+      if (postId === undefined) {
+        return [];
+      }
+
+      const post = await readPost(sql, postId);
+
+      if (post === null || post.authorId === null) {
+        return [];
+      }
+
+      return [
+        {
+          memberId: post.authorId,
+          type: "post.approved" as const,
+          source: "moderation" as const,
+          actorId: event.payloadIds.actorId?.toString() ?? null,
+          topicId: post.topicId,
+          forumId: post.forumId,
+          postId,
+        },
+      ];
     }
     case "post.created": {
       const postId = event.payloadIds.postId;

@@ -28,6 +28,24 @@ export interface OverlayPoll {
   readonly hasVoted: boolean;
 }
 
+export interface OverlayHeldPost {
+  readonly postId: string;
+  readonly topicId: string;
+  readonly position: number;
+  readonly authorName: string;
+  readonly bodyHtml: string;
+  readonly createdAt: string;
+  readonly href: string;
+}
+
+export interface OverlayHeldTopic {
+  readonly topicId: string;
+  readonly title: string;
+  readonly href: string;
+  readonly createdAt: string;
+  readonly reason: string | null;
+}
+
 export interface OverlayDraft {
   readonly contextKey: string;
   readonly bodyMd: string;
@@ -50,6 +68,10 @@ export interface OverlayPayload {
   readonly firstUnread?: readonly OverlayFirstUnread[];
   /** Ownership-dependent post controls and raw Markdown (reviewer finding 5). */
   readonly editablePosts?: readonly OverlayEditablePost[];
+  /** The viewer's own held posts for the topic page, rendered server-side (ADR 0005/0006). */
+  readonly heldPosts?: readonly OverlayHeldPost[];
+  /** The viewer's own held topics for the forum list, rendered client-side. */
+  readonly heldTopics?: readonly OverlayHeldTopic[];
   /** Follow state for every follow target the page rendered, e.g. `topic:12`. */
   readonly follows?: Readonly<Record<string, boolean>>;
   /** The member's own reaction on each rendered post; never in shared HTML (ADR 0006). */
@@ -80,6 +102,8 @@ export interface OverlayTarget {
   setPollVoted(pollId: string, hasVoted: boolean): void;
   setFirstUnread(topicId: string, url: string): void;
   setEditablePosts(posts: readonly OverlayEditablePost[]): void;
+  setHeldPosts(posts: readonly OverlayHeldPost[]): void;
+  setHeldTopics(topics: readonly OverlayHeldTopic[]): void;
   setFollow(context: string, following: boolean): void;
   setReactions(states: readonly ReactionViewerState[]): void;
   setReputation(states: readonly ReputationViewerState[]): void;
@@ -131,6 +155,48 @@ export function applyOverlay(target: OverlayTarget, payload: OverlayPayload): vo
 
   if (payload.editablePosts !== undefined) {
     target.setEditablePosts(payload.editablePosts);
+  }
+
+  const heldPosts = (payload.heldPosts ?? []).flatMap((post) => {
+    if (
+      typeof post !== "object" ||
+      post === null ||
+      typeof post.postId !== "string" ||
+      !/^[1-9]\d{0,18}$/.test(post.postId) ||
+      typeof post.topicId !== "string" ||
+      !/^[1-9]\d{0,18}$/.test(post.topicId) ||
+      typeof post.position !== "number" ||
+      !Number.isFinite(post.position) ||
+      typeof post.bodyHtml !== "string"
+    ) {
+      return [];
+    }
+
+    return [post];
+  });
+
+  if (heldPosts.length > 0) {
+    target.setHeldPosts(heldPosts);
+  }
+
+  const heldTopics = (payload.heldTopics ?? []).flatMap((topic) => {
+    if (
+      typeof topic !== "object" ||
+      topic === null ||
+      typeof topic.topicId !== "string" ||
+      !/^[1-9]\d{0,18}$/.test(topic.topicId) ||
+      typeof topic.title !== "string" ||
+      typeof topic.href !== "string" ||
+      !/^\/topic\/\d+-/.test(topic.href)
+    ) {
+      return [];
+    }
+
+    return [topic];
+  });
+
+  if (heldTopics.length > 0) {
+    target.setHeldTopics(heldTopics);
   }
 
   const counts = payload.counts ?? {};

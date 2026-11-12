@@ -28,6 +28,8 @@ export interface ForumAdminRecord {
   readonly language: string | null;
   readonly defaultSort: ForumDefaultSort;
   readonly prefixMode: ForumPrefixMode;
+  readonly requireApprovalTopics: boolean;
+  readonly requireApprovalPosts: boolean;
   readonly redirectUrl: string | null;
   readonly redirectClicks: number;
   readonly topicCount: number;
@@ -69,6 +71,8 @@ interface ForumRow {
   readonly language: string | null;
   readonly default_sort: ForumDefaultSort;
   readonly prefix_mode: ForumPrefixMode;
+  readonly require_approval_topics: boolean;
+  readonly require_approval_posts: boolean;
   readonly redirect_url: string | null;
   readonly redirect_clicks: string;
   readonly topic_count: number;
@@ -139,7 +143,8 @@ export async function listForumsAdmin(
     SELECT
       f.id, f.parent_id, f.position, f.type, f.title, f.slug, f.description, f.rules,
       (f.password_hash IS NOT NULL) AS password_protected, f.show_moderators, f.language,
-      f.default_sort, f.prefix_mode, f.redirect_url, f.redirect_clicks::text AS redirect_clicks,
+      f.default_sort, f.prefix_mode, f.require_approval_topics, f.require_approval_posts,
+      f.redirect_url, f.redirect_clicks::text AS redirect_clicks,
       f.topic_count, f.post_count,
       ARRAY(
         SELECT fp.prefix_id::text FROM core.forum_prefixes fp
@@ -164,6 +169,8 @@ export async function listForumsAdmin(
       language: row.language,
       defaultSort: row.default_sort,
       prefixMode: row.prefix_mode,
+      requireApprovalTopics: row.require_approval_topics,
+      requireApprovalPosts: row.require_approval_posts,
       redirectUrl: row.redirect_url,
       redirectClicks: Number(row.redirect_clicks),
       topicCount: row.topic_count,
@@ -592,7 +599,7 @@ export async function saveForumSettings(
 
   const [existing] = (await sql`
     SELECT title, description, rules, show_moderators, language, default_sort, prefix_mode,
-           redirect_url, type
+           require_approval_topics, require_approval_posts, redirect_url, type
     FROM core.forums WHERE id = ${forumId}
   `) as Array<{
     title: string;
@@ -602,6 +609,8 @@ export async function saveForumSettings(
     language: string | null;
     default_sort: ForumDefaultSort;
     prefix_mode: ForumPrefixMode;
+    require_approval_topics: boolean;
+    require_approval_posts: boolean;
     redirect_url: string | null;
     type: ForumType;
   }>;
@@ -649,6 +658,15 @@ export async function saveForumSettings(
   if (!PREFIX_MODES.includes(prefixMode)) {
     return { ok: false, code: "invalid_settings" };
   }
+
+  const requireApprovalTopics =
+    input.requireApprovalTopics === undefined
+      ? existing.require_approval_topics
+      : input.requireApprovalTopics === true;
+  const requireApprovalPosts =
+    input.requireApprovalPosts === undefined
+      ? existing.require_approval_posts
+      : input.requireApprovalPosts === true;
 
   const prefixIds = Array.isArray(input.prefixIds)
     ? [...new Set(input.prefixIds.filter((value): value is string => typeof value === "string"))]
@@ -717,6 +735,8 @@ export async function saveForumSettings(
             language = ${language},
             default_sort = ${defaultSort},
             prefix_mode = ${prefixMode},
+            require_approval_topics = ${requireApprovalTopics},
+            require_approval_posts = ${requireApprovalPosts},
             redirect_url = ${redirectUrl},
             password_hash = CASE WHEN ${password}::text IS NULL THEN password_hash ELSE ${password} END
         WHERE id = ${forumId}
@@ -748,6 +768,8 @@ export async function saveForumSettings(
           language,
           defaultSort,
           prefixMode,
+          requireApprovalTopics,
+          requireApprovalPosts,
           prefixes: prefixIds,
           passwordChanged: input.clearPassword === true || typeof input.password === "string",
         },
