@@ -24,6 +24,7 @@ export const CAPABILITY_ACTIONS = [
   "unignorable",
   "custom_title",
   "use_pm",
+  "send_pm",
 ] as const;
 
 export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];
@@ -40,6 +41,8 @@ const CAPABILITY_SETTINGS: Readonly<
   custom_title: { key: "members.can_custom_title", allows: true },
   // A `restrict-any` opt-out: one group setting it true denies private messages.
   use_pm: { key: "restrictions.cannot_pm", allows: false },
+  // A posting suspension also stops private-message writes; moderation sets the group setting.
+  send_pm: { key: "restrictions.suspended", allows: false },
 };
 
 export function isCapabilityAction(value: string): value is CapabilityAction {

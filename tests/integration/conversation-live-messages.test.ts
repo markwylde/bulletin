@@ -17,6 +17,7 @@ import {
 } from "@bulletin/domain/conversations";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { SQL } from "bun";
 import { conversationResponse } from "../../apps/user-api/src/conversations.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { loadLiveConversationMessages } from "../../apps/user-app/src/conversations/live.ts";
@@ -25,6 +26,13 @@ import { buildConversationPage } from "../../apps/user-app/src/conversations/pag
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 const translate = createServerT("en", { shipped: USER_CATALOGS });
+
+function roleUrl(databaseUrl: string, role: string): string {
+  const url = new URL(databaseUrl);
+  url.username = role;
+  url.password = "";
+  return url.toString();
+}
 
 async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Promise<void> {
   if (adminUrl === undefined) {
@@ -259,6 +267,44 @@ integrationDescribe("live conversation message rendering", () => {
       expect(
         (await readConversationForParticipant(database.sql, conversationId, starter))?.messages,
       ).toHaveLength(2);
+    });
+  }, 30_000);
+
+  test("the re-render worker can sanitise a stale message under the workers role", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, starter, recipient);
+      const [message] = (await database.sql`
+        SELECT id::text AS id FROM core.conversation_messages
+        WHERE conversation_id = ${conversationId} ORDER BY id LIMIT 1
+      `) as Array<{ id: string }>;
+      await database.sql`
+        UPDATE core.conversation_messages
+        SET body_html = '<p>worker safe</p><script>alert(1)</script>',
+            body_text = 'worker safe',
+            render_version = 1,
+            sanitiser_version = 1
+        WHERE id = ${message?.id}
+      `;
+
+      const worker = new SQL(roleUrl(database.url, "workers"));
+
+      try {
+        const result = await runContentRerenderJob(worker, {
+          sources: [conversationMessageRerenderSource],
+        });
+        expect(result.rerendered).toBe(1);
+      } finally {
+        await worker.close();
+      }
+
+      const [saved] = (await database.sql`
+        SELECT body_html, render_version FROM core.conversation_messages
+        WHERE id = ${message?.id}
+      `) as Array<{ body_html: string; render_version: number }>;
+      expect(saved?.body_html).not.toContain("<script");
+      expect(saved?.render_version).toBe(currentContentVersions().renderVersion);
     });
   }, 30_000);
 });

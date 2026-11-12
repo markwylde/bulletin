@@ -416,6 +416,7 @@
   "staff.groups.setting.signatureMaxImages": "Signature maximum images",
   "staff.groups.setting.signatureMaxLines": "Signature maximum lines",
   "staff.groups.setting.signatureMaxLinks": "Signature maximum links",
+  "staff.groups.setting.suspended": "Suspended from posting",
   "staff.groups.setting.unignorable": "Cannot be ignored",
   "staff.groups.setting.uploadDocuments": "Allow document uploads",
   "staff.groups.setting.uploadImages": "Allow image uploads",

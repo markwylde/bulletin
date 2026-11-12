@@ -378,6 +378,7 @@
   "staff.groups.setting.signatureMaxImages": "Imágenes máximas de la firma",
   "staff.groups.setting.signatureMaxLines": "Líneas máximas de la firma",
   "staff.groups.setting.signatureMaxLinks": "Enlaces máximos de la firma",
+  "staff.groups.setting.suspended": "Suspendido de publicar",
   "staff.groups.setting.unignorable": "No se puede ignorar",
   "staff.groups.setting.uploadDocuments": "Permitir subir documentos",
   "staff.groups.setting.uploadImages": "Permitir subir imágenes",

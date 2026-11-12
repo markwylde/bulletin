@@ -129,10 +129,13 @@ function numberSetting(
 export async function readPmPolicy(sql: SQL, memberId: string): Promise<PmPolicy> {
   const groups = await loadMemberGroups(sql, memberId);
   const settings = mergeGroupSettings(groups);
-  const allowed = await can(sql, memberId, "use_pm");
+  const [pmAllowed, sendAllowed] = await Promise.all([
+    can(sql, memberId, "use_pm"),
+    can(sql, memberId, "send_pm"),
+  ]);
 
   return {
-    canUse: allowed && !memberBanned(groups, settings),
+    canUse: pmAllowed && sendAllowed && !memberBanned(groups, settings),
     recipientLimit: numberSetting(settings, "posting.pm_recipients", 1),
     dailyLimit: numberSetting(settings, "posting.pm_daily_starts", 20),
     quota: numberSetting(settings, "posting.pm_quota", 0),
@@ -686,14 +689,14 @@ export async function markConversationRead(
 ): Promise<boolean> {
   const rows = (await sql`
     UPDATE core.conversation_participants p
-    SET last_read_message_id = COALESCE(
+    SET last_read_message_id = GREATEST(
+      p.last_read_message_id,
       (
         SELECT max(id)
         FROM core.conversation_messages
         WHERE conversation_id = ${conversationId}
           AND (${messageId}::bigint IS NULL OR id <= ${messageId}::bigint)
-      ),
-      p.last_read_message_id
+      )
     )
     WHERE p.conversation_id = ${conversationId}
       AND p.member_id = ${memberId}

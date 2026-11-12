@@ -659,6 +659,17 @@ const VALUE_SETTING_DEFINITIONS = [
     section: "restrictions",
     labelKey: "staff.groups.setting.cannotPm",
   },
+  {
+    // The moderation change applies posting suspensions through this restriction; PM sends
+    // and replies consult it through can("send_pm") (conversations review finding P2).
+    key: "restrictions.suspended",
+    kind: "setting",
+    type: "bool",
+    merge: "restrict-any",
+    defaultValue: false,
+    section: "restrictions",
+    labelKey: "staff.groups.setting.suspended",
+  },
 ] as const satisfies readonly GroupSettingDefinition[];
 
 /** Every registry entry, permissions first so the staff matrix lists them consistently. */

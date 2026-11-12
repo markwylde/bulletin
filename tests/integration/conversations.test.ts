@@ -635,6 +635,42 @@ integrationDescribe("conversation replies and participants", () => {
     });
   }, 30_000);
 
+  test("a posting-suspended participant cannot reply", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      const [group] = (await database.sql`
+        INSERT INTO core.groups (key, title, is_system)
+        VALUES ('suspended', 'Suspended', false)
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (group === undefined) {
+        throw new Error("Could not create the suspended group");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${group.id}, 'restrictions.suspended', 'true'::jsonb)
+      `;
+      await database.sql`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        VALUES (${recipient}, ${group.id}, false)
+      `;
+
+      const denied = await replyConversationResponse(
+        database.sql,
+        session(recipient),
+        conversationId,
+        postRequest({ bodyMd: "Suspended reply." }),
+      );
+      expect(denied.status).toBe(403);
+      expect(await denied.json()).toEqual({ code: "pm_disabled" });
+    });
+  }, 30_000);
+
   test("the starter invites within the recipient limit and the newcomer sees full history", async () => {
     await withSeededDb(async (database) => {
       const starter = await memberId(database, "member-1");
@@ -932,6 +968,22 @@ integrationDescribe("conversation folders and unread tracking", () => {
         (await readConversationForParticipant(database.sql, conversationId, starter))?.viewer
           .unreadCount,
       ).toBe(0);
+
+      // A delayed request from an older tab cannot move the marker backwards.
+      const backwards = await readConversationResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ messageId: first }),
+      );
+      expect(backwards.status).toBe(200);
+      const afterBackwards = await readConversationForParticipant(
+        database.sql,
+        conversationId,
+        starter,
+      );
+      expect(afterBackwards?.viewer.unreadCount).toBe(0);
+      expect(afterBackwards?.viewer.lastReadMessageId).toBe(second);
 
       const foreign = await readConversationResponse(
         database.sql,
