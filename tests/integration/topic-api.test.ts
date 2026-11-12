@@ -12,7 +12,7 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import { insertQuoteSnapshot } from "@bulletin/domain/content";
-import { readTopic, reply, startTopic } from "@bulletin/domain/topics";
+import { readTopic, readTopicPostPage, reply, startTopic } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import {
   createTopicResponse,
@@ -359,6 +359,73 @@ integrationDescribe("topic posting API", () => {
       );
       expect(history.status).toBe(403);
       expect(await history.json()).toEqual({ code: "forbidden" });
+    });
+  }, 30_000);
+
+  test("an author edit under mandatory moderation stays hidden until approved", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const other = await memberId(database, "member-2");
+      const topic = await startTopic(database.sql, {
+        actorId: other,
+        forumId: offTopic,
+        title: "Edit moderation topic",
+        bodyMd: "Opening body.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      const written = await reply(database.sql, {
+        actorId: author,
+        topicId: topic.result.topicId,
+        bodyMd: "Visible before moderation.",
+      });
+
+      if (!written.ok) {
+        throw new Error("Could not write the reply");
+      }
+
+      const [beforeEdit] = (await database.sql`
+        SELECT post_count FROM core.members WHERE id = ${author}
+      `) as Array<{ post_count: number }>;
+
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${author}, 'posts_require_approval', now() + interval '1 day')
+      `;
+
+      const edited = await editPostResponse(
+        database.sql,
+        session(author),
+        written.result.postId,
+        request("POST", { bodyMd: "Edited while on mandatory moderation." }),
+      );
+      expect(edited.status).toBe(200);
+
+      const [row] = (await database.sql`
+        SELECT visibility FROM core.posts WHERE id = ${written.result.postId}
+      `) as Array<{ visibility: string }>;
+      expect(row?.visibility).toBe("unapproved");
+
+      const publicPage = await readTopicPostPage(database.sql, {
+        topicId: topic.result.topicId,
+        limit: 20,
+        offset: 0,
+        seeUnapproved: false,
+        seeDeleted: false,
+      });
+      expect(publicPage.rows.map((post) => post.id)).not.toContain(written.result.postId);
+      expect(publicPage.rows.map((post) => post.bodyMd)).not.toContain(
+        "Edited while on mandatory moderation.",
+      );
+
+      const [memberCount] = (await database.sql`
+        SELECT post_count FROM core.members WHERE id = ${author}
+      `) as Array<{ post_count: number }>;
+      expect(memberCount?.post_count).toBe((beforeEdit?.post_count ?? 0) - 1);
     });
   }, 30_000);
 

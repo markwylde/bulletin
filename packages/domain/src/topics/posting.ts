@@ -898,7 +898,21 @@ export async function editPost(
           bodyMd: rendered.bodyMd,
           hash: bodyHash(rendered.bodyText),
         });
-        const holdReason = spam.rule ?? (linkViolation ? "link_limit" : null);
+        const filterReason = spam.rule ?? (linkViolation ? "link_limit" : null);
+        // An author edit publishes new content, so mandatory moderation and filters apply
+        // exactly as they do to a new reply. A moderator editing someone else's post moderates.
+        const approval = currentIsAuthor
+          ? await decideApproval(tx, {
+              actorId: input.actorId,
+              forumId: current.forumId,
+              content: { kind: "post", filterFlagged: filterReason !== null },
+              tree: freshTree,
+              sessionId: input.sessionId ?? null,
+            })
+          : null;
+        const holdReason = currentIsAuthor
+          ? (filterReason ?? approval?.reason ?? null)
+          : filterReason;
 
         await updatePostRendering(tx, {
           postId: current.id,
@@ -927,29 +941,38 @@ export async function editPost(
           visibilityForumIds.push(...forumChain(freshTree, current.forumId));
 
           if (current.position > 1) {
+            // A reply inside a hidden topic was never in the public counters.
+            const counted = current.topicVisibility === "visible";
+
             await setPostVisibility(tx, current.id, "unapproved");
             await setPostHoldReason(tx, current.id, holdReason);
-            await adjustForumPostCount(tx, current.forumId, -1);
-            await adjustTopicReplyCount(tx, current.topicId, -1);
 
-            if (current.authorId !== null) {
-              await adjustMemberPostCount(tx, current.authorId, -1);
-              visibilityMemberIds.push(current.authorId);
+            if (counted) {
+              await adjustForumPostCount(tx, current.forumId, -1);
+              await adjustTopicReplyCount(tx, current.topicId, -1);
+
+              if (current.authorId !== null) {
+                await adjustMemberPostCount(tx, current.authorId, -1);
+                visibilityMemberIds.push(current.authorId);
+              }
             }
           } else {
             // Holding the opener hides the whole topic. Every visible post leaves the public
             // counters now, so approval can restore them and rejection needs no correction.
             const topic = await loadTopicForWrite(tx, current.topicId);
-            const counts = await visiblePostCountsByAuthor(tx, current.topicId);
+            const counted = topic !== null && topic.visibility === "visible";
+            const counts = counted
+              ? await visiblePostCountsByAuthor(tx, current.topicId)
+              : new Map<string, number>();
             const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
 
             await setPostVisibility(tx, current.id, "unapproved");
             await setPostHoldReason(tx, current.id, holdReason);
-            await adjustForumPostCount(tx, current.forumId, -total);
-            await adjustMemberPostCounts(tx, counts, -1);
-            visibilityMemberIds.push(...counts.keys());
 
-            if (topic !== null && topic.visibility === "visible") {
+            if (counted) {
+              await adjustForumPostCount(tx, current.forumId, -total);
+              await adjustMemberPostCounts(tx, counts, -1);
+              visibilityMemberIds.push(...counts.keys());
               await setTopicVisibility(tx, current.topicId, "unapproved");
               await adjustForumTopicCount(tx, current.forumId, -1);
             }
