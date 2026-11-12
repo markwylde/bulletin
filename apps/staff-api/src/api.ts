@@ -1034,7 +1034,7 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "GET",
     path: "/api/staff/bans",
     permission: "acp.members",
-    handler: async ({ sql }) => listBansResponse(sql),
+    handler: async ({ sql, session }) => listBansResponse(sql, session.memberId),
   },
   {
     id: "bans.mutate",

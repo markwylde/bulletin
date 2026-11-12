@@ -9,7 +9,7 @@ import {
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
-import { hashToken } from "@bulletin/domain/auth";
+import { hashToken, type SessionRecord } from "@bulletin/domain/auth";
 import {
   activeMemberBan,
   banIp,
@@ -31,6 +31,7 @@ import { saveMemberProfile } from "@bulletin/domain/profiles";
 import { startTopic } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
+import { authorizeStaffRoute, STAFF_ROUTES } from "../../apps/staff-api/src/api.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -130,6 +131,38 @@ async function staffToken(
   `;
 
   return token;
+}
+
+async function callStaffRoute(
+  database: TestDatabase,
+  id: string,
+  actorId: string,
+  body?: unknown,
+): Promise<Response> {
+  const route = STAFF_ROUTES.find((candidate) => candidate.id === id);
+
+  if (route === undefined) {
+    throw new Error(`Missing staff route ${id}`);
+  }
+
+  const url = new URL(`http://staff.test${route.path}`);
+
+  return authorizeStaffRoute(route, {
+    request: new Request(
+      url,
+      body === undefined
+        ? undefined
+        : {
+            method: route.method,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          },
+    ),
+    url,
+    session: { memberId: actorId, lastAuthAt: new Date() } as SessionRecord,
+    sql: database.sql,
+    checks: [],
+  });
 }
 
 integrationDescribe("member bans", () => {
@@ -317,6 +350,70 @@ integrationDescribe("IP bans and audited lookups", () => {
           reason: "Denied",
         }),
       ).toEqual({ ok: false, code: "invalid_request" });
+    });
+  }, 60_000);
+
+  test("requires bans.ip to list or change IP bans", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const [group] = (await database.sql`
+        INSERT INTO core.groups (key, title)
+        VALUES ('ip_member_managers', 'IP member managers')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (group === undefined) {
+        throw new Error("Could not create the group");
+      }
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES
+          (${group.id}, 'acp.access', 'true'::jsonb),
+          (${group.id}, 'acp.members', 'true'::jsonb)
+      `;
+      const [manager] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton)
+        VALUES ('IP Member Manager', 'ipmembermanager')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (manager === undefined) {
+        throw new Error("Could not create the member");
+      }
+
+      await database.sql`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        VALUES (${manager.id}, ${group.id}, true)
+      `;
+      expectOk(
+        await banIp(database.sql, {
+          actorId: admin,
+          cidr: "198.51.100.0/24",
+          reason: "Existing ban",
+        }),
+      );
+
+      const list = await callStaffRoute(database, "bans.list", manager.id);
+      expect(list.status).toBe(403);
+      expect(await list.json()).toEqual({ code: "forbidden" });
+
+      const save = await callStaffRoute(database, "bans.mutate", manager.id, {
+        action: "ip.save",
+        cidr: "203.0.113.0/24",
+        reason: "Denied",
+      });
+      expect(save.status).toBe(403);
+      expect(await save.json()).toEqual({ code: "forbidden" });
+      const denied = (await database.sql`
+        SELECT 1 FROM core.ip_bans WHERE cidr = '203.0.113.0/24'::inet
+      `) as unknown[];
+      expect(denied).toHaveLength(0);
+
+      const allowed = await callStaffRoute(database, "bans.list", admin);
+      expect(allowed.status).toBe(200);
+      const listed = (await allowed.json()) as { ips: Array<{ cidr: string }> };
+      expect(listed.ips.map((ban) => ban.cidr)).toContain("198.51.100.0/24");
     });
   }, 60_000);
 

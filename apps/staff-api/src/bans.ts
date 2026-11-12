@@ -1,4 +1,5 @@
 import { banIp, banMember, listIpBans, removeIpBan, unbanMember } from "@bulletin/domain/bans";
+import { can } from "@bulletin/domain/permissions";
 import type { SQL } from "bun";
 
 function json(body: unknown, status = 200): Response {
@@ -8,7 +9,15 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-export async function listBansResponse(sql: SQL): Promise<Response> {
+function forbidden(): Response {
+  return json({ code: "forbidden" }, 403);
+}
+
+export async function listBansResponse(sql: SQL, actorId: string): Promise<Response> {
+  if (!(await can(sql, actorId, "bans.ip"))) {
+    return forbidden();
+  }
+
   return json({ ips: await listIpBans(sql) });
 }
 
@@ -24,6 +33,12 @@ export async function mutateBanResponse(
   }
 
   const days = typeof body.days === "number" ? body.days : undefined;
+
+  if (body.action === "ip.save" || body.action === "ip.remove") {
+    if (!(await can(sql, actorId, "bans.ip"))) {
+      return forbidden();
+    }
+  }
 
   if (
     body.action === "ip.save" &&
