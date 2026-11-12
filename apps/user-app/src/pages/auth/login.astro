@@ -27,7 +27,8 @@ const rendered = await renderAuthRoute({
   template: loginContract.templates.page,
   contract: loginContract,
   pluginsGeneration: PLUGIN_GENERATION,
-  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,
   shell: { visitor: session === null ? "guest" : "member" },
 });
@@ -37,6 +38,7 @@ Astro.response.headers.set("cache-control", "private, no-store");
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={translate("auth.login")}
   locale={locale}
   body={rendered.html}

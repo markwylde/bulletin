@@ -81,6 +81,7 @@ const avatarMessages = avatarLabels(translate);
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={`${account.title} · ${boardName}`}
   locale={locale}
   body={rendered.html}

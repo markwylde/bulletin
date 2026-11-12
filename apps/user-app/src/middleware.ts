@@ -149,13 +149,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
       const requestedTheme = await resolveRequestTheme(readSql(), cookieHeader, sessionContext);
       context.locals.themeId = requestedTheme.themeId;
       context.locals.previewTheme = requestedTheme.preview;
+      context.locals.colourScheme = requestedTheme.scheme;
 
       if (requestedTheme.invalidGuestTheme) {
         const locale = context.locals.locale ?? "en";
         context.locals.resetThemeCookie = `${BP_COOKIE_NAME}=${serializeBpCookie({
           locale,
           themeId: DEFAULT_BP_THEME_ID,
-          scheme: requestedTheme.guestScheme,
+          scheme: requestedTheme.scheme,
         })}; Path=/; Max-Age=${BP_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`;
       }
 

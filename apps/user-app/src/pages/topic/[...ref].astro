@@ -25,7 +25,8 @@ const result = await renderTopicRoute({
   session,
   ref: Astro.params.ref ?? "",
   pluginsGeneration: PLUGIN_GENERATION,
-  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,
   tagVersions: runtime.tags,
   ...(bench !== null && /^\d{1,10}$/.test(bench) ? { bench: Number(bench) } : {}),
@@ -63,6 +64,7 @@ Astro.response.status = result.status;
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={`${result.title} · ${result.boardName}`}
   locale={locale}
   body={result.html}

@@ -86,6 +86,7 @@ const labels = {
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={`${page.title} · ${boardName}`}
   locale={locale}
   body={rendered.html}

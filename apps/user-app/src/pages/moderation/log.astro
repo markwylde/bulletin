@@ -105,5 +105,5 @@ Astro.response.headers.set("cache-control", "private, no-store");
 const title = page.allowed ? translate("modlog.title") : translate("theme.error.title");
 ---
 
-<ThemeLayout title={`${title} · ${boardName}`} locale={locale} body={rendered.html} authState="authenticated" visitor="member">
+<ThemeLayout title={`${title} · ${boardName}`} locale={locale} body={rendered.html} authState="authenticated" visitor="member" colourScheme={Astro.locals.colourScheme ?? "system"}>
 </ThemeLayout>

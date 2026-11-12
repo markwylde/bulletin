@@ -11,6 +11,8 @@ import {
 } from "@bulletin/db/seed";
 import type { SessionRecord } from "@bulletin/domain/auth";
 import {
+  allowedThemesForGroups,
+  appearanceOptions,
   createChildTheme,
   createThemePreviewToken,
   grantPreviewTheme,
@@ -21,6 +23,9 @@ import {
   readThemeDetail,
   restoreThemeTemplateVersion,
   revertThemeTemplate,
+  saveGroupDefaultTheme,
+  saveMemberAppearance,
+  saveThemeAllowedGroups,
   saveThemeCss,
   saveThemeStrings,
   saveThemeTemplate,
@@ -38,6 +43,10 @@ import {
   themePreviewResponse,
   uploadAssetResponse,
 } from "../../apps/staff-api/src/themes.ts";
+import {
+  saveAppearanceResponse,
+  themeOptionsResponse,
+} from "../../apps/user-api/src/appearance.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
 import { renderThemedPage } from "../../apps/user-app/src/theme/render.ts";
@@ -515,7 +524,7 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
       ).toMatchObject({ themeId: childId, preview: true });
       expect(
         await resolveRequestTheme(database.sql, null, context(other, otherSession.id)),
-      ).toMatchObject({ themeId: null, preview: false });
+      ).toMatchObject({ preview: false });
 
       const [vip] = (await database.sql`
         SELECT id FROM core.groups WHERE key = 'vip'
@@ -529,15 +538,17 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
         INSERT INTO core.theme_allowed_groups (theme_id, group_id) VALUES (${childId}, ${vip.id})
       `;
       expect(await resolveRequestTheme(database.sql, `bp=en.${childId}.dark`, null)).toMatchObject({
-        themeId: null,
         invalidGuestTheme: true,
       });
+      expect(
+        (await resolveRequestTheme(database.sql, `bp=en.${childId}.dark`, null)).themeId,
+      ).not.toBe(childId);
 
       await database.sql`DELETE FROM core.theme_allowed_groups WHERE theme_id = ${childId}`;
       expect(await resolveRequestTheme(database.sql, `bp=en.${childId}.dark`, null)).toMatchObject({
         themeId: childId,
         invalidGuestTheme: false,
-        guestScheme: "dark",
+        scheme: "dark",
       });
     });
   }, 60_000);
@@ -580,6 +591,171 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
       } finally {
         await versions.close();
       }
+    });
+  }, 60_000);
+
+  test("applies VIP availability, per-group defaults and the lost-access fallback", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const other = await memberId(database, "member-1");
+      const theme = await child(database, "vip-theme", admin);
+      const groups = (await database.sql`
+        SELECT id::text AS id, key FROM core.groups WHERE key IN ('members', 'vip', 'guests')
+      `) as Array<{ id: string; key: string }>;
+      const group = (key: string) => groups.find((entry) => entry.key === key)?.id ?? "";
+
+      expect(
+        await saveThemeAllowedGroups(database.sql, {
+          themeId: theme,
+          groupIds: [group("vip")],
+        }),
+      ).toMatchObject({ ok: true });
+
+      const memberThemes = await allowedThemesForGroups(database.sql, [group("members")]);
+      const vipThemes = await allowedThemesForGroups(database.sql, [group("vip")]);
+      expect(memberThemes.some((entry) => entry.id === theme)).toBe(false);
+      expect(vipThemes.some((entry) => entry.id === theme)).toBe(true);
+
+      // A VIP member can choose the VIP theme.
+      const [vipMember] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton, locale)
+        VALUES ('VIP Member', 'vipmember', 'en')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (vipMember === undefined) {
+        throw new Error("Could not create the VIP member");
+      }
+
+      await database.sql`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        VALUES (${vipMember.id}, ${group("vip")}, true)
+      `;
+      expect(
+        await saveMemberAppearance(database.sql, vipMember.id, {
+          themeId: theme,
+          scheme: "dark",
+        }),
+      ).toMatchObject({ ok: true });
+      expect(await appearanceOptions(database.sql, vipMember.id)).toMatchObject({
+        themeId: theme,
+        scheme: "dark",
+      });
+
+      // A non-VIP member cannot choose it.
+      expect(
+        await saveMemberAppearance(database.sql, other, { themeId: theme, scheme: "system" }),
+      ).toMatchObject({ ok: false, code: "not_found" });
+
+      // Lost access: revoke the VIP allowance after the choice was saved.
+      expect(
+        await saveThemeAllowedGroups(database.sql, {
+          themeId: theme,
+          groupIds: [group("guests")],
+        }),
+      ).toMatchObject({ ok: true });
+      const lost = await appearanceOptions(database.sql, vipMember.id);
+      expect(lost.themeId).not.toBe(theme);
+
+      // The Guests group's default theme is used when no cookie names one.
+      expect(
+        await saveGroupDefaultTheme(database.sql, {
+          groupId: group("guests"),
+          themeId: theme,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(await appearanceOptions(database.sql, null)).toMatchObject({
+        themeId: theme,
+      });
+    });
+  }, 60_000);
+
+  test("serves chooser options to guests and saves a member's theme and scheme", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const theme = await child(database, "chooser-theme", admin);
+      const [guests] = (await database.sql`
+        SELECT id::text AS id FROM core.groups WHERE key = 'guests'
+      `) as Array<{ id: string }>;
+
+      if (guests === undefined) {
+        throw new Error("Missing Guests group");
+      }
+
+      await saveThemeAllowedGroups(database.sql, {
+        themeId: theme,
+        groupIds: [guests.id],
+      });
+
+      const guestRequest = new Request("http://bulletin.localhost/api/theme-options", {
+        headers: { cookie: `bp=en.${theme}.dark` },
+      });
+      const guestOptions = (await (
+        await themeOptionsResponse(database.sql, guestRequest, null)
+      ).json()) as { member: boolean; themeId: string; scheme: string };
+
+      expect(guestOptions).toMatchObject({ member: false, themeId: theme, scheme: "dark" });
+
+      // The guest cookie naming a theme outside the Guests list falls back to the default.
+      await saveThemeAllowedGroups(database.sql, { themeId: theme, groupIds: [] });
+      await saveThemeAllowedGroups(database.sql, {
+        themeId: theme,
+        groupIds: [guests.id],
+      });
+      await database.sql`
+        INSERT INTO core.theme_allowed_groups (theme_id, group_id)
+        SELECT ${theme}, id FROM core.groups WHERE key = 'vip'
+      `;
+      await database.sql`
+        DELETE FROM core.theme_allowed_groups
+        WHERE theme_id = ${theme}
+          AND group_id NOT IN (SELECT id FROM core.groups WHERE key = 'vip')
+      `;
+      const restricted = (await (
+        await themeOptionsResponse(
+          database.sql,
+          new Request("http://bulletin.localhost/api/theme-options", {
+            headers: { cookie: `bp=en.${theme}.dark` },
+          }),
+          null,
+        )
+      ).json()) as { themeId: string | null };
+
+      expect(restricted.themeId).not.toBe(theme);
+
+      // A member saves a choice through the user-api handler.
+      await saveThemeAllowedGroups(database.sql, { themeId: theme, groupIds: [] });
+      const saved = await saveAppearanceResponse(
+        database.sql,
+        { memberId: member },
+        new Request("http://bulletin.localhost/api/me/appearance", {
+          method: "POST",
+          body: JSON.stringify({ themeId: theme, scheme: "dark" }),
+        }),
+      );
+      expect(saved.status).toBe(200);
+
+      const memberOptions = (await (
+        await themeOptionsResponse(
+          database.sql,
+          new Request("http://bulletin.localhost/api/theme-options"),
+          { memberId: member },
+        )
+      ).json()) as { member: boolean; themeId: string | null; scheme: string };
+
+      expect(memberOptions).toMatchObject({ member: true, themeId: theme, scheme: "dark" });
+
+      // A theme outside the member's groups is refused.
+      const denied = await saveAppearanceResponse(
+        database.sql,
+        { memberId: member },
+        new Request("http://bulletin.localhost/api/me/appearance", {
+          method: "POST",
+          body: JSON.stringify({ themeId: "999999", scheme: "dark" }),
+        }),
+      );
+      expect(denied.status).toBe(404);
     });
   }, 60_000);
 

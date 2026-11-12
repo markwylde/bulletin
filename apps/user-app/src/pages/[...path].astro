@@ -85,7 +85,8 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
       return bench !== null && /^\d{1,10}$/.test(bench) ? { bench: Number(bench) } : {};
     })(),
     pluginsGeneration: PLUGIN_GENERATION,
-    colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+    colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
     cache: runtime.cache,
     tagVersions: runtime.tags,
   });
@@ -143,6 +144,7 @@ for (const [name, value] of headers) {
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={documentTitle}
   locale={locale}
   body={body}

@@ -5,10 +5,18 @@
   "template.validation.frame": "L’élément {element} n’est pas autorisé.",
   "template.validation.line": "Ligne {line} : {message}",
   "template.validation.metaRefresh": "La balise meta d’actualisation http-equiv n’est pas autorisée.",
+  "template.validation.noscript": "L’élément noscript n’est pas autorisé.",
   "template.validation.object": "L’élément {element} n’est pas autorisé.",
   "template.validation.offOriginForm": "L’attribut {attribute} doit cibler cette origine.",
   "template.validation.script": "L’élément script n’est pas autorisé.",
   "template.validation.unsafeUrl": "L’attribut {attribute} utilise une URL {scheme}: interdite.",
   "template.validation.unsupportedTag": "La balise {tag} n’est pas disponible pour les thèmes.",
-  "template.validation.noscript": "L’élément noscript n’est pas autorisé."
+  "theme.chooser.dark": "Sombre",
+  "theme.chooser.failed": "Impossible d’enregistrer votre apparence.",
+  "theme.chooser.light": "Clair",
+  "theme.chooser.save": "Appliquer",
+  "theme.chooser.scheme": "Jeu de couleurs",
+  "theme.chooser.settingsTitle": "Apparence",
+  "theme.chooser.system": "Système",
+  "theme.chooser.theme": "Thème"
 }

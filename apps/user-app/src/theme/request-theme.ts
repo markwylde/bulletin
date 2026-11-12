@@ -1,5 +1,10 @@
 import { parseCookieHeader } from "@bulletin/domain/auth";
-import { guestThemeId, previewThemeForSession } from "@bulletin/domain/themes";
+import {
+  appearanceOptions,
+  guestThemeId,
+  memberAppearance,
+  previewThemeForSession,
+} from "@bulletin/domain/themes";
 import type { ColorScheme } from "@bulletin/i18n";
 import { BP_COOKIE_NAME, DEFAULT_BP_THEME_ID, parseBpCookie } from "@bulletin/i18n";
 import type { SQL } from "bun";
@@ -11,7 +16,7 @@ export interface RequestTheme {
   readonly preview: boolean;
   /** A guest's `bp` named a theme that is missing or not available to Guests. */
   readonly invalidGuestTheme: boolean;
-  readonly guestScheme: ColorScheme;
+  readonly scheme: ColorScheme;
 }
 
 /**
@@ -24,33 +29,38 @@ export async function resolveRequestTheme(
   session: UserAppSessionContext | null,
 ): Promise<RequestTheme> {
   if (session !== null) {
-    const preview = await previewThemeForSession(sql, session.sessionId);
+    const [preview, appearance] = await Promise.all([
+      previewThemeForSession(sql, session.sessionId),
+      memberAppearance(sql, session.memberId),
+    ]);
 
     return {
-      themeId: preview,
+      themeId: preview ?? appearance.themeId,
       preview: preview !== null,
       invalidGuestTheme: false,
-      guestScheme: "system",
+      scheme: appearance.scheme,
     };
   }
 
   const bp = parseBpCookie(parseCookieHeader(cookieHeader)[BP_COOKIE_NAME]);
 
+  const guestDefault = (await appearanceOptions(sql, null)).themeId;
+
   if (bp.themeId === DEFAULT_BP_THEME_ID) {
     return {
-      themeId: null,
+      themeId: guestDefault,
       preview: false,
       invalidGuestTheme: false,
-      guestScheme: bp.scheme,
+      scheme: bp.scheme,
     };
   }
 
   const allowed = await guestThemeId(sql, String(bp.themeId)).catch(() => null);
 
   return {
-    themeId: allowed,
+    themeId: allowed ?? guestDefault,
     preview: false,
     invalidGuestTheme: allowed === null,
-    guestScheme: bp.scheme,
+    scheme: bp.scheme,
   };
 }

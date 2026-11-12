@@ -14,6 +14,7 @@ import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
+import { saveAppearanceResponse, themeOptionsResponse } from "./appearance.ts";
 import {
   attachmentDeleteRoute,
   attachmentDownloadCountRoute,
@@ -173,6 +174,26 @@ await startService({
       const response = await auth.handle(request, async ({ session }) =>
         redirectCountsResponse(sql, session?.memberId ?? GUEST_PRINCIPAL, session?.id ?? null),
       );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/theme-options") {
+      const response = await auth.handle(request, async ({ session }) =>
+        themeOptionsResponse(sql, request, session),
+      );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/appearance") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return saveAppearanceResponse(sql, session, request);
+      });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

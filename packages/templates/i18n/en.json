@@ -5,10 +5,18 @@
   "template.validation.frame": "The {element} element is not allowed.",
   "template.validation.line": "Line {line}: {message}",
   "template.validation.metaRefresh": "The http-equiv refresh meta tag is not allowed.",
+  "template.validation.noscript": "The noscript element is not allowed.",
   "template.validation.object": "The {element} element is not allowed.",
   "template.validation.offOriginForm": "The {attribute} attribute must target this origin.",
   "template.validation.script": "The script element is not allowed.",
   "template.validation.unsafeUrl": "The {attribute} attribute uses a forbidden {scheme}: URL.",
   "template.validation.unsupportedTag": "The {tag} tag is not available to themes.",
-  "template.validation.noscript": "The noscript element is not allowed."
+  "theme.chooser.dark": "Dark",
+  "theme.chooser.failed": "Could not save your appearance.",
+  "theme.chooser.light": "Light",
+  "theme.chooser.save": "Apply",
+  "theme.chooser.scheme": "Colour scheme",
+  "theme.chooser.settingsTitle": "Appearance",
+  "theme.chooser.system": "System",
+  "theme.chooser.theme": "Theme"
 }

@@ -25,7 +25,8 @@ const result = await renderMemberListRoute({
   session,
   params: Astro.url.searchParams,
   pluginsGeneration: PLUGIN_GENERATION,
-  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,
   tagVersions: runtime.tags,
 });
@@ -54,6 +55,7 @@ Astro.response.status = result.status;
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={`${result.title} · ${result.boardName}`}
   locale={locale}
   body={result.html}

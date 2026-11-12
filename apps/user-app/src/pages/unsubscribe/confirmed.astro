@@ -36,7 +36,8 @@ const rendered = await renderCachedPage({
       theme: null,
       pluginsGeneration: PLUGIN_GENERATION,
       locale,
-      colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+      colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
       renderFlagsHash: "",
     }),
     data: undefined,
@@ -63,6 +64,7 @@ Astro.response.headers.set("referrer-policy", "no-referrer");
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={`${page.title} · ${boardName}`}
   locale={locale}
   body={rendered.html}

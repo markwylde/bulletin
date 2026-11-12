@@ -24,7 +24,8 @@ const result = await renderConversationRoute({
   session,
   ref: Astro.params.ref ?? "",
   pluginsGeneration: PLUGIN_GENERATION,
-  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   boardName: Astro.locals.board?.boardName ?? null,
 });
 
@@ -33,6 +34,7 @@ Astro.response.headers.set("cache-control", "private, no-store");
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={`${result.title} · ${result.boardName}`}
   locale={locale}
   body={result.html}

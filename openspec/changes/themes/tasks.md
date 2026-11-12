@@ -21,8 +21,8 @@
 
 ## 4. Availability and choice
 
-- [ ] 4.1 Allowed groups and per-group default theme, with tests for the VIP and lost-access scenarios
-- [ ] 4.2 Member and guest chooser (footer and settings; theme plus scheme; `bp` cookie), with E2E at 360
+- [x] 4.1 Allowed groups and per-group default theme, with tests for the VIP and lost-access scenarios
+- [x] 4.2 Member and guest chooser (footer and settings; theme plus scheme; `bp` cookie), with E2E at 360
 
 ## 5. Strings and seed
 

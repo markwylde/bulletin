@@ -385,6 +385,11 @@ export function themeCss(resources: {
 
   if (dark !== "") {
     blocks.push(`@media (prefers-color-scheme: dark) {\n  :root {\n${dark}\n  }\n}`);
+    blocks.push(`:root[data-scheme="dark"] {\n${dark}\n}`);
+  }
+
+  if (light !== "") {
+    blocks.push(`:root[data-scheme="light"] {\n${light}\n}`);
   }
 
   if (resources.css.trim() !== "") {

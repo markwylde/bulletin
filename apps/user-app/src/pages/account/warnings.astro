@@ -31,6 +31,6 @@ Astro.response.status = result.status;
 Astro.response.headers.set("cache-control", "private, no-store");
 ---
 
-<ThemeLayout title={`${result.title} · ${result.boardName}`} locale={locale} body={result.html} authState="authenticated" visitor="member">
+<ThemeLayout title={`${result.title} · ${result.boardName}`} locale={locale} body={result.html} authState="authenticated" visitor="member" colourScheme={Astro.locals.colourScheme ?? "system"}>
   <script>import "../../warnings/client.ts";</script>
 </ThemeLayout>

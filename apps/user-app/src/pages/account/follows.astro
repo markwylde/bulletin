@@ -84,6 +84,7 @@ Astro.response.headers.set("cache-control", "private, no-store");
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={`${enabled && page !== null ? page.title : (notFound?.title ?? "")} · ${boardName}`}
   locale={locale}
   body={rendered.html}

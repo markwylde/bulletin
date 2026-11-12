@@ -1,6 +1,26 @@
 {{ header }}
 <main id="main" class="bl-main" data-account-page>
   {{ breadcrumbs }}
+  <section class="bl-card" data-appearance-settings>
+    <h2 class="bl-card__title">{% t "theme.chooser.settingsTitle" %}</h2>
+    <form class="bl-appearance" data-appearance-chooser hidden
+      data-save-failed="{% t "theme.chooser.failed" %}">
+      <label class="bl-appearance__field">
+        <span>{% t "theme.chooser.theme" %}</span>
+        <select class="bl-input" data-appearance-theme></select>
+      </label>
+      <label class="bl-appearance__field">
+        <span>{% t "theme.chooser.scheme" %}</span>
+        <select class="bl-input" data-appearance-scheme>
+          <option value="system">{% t "theme.chooser.system" %}</option>
+          <option value="light">{% t "theme.chooser.light" %}</option>
+          <option value="dark">{% t "theme.chooser.dark" %}</option>
+        </select>
+      </label>
+      <button class="bl-button bl-button--small" type="submit" data-appearance-save>{% t "theme.chooser.save" %}</button>
+      <p class="bl-error-text" data-appearance-error hidden></p>
+    </form>
+  </section>
   <h1 class="bl-page__title">{% t "account.title" %}</h1>
   <p class="bl-muted">
     {% if flags.notifications %}<a href="/account/notifications" data-account-notifications>{% t "notifications.title" %}</a>{% endif %}
@@ -91,5 +111,5 @@
     <a class="bl-button" href="/account/attachments" data-account-attachments-link>{% t "account.attachments.open" %}</a>
   </section>
 
-  {{ footer }}
 </main>
+{{ footer }}

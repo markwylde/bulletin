@@ -25,7 +25,8 @@ const result = await renderProfileRoute({
   session,
   ref: Astro.params.ref ?? "",
   pluginsGeneration: PLUGIN_GENERATION,
-  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,
   tagVersions: runtime.tags,
 });
@@ -68,6 +69,7 @@ const relationshipLabels = {
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={`${result.title} · ${result.boardName}`}
   locale={locale}
   body={result.html}

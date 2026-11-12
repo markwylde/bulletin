@@ -9,7 +9,7 @@ import {
   waitForSelector,
   withPage,
 } from "@bulletin/test-utils/e2e";
-import { staffBaseUrl } from "@bulletin/test-utils/urls";
+import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 
 // Task 2.2/2.3: managing a child theme in the staff app at both required viewports.
 //   docker compose up -d
@@ -19,6 +19,7 @@ const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
 const STAFF_URL = staffBaseUrl();
 const THEMES_URL = new URL("/themes", STAFF_URL).toString();
+const USER_URL = userBaseUrl();
 
 async function createChild(view: Bun.WebView, name: string): Promise<void> {
   await view.navigate(THEMES_URL);
@@ -66,13 +67,76 @@ async function selectFooter(view: Bun.WebView): Promise<void> {
 }
 
 integrationDescribe("theme management", () => {
+  test("lets a guest and a member choose a theme and colour scheme at mobile360", async () => {
+    let chosenTheme = "";
+    const themeName = `chooser-theme-${Date.now()}`;
+
+    await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "admin");
+      await createChild(view, themeName);
+      const id = await view.evaluate<string | null>(
+        'document.querySelector("[data-theme-editor]")?.getAttribute("data-theme-id") ?? null',
+      );
+
+      if (id === null) {
+        throw new Error("The chooser theme id is missing");
+      }
+
+      chosenTheme = id;
+    });
+
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await waitForSelector(view, "[data-appearance-chooser]:not([hidden])", 20_000);
+      await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
+      await setInputValue(view, "[data-appearance-theme]", chosenTheme);
+      await setInputValue(view, "[data-appearance-scheme]", "dark");
+      await clickSelector(view, "[data-appearance-save]");
+      await waitForSelector(view, 'html[data-scheme="dark"]', 20_000);
+      expect(await view.evaluate<string>("document.cookie")).toContain(`.${chosenTheme}.dark`);
+      expect(await view.evaluate<string>("getComputedStyle(document.body).backgroundColor")).toBe(
+        "rgb(20, 26, 34)",
+      );
+    });
+
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "member-2");
+      await view.navigate(USER_URL);
+      await waitForSelector(view, "[data-appearance-chooser]:not([hidden])", 20_000);
+      await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
+      await setInputValue(view, "[data-appearance-theme]", chosenTheme);
+      await setInputValue(view, "[data-appearance-scheme]", "dark");
+      await clickSelector(view, "[data-appearance-save]");
+      await waitForSelector(view, 'html[data-scheme="dark"]', 20_000);
+      expect(
+        await view.evaluate<string>(
+          'document.querySelector("[data-appearance-theme]")?.value ?? ""',
+        ),
+      ).toBe(chosenTheme);
+      expect(await view.evaluate<string>("getComputedStyle(document.body).backgroundColor")).toBe(
+        "rgb(20, 26, 34)",
+      );
+    });
+  }, 120_000);
+
   test("installs a signed marketplace theme at mobile360", async () => {
     await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "admin");
       await view.navigate(THEMES_URL);
       await waitForSelector(view, '[data-marketplace-package="aurora"]', 20_000);
-      await waitForSelector(view, '[data-marketplace-install="aurora"]:not([disabled])', 20_000);
-      await clickSelector(view, '[data-marketplace-install="aurora"]');
+      const existing = await view.evaluate<string | null>(`(() => {
+        const row = [...document.querySelectorAll("[data-theme-row]")].find(
+          (element) => element.textContent?.trim().startsWith("aurora")
+        );
+        return row?.getAttribute("data-theme-row") ?? null;
+      })()`);
+
+      if (existing === null) {
+        await waitForSelector(view, '[data-marketplace-install="aurora"]:not([disabled])', 20_000);
+        await clickSelector(view, '[data-marketplace-install="aurora"]');
+      } else {
+        await clickSelector(view, `[data-theme-edit="${existing}"]`);
+      }
+
       await waitForSelector(view, "[data-theme-editor]", 20_000);
       expect(await view.evaluate<string>("document.body.innerText")).toContain("aurora");
 

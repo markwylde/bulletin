@@ -106,11 +106,13 @@ import {
   marketplaceListResponse,
 } from "./theme-distribution.ts";
 import {
+  availabilityResponse,
   createThemeResponse,
   deleteAssetResponse,
   listThemesResponse,
   restoreTemplateResponse,
   revertTemplateResponse,
+  saveAvailabilityResponse,
   saveCssResponse,
   saveStringsResponse,
   saveTemplateResponse,
@@ -1639,6 +1641,21 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
 
       return deleteAssetResponse(sql, storage, session.memberId, request);
     },
+  },
+  {
+    id: "themes.availability",
+    method: "GET",
+    path: "/api/staff/themes/availability",
+    permission: "acp.themes",
+    handler: async ({ sql }) => availabilityResponse(sql),
+  },
+  {
+    id: "themes.availability.save",
+    method: "POST",
+    path: "/api/staff/themes/availability",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) =>
+      saveAvailabilityResponse(sql, session.memberId, request),
   },
   {
     id: "themes.export",

@@ -45,6 +45,33 @@
   }
 }
 
+/* Explicit member/guest choice wins over the system preference. */
+:root[data-scheme="dark"] {
+  --bl-bg: #141a22;
+  --bl-surface: #1d2530;
+  --bl-surface-muted: #253040;
+  --bl-text: #e7ecf3;
+  --bl-muted: #93a0b1;
+  --bl-border: #303b49;
+  --bl-accent: #7f9cf5;
+  --bl-accent-text: #0d1420;
+  --bl-accent-soft: #26324a;
+  --bl-danger: #ff9d9d;
+}
+
+:root[data-scheme="light"] {
+  --bl-bg: #f4f6f9;
+  --bl-surface: #ffffff;
+  --bl-surface-muted: #eef1f6;
+  --bl-text: #1c2430;
+  --bl-muted: #5c6878;
+  --bl-border: #dce1e8;
+  --bl-accent: #3157c7;
+  --bl-accent-text: #ffffff;
+  --bl-accent-soft: #e4eafb;
+  --bl-danger: #a02a2a;
+}
+
 *,
 *::before,
 *::after {
@@ -196,6 +223,11 @@ input:focus-visible {
   padding: var(--bl-space) var(--bl-space) calc(var(--bl-space) * 2);
   display: grid;
   gap: var(--bl-space);
+}
+
+/* Long form controls must not widen the grid track past the mobile viewport. */
+.bl-main > * {
+  min-width: 0;
 }
 
 .bl-page__header {
@@ -572,6 +604,27 @@ input:focus-visible {
 .bl-footer {
   border-block-start: 1px solid var(--bl-border);
   background: var(--bl-surface);
+}
+
+.bl-appearance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--bl-space-small);
+  width: min(100%, var(--bl-width));
+  margin: 0 auto;
+  padding: var(--bl-space) var(--bl-space) 0;
+}
+
+.bl-appearance__field {
+  display: grid;
+  flex: 1 1 9rem;
+  gap: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.bl-appearance[hidden] {
+  display: none;
 }
 
 .bl-footer__text {

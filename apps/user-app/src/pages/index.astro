@@ -34,7 +34,8 @@ const result = await renderHomeRoute({
     return bench !== null && /^\d{1,10}$/.test(bench) ? { bench: Number(bench) } : {};
   })(),
   pluginsGeneration: PLUGIN_GENERATION,
-  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,
   tagVersions: runtime.tags,
   // The shell differs for members, so the response ETag must cover it.
@@ -63,6 +64,7 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
 ---
 
 <ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
   title={result.title}
   locale={locale}
   body={result.html}

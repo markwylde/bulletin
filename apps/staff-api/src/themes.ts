@@ -3,10 +3,13 @@ import {
   createThemePreviewToken,
   deleteThemeAsset,
   grantPreviewTheme,
+  listThemeAvailability,
   listThemes,
   readThemeDetail,
   restoreThemeTemplateVersion,
   revertThemeTemplate,
+  saveGroupDefaultTheme,
+  saveThemeAllowedGroups,
   saveThemeAsset,
   saveThemeCss,
   saveThemeStrings,
@@ -118,6 +121,74 @@ function checkTemplate(body: string): {
 
 export async function listThemesResponse(sql: SQL): Promise<Response> {
   return respond({ themes: await listThemes(sql) });
+}
+
+export async function availabilityResponse(sql: SQL): Promise<Response> {
+  return respond({ availability: await listThemeAvailability(sql) });
+}
+
+export async function saveAvailabilityResponse(
+  sql: SQL,
+  actorId: string,
+  request: Request,
+): Promise<Response> {
+  const body: unknown = await request.json().catch(() => null);
+
+  if (!isRecord(body) || typeof body.action !== "string") {
+    return respond({ code: "invalid_request" }, 400);
+  }
+
+  if (body.action === "allowed") {
+    const theme = themeId(body.themeId);
+
+    if (theme === null || !Array.isArray(body.groupIds)) {
+      return respond({ code: "invalid_request" }, 400);
+    }
+
+    const groupIds = body.groupIds.filter((id): id is string => typeof id === "string");
+    const outcome = await saveThemeAllowedGroups(sql, { themeId: theme, groupIds });
+
+    if (!outcome.ok) {
+      return failure(outcome.code);
+    }
+
+    await writeAdminLog(sql, {
+      actorMemberId: actorId,
+      action: "theme.availability.update",
+      targetType: "theme",
+      targetId: theme,
+      summary: { groupIds },
+    });
+
+    return respond({ ok: true });
+  }
+
+  if (body.action === "default") {
+    const group = themeId(body.groupId);
+    const theme = body.themeId === null ? null : themeId(body.themeId);
+
+    if (group === null || (body.themeId !== null && theme === null)) {
+      return respond({ code: "invalid_request" }, 400);
+    }
+
+    const outcome = await saveGroupDefaultTheme(sql, { groupId: group, themeId: theme });
+
+    if (!outcome.ok) {
+      return failure(outcome.code);
+    }
+
+    await writeAdminLog(sql, {
+      actorMemberId: actorId,
+      action: "theme.group-default.update",
+      targetType: "group",
+      targetId: group,
+      summary: { themeId: theme },
+    });
+
+    return respond({ ok: true });
+  }
+
+  return respond({ code: "invalid_request" }, 400);
 }
 
 export async function themeDetailResponse(sql: SQL, url: URL): Promise<Response> {

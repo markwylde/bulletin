@@ -80,6 +80,8 @@ export interface ThemeDetail {
   readonly css: string;
   readonly assets: readonly ThemeAssetRecord[];
   readonly strings: readonly ThemeStringRecord[];
+  /** Groups this theme is restricted to; an empty list means everyone. */
+  readonly allowedGroupIds: readonly string[];
 }
 
 export interface ThemeResources {
@@ -390,6 +392,10 @@ export async function readThemeDetail(sql: SQL, themeId: string): Promise<ThemeD
       ORDER BY a.name
     ` as Promise<AssetRow[]>,
   ]);
+  const allowedGroups = (await sql`
+    SELECT group_id::text AS group_id FROM core.theme_allowed_groups WHERE theme_id = ${row.id}
+    ORDER BY group_id
+  `) as Array<{ group_id: string }>;
   const chain = await themeChain(sql, row.id);
   const chainIds = chain.map((entry) => entry.id);
   const chainRows = (await sql`
@@ -486,6 +492,7 @@ export async function readThemeDetail(sql: SQL, themeId: string): Promise<ThemeD
     ),
     css: cssRow[0]?.css ?? "",
     assets: assets.map(assetView),
+    allowedGroupIds: allowedGroups.map((entry) => entry.group_id),
     strings: ownStrings.flatMap((entry) =>
       isLocale(entry.locale) ? [{ locale: entry.locale, key: entry.key, value: entry.value }] : [],
     ),
@@ -1164,4 +1171,344 @@ export async function grantPreviewTheme(
   `) as Array<{ granted: boolean }>;
 
   return row?.granted === true;
+}
+
+export interface ThemeOption {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+export interface AppearanceOptions {
+  readonly member: boolean;
+  readonly themes: readonly ThemeOption[];
+  readonly themeId: string | null;
+  readonly scheme: import("@bulletin/i18n").ColorScheme;
+}
+
+interface ViewerGroup {
+  readonly id: string;
+  readonly key: string;
+  readonly isPrimary: boolean;
+}
+
+async function viewerGroups(sql: SQL, memberId: string | null): Promise<readonly ViewerGroup[]> {
+  if (memberId === null) {
+    const rows = (await sql`
+      SELECT id::text AS id, key FROM core.groups WHERE key = 'guests'
+    `) as Array<{ id: string; key: string }>;
+
+    return rows.map((row) => ({ ...row, isPrimary: true }));
+  }
+
+  return (await sql`
+    SELECT g.id::text AS id, g.key, mg.is_primary
+    FROM core.member_groups mg
+    JOIN core.groups g ON g.id = mg.group_id
+    WHERE mg.member_id = ${memberId}
+    ORDER BY mg.is_primary DESC, g.id
+  `) as ViewerGroup[];
+}
+
+/** Themes available to any of these groups; an empty allowed list means everyone. */
+export async function allowedThemesForGroups(
+  sql: SQL,
+  groupIds: readonly string[],
+): Promise<readonly ThemeOption[]> {
+  if (groupIds.length === 0) {
+    return [];
+  }
+
+  const ids = `{${groupIds.join(",")}}`;
+
+  return (await sql`
+    SELECT t.id::text AS id, t.name, t.description
+    FROM core.themes t
+    WHERE NOT EXISTS (
+        SELECT 1 FROM core.theme_allowed_groups g WHERE g.theme_id = t.id
+      )
+      OR EXISTS (
+        SELECT 1 FROM core.theme_allowed_groups g
+        WHERE g.theme_id = t.id AND g.group_id = ANY(${ids}::bigint[])
+      )
+    ORDER BY t.name
+  `) as ThemeOption[];
+}
+
+export async function coreDefaultThemeId(sql: SQL): Promise<string | null> {
+  const [row] = (await sql`
+    SELECT id::text AS id FROM core.themes WHERE name = 'default'
+  `) as Array<{ id: string }>;
+
+  return row?.id ?? null;
+}
+
+async function groupDefaultThemeId(sql: SQL, groupId: string | null): Promise<string | null> {
+  if (groupId === null) {
+    return null;
+  }
+
+  const [row] = (await sql`
+    SELECT theme_id::text AS id FROM core.theme_group_defaults WHERE group_id = ${groupId}
+  `) as Array<{ id: string }>;
+
+  return row?.id ?? null;
+}
+
+async function memberPreference(
+  sql: SQL,
+  memberId: string,
+): Promise<{ themeId: string | null; scheme: import("@bulletin/i18n").ColorScheme }> {
+  const [row] = (await sql`
+    SELECT theme_id::text AS theme_id, colour_scheme
+    FROM core.member_prefs
+    WHERE member_id = ${memberId}
+  `) as Array<{ theme_id: string | null; colour_scheme: string }>;
+  const scheme =
+    row?.colour_scheme === "light" || row?.colour_scheme === "dark" ? row.colour_scheme : "system";
+
+  return { themeId: row?.theme_id ?? null, scheme };
+}
+
+/**
+ * The chooser list and the theme actually rendered for this viewer (ADR 0008). A saved choice
+ * that is no longer allowed for any of the member's groups falls back to the primary group's
+ * default, which is the "lost access" rule.
+ */
+export async function appearanceOptions(
+  sql: SQL,
+  memberId: string | null,
+): Promise<AppearanceOptions> {
+  const groups = await viewerGroups(sql, memberId);
+  const groupIds = groups.map((group) => group.id);
+  const themes = [...(await allowedThemesForGroups(sql, groupIds))];
+  const primary = groups.find((group) => group.isPrimary)?.id ?? groupIds[0] ?? null;
+  const groupDefault = await groupDefaultThemeId(sql, primary);
+  const coreDefault = await coreDefaultThemeId(sql);
+
+  if (coreDefault !== null && !themes.some((theme) => theme.id === coreDefault)) {
+    const [defaultTheme] = (await sql`
+      SELECT id::text AS id, name, description FROM core.themes WHERE id = ${coreDefault}
+    `) as ThemeOption[];
+
+    if (defaultTheme !== undefined) {
+      themes.unshift(defaultTheme);
+    }
+  }
+
+  const allowed = new Set(themes.map((theme) => theme.id));
+  const preference = memberId === null ? null : await memberPreference(sql, memberId);
+  const chosen = preference?.themeId ?? null;
+  const themeId =
+    chosen !== null && allowed.has(chosen)
+      ? chosen
+      : groupDefault !== null && allowed.has(groupDefault)
+        ? groupDefault
+        : coreDefault;
+
+  return {
+    member: memberId !== null,
+    themes,
+    themeId,
+    scheme: preference?.scheme ?? "system",
+  };
+}
+
+/** The theme and scheme the viewer should render, including the lost-access fallback. */
+export async function memberAppearance(
+  sql: SQL,
+  memberId: string,
+): Promise<{ themeId: string | null; scheme: import("@bulletin/i18n").ColorScheme }> {
+  const options = await appearanceOptions(sql, memberId);
+  return { themeId: options.themeId, scheme: options.scheme };
+}
+
+export async function saveMemberAppearance(
+  sql: SQL,
+  memberId: string,
+  input: { readonly themeId: string | null; readonly scheme: string },
+): Promise<ThemeMutation<Record<string, never>>> {
+  const scheme =
+    input.scheme === "light" || input.scheme === "dark" || input.scheme === "system"
+      ? input.scheme
+      : null;
+
+  if (scheme === null) {
+    return { ok: false, code: "invalid_scheme" };
+  }
+
+  const groups = await viewerGroups(sql, memberId);
+  const allowed = new Set(
+    (
+      await allowedThemesForGroups(
+        sql,
+        groups.map((group) => group.id),
+      )
+    ).map((theme) => theme.id),
+  );
+
+  if (input.themeId !== null && !allowed.has(input.themeId)) {
+    return { ok: false, code: "not_found" };
+  }
+
+  await sql`
+    INSERT INTO core.member_prefs (member_id, theme_id, colour_scheme, updated_at)
+    VALUES (${memberId}, ${input.themeId}, ${scheme}, now())
+    ON CONFLICT (member_id) DO UPDATE
+      SET theme_id = EXCLUDED.theme_id,
+          colour_scheme = EXCLUDED.colour_scheme,
+          updated_at = now()
+  `;
+
+  return { ok: true, result: {} };
+}
+
+export interface ThemeAvailability {
+  readonly themes: readonly { readonly id: string; readonly name: string }[];
+  readonly groups: readonly {
+    readonly id: string;
+    readonly key: string;
+    readonly title: string;
+    readonly defaultThemeId: string | null;
+  }[];
+  readonly allowed: readonly { readonly themeId: string; readonly groupId: string }[];
+}
+
+export async function listThemeAvailability(sql: SQL): Promise<ThemeAvailability> {
+  const [themes, groups, allowed] = await Promise.all([
+    sql`
+      SELECT id::text AS id, name FROM core.themes ORDER BY name
+    ` as Promise<Array<{ id: string; name: string }>>,
+    sql`
+      SELECT g.id::text AS id, g.key, g.title, d.theme_id::text AS default_theme_id
+      FROM core.groups g
+      LEFT JOIN core.theme_group_defaults d ON d.group_id = g.id
+      ORDER BY g.display_order, g.id
+    ` as Promise<
+      Array<{ id: string; key: string; title: string; default_theme_id: string | null }>
+    >,
+    sql`
+      SELECT theme_id::text AS theme_id, group_id::text AS group_id
+      FROM core.theme_allowed_groups
+      ORDER BY theme_id, group_id
+    ` as Promise<Array<{ theme_id: string; group_id: string }>>,
+  ]);
+
+  return {
+    themes,
+    groups: groups.map((group) => ({
+      id: group.id,
+      key: group.key,
+      title: group.title,
+      defaultThemeId: group.default_theme_id,
+    })),
+    allowed: allowed.map((entry) => ({ themeId: entry.theme_id, groupId: entry.group_id })),
+  };
+}
+
+export async function saveThemeAllowedGroups(
+  sql: SQL,
+  input: { readonly themeId: string; readonly groupIds: readonly string[] },
+): Promise<ThemeMutation<Record<string, never>>> {
+  const themeId = idOf(input.themeId);
+
+  if (themeId === null) {
+    return { ok: false, code: "not_found" };
+  }
+
+  return sql.begin(async (tx) => {
+    const [theme] = (await tx`
+      SELECT id::text AS id FROM core.themes WHERE id::text = ${themeId} FOR UPDATE
+    `) as Array<{ id: string }>;
+
+    if (theme === undefined) {
+      return { ok: false as const, code: "not_found" as const };
+    }
+
+    const groupIds = [...new Set(input.groupIds.filter((id) => /^\d+$/.test(id)))];
+
+    if (groupIds.length > 0) {
+      const rows = (await tx`
+        SELECT count(*)::int AS count FROM core.groups
+        WHERE id::text = ANY(${`{${groupIds.join(",")}}`}::text[])
+      `) as Array<{ count: number }>;
+
+      if ((rows[0]?.count ?? 0) !== groupIds.length) {
+        return { ok: false as const, code: "invalid_name" as const };
+      }
+    }
+
+    await tx`DELETE FROM core.theme_allowed_groups WHERE theme_id = ${theme.id}`;
+
+    for (const groupId of groupIds) {
+      await tx`
+        INSERT INTO core.theme_allowed_groups (theme_id, group_id)
+        VALUES (${theme.id}, ${groupId})
+      `;
+    }
+
+    return { ok: true as const, result: {} };
+  });
+}
+
+export async function saveGroupDefaultTheme(
+  sql: SQL,
+  input: { readonly groupId: string; readonly themeId: string | null },
+): Promise<ThemeMutation<Record<string, never>>> {
+  const groupId = idOf(input.groupId);
+
+  if (groupId === null) {
+    return { ok: false, code: "not_found" };
+  }
+
+  if (input.themeId === null) {
+    await sql`DELETE FROM core.theme_group_defaults WHERE group_id = ${groupId}`;
+    return { ok: true, result: {} };
+  }
+
+  const themeId = idOf(input.themeId);
+
+  if (themeId === null) {
+    return { ok: false, code: "not_found" };
+  }
+
+  const [allowed] = (await sql`
+    SELECT
+      EXISTS (SELECT 1 FROM core.themes WHERE id::text = ${themeId}) AS theme_exists,
+      (
+        NOT EXISTS (SELECT 1 FROM core.theme_allowed_groups WHERE theme_id::text = ${themeId})
+        OR EXISTS (
+          SELECT 1 FROM core.theme_allowed_groups
+          WHERE theme_id::text = ${themeId} AND group_id::text = ${groupId}
+        )
+      ) AS allowed
+  `) as Array<{ theme_exists: boolean; allowed: boolean }>;
+
+  if (allowed?.theme_exists !== true) {
+    return { ok: false, code: "not_found" };
+  }
+
+  if (!allowed.allowed) {
+    return { ok: false, code: "invalid_theme" };
+  }
+
+  await sql`
+    INSERT INTO core.theme_group_defaults (group_id, theme_id)
+    VALUES (${groupId}, ${themeId})
+    ON CONFLICT (group_id) DO UPDATE SET theme_id = EXCLUDED.theme_id
+  `;
+
+  return { ok: true, result: {} };
+}
+
+/** The guest group's configured default theme, used when the `bp` cookie names none. */
+export async function guestDefaultThemeId(sql: SQL): Promise<string | null> {
+  const [row] = (await sql`
+    SELECT d.theme_id::text AS id
+    FROM core.theme_group_defaults d
+    JOIN core.groups g ON g.id = d.group_id
+    WHERE g.key = 'guests'
+  `) as Array<{ id: string }>;
+
+  return row?.id ?? null;
 }

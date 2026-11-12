@@ -92,6 +92,6 @@ Astro.response.headers.set("cache-control", "private, no-store");
 const title = detail?.title ?? translate("theme.error.title");
 ---
 
-<ThemeLayout title={`${title} · ${boardName}`} locale={locale} body={rendered.html} authState="authenticated" visitor="member">
+<ThemeLayout title={`${title} · ${boardName}`} locale={locale} body={rendered.html} authState="authenticated" visitor="member" colourScheme={Astro.locals.colourScheme ?? "system"}>
   <script>import "../../../reports/client.ts";</script>
 </ThemeLayout>

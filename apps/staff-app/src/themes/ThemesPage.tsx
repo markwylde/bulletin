@@ -7,7 +7,7 @@ import { ApiError, apiDelete, apiGet, apiPost } from "../api.ts";
 import { diffLines } from "./diff.ts";
 
 type ThemeSource = "core" | "marketplace" | "upload" | "custom";
-type Tab = "templates" | "tokens" | "css" | "assets" | "strings";
+type Tab = "templates" | "tokens" | "css" | "assets" | "strings" | "availability";
 type Scheme = "light" | "dark";
 
 interface ThemeSummary {
@@ -67,6 +67,20 @@ interface ThemeDetail {
   readonly css: string;
   readonly assets: readonly AssetView[];
   readonly strings: readonly StringView[];
+  readonly allowedGroupIds: readonly string[];
+}
+
+interface AvailabilityGroup {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string;
+  readonly defaultThemeId: string | null;
+}
+
+interface Availability {
+  readonly themes: readonly { readonly id: string; readonly name: string }[];
+  readonly groups: readonly AvailabilityGroup[];
+  readonly allowed: readonly { readonly themeId: string; readonly groupId: string }[];
 }
 
 interface MarketplacePackage {
@@ -199,6 +213,7 @@ export function ThemesPage() {
   const [assetName, setAssetName] = useState("");
   const [importBundle, setImportBundle] = useState<File | null>(null);
   const [importSignature, setImportSignature] = useState<File | null>(null);
+  const [allowedGroupIds, setAllowedGroupIds] = useState<readonly string[]>([]);
 
   const list = useQuery({
     queryKey: ["staff", "themes"],
@@ -208,6 +223,10 @@ export function ThemesPage() {
     queryKey: ["staff", "themes", selected],
     queryFn: () => apiGet<{ theme: ThemeDetail }>(`/api/staff/themes/detail?id=${selected ?? ""}`),
     enabled: selected !== null,
+  });
+  const availability = useQuery({
+    queryKey: ["staff", "themes", "availability"],
+    queryFn: () => apiGet<{ availability: Availability }>("/api/staff/themes/availability"),
   });
   const marketplace = useQuery({
     queryKey: ["staff", "themes", "marketplace"],
@@ -229,6 +248,7 @@ export function ThemesPage() {
     setTokens(tokenState(theme));
     setCss(theme.css);
     setStrings(stringState(theme));
+    setAllowedGroupIds(theme.allowedGroupIds);
     setPreviewUrl(null);
   }, [theme, templateName]);
 
@@ -344,6 +364,10 @@ export function ThemesPage() {
 
     if (code === "invalid_name") {
       return t("staff.themes.error.invalid_name");
+    }
+
+    if (code === "invalid_theme") {
+      return t("staff.themes.error.invalid_theme");
     }
 
     return t("staff.themes.error.failed");
@@ -623,6 +647,37 @@ export function ThemesPage() {
     );
   };
 
+  const saveAllowedGroups = (): void => {
+    if (theme === null) {
+      return;
+    }
+
+    void run(
+      async () => {
+        await apiPost("/api/staff/themes/availability", {
+          action: "allowed",
+          themeId: theme.id,
+          groupIds: allowedGroupIds,
+        });
+      },
+      () => toast.pushToast({ messageKey: "staff.themes.availability.saved", tone: "success" }),
+    );
+  };
+
+  const saveGroupDefault = (groupId: string, themeId: string): void => {
+    void run(
+      async () => {
+        await apiPost("/api/staff/themes/availability", {
+          action: "default",
+          groupId,
+          themeId: themeId === "" ? null : themeId,
+        });
+        await queryClient.invalidateQueries({ queryKey: ["staff", "themes", "availability"] });
+      },
+      () => toast.pushToast({ messageKey: "staff.themes.availability.saved", tone: "success" }),
+    );
+  };
+
   const preview = (): void => {
     if (theme === null) {
       return;
@@ -832,6 +887,7 @@ export function ThemesPage() {
                 { id: "css", labelKey: "staff.themes.tab.css" },
                 { id: "assets", labelKey: "staff.themes.tab.assets" },
                 { id: "strings", labelKey: "staff.themes.tab.strings" },
+                { id: "availability", labelKey: "staff.themes.tab.availability" },
               ] as const
             ).map((entry) => (
               <button
@@ -1040,6 +1096,62 @@ export function ThemesPage() {
               {theme.assets.length === 0 ? (
                 <p className="widget-muted">{t("staff.themes.assets.empty")}</p>
               ) : null}
+            </div>
+          ) : null}
+
+          {tab === "availability" ? (
+            <div data-theme-panel="availability">
+              <h3>{t("staff.themes.availability.title")}</h3>
+              <p className="widget-muted">{t("staff.themes.availability.intro")}</p>
+              <div className="admin-list" data-theme-allowed-groups>
+                {(availability.data?.availability.groups ?? []).map((group) => (
+                  <label className="check-list" key={group.id}>
+                    <input
+                      type="checkbox"
+                      data-theme-allowed-group={group.id}
+                      checked={allowedGroupIds.includes(group.id)}
+                      onChange={(event) =>
+                        setAllowedGroupIds((current) =>
+                          event.target.checked
+                            ? [...current, group.id]
+                            : current.filter((id) => id !== group.id),
+                        )
+                      }
+                    />
+                    <span>{group.title}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="admin-form__actions">
+                <button
+                  type="button"
+                  data-theme-allowed-save
+                  disabled={busy}
+                  onClick={saveAllowedGroups}
+                >
+                  {t("staff.themes.availability.saveAllowed")}
+                </button>
+              </div>
+              <h3>{t("staff.themes.availability.defaultsTitle")}</h3>
+              <div className="admin-list" data-theme-group-defaults>
+                {(availability.data?.availability.groups ?? []).map((group) => (
+                  <label key={group.id}>
+                    <span>{group.title}</span>
+                    <select
+                      data-theme-group-default={group.id}
+                      value={group.defaultThemeId ?? ""}
+                      onChange={(event) => saveGroupDefault(group.id, event.target.value)}
+                    >
+                      <option value="">{t("staff.themes.availability.noDefault")}</option>
+                      {(availability.data?.availability.themes ?? []).map((entry) => (
+                        <option key={entry.id} value={entry.id}>
+                          {entry.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
             </div>
           ) : null}
 

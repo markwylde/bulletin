@@ -34,8 +34,9 @@ mock.module("../../apps/user-app/src/board.ts", () => ({
   canViewOffline: async () => canViewOffline,
 }));
 
+const fakeSql = (() => Promise.resolve([])) as unknown;
 mock.module("../../apps/user-app/src/db.ts", () => ({
-  readSql: () => ({}),
+  readSql: () => fakeSql,
   closeReadSql: async () => undefined,
 }));
 

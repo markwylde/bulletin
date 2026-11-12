@@ -14,6 +14,7 @@ declare global {
       /** The preview or guest-chosen theme; null means the bundled default. */
       themeId?: string | null;
       previewTheme?: boolean;
+      colourScheme?: import("@bulletin/i18n").ColorScheme;
       themeCookieScheme?: import("@bulletin/i18n").ColorScheme;
       resetThemeCookie?: string;
     }
