@@ -804,7 +804,7 @@ export async function listNotifications(
       LEFT JOIN core.members me ON me.id = n.member_id
       WHERE n.member_id = ${memberId}
         AND (n.post_id IS NULL OR p.visibility = 'visible')
-        AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+        AND (n.topic_id IS NULL OR (t.id IS NOT NULL AND t.visibility = 'visible'))
         AND (${options.conversationsEnabled !== false} OR n.type <> 'conversation.message')
         AND (
           n.conversation_id IS NULL
@@ -900,7 +900,7 @@ export async function unreadNotificationCount(
     WHERE n.member_id = ${memberId}
       AND n.read_at IS NULL
       AND (n.post_id IS NULL OR p.visibility = 'visible')
-      AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+      AND (n.topic_id IS NULL OR (t.id IS NOT NULL AND t.visibility = 'visible'))
       AND (${options.conversationsEnabled !== false} OR n.type <> 'conversation.message')
       AND (
         n.conversation_id IS NULL
@@ -1356,6 +1356,7 @@ export async function notificationEmailContext(
           p.id::text AS post_id,
           p.visibility,
           t.id::text AS topic_id,
+          t.visibility AS topic_visibility,
           t.title,
           t.slug,
           t.forum_id::text AS forum_id,
@@ -1367,6 +1368,7 @@ export async function notificationEmailContext(
       `) as Array<{
         post_id: string;
         visibility: string;
+        topic_visibility: string;
         topic_id: string;
         title: string;
         slug: string;
@@ -1374,7 +1376,11 @@ export async function notificationEmailContext(
         actor_name: string | null;
       }>;
 
-      if (post === undefined || post.visibility !== "visible") {
+      if (
+        post === undefined ||
+        post.visibility !== "visible" ||
+        post.topic_visibility !== "visible"
+      ) {
         return null;
       }
 
@@ -1429,7 +1435,7 @@ export async function notificationEmailContext(
     LEFT JOIN core.conversations c ON c.id = n.conversation_id
     WHERE n.member_id = ${base.member_id}
       AND (n.post_id IS NULL OR p.visibility = 'visible')
-      AND (n.topic_id IS NULL OR t.id IS NOT NULL)
+      AND (n.topic_id IS NULL OR (t.id IS NOT NULL AND t.visibility = 'visible'))
       AND (
         n.conversation_id IS NULL
         OR EXISTS (

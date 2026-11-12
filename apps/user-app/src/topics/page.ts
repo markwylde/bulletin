@@ -599,6 +599,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     loadPost,
     quoteTopicIds: quoteTopicIds,
     quotePostIds,
+    ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
     viewModel: {
       topicId: input.topic.id,
       forumId: input.topic.forumId,

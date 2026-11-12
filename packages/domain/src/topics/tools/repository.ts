@@ -397,6 +397,18 @@ export async function splitTopic(
           throw new Error("Target topic disappeared during split");
         }
 
+        const currentTargetForumId =
+          currentTarget?.forumId ?? (input.target.kind === "new" ? input.target.forumId : "");
+
+        if (
+          !(await canSplitAll(tx, input.actorId, input.sessionId ?? null, freshTree, [
+            currentSource.forumId,
+            currentTargetForumId,
+          ]))
+        ) {
+          throw new Error("forbidden");
+        }
+
         const rows = (await tx`
           SELECT id::text AS id, author_id::text AS author_id, created_at, visibility
           FROM core.posts
@@ -466,13 +478,13 @@ export async function splitTopic(
 
         const visibleMoved = rows.filter((row) => row.visibility === "visible").length;
 
-        if (currentSource.forumId !== targetForumId) {
+        if (currentSource.forumId !== currentTargetForumId) {
           await adjustForumPostCount(tx, currentSource.forumId, -visibleMoved);
-          await adjustForumPostCount(tx, targetForumId, visibleMoved);
+          await adjustForumPostCount(tx, currentTargetForumId, visibleMoved);
         }
 
         if (currentTarget === null) {
-          await adjustForumTopicCount(tx, targetForumId, 1);
+          await adjustForumTopicCount(tx, currentTargetForumId, 1);
         }
 
         await writeModerationLog(tx, {
@@ -480,7 +492,7 @@ export async function splitTopic(
           action: "topic.split",
           targetType: "topic",
           targetId: targetId,
-          forumId: targetForumId,
+          forumId: currentTargetForumId,
           memberId: rows[0]?.author_id ?? input.actorId,
           details: {
             sourceTopicId: currentSource.id,
@@ -492,7 +504,7 @@ export async function splitTopic(
         await recountTopic(tx, currentSource.id);
         await recountTopic(tx, targetId);
         await refreshForumLastPost(tx, currentSource.forumId);
-        await refreshForumLastPost(tx, targetForumId);
+        await refreshForumLastPost(tx, currentTargetForumId);
 
         return {
           topicId: targetId,
@@ -500,7 +512,7 @@ export async function splitTopic(
           topicIds: unique([currentSource.id, targetId]),
           forumIds: unique([
             ...chain(freshTree, currentSource.forumId),
-            ...chain(freshTree, targetForumId),
+            ...chain(freshTree, currentTargetForumId),
           ]),
           memberIds: [],
         } satisfies TopicToolsSummary;

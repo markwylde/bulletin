@@ -434,6 +434,21 @@ export async function applyMultimod(
             }
 
             if (destination.id !== currentForumId) {
+              if (
+                !(await can(tx, input.actorId, "move", {
+                  forumId: currentForumId,
+                  tree,
+                  sessionId: input.sessionId ?? null,
+                })) ||
+                !(await can(tx, input.actorId, "move", {
+                  forumId: destination.id,
+                  tree,
+                  sessionId: input.sessionId ?? null,
+                }))
+              ) {
+                throw new Error("forbidden");
+              }
+
               const postCount = await visiblePostCount(tx, topic.id);
               await adjustForumTopicCount(tx, currentForumId, -1);
               await adjustForumPostCount(tx, currentForumId, -postCount);
@@ -551,7 +566,10 @@ export async function applyMultimod(
       return { ok: false, code: "topic_not_found" };
     }
 
-    if (error instanceof Error && error.message === "invalid_step") {
+    if (
+      error instanceof Error &&
+      (error.message === "invalid_step" || error.message === "forbidden")
+    ) {
       return { ok: false, code: "forbidden" };
     }
 

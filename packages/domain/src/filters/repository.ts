@@ -36,9 +36,13 @@ function text(value: unknown, max: number): string | null {
     : null;
 }
 
+/** Workers listen on this channel to start an immediate replace-word re-render. */
+export const FILTER_RERENDER_CHANNEL = "content_rerender";
+
 async function bumpFilterVersion(tx: SQL): Promise<void> {
   await tx`UPDATE core.filter_settings SET version = version + 1, updated_at = now() WHERE id = 1`;
   await bumpCacheTags(tx, ["filters"]);
+  await tx`SELECT pg_notify(${FILTER_RERENDER_CHANNEL}, 'filters')`;
 }
 
 export async function saveFilterWord(

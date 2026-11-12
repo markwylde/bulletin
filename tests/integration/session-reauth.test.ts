@@ -1476,6 +1476,34 @@ integrationDescribe("silent re-auth and background grace", () => {
     });
   }, 20_000);
 
+  test("a warning-imposed ban also blocks display-name changes", async () => {
+    await withDb("auth_display_ban", async (database) => {
+      const user = await serviceFor(database);
+
+      try {
+        const userCookie = await login(user.service, "rename-user");
+        const userCsrf = await csrfFor(user.service, userCookie);
+        const memberId = await memberIdFor(database, "rename-user");
+        await database.sql`
+          INSERT INTO core.member_restrictions (member_id, kind, until)
+          VALUES (${memberId}, 'banned', now() + interval '1 day')
+        `;
+
+        const response = await call(user.service, "/api/me/display-name", {
+          method: "POST",
+          cookie: `bl_session=${userCookie}`,
+          headers: { "x-bulletin-csrf": userCsrf },
+          body: { displayName: "Banned Rename" },
+        });
+        expect(response.status).toBe(403);
+        expect(await response.json()).toEqual({ code: "forbidden" });
+      } finally {
+        await user.service.close();
+        await user.sql.close();
+      }
+    });
+  }, 20_000);
+
   test("records display-name changes and enforces the 30-day limit", async () => {
     await withDb("auth_display_changes", async (database) => {
       const user = await serviceFor(database);

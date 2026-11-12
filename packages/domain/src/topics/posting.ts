@@ -42,6 +42,10 @@ import {
   actorCanForumAction,
   actorCanModerate,
   actorCanUsePrefix,
+  adjustForumPostCount,
+  adjustForumTopicCount,
+  adjustMemberPostCount,
+  adjustTopicReplyCount,
   completeNewTopic,
   createPostQuotePipeline,
   editWindowMinutes,
@@ -56,6 +60,11 @@ import {
   prefixEnabledForForum,
   protectPostRevisions,
   recordReply,
+  recountTopic,
+  refreshForumLastPost,
+  setPostHoldReason,
+  setPostVisibility,
+  setTopicVisibility,
   updatePostRendering,
 } from "./repository.ts";
 import {
@@ -766,6 +775,18 @@ export async function editPost(
           }
         }
 
+        const linkPolicy = await readLinkPolicy(tx, input.actorId);
+        const links = countContentLinks(bodyMd);
+        const images = countContentImages(bodyMd);
+        const linkViolation =
+          !linkPolicy.exempt &&
+          ((linkPolicy.maxLinks > 0 && links > linkPolicy.maxLinks) ||
+            (!linkPolicy.imagesAllowed && images > 0));
+
+        if (linkViolation && linkPolicy.action === "reject") {
+          reject("too_many_links");
+        }
+
         await insertPostRevision(tx, current);
 
         let rendered: RenderResult;
@@ -790,6 +811,14 @@ export async function editPost(
           throw error;
         }
 
+        const spam = await evaluateSpam(tx, {
+          authorId: input.actorId,
+          bodyText: rendered.bodyText,
+          bodyMd: rendered.bodyMd,
+          hash: bodyHash(rendered.bodyText),
+        });
+        const holdReason = spam.rule ?? (linkViolation ? "link_limit" : null);
+
         await updatePostRendering(tx, {
           postId: current.id,
           bodyMd: rendered.bodyMd,
@@ -804,6 +833,31 @@ export async function editPost(
             .map((source) => source.id),
           editedBy: input.actorId,
         });
+
+        if (holdReason !== null) {
+          const topic =
+            current.position === 1 ? await loadTopicForWrite(tx, current.topicId) : null;
+
+          await setPostVisibility(tx, current.id, "unapproved");
+          await setPostHoldReason(tx, current.id, holdReason);
+          await adjustForumPostCount(tx, current.forumId, -1);
+
+          if (current.authorId !== null) {
+            await adjustMemberPostCount(tx, current.authorId, -1);
+          }
+
+          if (current.position > 1) {
+            await adjustTopicReplyCount(tx, current.topicId, -1);
+          } else if (topic !== null && topic.visibility === "visible") {
+            await setTopicVisibility(tx, current.topicId, "unapproved");
+            await adjustForumTopicCount(tx, current.forumId, -1);
+          }
+
+          await recountTopic(tx, current.topicId);
+          await refreshForumLastPost(tx, current.forumId);
+        }
+
+        await recordDuplicate(tx, input.actorId, bodyHash(rendered.bodyText));
 
         await syncPostAttachments(tx, {
           postId: current.id,

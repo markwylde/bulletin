@@ -18,6 +18,7 @@ import {
   deletePostRow,
   deleteTopicRow,
   loadTopicForWrite,
+  lockTopicForWrite,
   recountTopic,
   refreshForumLastPost,
   setPostVisibility,
@@ -284,6 +285,83 @@ function sortTargets(targets: readonly HeldPostTarget[]): readonly HeldPostTarge
   });
 }
 
+interface LockedHeldTarget extends HeldPostTarget {
+  readonly visibility: string;
+}
+
+/**
+ * Locks every affected topic in id order, then every post, and re-reads the current
+ * topic/forum coordinates. A concurrent move or split therefore cannot let an approval or
+ * rejection act on the forum the target used to belong to.
+ */
+async function lockHeldTargets(
+  tx: SQL,
+  targets: readonly HeldPostTarget[],
+): Promise<readonly LockedHeldTarget[]> {
+  const ordered = sortTargets(targets);
+  const lockedTopics = new Set<string>();
+
+  for (const target of ordered) {
+    if (!lockedTopics.has(target.topicId)) {
+      await lockTopicForWrite(tx, target.topicId);
+      lockedTopics.add(target.topicId);
+    }
+  }
+
+  const postIds = ordered.map((target) => target.postId);
+  await tx`SELECT id FROM core.posts WHERE id = ANY(${`{${postIds.join(",")}}`}::bigint[])
+    ORDER BY id FOR UPDATE`;
+
+  const first = (await tx`
+    SELECT p.id::text AS post_id, p.topic_id::text AS topic_id, t.forum_id::text AS forum_id,
+      p.author_id::text AS author_id, p.position, p.visibility
+    FROM core.posts p
+    JOIN core.topics t ON t.id = p.topic_id
+    WHERE p.id = ANY(${`{${postIds.join(",")}}`}::bigint[])
+    ORDER BY p.id
+  `) as Array<{
+    post_id: string;
+    topic_id: string;
+    forum_id: string;
+    author_id: string | null;
+    position: number;
+    visibility: string;
+  }>;
+
+  for (const row of first) {
+    if (!lockedTopics.has(row.topic_id)) {
+      await lockTopicForWrite(tx, row.topic_id);
+      lockedTopics.add(row.topic_id);
+    }
+  }
+
+  // The topic lock makes forum_id stable; read it once more after every topic is locked.
+  const rows = (await tx`
+    SELECT p.id::text AS post_id, p.topic_id::text AS topic_id, t.forum_id::text AS forum_id,
+      p.author_id::text AS author_id, p.position, p.visibility
+    FROM core.posts p
+    JOIN core.topics t ON t.id = p.topic_id
+    WHERE p.id = ANY(${`{${postIds.join(",")}}`}::bigint[])
+    ORDER BY p.id
+  `) as Array<{
+    post_id: string;
+    topic_id: string;
+    forum_id: string;
+    author_id: string | null;
+    position: number;
+    visibility: string;
+  }>;
+
+  return rows.map((row) => ({
+    postId: row.post_id,
+    topicId: row.topic_id,
+    forumId: row.forum_id,
+    authorId: row.author_id,
+    position: row.position,
+    visibility: row.visibility,
+  }));
+}
+
 async function canApproveTargets(
   sql: SQL,
   actorId: string,
@@ -351,12 +429,13 @@ export async function approveHeldPosts(
       input: { postIds },
       apply: async (tx) => {
         const freshTree = await loadForumTree(tx);
+        const lockedTargets = await lockHeldTargets(tx, targets);
         const approved: string[] = [];
         const topicIds: string[] = [];
         const forumIds: string[] = [];
         const memberIds: string[] = [];
 
-        for (const target of targets) {
+        for (const target of lockedTargets) {
           if (
             !(await can(tx, input.actorId, "approve", {
               forumId: target.forumId,
@@ -490,12 +569,13 @@ export async function rejectHeldPosts(
       input: { postIds },
       apply: async (tx) => {
         const freshTree = await loadForumTree(tx);
+        const lockedTargets = await lockHeldTargets(tx, targets);
         const removed: string[] = [];
         const topicIds: string[] = [];
         const forumIds: string[] = [];
         const memberIds: string[] = [];
 
-        for (const target of targets) {
+        for (const target of lockedTargets) {
           if (
             !(await can(tx, input.actorId, "approve", {
               forumId: target.forumId,

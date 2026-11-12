@@ -1,6 +1,7 @@
 import { isLocale, type Locale, resolveRequestLocale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { isBlockedText } from "../filters/repository.ts";
+import { can } from "../permissions/can.ts";
 import { NAME_CHANGE_INTERVAL_MS } from "./names.ts";
 
 export interface MemberRecord {
@@ -88,14 +89,7 @@ export async function updateDisplayName(
     return { kind: "blocked_word" };
   }
 
-  const banned = (await sql`
-    SELECT 1 FROM core.member_groups mg
-    JOIN core.groups g ON g.id = mg.group_id
-    WHERE mg.member_id = ${memberId} AND g.key = 'banned'
-    LIMIT 1
-  `) as unknown[];
-
-  if (banned.length > 0) {
+  if (!(await can(sql, memberId, "change_display_name"))) {
     return { kind: "banned" };
   }
 

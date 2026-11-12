@@ -27,6 +27,7 @@ export const CAPABILITY_ACTIONS = [
   "use_pm",
   "send_pm",
   "post",
+  "change_display_name",
 ] as const;
 
 export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];
@@ -47,6 +48,8 @@ const CAPABILITY_SETTINGS: Readonly<
   send_pm: { key: "restrictions.suspended", allows: false },
   // A warning-imposed posting suspension; `cannot_post` is the group/restriction overlay.
   post: { key: "restrictions.cannot_post", allows: false },
+  // Name changes are a write capability gated only by every ban source.
+  change_display_name: { key: "restrictions.banned", allows: false },
 };
 
 export function isCapabilityAction(value: string): value is CapabilityAction {

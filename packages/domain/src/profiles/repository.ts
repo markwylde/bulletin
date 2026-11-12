@@ -253,6 +253,7 @@ export async function readRecentProfilePosts(
       JOIN core.forums f ON f.id = t.forum_id
       WHERE p.author_id = ${input.memberId}
         AND p.visibility = 'visible'
+        AND t.visibility = 'visible'
         AND t.moved_to IS NULL
       ORDER BY p.created_at DESC, p.id DESC
       LIMIT ${batchSize} OFFSET ${offset}

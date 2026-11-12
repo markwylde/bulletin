@@ -25,9 +25,11 @@ import {
   heldTopicsForOverlay,
   listApprovalQueue,
   type ModerationQueueItem,
+  moderatedForums,
   pendingApprovalCount,
   rejectHeldPosts,
 } from "@bulletin/domain/moderation";
+import { can, loadForumTree } from "@bulletin/domain/permissions";
 import { readTopic, reply, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
@@ -658,6 +660,133 @@ integrationDescribe("moderation queue", () => {
           )[0],
         ).toEqual({ count: 0 });
       }
+    });
+  }, 60_000);
+
+  test("approval re-authorizes the topic's current forum after a concurrent move", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const replier = await memberId(database, "member-2");
+      const moderator = await memberId(database, "forum-mod");
+      const tree = await loadForumTree(database.sql);
+      const moderated = new Set(
+        (await moderatedForums(database.sql, moderator, null, tree)).map((forum) => forum.id),
+      );
+      const forums = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE type = 'forum' ORDER BY id
+      `) as Array<{ id: string }>;
+      const source = forums.find((forum) => moderated.has(forum.id));
+      const destination = forums.find((forum) => !moderated.has(forum.id));
+
+      if (source === undefined || destination === undefined) {
+        throw new Error("Missing a moderated and an unmoderated forum");
+      }
+
+      await database.sql`
+        UPDATE core.forums SET require_approval_posts = true WHERE id = ${source.id}
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: source.id,
+          title: "Concurrent move approval topic",
+          bodyMd: "Opening.",
+        }),
+      );
+      const held = expectOk(
+        await reply(database.sql, {
+          actorId: replier,
+          topicId: topic.topicId,
+          bodyMd: "Hold this reply for the race.",
+        }),
+      );
+      expect(
+        (await database.sql`SELECT visibility FROM core.posts WHERE id = ${held.postId}`)[0],
+      ).toMatchObject({ visibility: "unapproved" });
+
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const moving = database.sql.begin(async (tx) => {
+        await tx`UPDATE core.topics SET forum_id = ${destination.id} WHERE id = ${topic.topicId}`;
+        await gate;
+      });
+      await Bun.sleep(50);
+      const acting = approveHeldPosts(database.sql, {
+        actorId: moderator,
+        postIds: [held.postId],
+      });
+      await Bun.sleep(100);
+      release();
+      await moving;
+
+      expect(await acting).toEqual({ ok: false, code: "forbidden" });
+      expect(
+        (await database.sql`SELECT visibility FROM core.posts WHERE id = ${held.postId}`)[0],
+      ).toMatchObject({ visibility: "unapproved" });
+    });
+  }, 60_000);
+
+  test("rejection re-authorizes the topic's current forum after a concurrent move", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const replier = await memberId(database, "member-2");
+      const moderator = await memberId(database, "forum-mod");
+      const tree = await loadForumTree(database.sql);
+      const moderated = new Set(
+        (await moderatedForums(database.sql, moderator, null, tree)).map((forum) => forum.id),
+      );
+      const forums = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE type = 'forum' ORDER BY id
+      `) as Array<{ id: string }>;
+      const source = forums.find((forum) => moderated.has(forum.id));
+      const destination = forums.find((forum) => !moderated.has(forum.id));
+
+      if (source === undefined || destination === undefined) {
+        throw new Error("Missing a moderated and an unmoderated forum");
+      }
+
+      await database.sql`
+        UPDATE core.forums SET require_approval_posts = true WHERE id = ${source.id}
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: source.id,
+          title: "Concurrent move rejection topic",
+          bodyMd: "Opening.",
+        }),
+      );
+      const held = expectOk(
+        await reply(database.sql, {
+          actorId: replier,
+          topicId: topic.topicId,
+          bodyMd: "Reject this reply after the race.",
+        }),
+      );
+
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const moving = database.sql.begin(async (tx) => {
+        await tx`UPDATE core.topics SET forum_id = ${destination.id} WHERE id = ${topic.topicId}`;
+        await gate;
+      });
+      await Bun.sleep(50);
+      const acting = rejectHeldPosts(database.sql, {
+        actorId: moderator,
+        postIds: [held.postId],
+      });
+      await Bun.sleep(100);
+      release();
+      await moving;
+
+      expect(await acting).toEqual({ ok: false, code: "forbidden" });
+      expect((await database.sql`SELECT 1 FROM core.posts WHERE id = ${held.postId}`).length).toBe(
+        1,
+      );
     });
   }, 60_000);
 

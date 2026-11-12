@@ -1,4 +1,13 @@
-import { bumpCacheTags, forumAnnouncementsTag, forumTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
+import {
+  bumpCacheTags,
+  forumAnnouncementsTag,
+  forumTag,
+  GLOBAL_CACHE_TAGS,
+  memberTag,
+  postTag,
+  topicPagesTag,
+  topicTag,
+} from "@bulletin/cache";
 import type { Logger } from "@bulletin/config";
 import type {
   ContentVersions,
@@ -19,7 +28,9 @@ import {
   loadContentRenderDependencies,
   quoteSnapshotTags,
 } from "@bulletin/domain/content";
-import { loadReplaceWords } from "@bulletin/domain/filters";
+import { FILTER_RERENDER_CHANNEL, loadReplaceWords } from "@bulletin/domain/filters";
+import { loadForumTree } from "@bulletin/domain/permissions";
+import { createPostQuotePipeline } from "@bulletin/domain/topics";
 import { evaluateFlag, GUEST_VIEWER } from "@bulletin/flags";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
@@ -39,6 +50,9 @@ export interface RerenderRow {
   readonly sanitiserVersion: number;
   /** Conversation sources only: the context and author needed for a Markdown re-render. */
   readonly conversationId?: string;
+  /** Forum sources only: the topic and forum the post belongs to. */
+  readonly topicId?: string;
+  readonly forumId?: string;
   readonly authorId?: string;
 }
 
@@ -47,6 +61,9 @@ export interface RenderedContent {
   readonly bodyText?: string;
   readonly renderVersion: number;
   readonly sanitiserVersion: number;
+  readonly quotedForumIds?: readonly string[];
+  readonly mentionedMemberIds?: readonly string[];
+  readonly quotedPostIds?: readonly string[];
 }
 
 export interface ContentRenderOptions {
@@ -508,11 +525,117 @@ export const conversationMessageRerenderSource: ContentRerenderSource = {
   },
 };
 
+/** Forum posts, rebuilt from Markdown after replace-word or sanitiser changes (ADR 0007). */
+export const postRerenderSource: ContentRerenderSource = {
+  name: "posts",
+  async listStale(sql, versions, options) {
+    const rows = (await sql`
+      SELECT p.id::text AS id, p.topic_id::text AS topic_id, t.forum_id::text AS forum_id,
+        p.author_id::text AS author_id, p.body_md, p.body_html, p.body_text,
+        p.render_version, p.sanitiser_version
+      FROM core.posts p
+      JOIN core.topics t ON t.id = p.topic_id
+      WHERE p.id > ${options.afterId}
+        AND (
+          p.render_version <> ${versions.renderVersion}
+          OR p.sanitiser_version <> ${versions.sanitiserVersion}
+        )
+      ORDER BY p.id
+      LIMIT ${options.limit}
+    `) as Array<{
+      id: string;
+      topic_id: string;
+      forum_id: string;
+      author_id: string | null;
+      body_md: string;
+      body_html: string;
+      body_text: string;
+      render_version: number;
+      sanitiser_version: number;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      bodyMd: row.body_md,
+      bodyHtml: row.body_html,
+      renderVersion: row.render_version,
+      sanitiserVersion: row.sanitiser_version,
+      topicId: row.topic_id,
+      forumId: row.forum_id,
+      ...(row.author_id === null ? {} : { authorId: row.author_id }),
+    }));
+  },
+  async render(sql, row, options) {
+    const tree = await loadForumTree(sql);
+    const renderedPost = await renderContent(row.bodyMd, {
+      profile: "post",
+      context: { kind: "forum_post", forumId: row.forumId ?? "0" },
+      authorId: row.authorId ?? "0",
+      ...renderInputs(options),
+      quotes: createPostQuotePipeline(sql, tree),
+    });
+
+    return {
+      bodyHtml: renderedPost.bodyHtml,
+      bodyText: renderedPost.bodyText,
+      renderVersion: renderedPost.renderVersion,
+      sanitiserVersion: renderedPost.sanitiserVersion,
+      quotedForumIds: renderedPost.quotedForumIds,
+      mentionedMemberIds: renderedPost.mentionedMemberIds,
+      quotedPostIds: renderedPost.quoteSources
+        .filter((source) => source.kind === "post")
+        .map((source) => source.id),
+    };
+  },
+  async save(sql, row, value) {
+    const quotedForumIds = value.quotedForumIds ?? [];
+    const mentionedMemberIds = value.mentionedMemberIds ?? [];
+    const quotedPostIds = value.quotedPostIds ?? [];
+
+    return sql.begin(async (tx) => {
+      const rows = (await tx`
+        UPDATE core.posts
+        SET body_html = ${value.bodyHtml},
+          body_text = ${value.bodyText ?? ""},
+          render_version = ${value.renderVersion},
+          sanitiser_version = ${value.sanitiserVersion},
+          quoted_forum_ids = ${`{${quotedForumIds.join(",")}}`}::bigint[],
+          mentioned_member_ids = ${`{${mentionedMemberIds.join(",")}}`}::bigint[],
+          quoted_post_ids = ${`{${quotedPostIds.join(",")}}`}::bigint[]
+        WHERE id = ${row.id}
+          AND body_md = ${row.bodyMd}
+          AND render_version = ${row.renderVersion}
+          AND sanitiser_version = ${row.sanitiserVersion}
+        RETURNING topic_id::text AS topic_id, author_id::text AS author_id
+      `) as Array<{
+        topic_id: string;
+        author_id: string | null;
+      }>;
+      const saved = rows[0];
+
+      if (saved === undefined) {
+        return false;
+      }
+
+      await bumpCacheTags(tx, [
+        postTag(row.id),
+        topicTag(saved.topic_id),
+        topicPagesTag(saved.topic_id),
+        ...(row.forumId === undefined ? [] : [forumTag(row.forumId)]),
+        ...(saved.author_id === null ? [] : [memberTag(saved.author_id)]),
+      ]);
+
+      return true;
+    });
+  },
+};
+
 export function contentRerenderSources(): readonly ContentRerenderSource[] {
   return [
     quoteSnapshotRerenderSource,
     forumRulesRerenderSource,
     announcementRerenderSource,
+    postRerenderSource,
     conversationMessageRerenderSource,
   ];
 }
@@ -660,8 +783,16 @@ export async function createContentJobs(options: ContentJobsOptions): Promise<Co
 
   await options.boss.schedule(CONTENT_RERENDER_QUEUE, CONTENT_RERENDER_CRON, {});
 
+  // A filter edit wakes the worker immediately; the cron above remains the recovery path.
+  const listener = await options.sql.listen(FILTER_RERENDER_CHANNEL, () => {
+    void enqueueContentRerender(options.boss).catch((error: unknown) => {
+      options.logger?.error("content.rerender_wake_failed", { error });
+    });
+  });
+
   return {
     async stop() {
+      await listener.unlisten();
       await options.boss.offWork(CONTENT_RERENDER_QUEUE);
     },
   };

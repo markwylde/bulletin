@@ -110,21 +110,18 @@ export const badWordsStage: BeforeSaveStage = {
   phase: "core_check",
   run(content, context) {
     const words = context.blockedWords ?? [];
-
-    if (words.length === 0) {
-      return content;
-    }
-
-    const pattern = new RegExp(
-      `(?<![\\p{L}\\p{N}])(${words.map(escapeRegExp).join("|")})(?![\\p{L}\\p{N}])`,
-      "iu",
-    );
-
-    if (pattern.test(content)) {
-      throw new ContentError("blocked_word", "Content contains a blocked word");
-    }
-
     const anyWords = context.blockedAnyWords ?? [];
+
+    if (words.length > 0) {
+      const pattern = new RegExp(
+        `(?<![\\p{L}\\p{N}])(${words.map(escapeRegExp).join("|")})(?![\\p{L}\\p{N}])`,
+        "iu",
+      );
+
+      if (pattern.test(content)) {
+        throw new ContentError("blocked_word", "Content contains a blocked word");
+      }
+    }
 
     if (anyWords.some((word) => content.toLowerCase().includes(word.toLowerCase()))) {
       throw new ContentError("blocked_word", "Content contains a blocked word");

@@ -549,6 +549,14 @@ export async function setPostVisibility(
   await tx`UPDATE core.posts SET visibility = ${visibility} WHERE id = ${postId}`;
 }
 
+export async function setPostHoldReason(
+  tx: SQL,
+  postId: string,
+  holdReason: string | null,
+): Promise<void> {
+  await tx`UPDATE core.posts SET hold_reason = ${holdReason} WHERE id = ${postId}`;
+}
+
 export async function deletePostRow(tx: SQL, postId: string): Promise<void> {
   // Collect links before the post cascade removes them; the orphan sweep must eventually see
   // attachments that lost their last reference (ADR 0019).
@@ -812,6 +820,7 @@ export function createPostQuotePipeline(
           FROM core.posts p
           JOIN core.topics t ON t.id = p.topic_id
           WHERE p.id = ${ref.id}
+            AND t.visibility = 'visible'
         `) as Array<{
           visibility: PostVisibility;
           author_id: string | null;
@@ -846,7 +855,9 @@ export function createPostQuotePipeline(
           SELECT p.id::text AS id, p.author_id::text AS author_id, p.body_md, t.forum_id
           FROM core.posts p
           JOIN core.topics t ON t.id = p.topic_id
-          WHERE p.id = ${ref.id} AND p.visibility <> 'soft_deleted'
+          WHERE p.id = ${ref.id}
+            AND p.visibility <> 'soft_deleted'
+            AND t.visibility = 'visible'
         `) as Array<{
           id: string;
           author_id: string | null;

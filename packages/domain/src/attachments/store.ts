@@ -233,7 +233,7 @@ export async function readDownloadableAttachment(
     SELECT DISTINCT t.forum_id::text AS forum_id
     FROM core.post_attachments pa
     JOIN core.posts p ON p.id = pa.post_id AND p.visibility = 'visible'
-    JOIN core.topics t ON t.id = p.topic_id
+    JOIN core.topics t ON t.id = p.topic_id AND t.visibility = 'visible'
     WHERE pa.attachment_id = ${id}
   `) as Array<{ forum_id: string }>;
 

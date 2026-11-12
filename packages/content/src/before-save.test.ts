@@ -111,6 +111,15 @@ describe("beforeSave registry", () => {
     ).rejects.toMatchObject({ code: "too_many_links" });
   });
 
+  test("checks substring block rules when no whole-word rules exist", async () => {
+    await expect(
+      saveContent("hello forbiddenpart", {
+        ...context,
+        checks: { blockedAnyWords: ["forbidden"] },
+      }),
+    ).rejects.toMatchObject({ code: "blocked_word" });
+  });
+
   test("passes when no filter list or link limit is configured", async () => {
     const result = await saveContent("hello [x](https://example.com)", context);
 

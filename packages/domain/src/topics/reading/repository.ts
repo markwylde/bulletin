@@ -722,6 +722,7 @@ export async function loadQuoteSources(
     FROM core.posts p
     JOIN core.topics t ON t.id = p.topic_id
     WHERE p.id = ANY(${`{${postIds.join(",")}}`}::bigint[])
+      AND t.visibility = 'visible'
   `) as Array<{
     id: string;
     visibility: TopicPostVisibility;

@@ -893,10 +893,10 @@ export async function move(
   }
 
   if (
-    !(await actorCanForumAction(
+    !(await actorCanModerate(
       sql,
       input.actorId,
-      "show",
+      "move",
       destination.id,
       tree,
       input.sessionId ?? null,
@@ -931,6 +931,11 @@ export async function move(
         }
 
         const freshTree = await loadForumTree(tx);
+        const freshDestination = await loadForumTarget(tx, input.toForumId);
+
+        if (freshDestination === null || freshDestination.type !== "forum") {
+          reject("forum_not_found");
+        }
 
         if (
           !(await actorCanModerate(
@@ -941,11 +946,11 @@ export async function move(
             freshTree,
             input.sessionId ?? null,
           )) ||
-          !(await actorCanForumAction(
+          !(await actorCanModerate(
             tx,
             input.actorId,
-            "show",
-            destination.id,
+            "move",
+            freshDestination.id,
             freshTree,
             input.sessionId ?? null,
           ))
@@ -957,22 +962,22 @@ export async function move(
 
         await adjustForumTopicCount(tx, current.forumId, -1);
         await adjustForumPostCount(tx, current.forumId, -postCount);
-        await moveTopicRow(tx, current.id, destination.id);
+        await moveTopicRow(tx, current.id, freshDestination.id);
         await writeModerationLog(tx, {
           actorId: input.actorId,
           action: "topic.move",
           targetType: "topic",
           targetId: current.id,
-          forumId: destination.id,
+          forumId: freshDestination.id,
           memberId: current.starterId,
           details: {
             fromForumId: current.forumId,
-            toForumId: destination.id,
+            toForumId: freshDestination.id,
             stubDays,
           },
         });
-        await adjustForumTopicCount(tx, destination.id, 1);
-        await adjustForumPostCount(tx, destination.id, postCount);
+        await adjustForumTopicCount(tx, freshDestination.id, 1);
+        await adjustForumPostCount(tx, freshDestination.id, postCount);
 
         if (stubDays > 0) {
           await insertMovedStub(tx, {
@@ -983,13 +988,13 @@ export async function move(
         }
 
         await refreshForumLastPost(tx, current.forumId, current.lastPostId);
-        await refreshForumLastPost(tx, destination.id);
+        await refreshForumLastPost(tx, freshDestination.id);
 
         return {
           topicId: current.id,
           forumIds: uniqueIds([
             ...forumChain(tree, current.forumId),
-            ...forumChain(tree, destination.id),
+            ...forumChain(tree, freshDestination.id),
           ]),
           memberIds: [],
         } satisfies TopicContentSummary;

@@ -10,11 +10,18 @@ import {
   runSeeds,
   SeedRegistry,
 } from "@bulletin/db/seed";
+import { readDownloadableAttachment } from "@bulletin/domain/attachments";
+import { moderatedForums } from "@bulletin/domain/moderation";
+import { listNotifications, unreadNotificationCount } from "@bulletin/domain/notifications";
+import { can, loadForumTree, loadPermissionSnapshot } from "@bulletin/domain/permissions";
+import { readRecentProfilePosts } from "@bulletin/domain/profiles";
 import {
   applyMultimod,
   bulkAction,
   listMultimodActions,
+  loadQuoteSources,
   mergeTopics,
+  move,
   readTopicList,
   reply,
   saveMultimodAction,
@@ -22,6 +29,7 @@ import {
   startTopic,
 } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { topicSplitResponse } from "../../apps/user-api/src/topic-tools.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -428,6 +436,213 @@ integrationDescribe("topic moderation tools", () => {
     });
   }, 60_000);
 
+  test("a moderator cannot move a topic into a forum they do not moderate", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const forumMod = await memberId(database, "forum-mod");
+      const author = await memberId(database, "member-1");
+      const tree = await loadForumTree(database.sql);
+      const moderated = new Set(
+        (await moderatedForums(database.sql, forumMod, null, tree)).map((forum) => forum.id),
+      );
+      const forums = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE type = 'forum' ORDER BY id
+      `) as Array<{ id: string }>;
+      let source: string | null = null;
+      let destination: string | null = null;
+
+      for (const forum of forums) {
+        if (
+          moderated.has(forum.id) &&
+          (await can(database.sql, author, "start", { forumId: forum.id, tree }))
+        ) {
+          source = forum.id;
+          break;
+        }
+      }
+
+      for (const forum of forums) {
+        if (
+          !moderated.has(forum.id) &&
+          (await can(database.sql, author, "start", { forumId: forum.id, tree }))
+        ) {
+          destination = forum.id;
+          break;
+        }
+      }
+
+      if (source === null || destination === null) {
+        throw new Error("Missing a moderated and an unmoderated forum");
+      }
+
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: source,
+          title: "Move permission topic",
+          bodyMd: "Move me.",
+        }),
+      );
+
+      expect(
+        await move(database.sql, {
+          actorId: forumMod,
+          topicId: topic.topicId,
+          toForumId: destination,
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+
+      expectOk(
+        await move(database.sql, {
+          actorId: admin,
+          topicId: topic.topicId,
+          toForumId: destination,
+        }),
+      );
+      const stubs = (await database.sql`
+        SELECT 1 FROM core.topics WHERE forum_id = ${source} AND moved_to = ${topic.topicId}
+      `) as unknown[];
+      expect(stubs).toHaveLength(0);
+
+      const multimodTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: source,
+          title: "Multimod move permission topic",
+          bodyMd: "Move me with multi-moderation.",
+        }),
+      );
+      const action = expectOk(
+        await saveMultimodAction(database.sql, admin, {
+          name: `Move without destination power ${Date.now()}`,
+          forumIds: [source],
+          steps: [{ type: "move", forumId: destination }],
+        }),
+      );
+      expect(
+        await applyMultimod(database.sql, {
+          actorId: forumMod,
+          actionId: action.id,
+          topicId: multimodTopic.topicId,
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+    });
+  }, 60_000);
+
+  test("the split endpoint returns 403 for a member without the split power", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Endpoint split source",
+          bodyMd: "Opening.",
+        }),
+      );
+      const replyPost = expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "A reply.",
+        }),
+      );
+      const response = await topicSplitResponse(
+        database.sql,
+        { memberId: author },
+        topic.topicId,
+        new Request(`http://user.test/api/topics/${topic.topicId}/split`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            postIds: [replyPost.postId],
+            target: { kind: "new", forumId: forum, title: "Denied split" },
+          }),
+        }),
+      );
+      expect(response.status).toBe(403);
+    });
+  }, 60_000);
+
+  test("split re-authorizes both forums after a concurrent move of the destination", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const moderator = await memberId(database, "forum-mod");
+      const tree = await loadForumTree(database.sql);
+      const moderated = new Set(
+        (await moderatedForums(database.sql, moderator, null, tree)).map((forum) => forum.id),
+      );
+      const forums = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE type = 'forum' ORDER BY id
+      `) as Array<{ id: string }>;
+      let sourceForum: { readonly id: string } | undefined;
+
+      for (const forum of forums) {
+        if (
+          moderated.has(forum.id) &&
+          (await can(database.sql, author, "start", { forumId: forum.id, tree }))
+        ) {
+          sourceForum = forum;
+          break;
+        }
+      }
+      const destinationForum = forums.find((forum) => !moderated.has(forum.id));
+
+      if (sourceForum === undefined || destinationForum === undefined) {
+        throw new Error("Missing a moderated and an unmoderated forum");
+      }
+
+      const source = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: sourceForum.id,
+          title: "Raced split source",
+          bodyMd: "Opening.",
+        }),
+      );
+      const movedPost = expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: source.topicId,
+          bodyMd: "Move this reply.",
+        }),
+      );
+      const target = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: sourceForum.id,
+          title: "Raced split target",
+          bodyMd: "Target opening.",
+        }),
+      );
+
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const moving = database.sql.begin(async (tx) => {
+        await tx`UPDATE core.topics SET forum_id = ${destinationForum.id} WHERE id = ${target.topicId}`;
+        await gate;
+      });
+      await Bun.sleep(50);
+      const splitting = splitTopic(database.sql, {
+        actorId: moderator,
+        sourceTopicId: source.topicId,
+        postIds: [movedPost.postId],
+        target: { kind: "existing", topicId: target.topicId },
+      });
+      await Bun.sleep(100);
+      release();
+      await moving;
+
+      expect(await splitting).toEqual({ ok: false, code: "forbidden" });
+      expect(
+        (await database.sql`SELECT topic_id FROM core.posts WHERE id = ${movedPost.postId}`)[0],
+      ).toMatchObject({ topic_id: source.topicId });
+    });
+  }, 60_000);
+
   test("bulk topic deletion hides every reply and restores the complete topic", async () => {
     await withSeededDb(async (database) => {
       const forum = await forumId(database, "off-topic");
@@ -559,6 +774,171 @@ integrationDescribe("topic moderation tools", () => {
         ORDER BY id
       `) as Array<{ action: string }>;
       expect(logActions.map((row) => row.action)).toEqual(["topic.delete", "topic.restore"]);
+    });
+  }, 60_000);
+
+  test("splits a 10,000-post topic with contiguous positions in both topics", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Huge split source",
+          bodyMd: "Opening.",
+        }),
+      );
+      const firstReply = (await database.sql`
+        SELECT id::text AS id FROM core.posts WHERE id = ${topic.postId}
+      `) as Array<{ id: string }>;
+
+      if (firstReply[0] === undefined) {
+        throw new Error("Missing the opening post");
+      }
+
+      await database.sql`
+        INSERT INTO core.posts (
+          topic_id, author_id, body_md, body_html, body_text, render_version,
+          sanitiser_version, visibility, position, created_at
+        )
+        SELECT ${topic.topicId}, ${author}, 'Load reply ' || g,
+          '<p>Load reply ' || g || '</p>', 'Load reply ' || g, 1, 1, 'visible',
+          g + 1, now() - make_interval(secs => 10001 - g)
+        FROM generate_series(1, 10000) AS g
+      `;
+      const postIds = (await database.sql`
+        SELECT id::text AS id FROM core.posts
+        WHERE topic_id = ${topic.topicId} AND position BETWEEN 5001 AND 6000
+        ORDER BY position
+      `) as Array<{ id: string }>;
+
+      const split = expectOk(
+        await splitTopic(database.sql, {
+          actorId: admin,
+          sourceTopicId: topic.topicId,
+          postIds: postIds.map((post) => post.id),
+          target: { kind: "new", forumId: forum, title: "Huge split target" },
+        }),
+      );
+      const sourceCount = (await database.sql`
+        SELECT count(*)::int AS count, max(position)::int AS last_position,
+          min(position)::int AS first_position
+        FROM core.posts WHERE topic_id = ${topic.topicId}
+      `) as Array<{ count: number; last_position: number; first_position: number }>;
+      const targetCount = (await database.sql`
+        SELECT count(*)::int AS count, max(position)::int AS last_position,
+          min(position)::int AS first_position
+        FROM core.posts WHERE topic_id = ${split.topicId}
+      `) as Array<{ count: number; last_position: number; first_position: number }>;
+      expect(sourceCount[0]).toEqual({ count: 9001, last_position: 9001, first_position: 1 });
+      expect(targetCount[0]).toEqual({ count: 1000, last_position: 1000, first_position: 1 });
+    });
+  }, 120_000);
+
+  test("a soft-deleted topic disappears from attachments, quotes, profiles and notifications", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const author = await memberId(database, "member-1");
+      const viewer = await memberId(database, "member-2");
+      const forum = await forumId(database, "off-topic");
+      const tree = await loadForumTree(database.sql);
+      const snapshot = await loadPermissionSnapshot(database.sql, viewer, { tree });
+      const source = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Deleted surfaces source",
+          bodyMd: "Source body remains hidden with its topic.",
+        }),
+      );
+      const attachment = (await database.sql`
+        INSERT INTO core.attachments (
+          member_id, state, filename, declared_type, declared_bytes, quarantine_key,
+          storage_key, size_bytes, sha256, verified_type
+        )
+        VALUES (
+          ${author}, 'ready', 'surface.pdf', 'application/pdf', 1,
+          ${`quarantine/${crypto.randomUUID()}`}, ${`att/${crypto.randomUUID()}`}, 1,
+          ${"a".repeat(64)}, 'application/pdf'
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const attachmentId = attachment[0]?.id;
+
+      if (attachmentId === undefined) {
+        throw new Error("Could not create the attachment");
+      }
+
+      await database.sql`
+        INSERT INTO core.post_attachments (post_id, attachment_id, position)
+        VALUES (${source.postId}, ${attachmentId}, 0)
+      `;
+      expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          title: "Quote holder",
+          bodyMd: `:::quote{source="post:${source.postId}"}
+Quoted.
+:::
+
+Holder body.`,
+        }),
+      );
+      await database.sql`
+        INSERT INTO core.notifications (
+          member_id, type, topic_id, forum_id, post_id, count, read_at
+        )
+        VALUES (${viewer}, 'topic.reply', ${source.topicId}, ${forum}, ${source.postId}, 1, NULL)
+      `;
+
+      const profile = async () =>
+        (
+          await readRecentProfilePosts(database.sql, {
+            memberId: author,
+            limit: 10,
+            principal: viewer,
+            sessionId: null,
+            tree,
+            snapshot,
+          })
+        ).posts.map((post) => post.id);
+      expect(await profile()).toContain(source.postId);
+      expect(await readDownloadableAttachment(database.sql, attachmentId)).not.toBeNull();
+      expect((await loadQuoteSources(database.sql, [source.postId])).has(source.postId)).toBe(true);
+      expect((await listNotifications(database.sql, viewer)).length).toBe(1);
+      expect(await unreadNotificationCount(database.sql, viewer)).toBe(1);
+
+      expectOk(
+        await bulkAction(database.sql, {
+          actorId: admin,
+          target: "topics",
+          action: "soft_delete",
+          ids: [source.topicId],
+        }),
+      );
+
+      expect(await profile()).not.toContain(source.postId);
+      expect(await readDownloadableAttachment(database.sql, attachmentId)).toBeNull();
+      expect((await loadQuoteSources(database.sql, [source.postId])).size).toBe(0);
+      expect((await listNotifications(database.sql, viewer)).length).toBe(0);
+      expect(await unreadNotificationCount(database.sql, viewer)).toBe(0);
+
+      expectOk(
+        await bulkAction(database.sql, {
+          actorId: admin,
+          target: "topics",
+          action: "restore",
+          ids: [source.topicId],
+        }),
+      );
+      expect(await profile()).toContain(source.postId);
+      expect(await readDownloadableAttachment(database.sql, attachmentId)).not.toBeNull();
+      expect((await loadQuoteSources(database.sql, [source.postId])).has(source.postId)).toBe(true);
+      expect((await listNotifications(database.sql, viewer)).length).toBe(1);
+      expect(await unreadNotificationCount(database.sql, viewer)).toBe(1);
     });
   }, 60_000);
 

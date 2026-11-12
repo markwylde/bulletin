@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createRenderCache, createTagVersions } from "@bulletin/cache";
 import { replaceWordsInText } from "@bulletin/content";
+import { postRerenderSource, runContentRerenderJob } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -14,13 +15,14 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import {
+  deleteFilterWord,
   loadReplaceWords,
   readFilterSettings,
   saveFilterDomain,
   saveFilterSettings,
   saveFilterWord,
 } from "@bulletin/domain/filters";
-import { readTopic, reply, startTopic } from "@bulletin/domain/topics";
+import { editPost, readTopic, reply, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
@@ -268,6 +270,171 @@ integrationDescribe("content filters", () => {
     });
   }, 60_000);
 
+  test("blocks substring-only rules on topic creation, replies and edits", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      await database.sql`DELETE FROM core.filter_words WHERE mode = 'block'`;
+      expectOk(
+        await saveFilterWord(database.sql, {
+          word: "forbidden",
+          mode: "block",
+          matchMode: "any",
+          enabled: true,
+        }),
+      );
+
+      expect(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Substring blocked topic",
+          bodyMd: "xxforbiddenxx",
+        }),
+      ).toEqual({ ok: false, code: "blocked_word" });
+
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Clean topic",
+          bodyMd: "This body is clean.",
+        }),
+      );
+      expect(
+        await reply(database.sql, {
+          actorId: member,
+          topicId: topic.topicId,
+          bodyMd: "xxforbiddenxx",
+        }),
+      ).toEqual({ ok: false, code: "blocked_word" });
+      expect(
+        await editPost(database.sql, {
+          actorId: member,
+          postId: topic.postId,
+          bodyMd: "xxforbiddenxx",
+        }),
+      ).toEqual({ ok: false, code: "blocked_word" });
+    });
+  }, 60_000);
+
+  test("rebuilds posts from Markdown when a replacement changes or is removed", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const rule = await saveFilterWord(database.sql, {
+        word: "OLDMARK",
+        mode: "replace",
+        replacement: "FIRSTMARK",
+        matchMode: "any",
+        enabled: true,
+      });
+
+      if (!rule.ok) {
+        throw new Error(`Could not save the filter word: ${rule.code}`);
+      }
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Replacement rerender",
+          bodyMd: "Hello OLDMARK.",
+        }),
+      );
+      const rendered = async () =>
+        (
+          (await database.sql`
+            SELECT body_html FROM core.posts WHERE id = ${topic.postId}
+          `) as Array<{ body_html: string }>
+        )[0]?.body_html ?? "";
+      expect(await rendered()).toContain("FIRSTMARK");
+
+      const changedRule = await saveFilterWord(database.sql, {
+        id: rule.id,
+        word: "OLDMARK",
+        mode: "replace",
+        replacement: "SECONDMARK",
+        matchMode: "any",
+        enabled: true,
+      });
+      expect(changedRule.ok).toBe(true);
+      await runContentRerenderJob(database.sql, {
+        sources: [postRerenderSource],
+        batchSize: 5_000,
+      });
+      expect(await rendered()).toContain("SECONDMARK");
+      expect(await rendered()).not.toContain("FIRSTMARK");
+
+      await deleteFilterWord(database.sql, rule.id);
+      await runContentRerenderJob(database.sql, {
+        sources: [postRerenderSource],
+        batchSize: 5_000,
+      });
+      expect(await rendered()).toContain("OLDMARK");
+      expect(await rendered()).not.toContain("SECONDMARK");
+    });
+  }, 60_000);
+
+  test("applies replacement rules to topic author cards and signatures", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-2");
+      const viewer = await memberSession(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      expectOk(
+        await saveFilterWord(database.sql, {
+          word: "bad",
+          mode: "replace",
+          replacement: "good",
+          matchMode: "any",
+          enabled: true,
+        }),
+      );
+      await database.sql`
+        UPDATE core.members
+        SET display_name = 'badname', custom_title = 'badtitle',
+          signature_html = '<p>bad signature</p>', signature_updated_at = now()
+        WHERE id = ${member}
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Filtered author card",
+          bodyMd: "A clean body.",
+        }),
+      );
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const page = await renderTopicRoute({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session: viewer,
+          ref: `${topic.topicId}-filtered-author-card`,
+          pluginsGeneration: 1,
+          colourScheme: "system",
+          cache: createRenderCache({ tags: versions }),
+          tagVersions: versions,
+        });
+        expect(page.kind).toBe("page");
+        const html = page.kind === "page" ? page.html : "";
+        expect(html).toContain("goodname");
+        expect(html).toContain("goodtitle");
+        expect(html).toContain("good signature");
+        expect(html).not.toContain("badname");
+        expect(html).not.toContain("badtitle");
+        expect(html).not.toContain("bad signature");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 60_000);
+
   test("carries whole-word and substring matching into the replacement transform", async () => {
     await withSeededDb(async (database) => {
       expectOk(
@@ -297,6 +464,90 @@ integrationDescribe("content filters", () => {
         ]),
       );
       expect(replaceWordsInText("bad badge badly class", words)).toBe("@@@ badge badly cl#");
+    });
+  }, 60_000);
+
+  test("edits apply link limits and anti-spam rules", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      await setMemberSetting(database, "members", "posting.link_limit", 1);
+      await setMemberSetting(database, "members", "posting.link_limit_action", "hold");
+      const held = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Edited into a link hold",
+          bodyMd: "A clean opening.",
+        }),
+      );
+      expectOk(
+        await editPost(database.sql, {
+          actorId: member,
+          postId: held.postId,
+          bodyMd: "[one](https://one.example) [two](https://two.example)",
+        }),
+      );
+      const [heldRow] = (await database.sql`
+        SELECT p.visibility, p.hold_reason, t.visibility AS topic_visibility
+        FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+        WHERE p.id = ${held.postId}
+      `) as Array<{
+        visibility: string;
+        hold_reason: string | null;
+        topic_visibility: string;
+      }>;
+      expect(heldRow).toEqual({
+        visibility: "unapproved",
+        hold_reason: "link_limit",
+        topic_visibility: "unapproved",
+      });
+
+      await setMemberSetting(database, "members", "posting.link_limit_action", "reject");
+      const rejected = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Edited into a link rejection",
+          bodyMd: "Another clean opening.",
+        }),
+      );
+      expect(
+        await editPost(database.sql, {
+          actorId: member,
+          postId: rejected.postId,
+          bodyMd: "[one](https://one.example) [two](https://two.example)",
+        }),
+      ).toEqual({ ok: false, code: "too_many_links" });
+
+      await setMemberSetting(database, "members", "posting.link_limit", 20);
+      expectOk(await saveFilterDomain(database.sql, { domain: "evil.example", enabled: true }));
+      const spamTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Edited into a spam hold",
+          bodyMd: "Spam clean opening.",
+        }),
+      );
+      const spamReply = expectOk(
+        await reply(database.sql, {
+          actorId: member,
+          topicId: spamTopic.topicId,
+          bodyMd: "A clean reply.",
+        }),
+      );
+      expectOk(
+        await editPost(database.sql, {
+          actorId: member,
+          postId: spamReply.postId,
+          bodyMd: "[click](https://evil.example/path)",
+        }),
+      );
+      const [spamRow] = (await database.sql`
+        SELECT visibility, hold_reason FROM core.posts WHERE id = ${spamReply.postId}
+      `) as Array<{ visibility: string; hold_reason: string | null }>;
+      expect(spamRow).toEqual({ visibility: "unapproved", hold_reason: "domain_blocklist" });
     });
   }, 60_000);
 
