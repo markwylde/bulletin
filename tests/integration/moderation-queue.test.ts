@@ -435,6 +435,65 @@ integrationDescribe("moderation queue", () => {
     });
   }, 60_000);
 
+  test("a reply inside a held topic stays out of the counters until the topic is approved", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const heldAuthor = await memberId(database, "new-member");
+      const replier = await memberId(database, "member-1");
+      const moderator = await memberId(database, "super-mod");
+
+      await database.sql`UPDATE core.members SET post_count = 0 WHERE id = ${heldAuthor}`;
+      // The replier is already past the new-member threshold so only the opener is held.
+      await database.sql`UPDATE core.members SET post_count = 5 WHERE id = ${replier}`;
+      await database.sql`
+        UPDATE core.board_settings SET new_member_approval_posts = 1 WHERE id = 1
+      `;
+      const before = await counters(database, offTopic, heldAuthor);
+      const replierBefore = await counters(database, offTopic, replier);
+
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: heldAuthor,
+          forumId: offTopic,
+          title: "Held topic with a public reply",
+          bodyMd: "Held opener.",
+        }),
+      );
+      const written = expectOk(
+        await reply(database.sql, {
+          actorId: replier,
+          topicId: topic.topicId,
+          bodyMd: "Reply written before the topic is public.",
+        }),
+      );
+
+      expect(await counters(database, offTopic, heldAuthor)).toEqual(before);
+      expect(await counters(database, offTopic, replier)).toEqual(replierBefore);
+
+      expectOk(
+        await approveHeldPosts(database.sql, {
+          actorId: moderator,
+          postIds: [topic.postId],
+        }),
+      );
+
+      const after = await counters(database, offTopic, heldAuthor);
+      expect(after.forum?.topic_count).toBe((before.forum?.topic_count ?? 0) + 1);
+      expect(after.forum?.post_count).toBe((before.forum?.post_count ?? 0) + 2);
+      expect(after.member?.post_count).toBe(1);
+      expect((await counters(database, offTopic, replier)).member?.post_count).toBe(
+        (replierBefore.member?.post_count ?? 0) + 1,
+      );
+
+      const [row] = (await database.sql`
+        SELECT p.visibility, t.visibility AS topic_visibility
+        FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+        WHERE p.id = ${written.postId}
+      `) as Array<{ visibility: string; topic_visibility: string }>;
+      expect(row).toEqual({ visibility: "visible", topic_visibility: "visible" });
+    });
+  }, 60_000);
+
   test("a forum approval rule hides too, with two authors sharing one cached page", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");

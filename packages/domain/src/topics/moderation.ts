@@ -539,6 +539,7 @@ export async function restoreTopic(
           await adjustMemberPostCounts(tx, authorCounts, 1);
         }
 
+        await recountTopic(tx, current.id);
         await refreshForumLastPost(tx, current.forumId);
         await writeModerationLog(tx, {
           actorId: input.actorId,

@@ -175,6 +175,8 @@ export interface GuardedReplyInput {
   readonly sessionId: string | null;
   readonly options?: PostWriteOptions;
   readonly autoFollow?: boolean;
+  /** A reply inside a held or deleted topic is not public until the topic is restored. */
+  readonly topicVisible?: boolean;
 }
 
 export interface GuardedReplyResult {
@@ -286,16 +288,18 @@ export async function writeGuardedReply(
 
   await recordDuplicate(tx, input.actorId, bodyHash(rendered.bodyText));
 
+  const publicReply = !hold && input.topicVisible !== false;
+
   await recordReply(tx, {
     topicId: input.topicId,
     forumId: input.forumId,
     postId: post.id,
     authorId: input.authorId,
     createdAt: post.createdAt,
-    visible: !hold,
+    visible: publicReply,
   });
 
-  if (!hold) {
+  if (publicReply) {
     await emit(tx, {
       type: "post.created",
       aggregateId: BigInt(post.id),
@@ -708,6 +712,7 @@ export async function reply(
           sessionId: input.sessionId ?? null,
           options,
           ...(input.autoFollow === undefined ? {} : { autoFollow: input.autoFollow }),
+          topicVisible: current.visibility === "visible",
         });
 
         return {

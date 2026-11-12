@@ -522,6 +522,7 @@ export async function applyMultimod(
               tree: freshTree,
               sessionId: input.sessionId ?? null,
               autoFollow: false,
+              topicVisible: topic.visibility === "visible",
             });
           }
         }
