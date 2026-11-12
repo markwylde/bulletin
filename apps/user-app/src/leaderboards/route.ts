@@ -13,6 +13,10 @@ import { buildLeaderboardsPage, type LeaderboardView } from "./page.ts";
 
 export interface LeaderboardRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext | null;
@@ -45,6 +49,7 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
   if (viewerFlags.values.leaderboards !== true) {
     const notFound = await renderThemedNotFound({
       sql: input.sql,
+      themeId: input.themeId,
       locale: input.locale,
       translate: input.translate,
       route: leaderboardContract,
@@ -65,12 +70,12 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
 
   const rendered = await renderCachedPage<LeaderboardData>({
     tags: contractTags(leaderboardContract, {}),
-    cache: input.cache,
+    cache: input.preview === true ? null : input.cache,
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     prepare: async () => {
       const [theme, settings, flags, page] = await Promise.all([
-        loadActiveTheme(input.sql),
+        loadActiveTheme(input.sql, input.themeId),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session),
         buildLeaderboardsPage({
@@ -99,6 +104,7 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
     render: async (data) => {
       const page = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName: data.boardName,
         locale: input.locale,
         translate: input.translate,

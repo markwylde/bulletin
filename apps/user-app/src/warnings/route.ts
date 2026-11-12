@@ -10,6 +10,10 @@ import { buildOwnWarningsPage, buildStaffWarningsPage } from "./page.ts";
 
 export interface WarningsRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext;
@@ -46,6 +50,7 @@ export async function renderOwnWarningsRoute(
   if (flags.values.warnings !== true) {
     const notFound = await renderThemedNotFound({
       sql: input.sql,
+      themeId: input.themeId,
       locale: input.locale,
       translate: input.translate,
       route: warningsContract,
@@ -81,6 +86,7 @@ export async function renderOwnWarningsRoute(
     render: async () => {
       const themed = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName,
         locale: input.locale,
         translate: input.translate,
@@ -106,6 +112,7 @@ export async function renderStaffWarningsRoute(
   if (flags.values.warnings !== true) {
     const notFound = await renderThemedNotFound({
       sql: input.sql,
+      themeId: input.themeId,
       locale: input.locale,
       translate: input.translate,
       route: moderationWarningsContract,
@@ -129,6 +136,7 @@ export async function renderStaffWarningsRoute(
   if (page === null) {
     const themed = await renderThemedPage({
       sql: input.sql,
+      themeId: input.themeId,
       boardName,
       locale: input.locale,
       translate: input.translate,
@@ -172,6 +180,7 @@ export async function renderStaffWarningsRoute(
     render: async () => {
       const themed = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName,
         locale: input.locale,
         translate: input.translate,

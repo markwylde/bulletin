@@ -12,6 +12,10 @@ import { buildConversationPage, buildInboxPage } from "./page.ts";
 
 export interface ConversationRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext;
@@ -36,6 +40,7 @@ async function notFoundPage(
 ): Promise<ConversationPageResult> {
   const notFound = await renderThemedNotFound({
     sql: input.sql,
+    themeId: input.themeId,
     locale: input.locale,
     translate: input.translate,
     route,
@@ -94,6 +99,7 @@ export async function renderConversationsRoute(
     render: async () => {
       const themed = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName,
         locale: input.locale,
         translate: input.translate,
@@ -169,6 +175,7 @@ export async function renderConversationRoute(
     render: async () => {
       const themed = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName,
         locale: input.locale,
         translate: input.translate,

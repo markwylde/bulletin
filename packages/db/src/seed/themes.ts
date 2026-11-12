@@ -113,8 +113,8 @@ export async function syncDefaultThemeInTransaction(
 
   if (theme === undefined) {
     const [created] = (await tx`
-      INSERT INTO core.themes (name, version, source_hash)
-      VALUES (${DEFAULT_THEME_NAME}, ${DEFAULT_THEME_VERSION}, ${hash})
+      INSERT INTO core.themes (name, version, source_hash, source)
+      VALUES (${DEFAULT_THEME_NAME}, ${DEFAULT_THEME_VERSION}, ${hash}, 'core')
       RETURNING id::text AS id, version
     `) as Array<{ id: string; version: number }>;
 
@@ -172,7 +172,20 @@ export async function syncDefaultThemeInTransaction(
     }
   }
 
+  await recordVersionHistory(tx, theme.id);
+
   return { changed: true, version: updated.version, hash };
+}
+
+/** Makes every current template row restorable, including the repository's first install. */
+async function recordVersionHistory(tx: SQL, themeId: string): Promise<void> {
+  await tx`
+    INSERT INTO core.theme_template_versions (theme_id, name, version, body)
+    SELECT theme_id, name, version, body
+    FROM core.theme_templates
+    WHERE theme_id = ${themeId}
+    ON CONFLICT (theme_id, name, version) DO NOTHING
+  `;
 }
 
 /**

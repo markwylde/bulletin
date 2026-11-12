@@ -13,7 +13,8 @@ export type StaffIcon =
   | "permissions"
   | "members"
   | "moderators"
-  | "promotions";
+  | "promotions"
+  | "themes";
 
 /** Section metadata only; route components are attached in `section-routes.tsx`. */
 export interface StaffSection {
@@ -242,6 +243,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     permission: "acp.reactions",
     icon: "settings",
     labelKey: "staff.nav.reactions",
+  },
+  {
+    id: "themes",
+    path: "/themes",
+    navGroup: "configuration",
+    permission: "acp.themes",
+    icon: "themes",
+    labelKey: "staff.nav.themes",
   },
   {
     id: "promotions",

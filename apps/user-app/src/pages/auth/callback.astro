@@ -19,6 +19,8 @@ const session = Astro.locals.session ?? null;
 const runtime = await cacheRuntime(sql);
 const rendered = await renderAuthRoute({
   sql,
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
   boardName: boardNameFrom(Astro.locals.board?.boardName, translate),
   locale,
   translate,

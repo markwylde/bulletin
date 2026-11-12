@@ -8,6 +8,10 @@ import { loadActiveTheme, renderThemedPage } from "../theme/render.ts";
 
 export interface AuthRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly boardName: string;
   readonly locale: Locale;
   readonly translate: Translator;
@@ -31,11 +35,11 @@ interface AuthData {
 export async function renderAuthRoute(input: AuthRouteInput): Promise<CachedPageResult> {
   return renderCachedPage<AuthData>({
     tags: contractTags(input.contract, {}),
-    cache: input.cache,
+    cache: input.preview === true ? null : input.cache,
     tagVersions: null,
     ...(input.shell === undefined ? {} : { shell: input.shell }),
     prepare: async () => {
-      const theme = await loadActiveTheme(input.sql);
+      const theme = await loadActiveTheme(input.sql, input.themeId);
 
       return {
         variant: pageVariant({
@@ -53,6 +57,7 @@ export async function renderAuthRoute(input: AuthRouteInput): Promise<CachedPage
     render: async ({ theme }) => {
       const page = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName: input.boardName,
         locale: input.locale,
         translate: input.translate,

@@ -13,6 +13,10 @@ import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/rende
 
 export interface HomeRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session?: UserAppSessionContext | null;
@@ -48,14 +52,14 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
   const rendered = await renderCachedPage<HomeData>({
     tags: contractTags(homeContract, {}),
     contentValidator: true,
-    cache: input.cache,
+    cache: input.preview === true ? null : input.cache,
     tagVersions: input.tagVersions ?? null,
     ...(input.shell === undefined ? {} : { shell: input.shell }),
     // The view model is loaded after the cache captured its tag versions. A tree or settings
     // save that lands during it bumps `board`, and the pipeline renders again.
     prepare: async () => {
       const [theme, settings, flags] = await Promise.all([
-        loadActiveTheme(input.sql),
+        loadActiveTheme(input.sql, input.themeId),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session ?? null),
       ]);
@@ -94,6 +98,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
     render: async ({ theme, boardName, boardDescription, index, flags }) => {
       const page = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName,
         locale: input.locale,
         translate: input.translate,

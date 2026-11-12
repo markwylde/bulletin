@@ -9,6 +9,7 @@ export interface ThemedNotFoundInput<T> {
   readonly locale: Locale;
   readonly translate: Translator;
   readonly route: ViewModelContract<T>;
+  readonly themeId?: string | null | undefined;
 }
 
 /**
@@ -22,12 +23,13 @@ export async function renderThemedNotFound<T>(input: ThemedNotFoundInput<T>): Pr
   readonly errors: readonly string[];
 }> {
   const [theme, settings] = await Promise.all([
-    loadActiveTheme(input.sql),
+    loadActiveTheme(input.sql, input.themeId),
     readBoardSettings(input.sql),
   ]);
   const boardName = boardNameFrom(settings.boardName, input.translate);
   const page = await renderThemedPage({
     sql: input.sql,
+    themeId: input.themeId,
     boardName,
     locale: input.locale,
     translate: input.translate,

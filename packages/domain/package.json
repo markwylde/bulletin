@@ -42,7 +42,9 @@
     "./warnings": "./src/warnings/index.ts",
     "./filters": "./src/filters/index.ts",
     "./pii": "./src/pii/index.ts",
-    "./bans": "./src/bans/index.ts"
+    "./bans": "./src/bans/index.ts",
+    "./themes": "./src/themes/index.ts",
+    "./themes/css": "./src/themes/css.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -56,6 +58,7 @@
     "jose": "6.2.16",
     "@bulletin/content": "workspace:*",
     "parse5": "8.1.1",
-    "sharp": "0.35.5"
+    "sharp": "0.35.5",
+    "lightningcss": "1.30.2"
   }
 }

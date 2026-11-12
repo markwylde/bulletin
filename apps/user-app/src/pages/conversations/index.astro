@@ -22,6 +22,8 @@ const folder: ConversationFolder =
 const query = (Astro.url.searchParams.get("q") ?? "").trim();
 const result = await renderConversationsRoute({
   sql,
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
   locale,
   translate,
   session,

@@ -1568,3 +1568,48 @@ textarea.form-input {
   gap: 0.5rem;
   overflow-wrap: anywhere;
 }
+
+/* Theme manager ------------------------------------------------------------ */
+
+.theme-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
+
+.theme-tabs .is-active {
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.theme-diff {
+  max-height: 28rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff-add {
+  color: #156b3a;
+}
+
+.diff-remove {
+  color: #9b1c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  .diff-add {
+    color: #7ee2a8;
+  }
+
+  .diff-remove {
+    color: #ffb3b3;
+  }
+}

@@ -24,6 +24,10 @@ import { recordRedirectClick } from "./redirects.ts";
 
 export interface ForumRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext | null;
@@ -80,7 +84,7 @@ async function renderErrorPage(
   code: "forbidden" | "not_found",
 ): Promise<PageRouteResult> {
   const [theme, settings] = await Promise.all([
-    loadActiveTheme(input.sql),
+    loadActiveTheme(input.sql, input.themeId),
     readBoardSettings(input.sql),
   ]);
   const boardName = boardNameFrom(settings.boardName, input.translate);
@@ -88,6 +92,7 @@ async function renderErrorPage(
   const flags = await loadViewerFlags(input.sql, input.session ?? null);
   const page = await renderThemedPage({
     sql: input.sql,
+    themeId: input.themeId,
     boardName,
     locale: input.locale,
     translate: input.translate,
@@ -190,12 +195,12 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
 
   const rendered = await renderCachedPage<ForumRenderData>({
     tags,
-    cache: input.cache,
+    cache: input.preview === true ? null : input.cache,
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     prepare: async () => {
       const [theme, settings, flags, freshTree, replaceWords] = await Promise.all([
-        loadActiveTheme(input.sql),
+        loadActiveTheme(input.sql, input.themeId),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session),
         loadForumTree(input.sql),
@@ -286,6 +291,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
     render: async (data) => {
       const page = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName: data.boardName,
         locale: input.locale,
         translate: input.translate,

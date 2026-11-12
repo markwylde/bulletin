@@ -14,6 +14,7 @@ export * from "./polls/index.ts";
 export * from "./reactions/index.ts";
 export * from "./reports/index.ts";
 export * from "./reputation/index.ts";
+export * from "./themes/index.ts";
 export * from "./topics/index.ts";
 export * from "./urls/index.ts";
 export * from "./visits/index.ts";

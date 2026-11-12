@@ -4,12 +4,19 @@ import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security"
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
 import { embedProviderOrigins, listEmbedProviders } from "@bulletin/domain/content";
-import { BP_COOKIE_NAME, resolveRequestLocale } from "@bulletin/i18n";
+import {
+  BP_COOKIE_MAX_AGE_SECONDS,
+  BP_COOKIE_NAME,
+  DEFAULT_BP_THEME_ID,
+  resolveRequestLocale,
+  serializeBpCookie,
+} from "@bulletin/i18n";
 import { canViewOffline, readBoard } from "./board.ts";
 import { closeCacheRuntime } from "./cache-runtime.ts";
 import { readSql } from "./db.ts";
 import { offlinePage } from "./offline.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
+import { resolveRequestTheme } from "./theme/request-theme.ts";
 
 const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
 const authIssuer =
@@ -32,6 +39,8 @@ const NON_PAGE_PREFIXES = [
   "/@",
   "/src/",
   "/favicon.ico",
+  "/theme-css",
+  "/theme-assets/",
 ];
 const DISPLAY_NAME_PATH = "/display-name";
 
@@ -126,15 +135,28 @@ export const onRequest = defineMiddleware(async (context, next) => {
         context.locals.locale = sessionContext.locale;
         context.locals.localeSource = "member";
       } else {
-        const bp = parseCookieHeader(cookieHeader)[BP_COOKIE_NAME];
+        const bpValue = parseCookieHeader(cookieHeader)[BP_COOKIE_NAME];
         const resolution = resolveRequestLocale({
           audience: "guest",
-          bp: bp ?? null,
+          bp: bpValue ?? null,
           boardDefaultLocale: board?.defaultLocale ?? null,
           acceptLanguage: context.request.headers.get("accept-language"),
         });
         context.locals.locale = resolution.locale;
         context.locals.localeSource = "guest";
+      }
+
+      const requestedTheme = await resolveRequestTheme(readSql(), cookieHeader, sessionContext);
+      context.locals.themeId = requestedTheme.themeId;
+      context.locals.previewTheme = requestedTheme.preview;
+
+      if (requestedTheme.invalidGuestTheme) {
+        const locale = context.locals.locale ?? "en";
+        context.locals.resetThemeCookie = `${BP_COOKIE_NAME}=${serializeBpCookie({
+          locale,
+          themeId: DEFAULT_BP_THEME_ID,
+          scheme: requestedTheme.guestScheme,
+        })}; Path=/; Max-Age=${BP_COOKIE_MAX_AGE_SECONDS}; SameSite=Lax`;
       }
 
       if (board !== null) {
@@ -206,7 +228,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
       }
     }
 
-    return secure(await next());
+    const response = secure(await next());
+
+    if (context.locals.resetThemeCookie !== undefined) {
+      response.headers.append("set-cookie", context.locals.resetThemeCookie);
+    }
+
+    return response;
   } finally {
     finish?.();
   }

@@ -99,6 +99,20 @@ import {
   saveOverrideSet,
   searchOverrideKeys,
 } from "./string-overrides.ts";
+import {
+  createThemeResponse,
+  deleteAssetResponse,
+  listThemesResponse,
+  restoreTemplateResponse,
+  revertTemplateResponse,
+  saveCssResponse,
+  saveStringsResponse,
+  saveTemplateResponse,
+  saveTokensResponse,
+  themeDetailResponse,
+  themePreviewResponse,
+  uploadAssetResponse,
+} from "./themes.ts";
 import { mutateWarningSettingResponse, warningSettingsResponse } from "./warnings.ts";
 
 export interface StaffRouteContext {
@@ -111,6 +125,7 @@ export interface StaffRouteContext {
   readonly purge?: CdnPurger;
   readonly storage?: StorageClient;
   readonly userOrigin?: string;
+  readonly themePreviewSecret?: string;
 }
 
 export interface StaffRoute {
@@ -132,6 +147,7 @@ export interface StaffApiOptions {
   readonly purge?: CdnPurger;
   readonly storage?: StorageClient;
   readonly userOrigin?: string;
+  readonly themePreviewSecret?: string;
 }
 
 export interface StaffApi {
@@ -1523,6 +1539,140 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     permission: "acp.system",
     handler: deadLettersRetry,
   },
+  {
+    id: "themes.list",
+    method: "GET",
+    path: "/api/staff/themes",
+    permission: "acp.themes",
+    handler: async ({ sql }) => listThemesResponse(sql),
+  },
+  {
+    id: "themes.detail",
+    method: "GET",
+    path: "/api/staff/themes/detail",
+    permission: "acp.themes",
+    handler: async ({ sql, url }) => themeDetailResponse(sql, url),
+  },
+  {
+    id: "themes.create",
+    method: "POST",
+    path: "/api/staff/themes",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) =>
+      createThemeResponse(sql, session.memberId, request),
+  },
+  {
+    id: "themes.template.save",
+    method: "POST",
+    path: "/api/staff/themes/template",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) =>
+      saveTemplateResponse(sql, session.memberId, request),
+  },
+  {
+    id: "themes.template.restore",
+    method: "POST",
+    path: "/api/staff/themes/template/restore",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) =>
+      restoreTemplateResponse(sql, session.memberId, request),
+  },
+  {
+    id: "themes.template.revert",
+    method: "POST",
+    path: "/api/staff/themes/template/revert",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) =>
+      revertTemplateResponse(sql, session.memberId, request),
+  },
+  {
+    id: "themes.tokens.save",
+    method: "POST",
+    path: "/api/staff/themes/tokens",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) =>
+      saveTokensResponse(sql, session.memberId, request),
+  },
+  {
+    id: "themes.css.save",
+    method: "POST",
+    path: "/api/staff/themes/css",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) => saveCssResponse(sql, session.memberId, request),
+  },
+  {
+    id: "themes.strings.save",
+    method: "POST",
+    path: "/api/staff/themes/strings",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) =>
+      saveStringsResponse(sql, session.memberId, request),
+  },
+  {
+    id: "themes.assets.upload",
+    method: "POST",
+    path: "/api/staff/themes/assets",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request, storage }) => {
+      if (storage === undefined) {
+        return json({ code: "storage_unavailable" }, 503);
+      }
+
+      return uploadAssetResponse(sql, storage, session.memberId, request);
+    },
+  },
+  {
+    id: "themes.assets.delete",
+    method: "DELETE",
+    path: "/api/staff/themes/assets",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request, storage }) => {
+      if (storage === undefined) {
+        return json({ code: "storage_unavailable" }, 503);
+      }
+
+      return deleteAssetResponse(sql, storage, session.memberId, request);
+    },
+  },
+  {
+    id: "themes.preview",
+    method: "POST",
+    path: "/api/staff/themes/preview",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request, userOrigin, themePreviewSecret }) => {
+      if (userOrigin === undefined || themePreviewSecret === undefined) {
+        return json({ code: "preview_unavailable" }, 503);
+      }
+
+      const body: unknown = await request.json().catch(() => null);
+      const record =
+        typeof body === "object" && body !== null && !Array.isArray(body)
+          ? (body as Record<string, unknown>)
+          : {};
+      const themeId = typeof record.themeId === "string" ? record.themeId : "";
+      const returnTo = typeof record.returnTo === "string" ? record.returnTo : null;
+
+      if (!/^\d+$/.test(themeId)) {
+        return json({ code: "invalid_request" }, 400);
+      }
+
+      const theme = (await sql`
+        SELECT 1 FROM core.themes WHERE id::text = ${themeId}
+      `) as unknown[];
+
+      if (theme.length === 0) {
+        return json({ code: "not_found" }, 404);
+      }
+
+      return themePreviewResponse({
+        themeId,
+        memberId: session.memberId,
+        secret: themePreviewSecret,
+        userOrigin,
+        returnTo,
+      });
+    },
+  },
 ];
 
 /**
@@ -1595,6 +1745,9 @@ export function createStaffApi(options: StaffApiOptions): StaffApi {
           ...(options.purge === undefined ? {} : { purge: options.purge }),
           ...(options.storage === undefined ? {} : { storage: options.storage }),
           ...(options.userOrigin === undefined ? {} : { userOrigin: options.userOrigin }),
+          ...(options.themePreviewSecret === undefined
+            ? {}
+            : { themePreviewSecret: options.themePreviewSecret }),
         });
       });
 

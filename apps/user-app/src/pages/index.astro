@@ -22,6 +22,8 @@ const runtime = await cacheRuntime(sql);
 // Board data is loaded inside the route's prepare, after the cache captures tag versions.
 const result = await renderHomeRoute({
   sql,
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
   locale,
   translate,
   session,

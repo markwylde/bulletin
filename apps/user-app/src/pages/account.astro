@@ -54,6 +54,7 @@ const rendered = await renderCachedPage({
   render: async () => {
     const page = await renderThemedPage({
       sql,
+      themeId: Astro.locals.themeId,
       boardName,
       locale,
       translate,

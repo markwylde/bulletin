@@ -17,6 +17,8 @@ const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const result = await renderStaffWarningsRoute({
   sql: readSql(),
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
   locale,
   translate,
   session,

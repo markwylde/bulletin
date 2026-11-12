@@ -61,6 +61,7 @@ const api = createStaffApi({
   checks,
   storage,
   userOrigin: config.userOrigin,
+  themePreviewSecret: config.sessionSecret,
   ...(purge === undefined ? {} : { purge }),
 });
 

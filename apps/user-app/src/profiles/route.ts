@@ -27,6 +27,10 @@ export const PROFILE_FRAGMENT_TTL_MS = 60_000;
 
 export interface ProfileRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext | null;
@@ -72,12 +76,13 @@ async function renderErrorPage(
   status: 404,
 ): Promise<ProfilePageRouteResult> {
   const [theme, settings] = await Promise.all([
-    loadActiveTheme(input.sql),
+    loadActiveTheme(input.sql, input.themeId),
     readBoardSettings(input.sql),
   ]);
   const boardName = boardNameFrom(settings.boardName, input.translate);
   const page = await renderThemedPage({
     sql: input.sql,
+    themeId: input.themeId,
     boardName,
     locale: input.locale,
     translate: input.translate,
@@ -142,7 +147,7 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
 
   const rendered = await renderCachedPage<ProfileRenderData>({
     tags,
-    cache: input.cache,
+    cache: input.preview === true ? null : input.cache,
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     // Last-active activity changes inside the fragment TTL without moving `member:{id}`, so
@@ -150,7 +155,7 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
     contentValidator: true,
     prepare: async () => {
       const [theme, settings, flags, tree, replaceWords] = await Promise.all([
-        loadActiveTheme(input.sql),
+        loadActiveTheme(input.sql, input.themeId),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session),
         loadForumTree(input.sql),
@@ -195,6 +200,7 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
       boardName = data.boardName;
       const page = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName: data.boardName,
         locale: input.locale,
         translate: input.translate,

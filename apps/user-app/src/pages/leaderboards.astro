@@ -18,6 +18,8 @@ const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "developm
 const runtime = await cacheRuntime(sql);
 const result = await renderLeaderboardRoute({
   sql,
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
   locale,
   translate,
   session,

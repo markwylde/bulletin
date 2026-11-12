@@ -18,6 +18,8 @@ const runtime = await cacheRuntime(sql);
 const bench = Astro.url.searchParams.get("bench");
 const result = await renderForumRoute({
   sql,
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
   locale,
   translate,
   session,

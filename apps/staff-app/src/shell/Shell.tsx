@@ -84,6 +84,12 @@ function SectionIcon({ icon }: { readonly icon: StaffIcon }) {
           <path d="M12 3 6 11h4v4h4v-4h4zM5 18h14v2H5z" />
         </svg>
       );
+    case "themes":
+      return (
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 4h7v7H4zm9 0h7v4h-7zM4 13h7v7H4zm9-3h7v10h-7z" />
+        </svg>
+      );
   }
 }
 

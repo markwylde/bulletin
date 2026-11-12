@@ -8,11 +8,11 @@
 
 ## 2. Management
 
-- [ ] 2.1 Theme storage migrations, child theme creation and inheritance resolution, with integration tests for the parent-update scenario
-- [ ] 2.2 Template editor (parent view, diff, validation errors, versions, restore, revert to parent) with tests including permission denial; E2E at 1440 and 360
-- [ ] 2.3 Token form and custom CSS with the CSS filter, with tests for the external-import scenario
-- [ ] 2.4 Asset manager and theme string overrides, with integration tests
-- [ ] 2.5 Cross-origin preview via a staff-api signed token exchanged on the user origin (same member, `acp.themes`, `private, no-store`), plus `bp` theme validation for guests; tests for both scenarios and a cache variant test proving other viewers are unaffected
+- [x] 2.1 Theme storage migrations, child theme creation and inheritance resolution, with integration tests for the parent-update scenario
+- [x] 2.2 Template editor (parent view, diff, validation errors, versions, restore, revert to parent) with tests including permission denial; E2E at 1440 and 360
+- [x] 2.3 Token form and custom CSS with the CSS filter, with tests for the external-import scenario
+- [x] 2.4 Asset manager and theme string overrides, with integration tests
+- [x] 2.5 Cross-origin preview via a staff-api signed token exchanged on the user origin (same member, `acp.themes`, `private, no-store`), plus `bp` theme validation for guests; tests for both scenarios and a cache variant test proving other viewers are unaffected
 
 ## 3. Distribution
 

@@ -1,6 +1,7 @@
 import { queueSystemAudit } from "@bulletin/domain/audit";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import { embedProviderOrigins, listEmbedProviders } from "@bulletin/domain/content";
+import { loadThemeResources, themeTranslator } from "@bulletin/domain/themes";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { BP_COOKIE_NAME, type ColorScheme, parseBpCookie } from "@bulletin/i18n";
@@ -146,6 +147,8 @@ export interface ThemedPageInput {
   readonly pluginsGeneration?: number;
   /** A theme already loaded for the cache variant key, to avoid a second query. */
   readonly theme?: LoadedTheme | null;
+  /** The viewer's preview or guest theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
 }
 
 export interface ThemedPage {
@@ -273,8 +276,13 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
   const generation = input.pluginsGeneration ?? PLUGIN_GENERATION;
   const errors: string[] = [];
   const failures: FailureReport[] = [];
+  const resources = await loadThemeResources(
+    input.sql,
+    theme.chain.map((entry) => entry.id),
+  );
+  const translate = themeTranslator(input.locale, resources.strings[input.locale], input.translate);
   const runtime: TemplateRuntime = {
-    translate: input.translate,
+    translate,
     hooks: await loadHookFragments(input.sql, generation),
     report: (message) => {
       errors.push(message);
@@ -303,7 +311,7 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
       name: input.template,
       viewModel,
       runtime,
-      regions: input.regions ?? pageRegions({ ...input, viewModel }),
+      regions: input.regions ?? pageRegions({ ...input, translate, viewModel }),
       trustedFrameOrigins,
     });
   } catch (error) {
@@ -339,9 +347,51 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
   return { html: page.html, errors };
 }
 
-/** Loads the active theme for the cache variant key (default theme until `themes`). */
-export function loadActiveTheme(sql: SQL): Promise<LoadedTheme | null> {
+/**
+ * Loads the theme the viewer should see: a preview grant or the guest's validated `bp` choice,
+ * falling back to the bundled default (ADR 0006, 0008).
+ */
+export async function loadActiveTheme(
+  sql: SQL,
+  themeId?: string | null,
+): Promise<LoadedTheme | null> {
+  if (themeId !== undefined && themeId !== null && /^\d+$/.test(themeId)) {
+    const theme = await loadTheme(sql, themeId);
+
+    if (theme !== null) {
+      return theme;
+    }
+  }
+
   return loadTheme(sql, THEME_NAME);
+}
+
+/** CSS custom properties and custom CSS for the active theme; empty for the bundled default. */
+export function themeCss(resources: {
+  readonly tokens: Readonly<Record<"light" | "dark", Readonly<Record<string, string>>>>;
+  readonly css: string;
+}): string {
+  const declarations = (scheme: "light" | "dark"): string =>
+    Object.entries(resources.tokens[scheme])
+      .map(([token, value]) => `  --bl-${token}: ${value};`)
+      .join("\n");
+  const light = declarations("light");
+  const dark = declarations("dark");
+  const blocks: string[] = [];
+
+  if (light !== "") {
+    blocks.push(`:root {\n${light}\n}`);
+  }
+
+  if (dark !== "") {
+    blocks.push(`@media (prefers-color-scheme: dark) {\n  :root {\n${dark}\n  }\n}`);
+  }
+
+  if (resources.css.trim() !== "") {
+    blocks.push(resources.css);
+  }
+
+  return blocks.join("\n");
 }
 
 /** The guest's colour scheme from the normalised `bp` cookie (ADR 0006). */

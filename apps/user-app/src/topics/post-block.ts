@@ -8,7 +8,7 @@ import type { TopicPagePost } from "./page.ts";
 
 export interface PostBlockInput {
   readonly sql: SQL;
-  readonly cache: RenderCache;
+  readonly cache: RenderCache | null;
   readonly theme: LoadedTheme | null;
   readonly post: TopicPagePost;
   /** Reloads the current block model inside `prepare`, after tag versions are captured. */
@@ -26,6 +26,30 @@ export interface PostBlockInput {
 
 /** One independently cached post block; edits bump `post:{id}` only. */
 export async function renderPostBlock(input: PostBlockInput): Promise<string> {
+  if (input.cache === null) {
+    const post = await input.loadPost(input.post.id);
+
+    if (post === null) {
+      return "";
+    }
+
+    const page = await renderThemedPage({
+      sql: input.sql,
+      boardName: "",
+      locale: input.locale,
+      translate: input.translate,
+      template: "post",
+      viewModel: { post, flags: input.flags },
+      breadcrumbs: [],
+      route: { route: "/topic/[ref]", requiredIslands: [] },
+      pluginsGeneration: input.pluginsGeneration,
+      theme: input.theme,
+      regions: [],
+    });
+
+    return page.html;
+  }
+
   const rendered = await input.cache.getOrRender({
     tags: [...new Set([postTag(input.post.id), ...input.tags])],
     prepare: async () => ({

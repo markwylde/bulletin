@@ -20,6 +20,10 @@ import { buildOnlinePage, type OnlinePageView } from "./online.ts";
 
 export interface OnlineRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext | null;
@@ -53,6 +57,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
   if (flags.values.whos_online !== true) {
     const notFound = await renderThemedNotFound({
       sql: input.sql,
+      themeId: input.themeId,
       locale: input.locale,
       translate: input.translate,
       route: onlineContract,
@@ -86,12 +91,12 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
   const rendered = await renderCachedPage<OnlineData>({
     tags: contractTags(onlineContract, {}),
     contentValidator: true,
-    cache: input.cache,
+    cache: input.preview === true ? null : input.cache,
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     prepare: async () => {
       const [theme, settings, flags] = await Promise.all([
-        loadActiveTheme(input.sql),
+        loadActiveTheme(input.sql, input.themeId),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session),
       ]);
@@ -127,6 +132,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
     render: async (data) => {
       const page = await renderThemedPage({
         sql: input.sql,
+        themeId: input.themeId,
         boardName: data.boardName,
         locale: input.locale,
         translate: input.translate,

@@ -28,6 +28,7 @@ import { ReactionsPage } from "./reactions/ReactionsPage.tsx";
 import type { StaffSection } from "./sections.ts";
 import { BoardSettingsPage } from "./settings/BoardSettingsPage.tsx";
 import { StringOverridesPage } from "./strings/StringOverridesPage.tsx";
+import { ThemesPage } from "./themes/ThemesPage.tsx";
 
 /** The route component for each section id. */
 export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
@@ -59,6 +60,7 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   forums: ForumsPage,
   prefixes: PrefixesPage,
   announcements: AnnouncementsPage,
+  themes: ThemesPage,
 };
 
 export function sectionElement(section: StaffSection): ComponentType | null {

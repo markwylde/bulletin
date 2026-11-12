@@ -25,6 +25,10 @@ export type SearchRouteMode = "search" | "member" | "new";
 
 export interface SearchRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext | null;
@@ -84,6 +88,7 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
   if (flags.values.search !== true) {
     const notFound = await renderThemedNotFound({
       sql: input.sql,
+      themeId: input.themeId,
       locale: input.locale,
       translate: input.translate,
       route: contract,
@@ -110,7 +115,7 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
     view: "search-route",
   });
   const [theme, settings] = await Promise.all([
-    loadActiveTheme(input.sql),
+    loadActiveTheme(input.sql, input.themeId),
     readBoardSettings(input.sql),
   ]);
   const boardName = boardNameFrom(settings.boardName, input.translate);
@@ -150,6 +155,7 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
   if (view === null) {
     const notFound = await renderThemedNotFound({
       sql: input.sql,
+      themeId: input.themeId,
       locale: input.locale,
       translate: input.translate,
       route: contract,
@@ -160,6 +166,7 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
 
   const page = await renderThemedPage({
     sql: input.sql,
+    themeId: input.themeId,
     boardName,
     locale: input.locale,
     translate: input.translate,

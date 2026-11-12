@@ -1,4 +1,7 @@
 ---
+import { DEVELOPMENT_DEFAULTS } from "@bulletin/config/env";
+import { can } from "@bulletin/domain/permissions";
+import { grantPreviewTheme, verifyThemePreviewToken } from "@bulletin/domain/themes";
 import { createServerT } from "@bulletin/i18n";
 import { cacheRuntime } from "../cache-runtime.ts";
 import { USER_CATALOGS } from "../catalogs.ts";
@@ -26,6 +29,7 @@ const dev = import.meta.env.DEV;
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const hasSessionCookie = requestHasSession(Astro.request.headers.get("cookie"), nodeEnv);
 const demoMatch = /^_demo\/([^/]+)\/?$/.exec(Astro.params.path ?? "");
+const previewMatch = /^_preview\/?$/.exec(Astro.params.path ?? "");
 const headers = new Headers();
 
 let status = 404;
@@ -34,10 +38,41 @@ let body: string;
 let clientFlagsJson: string | undefined;
 let documentTitle = `${pageTitle} · ${boardName}`;
 
+if (previewMatch !== null) {
+  const secret = process.env.SESSION_SECRET ?? DEVELOPMENT_DEFAULTS.SESSION_SECRET;
+  const claims = verifyThemePreviewToken(Astro.url.searchParams.get("token"), secret);
+  const requested = Astro.url.searchParams.get("return_to") ?? "/";
+  const returnTo = requested.startsWith("/") && !requested.startsWith("//") ? requested : "/";
+  const granted =
+    claims !== null &&
+    session !== null &&
+    claims.memberId === session.memberId &&
+    (await can(sql, session.memberId, "acp.themes")) &&
+    (await grantPreviewTheme(sql, session.sessionId, claims.themeId));
+
+  if (granted) {
+    return new Response(null, {
+      status: 303,
+      headers: {
+        location: returnTo,
+        "cache-control": "private, no-store",
+        "referrer-policy": "no-referrer",
+      },
+    });
+  }
+
+  return new Response(translate("theme.error.forbidden"), {
+    status: 403,
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "private, no-store" },
+  });
+}
+
 if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
   const runtime = await cacheRuntime(sql);
   const result = await renderDemoRoute({
     sql,
+    themeId: Astro.locals.themeId,
+    preview: Astro.locals.previewTheme === true,
     locale,
     translate,
     session,
@@ -87,6 +122,7 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
 
   const page = await renderThemedPage({
     sql,
+    themeId: Astro.locals.themeId,
     boardName,
     locale,
     translate,

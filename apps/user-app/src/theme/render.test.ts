@@ -6,6 +6,7 @@ import {
   languageSwitcherView,
   localeSuggestionView,
   pageRegions,
+  themeCss,
 } from "./render.ts";
 
 const t = createServerT("en", { shipped: USER_CATALOGS });
@@ -78,6 +79,27 @@ describe("language props", () => {
     expect(view.message.length).toBeGreaterThan(0);
     expect(view.accept).toBe("Switch");
     expect(view.dismiss).toBe("Dismiss");
+  });
+});
+
+describe("themeCss", () => {
+  test("emits light and dark token overrides plus filtered custom CSS", () => {
+    const css = themeCss({
+      tokens: {
+        light: { accent: "#3157c7" },
+        dark: { accent: "#7f9cf5" },
+      },
+      css: ".logo { color: var(--bl-accent); }",
+    });
+
+    expect(css).toContain("--bl-accent: #3157c7;");
+    expect(css).toContain("@media (prefers-color-scheme: dark)");
+    expect(css).toContain("--bl-accent: #7f9cf5;");
+    expect(css).toContain(".logo");
+  });
+
+  test("the bundled default has no overrides", () => {
+    expect(themeCss({ tokens: { light: {}, dark: {} }, css: "" })).toBe("");
   });
 });
 

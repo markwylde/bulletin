@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createRenderCache, type TagVersionSource } from "@bulletin/cache";
+import type { LoadedTheme } from "@bulletin/templates";
 import { isNotModified } from "../http/cache.ts";
-import { renderCachedPage } from "./cached-route.ts";
+import { pageVariant, renderCachedPage } from "./cached-route.ts";
 
 function tagSource(): {
   readonly source: TagVersionSource;
@@ -16,6 +17,46 @@ function tagSource(): {
     },
   };
 }
+
+function loadedTheme(id: string, version: number): LoadedTheme {
+  return {
+    theme: { id, name: `theme-${id}`, version, parentId: null },
+    chain: [{ id, name: `theme-${id}`, version, parentId: null }],
+    templates: new Map(),
+  };
+}
+
+describe("theme variants", () => {
+  const base = {
+    route: "/",
+    visibilityKey: "public",
+    pluginsGeneration: 1,
+    locale: "en",
+    colourScheme: "system",
+    renderFlagsHash: "flags",
+  } as const;
+
+  test("a preview theme gets its own key while other viewers keep the default", () => {
+    const defaultTheme = loadedTheme("1", 1);
+    const preview = loadedTheme("7", 3);
+    const viewer = pageVariant({ ...base, theme: preview });
+    const other = pageVariant({ ...base, theme: defaultTheme });
+
+    expect(viewer).not.toBe(other);
+    expect(pageVariant({ ...base, theme: defaultTheme })).toBe(other);
+    expect(pageVariant({ ...base, theme: loadedTheme("7", 4) })).not.toBe(viewer);
+  });
+
+  test("the guest cookie's allowed theme changes only that guest's key", () => {
+    const child = loadedTheme("2", 1);
+    const chosen = pageVariant({ ...base, colourScheme: "dark", theme: child });
+
+    expect(decodeURIComponent(chosen)).toContain("theme=2@1");
+    expect(pageVariant({ ...base, colourScheme: "dark", theme: loadedTheme("1", 1) })).not.toBe(
+      chosen,
+    );
+  });
+});
 
 describe("shared page pipeline", () => {
   test("member and guest share the fragment but revalidate with different ETags", async () => {

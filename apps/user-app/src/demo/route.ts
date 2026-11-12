@@ -13,6 +13,10 @@ import { buildDemoPage, type DemoOutcome } from "./page.ts";
 
 export interface DemoRouteInput {
   readonly sql: SQL;
+  /** The preview or guest-chosen theme; null means the bundled default. */
+  readonly themeId?: string | null | undefined;
+  /** Preview responses are private and never stored in the shared fragment cache. */
+  readonly preview?: boolean | undefined;
   readonly locale: Locale;
   readonly translate: Translator;
   readonly session: UserAppSessionContext | null;
@@ -59,7 +63,7 @@ interface DemoData {
 export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteResult> {
   const loadData = async (): Promise<DemoData> => {
     const [theme, flags, settings, outcome] = await Promise.all([
-      loadActiveTheme(input.sql),
+      loadActiveTheme(input.sql, input.themeId),
       loadViewerFlags(input.sql, input.session),
       readBoardSettings(input.sql),
       buildDemoPage({
@@ -124,6 +128,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
 
     return renderThemedPage({
       sql: input.sql,
+      themeId: input.themeId,
       boardName: data.boardName,
       locale: input.locale,
       translate: input.translate,
@@ -167,7 +172,7 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
       forumId: input.forumId,
       embedsEditor: input.forumId === "editor",
     }),
-    cache: input.cache,
+    cache: input.preview === true ? null : input.cache,
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     prepare: async () => {

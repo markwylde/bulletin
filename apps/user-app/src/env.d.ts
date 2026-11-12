@@ -11,6 +11,11 @@ declare global {
       localeSource?: "member" | "guest";
       board?: BoardSettings;
       session?: UserAppSessionContext | null;
+      /** The preview or guest-chosen theme; null means the bundled default. */
+      themeId?: string | null;
+      previewTheme?: boolean;
+      themeCookieScheme?: import("@bulletin/i18n").ColorScheme;
+      resetThemeCookie?: string;
     }
   }
 }

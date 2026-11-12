@@ -19,6 +19,8 @@ const viewerKey = searchViewerKey(
 );
 const result = await renderSearchRoute({
   sql,
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
   locale,
   translate,
   session,

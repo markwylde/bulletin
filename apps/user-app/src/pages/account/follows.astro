@@ -31,7 +31,7 @@ const page = enabled ? await buildFollowsPage({
   }) : null;
 const notFound = enabled
   ? null
-  : await renderThemedNotFound({ sql, locale, translate, route: followsContract });
+  : await renderThemedNotFound({ sql, themeId: Astro.locals.themeId, locale, translate, route: followsContract });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 
 const rendered = await renderCachedPage({
@@ -62,6 +62,7 @@ const rendered = await renderCachedPage({
 
     const themed = await renderThemedPage({
       sql,
+      themeId: Astro.locals.themeId,
       boardName,
       locale,
       translate,
