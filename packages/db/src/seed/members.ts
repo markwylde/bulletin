@@ -11,7 +11,13 @@ export interface SeededProfile {
   readonly email: string;
   readonly locale: "en" | "es" | "fr";
   /** Primary group key; Members is added as a secondary group when this is not Members. */
-  readonly group: "members" | "moderators" | "super_moderators" | "administrators" | "banned";
+  readonly group:
+    | "members"
+    | "moderators"
+    | "super_moderators"
+    | "administrators"
+    | "banned"
+    | "vip";
 }
 
 /**
@@ -95,6 +101,13 @@ const PROFILE_INPUTS: readonly Omit<SeededProfile, "skeleton" | "identityName">[
     email: "member-fr@bulletin.test",
     locale: "fr",
     group: "members",
+  },
+  {
+    sub: "vip-member",
+    name: "VIP Member",
+    email: "vip-member@bulletin.test",
+    locale: "en",
+    group: "vip",
   },
   {
     // A member who has never chosen a forum display name: the step page E2E uses this profile.

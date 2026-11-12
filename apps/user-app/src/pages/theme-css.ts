@@ -24,7 +24,8 @@ export const GET: APIRoute = async ({ request }) => {
   return new Response(themeCss(resources), {
     headers: {
       "content-type": "text/css; charset=utf-8",
-      "cache-control": privateResponse ? "private, no-store" : "public, max-age=60",
+      "cache-control": privateResponse ? "private, no-store" : "public, max-age=0, must-revalidate",
+      vary: "Cookie",
       "x-content-type-options": "nosniff",
     },
   });

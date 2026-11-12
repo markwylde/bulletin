@@ -17,6 +17,7 @@ interface ThemeSummary {
   readonly parentName: string | null;
   readonly version: number;
   readonly source: ThemeSource;
+  readonly isActive: boolean;
   readonly description: string;
   readonly templateCount: number;
   readonly childCount: number;
@@ -59,6 +60,7 @@ interface ThemeDetail {
   readonly parentName: string | null;
   readonly version: number;
   readonly source: ThemeSource;
+  readonly isActive: boolean;
   readonly description: string;
   readonly editable: boolean;
   readonly templates: readonly TemplateView[];
@@ -148,6 +150,10 @@ function sourceLabel(t: (key: string) => string, source: ThemeSource): string {
     case "upload":
       return t("staff.themes.source.upload");
   }
+}
+
+function statusLabel(t: (key: string) => string, active: boolean): string {
+  return active ? t("staff.themes.status.active") : t("staff.themes.status.inactive");
 }
 
 function errorCode(error: unknown): string | null {
@@ -278,6 +284,11 @@ export function ThemesPage() {
             return t("staff.themes.check.invalidCss");
           case "contrast":
             return t("staff.themes.check.contrast", { scheme: String(issue.scheme) });
+          case "responsive":
+            return t("staff.themes.check.responsive", {
+              property: String(issue.property),
+              value: String(issue.value),
+            });
           case "invalid_string":
             return t("staff.themes.check.invalidString", { key: String(issue.key) });
           default:
@@ -647,6 +658,19 @@ export function ThemesPage() {
     );
   };
 
+  const setActive = (active: boolean): void => {
+    if (theme === null) {
+      return;
+    }
+
+    void run(
+      async () => {
+        await apiPost("/api/staff/themes/activate", { themeId: theme.id, active });
+      },
+      () => toast.pushToast({ messageKey: "staff.themes.activation.saved", tone: "success" }),
+    );
+  };
+
   const saveAllowedGroups = (): void => {
     if (theme === null) {
       return;
@@ -765,7 +789,7 @@ export function ThemesPage() {
                       ? "—"
                       : `${t("staff.themes.column.parent")}: ${entry.parentName}`}{" "}
                     · {t("staff.themes.column.version")}: {entry.version} ·{" "}
-                    {sourceLabel(t, entry.source)}
+                    {sourceLabel(t, entry.source)} · {statusLabel(t, entry.isActive)}
                   </span>
                   <button
                     type="button"
@@ -877,6 +901,18 @@ export function ThemesPage() {
             <button type="button" data-theme-export disabled={busy} onClick={exportTheme}>
               {t("staff.themes.export")}
             </button>
+            {theme.editable ? (
+              <button
+                type="button"
+                data-theme-activate={theme.isActive ? "false" : "true"}
+                disabled={busy}
+                onClick={() => setActive(!theme.isActive)}
+              >
+                {theme.isActive
+                  ? t("staff.themes.status.deactivate")
+                  : t("staff.themes.status.activate")}
+              </button>
+            ) : null}
           </header>
 
           <nav className="theme-tabs" data-theme-tabs>

@@ -29,6 +29,24 @@ describe("theme CSS filter", () => {
     expect(result.ok ? "" : result.code).toBe("import");
   });
 
+  test("rejects resource references outside url(), including image-set", () => {
+    for (const value of [
+      'image-set("https://evil.example/x" 1x)',
+      "image-set(url(https://evil.example/x) 1x)",
+      "-webkit-image-set(url(//evil.example/x) 1x)",
+      'image-set("/other/x.png" 1x)',
+      'image-set("data:image/png;base64,AAAA" 1x)',
+    ]) {
+      const result = filterThemeCss(`.x { background-image: ${value}; }`);
+
+      expect(result.ok ? "" : result.code).toBe("external_url");
+    }
+
+    expect(
+      filterThemeCss('.x { background-image: image-set("/theme-assets/logo.png" 1x); }').ok,
+    ).toBe(true);
+  });
+
   test("rejects every external url()", () => {
     for (const value of [
       "https://evil.example/x.png",

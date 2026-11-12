@@ -298,7 +298,7 @@ function withFlagDefaults(viewModel: object): object {
 }
 
 export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPage> {
-  const theme = input.theme ?? (await loadTheme(input.sql, THEME_NAME));
+  const theme = input.theme ?? (await loadActiveTheme(input.sql, input.themeId));
 
   if (theme === null || theme === undefined) {
     throw new ThemeNotInstalledError();

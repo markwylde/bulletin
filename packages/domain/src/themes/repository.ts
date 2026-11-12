@@ -16,6 +16,7 @@ export interface ThemeSummary {
   readonly parentName: string | null;
   readonly version: number;
   readonly source: ThemeSource;
+  readonly isActive: boolean;
   readonly description: string;
   readonly templateCount: number;
   readonly childCount: number;
@@ -72,6 +73,7 @@ export interface ThemeDetail {
   readonly parentName: string | null;
   readonly version: number;
   readonly source: ThemeSource;
+  readonly isActive: boolean;
   readonly description: string;
   readonly editable: boolean;
   readonly templates: readonly ThemeTemplateView[];
@@ -193,7 +195,7 @@ export function validateTokenInput(value: unknown): TokenInput | null {
       continue;
     }
 
-    if (trimmed.length > 120 || /[;{}<>]/.test(trimmed) || /url\s*\(/i.test(trimmed)) {
+    if (!isSafeTokenValue(trimmed)) {
       return null;
     }
 
@@ -205,7 +207,12 @@ export function validateTokenInput(value: unknown): TokenInput | null {
 
 /** A token value safe to write into a CSS custom property declaration. */
 export function isSafeTokenValue(value: string): boolean {
-  return value.length <= 120 && !/[;{}<>]/.test(value) && !/url\s*\(/i.test(value);
+  return (
+    value.length <= 120 &&
+    !/[;{}<>]/.test(value) &&
+    !/(?:url|image|image-set|cross-fade|element|paint)\s*\(/i.test(value) &&
+    !/(?:https?:|data:|javascript:|vbscript:)/i.test(value)
+  );
 }
 
 export function isHexColour(value: string): boolean {
@@ -246,6 +253,7 @@ interface ThemeRow {
   readonly parent_name: string | null;
   readonly version: number;
   readonly source: string;
+  readonly is_active: boolean;
   readonly description: string;
   readonly updated_at: Date;
   readonly template_count: number;
@@ -255,7 +263,7 @@ interface ThemeRow {
 export async function listThemes(sql: SQL): Promise<readonly ThemeSummary[]> {
   const rows = (await sql`
     SELECT t.id::text AS id, t.name, t.parent_id::text AS parent_id, p.name AS parent_name,
-      t.version, t.source, t.description, t.updated_at,
+      t.version, t.source, t.is_active, t.description, t.updated_at,
       (SELECT count(*)::int FROM core.theme_templates tt WHERE tt.theme_id = t.id)
         AS template_count,
       (SELECT count(*)::int FROM core.themes c WHERE c.parent_id = t.id) AS child_count
@@ -271,6 +279,7 @@ export async function listThemes(sql: SQL): Promise<readonly ThemeSummary[]> {
     parentName: row.parent_name,
     version: row.version,
     source: sourceOf(row.source),
+    isActive: row.is_active,
     description: row.description,
     templateCount: row.template_count,
     childCount: row.child_count,
@@ -285,13 +294,14 @@ interface DetailRow {
   readonly parent_name: string | null;
   readonly version: number;
   readonly source: string;
+  readonly is_active: boolean;
   readonly description: string;
 }
 
 async function themeRow(sql: SQL, themeId: string): Promise<DetailRow | null> {
   const [row] = (await sql`
     SELECT t.id::text AS id, t.name, t.parent_id::text AS parent_id, p.name AS parent_name,
-      t.version, t.source, t.description
+      t.version, t.source, t.is_active, t.description
     FROM core.themes t
     LEFT JOIN core.themes p ON p.id = t.parent_id
     WHERE t.id::text = ${themeId}
@@ -477,6 +487,7 @@ export async function readThemeDetail(sql: SQL, themeId: string): Promise<ThemeD
     parentName: row.parent_name,
     version: row.version,
     source: sourceOf(row.source),
+    isActive: row.is_active,
     description: row.description,
     editable: row.source !== "core",
     templates,
@@ -651,8 +662,8 @@ export async function createChildTheme(
     }
 
     const [created] = (await tx`
-      INSERT INTO core.themes (name, parent_id, version, source, created_by)
-      VALUES (${name}, ${parent.id}, 1, 'custom', ${input.actorId})
+      INSERT INTO core.themes (name, parent_id, version, source, is_active, created_by)
+      VALUES (${name}, ${parent.id}, 1, 'custom', false, ${input.actorId})
       RETURNING id::text AS id
     `) as Array<{ id: string }>;
 
@@ -1108,6 +1119,7 @@ export async function themeAllowedForGuests(sql: SQL, themeId: string): Promise<
     SELECT 1
     FROM core.themes t
     WHERE t.id::text = ${id}
+      AND t.is_active
       AND (
         NOT EXISTS (SELECT 1 FROM core.theme_allowed_groups g WHERE g.theme_id = t.id)
         OR EXISTS (
@@ -1224,12 +1236,15 @@ export async function allowedThemesForGroups(
   return (await sql`
     SELECT t.id::text AS id, t.name, t.description
     FROM core.themes t
-    WHERE NOT EXISTS (
-        SELECT 1 FROM core.theme_allowed_groups g WHERE g.theme_id = t.id
-      )
+    WHERE t.is_active
+      AND (
+        NOT EXISTS (
+          SELECT 1 FROM core.theme_allowed_groups g WHERE g.theme_id = t.id
+        )
       OR EXISTS (
-        SELECT 1 FROM core.theme_allowed_groups g
-        WHERE g.theme_id = t.id AND g.group_id = ANY(${ids}::bigint[])
+          SELECT 1 FROM core.theme_allowed_groups g
+          WHERE g.theme_id = t.id AND g.group_id = ANY(${ids}::bigint[])
+        )
       )
     ORDER BY t.name
   `) as ThemeOption[];
@@ -1237,7 +1252,7 @@ export async function allowedThemesForGroups(
 
 export async function coreDefaultThemeId(sql: SQL): Promise<string | null> {
   const [row] = (await sql`
-    SELECT id::text AS id FROM core.themes WHERE name = 'default'
+    SELECT id::text AS id FROM core.themes WHERE name = 'default' AND is_active
   `) as Array<{ id: string }>;
 
   return row?.id ?? null;
@@ -1474,7 +1489,7 @@ export async function saveGroupDefaultTheme(
 
   const [allowed] = (await sql`
     SELECT
-      EXISTS (SELECT 1 FROM core.themes WHERE id::text = ${themeId}) AS theme_exists,
+      EXISTS (SELECT 1 FROM core.themes WHERE id::text = ${themeId} AND is_active) AS theme_exists,
       (
         NOT EXISTS (SELECT 1 FROM core.theme_allowed_groups WHERE theme_id::text = ${themeId})
         OR EXISTS (
@@ -1511,4 +1526,37 @@ export async function guestDefaultThemeId(sql: SQL): Promise<string | null> {
   `) as Array<{ id: string }>;
 
   return row?.id ?? null;
+}
+
+/** Activates/deactivates a theme. The bundled default can never be switched off. */
+export async function setThemeActive(
+  sql: SQL,
+  input: { readonly themeId: string; readonly active: boolean },
+): Promise<ThemeMutation<{ readonly isActive: boolean }>> {
+  const themeId = idOf(input.themeId);
+
+  if (themeId === null) {
+    return { ok: false, code: "not_found" };
+  }
+
+  return sql.begin(async (tx) => {
+    const [theme] = (await tx`
+      SELECT id::text AS id, source FROM core.themes WHERE id::text = ${themeId} FOR UPDATE
+    `) as Array<{ id: string; source: string }>;
+
+    if (theme === undefined) {
+      return { ok: false as const, code: "not_found" as const };
+    }
+
+    if (theme.source === "core" && !input.active) {
+      return { ok: false as const, code: "protected_theme" as const };
+    }
+
+    await tx`
+      UPDATE core.themes SET is_active = ${input.active}, updated_at = now()
+      WHERE id = ${theme.id}
+    `;
+
+    return { ok: true as const, result: { isActive: input.active } };
+  });
 }

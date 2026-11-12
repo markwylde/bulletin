@@ -3,11 +3,13 @@ import {
   createThemePreviewToken,
   deleteThemeAsset,
   grantPreviewTheme,
+  isThemeAssetType,
   listThemeAvailability,
   listThemes,
   readThemeDetail,
   restoreThemeTemplateVersion,
   revertThemeTemplate,
+  sanitizeThemeAsset,
   saveGroupDefaultTheme,
   saveThemeAllowedGroups,
   saveThemeAsset,
@@ -15,13 +17,15 @@ import {
   saveThemeStrings,
   saveThemeTemplate,
   saveThemeTokens,
+  setThemeActive,
   type ThemeAssetInput,
   type ThemeStringInput,
+  validateTokenInput,
   validTemplateName,
   validThemeName,
   verifyThemePreviewToken,
 } from "@bulletin/domain/themes";
-import { filterThemeCss } from "@bulletin/domain/themes/css";
+import { filterThemeCss, responsiveCssIssues } from "@bulletin/domain/themes/css";
 import { isLocale, validateRuntimeCatalog } from "@bulletin/i18n";
 import { opaqueKey, type StorageClient } from "@bulletin/storage";
 import {
@@ -34,6 +38,7 @@ import type { SQL } from "bun";
 import { fileTypeFromBuffer } from "file-type";
 import { writeAdminLog } from "./admin-log.ts";
 import { userAppBaseCatalog } from "./theme-catalog.ts";
+import { checkResolvedTemplateChange, checkResolvedTokenChange } from "./theme-checks.ts";
 
 const MAX_TEMPLATE_BYTES = 1_000_000;
 const MAX_ASSET_BYTES = 2 * 1024 * 1024;
@@ -121,6 +126,40 @@ function checkTemplate(body: string): {
 
 export async function listThemesResponse(sql: SQL): Promise<Response> {
   return respond({ themes: await listThemes(sql) });
+}
+
+export async function activateThemeResponse(
+  sql: SQL,
+  actorId: string,
+  request: Request,
+): Promise<Response> {
+  const body: unknown = await request.json().catch(() => null);
+
+  if (!isRecord(body) || typeof body.active !== "boolean") {
+    return respond({ code: "invalid_request" }, 400);
+  }
+
+  const theme = themeId(body.themeId);
+
+  if (theme === null) {
+    return respond({ code: "invalid_request" }, 400);
+  }
+
+  const outcome = await setThemeActive(sql, { themeId: theme, active: body.active });
+
+  if (!outcome.ok) {
+    return failure(outcome.code);
+  }
+
+  await writeAdminLog(sql, {
+    actorMemberId: actorId,
+    action: "theme.activation.update",
+    targetType: "theme",
+    targetId: theme,
+    summary: { active: body.active },
+  });
+
+  return respond({ ok: true, isActive: outcome.result.isActive });
 }
 
 export async function availabilityResponse(sql: SQL): Promise<Response> {
@@ -268,6 +307,16 @@ export async function saveTemplateResponse(
     return invalidTemplate(check.issues, check.parseError, check.unknownHooks);
   }
 
+  const resolved = await checkResolvedTemplateChange(sql, {
+    themeId: theme,
+    name,
+    body: source,
+  });
+
+  if (resolved.length > 0) {
+    return respond({ code: "checks_failed", issues: resolved }, 400);
+  }
+
   const outcome = await saveThemeTemplate(sql, {
     themeId: theme,
     name,
@@ -307,6 +356,32 @@ export async function restoreTemplateResponse(
 
   if (theme === null || name === null || !Number.isSafeInteger(version)) {
     return respond({ code: "invalid_request" }, 400);
+  }
+
+  const detail = await readThemeDetail(sql, theme);
+  const historical = detail?.versions.find(
+    (entry) => entry.name === name && entry.version === version,
+  );
+
+  if (historical === undefined) {
+    return failure("unknown_version");
+  }
+
+  if (
+    (await checkResolvedTemplateChange(sql, { themeId: theme, name, body: historical.body }))
+      .length > 0
+  ) {
+    return respond(
+      {
+        code: "checks_failed",
+        issues: await checkResolvedTemplateChange(sql, {
+          themeId: theme,
+          name,
+          body: historical.body,
+        }),
+      },
+      400,
+    );
   }
 
   const outcome = await restoreThemeTemplateVersion(sql, {
@@ -349,6 +424,12 @@ export async function revertTemplateResponse(
     return respond({ code: "invalid_request" }, 400);
   }
 
+  const resolved = await checkResolvedTemplateChange(sql, { themeId: theme, name, body: null });
+
+  if (resolved.length > 0) {
+    return respond({ code: "checks_failed", issues: resolved }, 400);
+  }
+
   const outcome = await revertThemeTemplate(sql, { themeId: theme, name, actorId });
 
   if (!outcome.ok) {
@@ -384,7 +465,23 @@ export async function saveTokensResponse(
     return respond({ code: "invalid_request" }, 400);
   }
 
-  const outcome = await saveThemeTokens(sql, { themeId: theme, scheme, tokens: body.tokens });
+  const checked = validateTokenInput({ scheme, tokens: body.tokens });
+
+  if (checked === null) {
+    return respond({ code: "invalid_theme" }, 400);
+  }
+
+  const contrast = await checkResolvedTokenChange(sql, {
+    themeId: theme,
+    scheme,
+    tokens: checked.tokens,
+  });
+
+  if (contrast.length > 0) {
+    return respond({ code: "checks_failed", issues: contrast }, 400);
+  }
+
+  const outcome = await saveThemeTokens(sql, { themeId: theme, scheme, tokens: checked.tokens });
 
   if (!outcome.ok) {
     return failure(outcome.code);
@@ -423,6 +520,18 @@ export async function saveCssResponse(
 
   if (!filtered.ok) {
     return respond({ code: `css_${filtered.code}`, detail: filtered.detail ?? null }, 400);
+  }
+
+  const responsive = responsiveCssIssues(filtered.css);
+
+  if (responsive.length > 0) {
+    return respond(
+      {
+        code: "checks_failed",
+        issues: responsive.map((issue) => ({ code: "responsive", ...issue })),
+      },
+      400,
+    );
   }
 
   const outcome = await saveThemeCss(sql, { themeId: theme, css: filtered.css });
@@ -532,18 +641,23 @@ export async function uploadAssetResponse(
 
   const detected = await fileTypeFromBuffer(bytes);
 
-  if (detected === undefined || !ASSET_TYPES.has(detected.mime)) {
+  if (
+    detected === undefined ||
+    !ASSET_TYPES.has(detected.mime) ||
+    !isThemeAssetType(detected.mime)
+  ) {
     return respond({ code: "invalid_asset" }, 400);
   }
 
+  const sanitised = await sanitizeThemeAsset(new Uint8Array(bytes), detected.mime);
   const key = opaqueKey("theme");
-  await storage.put(key, new Uint8Array(bytes), { contentType: detected.mime });
+  await storage.put(key, sanitised.bytes, { contentType: sanitised.contentType });
 
   const input: ThemeAssetInput = {
     themeId: theme,
     name,
-    contentType: detected.mime,
-    bytes: bytes.byteLength,
+    contentType: sanitised.contentType,
+    bytes: sanitised.bytes.byteLength,
     storageKey: key,
     actorId,
   };
@@ -563,12 +677,22 @@ export async function uploadAssetResponse(
     action: "theme.asset.upload",
     targetType: "theme_asset",
     targetId: outcome.result.id,
-    summary: { themeId: theme, name, contentType: detected.mime, bytes: bytes.byteLength },
+    summary: {
+      themeId: theme,
+      name,
+      contentType: sanitised.contentType,
+      bytes: sanitised.bytes.byteLength,
+    },
   });
 
   return respond({
     ok: true,
-    asset: { id: outcome.result.id, name, contentType: detected.mime, bytes: bytes.byteLength },
+    asset: {
+      id: outcome.result.id,
+      name,
+      contentType: sanitised.contentType,
+      bytes: sanitised.bytes.byteLength,
+    },
   });
 }
 

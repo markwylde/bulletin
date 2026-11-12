@@ -36,7 +36,14 @@ describe("theme input validation", () => {
   });
 
   test("rejects values that could escape the declaration or load an external resource", () => {
-    for (const value of ["red; background: url(https://evil.example/x)", "a }", "url(/x)"]) {
+    for (const value of [
+      "red; background: url(https://evil.example/x)",
+      "a }",
+      "url(/x)",
+      'image-set("https://evil.example/x" 1x)',
+      "image(https://evil.example/x)",
+      "cross-fade(https://evil.example/x)",
+    ]) {
       expect(validateTokenInput({ scheme: "light", tokens: { accent: value } })).toBeNull();
       expect(isSafeTokenValue(value)).toBe(false);
     }

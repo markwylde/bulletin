@@ -1,4 +1,4 @@
-import { transform } from "lightningcss";
+import { type Image, transform, type Url, type Visitor } from "lightningcss";
 
 export type ThemeCssErrorCode = "syntax" | "import" | "external_url" | "expression" | "too_large";
 
@@ -22,6 +22,22 @@ function isThemeAssetUrl(value: string): boolean {
   );
 }
 
+function imageUrls(image: Image, invalid: string[]): void {
+  if (image.type === "url") {
+    if (!isThemeAssetUrl(image.value.url)) {
+      invalid.push(image.value.url);
+    }
+
+    return;
+  }
+
+  if (image.type === "image-set") {
+    for (const option of image.value.options) {
+      imageUrls(option.image, invalid);
+    }
+  }
+}
+
 /**
  * Parses and filters custom theme CSS (ADR 0008). lightningcss normalises the stylesheet,
  * which also resolves CSS escapes such as `u\72l(`, so the checks below cannot be bypassed
@@ -37,8 +53,28 @@ export function filterThemeCss(source: string): ThemeCssFilterResult {
   }
 
   let css: string;
+  const invalidUrls: string[] = [];
+  const visitor: Visitor<never> = {
+    Url(url: Url) {
+      if (!isThemeAssetUrl(url.url)) {
+        invalidUrls.push(url.url);
+      }
+    },
+    Image(image) {
+      imageUrls(image, invalidUrls);
+    },
+  };
 
   try {
+    // First pass: visit every image/url node, including image-set entries.
+    transform({
+      filename: "theme.css",
+      code: new TextEncoder().encode(source),
+      minify: false,
+      errorRecovery: false,
+      visitor,
+    });
+    // Second pass: keep lightningcss's normalised output (the visitor can simplify images).
     css = new TextDecoder().decode(
       transform({
         filename: "theme.css",
@@ -51,6 +87,11 @@ export function filterThemeCss(source: string): ThemeCssFilterResult {
     return { ok: false, code: "syntax" };
   }
 
+  if (invalidUrls.length > 0) {
+    const detail = invalidUrls[0]?.slice(0, 120);
+    return { ok: false, code: "external_url", ...(detail === undefined ? {} : { detail }) };
+  }
+
   // lightningcss recovers from some incomplete declarations instead of throwing.
   if (/:\s*;/.test(css) || (css.match(/{/g)?.length ?? 0) !== (css.match(/}/g)?.length ?? 0)) {
     return { ok: false, code: "syntax" };
@@ -58,6 +99,12 @@ export function filterThemeCss(source: string): ThemeCssFilterResult {
 
   if (/@import\b/i.test(css)) {
     return { ok: false, code: "import" };
+  }
+
+  // Defense in depth: a resource scheme that slipped past the AST (e.g. a vendor image
+  // function lightningcss preserves as a raw token) is still refused.
+  if (/(?:https?:|data:|javascript:|vbscript:)/i.test(css)) {
+    return { ok: false, code: "external_url" };
   }
 
   for (const match of css.matchAll(URL_PATTERN)) {
@@ -69,4 +116,47 @@ export function filterThemeCss(source: string): ThemeCssFilterResult {
   }
 
   return { ok: true, css };
+}
+
+export interface CssResponsiveIssue {
+  readonly property: string;
+  readonly value: string;
+}
+
+/**
+ * Static mobile-width check (ADR 0014): a fixed horizontal size wider than 360 px makes every
+ * page with that theme scroll sideways on the smallest supported screen. The design's
+ * install-time check rejects it before a browser is involved.
+ */
+export function responsiveCssIssues(source: string): readonly CssResponsiveIssue[] {
+  const issues: CssResponsiveIssue[] = [];
+  const pattern = /(?:^|[;{])\s*(min-width|width|min-inline-size|inline-size)\s*:\s*([^;{}]+)/gi;
+
+  for (const match of source.matchAll(pattern)) {
+    const property = match[1];
+    const value = match[2]?.trim();
+
+    if (property === undefined || value === undefined) {
+      continue;
+    }
+
+    const size = /^(\d+(?:\.\d+)?)(px|rem|vw)$/i.exec(value);
+
+    if (size === null) {
+      continue;
+    }
+
+    const number = Number(size[1]);
+    const unit = size[2]?.toLowerCase();
+    const tooWide =
+      (unit === "px" && number > 360) ||
+      (unit === "rem" && number > 22.5) ||
+      (unit === "vw" && number > 100);
+
+    if (tooWide) {
+      issues.push({ property, value });
+    }
+  }
+
+  return issues;
 }

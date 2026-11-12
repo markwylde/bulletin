@@ -1,9 +1,10 @@
 import {
+  loadThemeResources,
   type ThemeBundleManifest,
   type ThemeBundleString,
   validateTokenInput,
 } from "@bulletin/domain/themes";
-import { filterThemeCss } from "@bulletin/domain/themes/css";
+import { filterThemeCss, responsiveCssIssues } from "@bulletin/domain/themes/css";
 import { type Catalog, isLocale, validateRuntimeCatalog } from "@bulletin/i18n";
 import {
   checkThemeContrast,
@@ -13,9 +14,11 @@ import {
   declaredIslandsIn,
   HOOK_NAMES,
   loadDefaultThemeTokens,
+  loadTheme,
   type TemplateIssue,
   validateTemplateMarkup,
 } from "@bulletin/templates";
+import type { SQL } from "bun";
 
 const engine = createTemplateEngine({ islands: {} });
 
@@ -57,6 +60,11 @@ export type ThemeCheckIssue =
       readonly locale: string;
       readonly key: string;
       readonly message: string;
+    }
+  | {
+      readonly code: "responsive";
+      readonly property: string;
+      readonly value: string;
     };
 
 /** Islands every theme route must place. `Editor` is required on topic pages (ADR 0008). */
@@ -201,6 +209,10 @@ export async function checkThemeBundle(
       cssCode: filtered.code,
       ...(filtered.detail === undefined ? {} : { detail: filtered.detail }),
     });
+  } else {
+    for (const issue of responsiveCssIssues(filtered.css)) {
+      issues.push({ code: "responsive", ...issue });
+    }
   }
 
   issues.push(...checkStrings(manifest.strings, baseCatalog));
@@ -210,4 +222,103 @@ export async function checkThemeBundle(
     issues,
     css: filtered.ok ? filtered.css : "",
   };
+}
+
+/** Re-checks the resolved theme after a template save/restore/revert (task 6 review). */
+export async function checkResolvedTemplateChange(
+  sql: SQL,
+  input: { readonly themeId: string; readonly name: string; readonly body: string | null },
+): Promise<readonly ThemeCheckIssue[]> {
+  const loaded = await loadTheme(sql, input.themeId);
+
+  if (loaded === null) {
+    return [{ code: "missing_template", template: input.name }];
+  }
+
+  const resolved = new Map(
+    [...loaded.templates.entries()].flatMap(([name, candidates]) => {
+      const first = candidates[0];
+      return first === undefined ? [] : [[name, first.body] as const];
+    }),
+  );
+  const candidates = loaded.templates.get(input.name) ?? [];
+
+  if (input.body === null) {
+    const inherited = candidates[1];
+
+    if (inherited === undefined) {
+      resolved.delete(input.name);
+    } else {
+      resolved.set(input.name, inherited.body);
+    }
+  } else {
+    resolved.set(input.name, input.body);
+  }
+
+  const issues: ThemeCheckIssue[] =
+    input.body === null ? [] : [...checkTemplate(input.name, input.body)];
+  const seen = new Set(
+    issues.map(
+      (issue) =>
+        `${issue.code}:${"template" in issue ? issue.template : ""}:${
+          "island" in issue ? issue.island : ""
+        }`,
+    ),
+  );
+
+  for (const [name, required] of Object.entries(REQUIRED_THEME_ISLANDS)) {
+    const body = resolved.get(name);
+
+    if (body === undefined) {
+      continue;
+    }
+
+    const declared = new Set(declaredIslandsIn({ [name]: body }));
+
+    for (const island of required) {
+      const key = `missing_island:${name}:${island}`;
+
+      if (!declared.has(island) && !seen.has(key)) {
+        seen.add(key);
+        issues.push({ code: "missing_island", template: name, island });
+      }
+    }
+  }
+
+  return issues;
+}
+
+/** Re-checks WCAG contrast after a token save. */
+export async function checkResolvedTokenChange(
+  sql: SQL,
+  input: {
+    readonly themeId: string;
+    readonly scheme: "light" | "dark";
+    readonly tokens: Readonly<Record<string, string>>;
+  },
+): Promise<readonly ThemeCheckIssue[]> {
+  const loaded = await loadTheme(sql, input.themeId);
+
+  if (loaded === null) {
+    return [{ code: "invalid_tokens", scheme: input.scheme }];
+  }
+
+  const resources = await loadThemeResources(
+    sql,
+    loaded.chain.map((entry) => entry.id),
+  );
+  const defaults = await loadDefaultThemeTokens();
+  const merged = {
+    light: { ...defaults.light, ...resources.tokens.light },
+    dark: { ...defaults.dark, ...resources.tokens.dark },
+  };
+  merged[input.scheme] = { ...merged[input.scheme], ...input.tokens };
+
+  return checkThemeContrast(merged).map((issue) => ({
+    code: "contrast" as const,
+    scheme: issue.scheme,
+    foreground: issue.foreground,
+    background: issue.background,
+    ratio: issue.ratio,
+  }));
 }

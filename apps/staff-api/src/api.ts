@@ -106,6 +106,7 @@ import {
   marketplaceListResponse,
 } from "./theme-distribution.ts";
 import {
+  activateThemeResponse,
   availabilityResponse,
   createThemeResponse,
   deleteAssetResponse,
@@ -1641,6 +1642,14 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
 
       return deleteAssetResponse(sql, storage, session.memberId, request);
     },
+  },
+  {
+    id: "themes.activate",
+    method: "POST",
+    path: "/api/staff/themes/activate",
+    permission: "acp.themes",
+    handler: async ({ sql, session, request }) =>
+      activateThemeResponse(sql, session.memberId, request),
   },
   {
     id: "themes.availability",

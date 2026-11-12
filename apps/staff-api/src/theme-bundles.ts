@@ -3,9 +3,11 @@ import {
   DEV_THEME_PUBLIC_KEY,
   decodeThemeBundle,
   encodeThemeBundle,
+  isThemeAssetType,
   loadThemeResources,
   parseJwk,
   readThemeDetail,
+  sanitizeThemeAsset,
   signThemeBundle,
   type ThemeBundleAsset,
   type ThemeBundleManifest,
@@ -163,6 +165,7 @@ interface AssetWrite {
   readonly contentType: string;
   readonly bytes: number;
   readonly name: string;
+  readonly data: Uint8Array;
 }
 
 async function install(
@@ -195,15 +198,21 @@ async function install(
 
     const detected = await fileTypeFromBuffer(bytes);
 
-    if (detected === undefined || !ASSET_TYPES.has(detected.mime)) {
+    if (
+      detected === undefined ||
+      !ASSET_TYPES.has(detected.mime) ||
+      !isThemeAssetType(detected.mime)
+    ) {
       return { ok: false, code: "invalid_asset", detail: asset.name };
     }
 
+    const sanitised = await sanitizeThemeAsset(bytes, detected.mime);
     writes.push({
       key: opaqueKey("theme"),
       name: asset.name,
-      contentType: detected.mime,
-      bytes: bytes.byteLength,
+      contentType: sanitised.contentType,
+      bytes: sanitised.bytes.byteLength,
+      data: sanitised.bytes,
     });
   }
 
@@ -234,8 +243,10 @@ async function install(
       }
 
       const [theme] = (await tx`
-        INSERT INTO core.themes (name, parent_id, version, source, description, signature, created_by)
-        VALUES (${manifest.name}, ${parentId}, ${manifest.version}, ${source},
+        INSERT INTO core.themes (
+          name, parent_id, version, source, is_active, description, signature, created_by
+        )
+        VALUES (${manifest.name}, ${parentId}, ${manifest.version}, ${source}, false,
           ${manifest.description}, ${signature}, ${actorId})
         RETURNING id::text AS id
       `) as Array<{ id: string }>;
@@ -277,20 +288,8 @@ async function install(
         `;
       }
 
-      for (const [index, asset] of manifest.assets.entries()) {
-        const write = writes[index];
-
-        if (write === undefined) {
-          throw new Error("Asset write order changed");
-        }
-
-        const bytes = assets.get(asset.name);
-
-        if (bytes === undefined) {
-          throw new Error("Asset bytes disappeared");
-        }
-
-        await storage.put(write.key, bytes, { contentType: write.contentType });
+      for (const write of writes) {
+        await storage.put(write.key, write.data, { contentType: write.contentType });
         await tx`
           INSERT INTO core.theme_assets (theme_id, name, storage_key, content_type, bytes, created_by)
           VALUES (${theme.id}, ${write.name}, ${write.key}, ${write.contentType},

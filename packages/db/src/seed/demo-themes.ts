@@ -27,9 +27,9 @@ export const demoThemesSeedModule: SeedModule = {
     }
 
     const [sunset] = (await sql`
-      INSERT INTO core.themes (name, parent_id, version, source, description)
+      INSERT INTO core.themes (name, parent_id, version, source, is_active, description)
       VALUES (
-        'sunset', ${defaultTheme.id}, 1, 'custom',
+        'sunset', ${defaultTheme.id}, 1, 'custom', true,
         'A warm evening palette that inherits the default theme.'
       )
       ON CONFLICT (name) DO UPDATE
@@ -37,9 +37,9 @@ export const demoThemesSeedModule: SeedModule = {
       RETURNING id::text AS id
     `) as Array<{ id: string }>;
     const [vip] = (await sql`
-      INSERT INTO core.themes (name, parent_id, version, source, description)
+      INSERT INTO core.themes (name, parent_id, version, source, is_active, description)
       VALUES (
-        'vip-gold', ${defaultTheme.id}, 1, 'custom',
+        'vip-gold', ${defaultTheme.id}, 1, 'custom', true,
         'A gold theme available only to VIP members.'
       )
       ON CONFLICT (name) DO UPDATE

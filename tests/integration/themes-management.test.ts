@@ -30,16 +30,19 @@ import {
   saveThemeStrings,
   saveThemeTemplate,
   saveThemeTokens,
+  setThemeActive,
 } from "@bulletin/domain/themes";
 import { createServerT } from "@bulletin/i18n";
 import type { StorageClient } from "@bulletin/storage";
-import { loadTheme } from "@bulletin/templates";
+import { loadDefaultThemeTemplates, loadTheme } from "@bulletin/templates";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { authorizeStaffRoute, STAFF_ROUTES } from "../../apps/staff-api/src/api.ts";
 import {
   exchangePreviewToken,
   saveCssResponse,
   saveStringsResponse,
+  saveTemplateResponse,
+  saveTokensResponse,
   themePreviewResponse,
   uploadAssetResponse,
 } from "../../apps/staff-api/src/themes.ts";
@@ -120,7 +123,9 @@ async function childOf(
 }
 
 async function child(database: TestDatabase, name: string, actorId: string): Promise<string> {
-  return childOf(database, name, actorId);
+  const id = await childOf(database, name, actorId);
+  await setThemeActive(database.sql, { themeId: id, active: true });
+  return id;
 }
 
 integrationDescribe("theme management domain", () => {
@@ -617,27 +622,14 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
       expect(vipThemes.some((entry) => entry.id === theme)).toBe(true);
 
       // A VIP member can choose the VIP theme.
-      const [vipMember] = (await database.sql`
-        INSERT INTO core.members (display_name, name_skeleton, locale)
-        VALUES ('VIP Member', 'vipmember', 'en')
-        RETURNING id::text AS id
-      `) as Array<{ id: string }>;
-
-      if (vipMember === undefined) {
-        throw new Error("Could not create the VIP member");
-      }
-
-      await database.sql`
-        INSERT INTO core.member_groups (member_id, group_id, is_primary)
-        VALUES (${vipMember.id}, ${group("vip")}, true)
-      `;
+      const vipMember = await memberId(database, "vip-member");
       expect(
-        await saveMemberAppearance(database.sql, vipMember.id, {
+        await saveMemberAppearance(database.sql, vipMember, {
           themeId: theme,
           scheme: "dark",
         }),
       ).toMatchObject({ ok: true });
-      expect(await appearanceOptions(database.sql, vipMember.id)).toMatchObject({
+      expect(await appearanceOptions(database.sql, vipMember)).toMatchObject({
         themeId: theme,
         scheme: "dark",
       });
@@ -654,7 +646,7 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
           groupIds: [group("guests")],
         }),
       ).toMatchObject({ ok: true });
-      const lost = await appearanceOptions(database.sql, vipMember.id);
+      const lost = await appearanceOptions(database.sql, vipMember);
       expect(lost.themeId).not.toBe(theme);
 
       // The Guests group's default theme is used when no cookie names one.
@@ -756,6 +748,156 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
         }),
       );
       expect(denied.status).toBe(404);
+    });
+  }, 60_000);
+
+  test("keeps new themes inactive until activation and replaces previews atomically", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const defaultId = await themeId(database, "default");
+      const inactive = expectOk(
+        await createChildTheme(database.sql, {
+          name: "inactive-theme",
+          parentId: defaultId,
+          actorId: admin,
+        }),
+      ).id;
+      const options = await appearanceOptions(database.sql, member);
+
+      expect(options.themes.some((entry) => entry.id === inactive)).toBe(false);
+      expect(await guestThemeId(database.sql, inactive)).toBeNull();
+      expect(
+        await saveMemberAppearance(database.sql, member, {
+          themeId: inactive,
+          scheme: "system",
+        }),
+      ).toMatchObject({ ok: false, code: "not_found" });
+
+      // Previewing an inactive theme is still allowed for staff.
+      const [session] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${admin}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (session === undefined) {
+        throw new Error("Could not create the preview session");
+      }
+
+      const second = expectOk(
+        await createChildTheme(database.sql, {
+          name: "second-preview-theme",
+          parentId: defaultId,
+          actorId: admin,
+        }),
+      ).id;
+      await grantPreviewTheme(database.sql, session.id, inactive);
+      await grantPreviewTheme(database.sql, session.id, second);
+      expect(await previewThemeForSession(database.sql, session.id)).toBe(second);
+
+      expect(await setThemeActive(database.sql, { themeId: inactive, active: true })).toMatchObject(
+        {
+          ok: true,
+        },
+      );
+      const activated = await appearanceOptions(database.sql, member);
+      expect(activated.themes.some((entry) => entry.id === inactive)).toBe(true);
+
+      const [defaultTheme] = (await database.sql`
+        SELECT id::text AS id FROM core.themes WHERE name = 'default'
+      `) as Array<{ id: string }>;
+      expect(
+        await setThemeActive(database.sql, { themeId: defaultTheme?.id ?? "0", active: false }),
+      ).toMatchObject({ ok: false, code: "protected_theme" });
+    });
+  }, 60_000);
+
+  test("rejects template, token and CSS saves that break the installed theme checks", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const childId = await child(database, "save-checks-child", admin);
+      const templates = await loadDefaultThemeTemplates();
+      const topicWithoutEditor = (templates.topic ?? "").replace(
+        /\{%-?\s*island\s+"Editor"[^%]*%\}/g,
+        "",
+      );
+      const template = await saveTemplateResponse(
+        database.sql,
+        admin,
+        new Request("http://staff.localhost/api/staff/themes/template", {
+          method: "POST",
+          body: JSON.stringify({
+            themeId: childId,
+            name: "topic",
+            body: topicWithoutEditor,
+          }),
+        }),
+      );
+      expect(template.status).toBe(400);
+      expect(await template.json()).toMatchObject({ code: "checks_failed" });
+
+      const tokens = await saveTokensResponse(
+        database.sql,
+        admin,
+        new Request("http://staff.localhost/api/staff/themes/tokens", {
+          method: "POST",
+          body: JSON.stringify({
+            themeId: childId,
+            scheme: "light",
+            tokens: { accent: "#ffffff", bg: "#ffffff" },
+          }),
+        }),
+      );
+      expect(tokens.status).toBe(400);
+      expect(await tokens.json()).toMatchObject({ code: "checks_failed" });
+
+      const css = await saveCssResponse(
+        database.sql,
+        admin,
+        new Request("http://staff.localhost/api/staff/themes/css", {
+          method: "POST",
+          body: JSON.stringify({
+            themeId: childId,
+            css: "body { min-width: 2000px; }",
+          }),
+        }),
+      );
+      expect(css.status).toBe(400);
+      expect(await css.json()).toMatchObject({
+        code: "checks_failed",
+        issues: [expect.objectContaining({ code: "responsive" })],
+      });
+    });
+  }, 60_000);
+
+  test("renders the themeId a page passes instead of silently using the default", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const childId = await child(database, "page-theme-child", admin);
+      expectOk(
+        await saveThemeTemplate(database.sql, {
+          themeId: childId,
+          name: "footer",
+          body: '<footer data-theme-variant="page-child">child footer</footer>',
+          actorId: admin,
+        }),
+      );
+
+      const page = await renderThemedPage({
+        sql: database.sql,
+        boardName: "Bulletin",
+        locale: "en",
+        translate: createServerT("en", { shipped: USER_CATALOGS }),
+        template: "footer",
+        themeId: childId,
+        viewModel: { year: 2026, flags: {} },
+        breadcrumbs: [],
+        route: { route: "/", requiredIslands: [] },
+        regions: [],
+      });
+
+      expect(page.html).toContain('data-theme-variant="page-child"');
     });
   }, 60_000);
 

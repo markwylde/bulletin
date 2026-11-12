@@ -21,7 +21,11 @@ const STAFF_URL = staffBaseUrl();
 const THEMES_URL = new URL("/themes", STAFF_URL).toString();
 const USER_URL = userBaseUrl();
 
-async function createChild(view: Bun.WebView, name: string): Promise<void> {
+async function createChild(
+  view: Bun.WebView,
+  name: string,
+  options: { readonly activate?: boolean } = {},
+): Promise<void> {
   await view.navigate(THEMES_URL);
   await waitForSelector(view, "[data-theme-create]", 20_000);
   const parent = await view.evaluate<string | null>(`(() => {
@@ -42,6 +46,12 @@ async function createChild(view: Bun.WebView, name: string): Promise<void> {
   await waitForSelector(view, "[data-theme-create-submit]:not([disabled])", 20_000);
   await clickSelector(view, "[data-theme-create-submit]");
   await waitForSelector(view, "[data-theme-editor]", 20_000);
+
+  if (options.activate !== false) {
+    await waitForSelector(view, '[data-theme-activate="true"]:not([disabled])', 20_000);
+    await clickSelector(view, '[data-theme-activate="true"]');
+    await waitForSelector(view, '[data-toast-tone="success"]', 20_000);
+  }
 }
 
 async function selectFooter(view: Bun.WebView): Promise<void> {

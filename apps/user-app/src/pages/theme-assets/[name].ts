@@ -41,7 +41,10 @@ export const GET: APIRoute = async ({ params, request }) => {
       headers: {
         "content-type": asset.contentType,
         "cache-control":
-          requested.preview || session !== null ? "private, max-age=60" : "public, max-age=300",
+          requested.preview || session !== null
+            ? "private, no-store"
+            : "public, max-age=0, must-revalidate",
+        vary: "Cookie",
         "x-content-type-options": "nosniff",
       },
     });

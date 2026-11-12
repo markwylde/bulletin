@@ -61,6 +61,9 @@ users:
   - sub: member-2
     email: member-2@bulletin.test
     name: Regular Member Two
+  - sub: vip-member
+    email: vip-member@bulletin.test
+    name: VIP Member
   - sub: new-member
     email: new-member@bulletin.test
     name: New Member

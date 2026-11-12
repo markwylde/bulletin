@@ -307,6 +307,7 @@ describe("darkauth-mock config", () => {
       "member-mod",
       "member-1",
       "member-2",
+      "vip-member",
       "new-member",
       "banned-member",
       "warned-member",
