@@ -284,6 +284,7 @@ export async function saveContent(
     context: options.context,
     authorId: options.authorId,
     ...(checks?.blockedWords === undefined ? {} : { blockedWords: checks.blockedWords }),
+    ...(checks?.blockedAnyWords === undefined ? {} : { blockedAnyWords: checks.blockedAnyWords }),
     ...(checks?.maxLinks === undefined ? {} : { maxLinks: checks.maxLinks }),
   });
 

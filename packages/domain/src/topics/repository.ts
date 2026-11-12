@@ -583,6 +583,21 @@ export async function deleteTopicRow(tx: SQL, topicId: string): Promise<void> {
   );
 }
 
+/** Recent posts by one author, used by the anti-spam rate rule. */
+export async function countRecentPostsByAuthor(
+  sql: SQL,
+  authorId: string,
+  minutes: number,
+): Promise<number> {
+  const [row] = (await sql`
+    SELECT count(*)::int AS count FROM core.posts
+    WHERE author_id = ${authorId}
+      AND created_at > now() - make_interval(mins => ${minutes})
+  `) as Array<{ count: number }>;
+
+  return row?.count ?? 0;
+}
+
 export async function visiblePostCount(tx: SQL, topicId: string): Promise<number> {
   const rows = (await tx`
     SELECT count(*)::int AS count FROM core.posts

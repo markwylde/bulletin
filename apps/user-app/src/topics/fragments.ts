@@ -1,4 +1,5 @@
 import { GLOBAL_CACHE_TAGS, memberTag, type RenderCache, topicViewsTag } from "@bulletin/cache";
+import type { ReplaceWords } from "@bulletin/content";
 import { type ReputationLabel, reputationLabelFor } from "@bulletin/domain/reputation";
 import {
   loadMemberCards,
@@ -135,9 +136,10 @@ export async function renderMemberCards(
   avatarEnabled = true,
   reputation: ReputationDisplay | null = null,
   badgesEnabled = true,
+  replaceWords?: ReplaceWords,
 ): Promise<ReadonlyMap<string, string>> {
   const unique = [...new Set(memberIds)];
-  const cards = await loadMemberCards(sql, unique, locale);
+  const cards = await loadMemberCards(sql, unique, locale, replaceWords);
   const rendered = new Map<string, string>();
 
   for (const id of unique) {
@@ -155,6 +157,7 @@ export async function renderMemberCards(
         GLOBAL_CACHE_TAGS.badges,
         GLOBAL_CACHE_TAGS.flags,
         GLOBAL_CACHE_TAGS.board,
+        GLOBAL_CACHE_TAGS.filters,
       ],
       prepare: async () => ({
         key: `member-card:${id}:${locale}:avatar=${avatarEnabled ? "on" : "off"}:badges=${

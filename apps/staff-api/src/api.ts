@@ -29,6 +29,7 @@ import { loadBoardSettings, saveBoardSettings } from "./board-settings.ts";
 import { listEmbedProvidersForStaff, mutateEmbedProvider } from "./embeds.ts";
 import { emoticonImageForStaff, listEmoticonsForStaff, mutateEmoticon } from "./emoticons.ts";
 import { staffFeatureFlags, staffFlagEnabled } from "./features.ts";
+import { filterSettingsResponse, mutateFilterResponse } from "./filters.ts";
 import { listFlagLog, listFlags, saveFlagRules } from "./flags.ts";
 import {
   createForum,
@@ -1017,6 +1018,20 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/dashboard/moderation",
     permission: "acp.members",
     handler: async ({ sql, session }) => staffQueueCountResponse(sql, session),
+  },
+  {
+    id: "filters.settings",
+    method: "GET",
+    path: "/api/staff/filters",
+    permission: "acp.filters",
+    handler: async ({ sql }) => filterSettingsResponse(sql),
+  },
+  {
+    id: "filters.settings.mutate",
+    method: "POST",
+    path: "/api/staff/filters",
+    permission: "acp.filters",
+    handler: async ({ sql, request }) => mutateFilterResponse(sql, request),
   },
   {
     id: "warnings.settings",

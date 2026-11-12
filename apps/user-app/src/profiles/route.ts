@@ -1,5 +1,6 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
 import { readBoardSettings } from "@bulletin/domain/board";
+import { loadReplaceWords } from "@bulletin/domain/filters";
 import {
   GUEST_PRINCIPAL,
   loadForumTree,
@@ -148,11 +149,12 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
     // the ETag must cover the rendered HTML or revalidation keeps the stale activity.
     contentValidator: true,
     prepare: async () => {
-      const [theme, settings, flags, tree] = await Promise.all([
+      const [theme, settings, flags, tree, replaceWords] = await Promise.all([
         loadActiveTheme(input.sql),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session),
         loadForumTree(input.sql),
+        loadReplaceWords(input.sql),
       ]);
       const snapshot = await loadPermissionSnapshot(input.sql, principal, {
         tree,
@@ -167,6 +169,7 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
         snapshot,
         locale: input.locale,
         translate: input.translate,
+        replaceWords,
       });
       const boardName = boardNameFrom(settings.boardName, input.translate);
 

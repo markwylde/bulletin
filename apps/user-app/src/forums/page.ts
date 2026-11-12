@@ -1,4 +1,4 @@
-import { ensureCurrentRendering } from "@bulletin/content";
+import { ensureCurrentRendering, type ReplaceWords, replaceWordsInText } from "@bulletin/content";
 import { listEmbedProviders } from "@bulletin/domain/content";
 import {
   type ForumPrefix,
@@ -128,6 +128,7 @@ export interface ForumPageInput {
   readonly pollsEnabled?: boolean;
   /** The viewer's evaluated `attachments` flag; off hides uploads and attachment UI. */
   readonly attachmentsEnabled?: boolean;
+  readonly replaceWords?: ReplaceWords;
 }
 
 export interface ForumPageBreadcrumb {
@@ -424,7 +425,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     );
   const topics: ForumPageTopic[] = topicList.rows.map((topic) => ({
     id: topic.id,
-    title: topic.title,
+    title: replaceWordsInText(topic.title, input.replaceWords),
     href:
       topic.movedTo === null
         ? canonicalUrl("topic", topic.id, topic.slug)

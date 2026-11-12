@@ -21,8 +21,10 @@ export interface SaveCheckContext {
   readonly profile: ContentProfile;
   readonly context: SourceContext;
   readonly authorId: string;
-  /** Supplied by `moderation` once the board's filter list exists. */
+  /** Whole-word block rules supplied by `moderation`. */
   readonly blockedWords?: readonly string[];
+  /** Substring block rules (`match any`) supplied by `moderation`. */
+  readonly blockedAnyWords?: readonly string[];
   /** Supplied by `moderation` once link limits are configurable. */
   readonly maxLinks?: number;
 }
@@ -43,14 +45,19 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Counts anchors on the HAST so autolinks and raw HTML anchors are included too. */
-function countLinks(content: string): number {
+function contentTree(content: string): HastRoot {
   const processor = unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype, { allowDangerousHtml: true })
     .use(rehypeRaw);
-  const tree = processor.runSync(processor.parse(content)) as HastRoot;
+
+  return processor.runSync(processor.parse(content)) as HastRoot;
+}
+
+/** Counts anchors on the HAST so autolinks and raw HTML anchors are included too. */
+export function countContentLinks(content: string): number {
+  const tree = contentTree(content);
   let count = 0;
 
   visit(tree, "element", (node) => {
@@ -60,6 +67,41 @@ function countLinks(content: string): number {
   });
 
   return count;
+}
+
+export function countContentImages(content: string): number {
+  const tree = contentTree(content);
+  let count = 0;
+
+  visit(tree, "element", (node) => {
+    if (node.tagName === "img") {
+      count += 1;
+    }
+  });
+
+  return count;
+}
+
+/** Every anchor target in the content, including autolinks and raw HTML anchors. */
+export function contentLinkHosts(content: string): readonly string[] {
+  const tree = contentTree(content);
+  const hosts: string[] = [];
+
+  visit(tree, "element", (node) => {
+    if (node.tagName !== "a" || typeof node.properties.href !== "string") {
+      return;
+    }
+
+    try {
+      hosts.push(
+        new URL(node.properties.href, "https://placeholder.invalid").hostname.toLowerCase(),
+      );
+    } catch {
+      // A malformed href is ignored by the sanitiser too.
+    }
+  });
+
+  return hosts;
 }
 
 /** Block words are checked before persistence (ADR 0007). */
@@ -82,6 +124,12 @@ export const badWordsStage: BeforeSaveStage = {
       throw new ContentError("blocked_word", "Content contains a blocked word");
     }
 
+    const anyWords = context.blockedAnyWords ?? [];
+
+    if (anyWords.some((word) => content.toLowerCase().includes(word.toLowerCase()))) {
+      throw new ContentError("blocked_word", "Content contains a blocked word");
+    }
+
     return content;
   },
 };
@@ -95,7 +143,7 @@ export const linkLimitStage: BeforeSaveStage = {
       return content;
     }
 
-    if (countLinks(content) > context.maxLinks) {
+    if (countContentLinks(content) > context.maxLinks) {
       throw new ContentError(
         "too_many_links",
         `Content may contain at most ${context.maxLinks} links`,

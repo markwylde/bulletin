@@ -159,7 +159,9 @@
   {% if canReply and editor %}
     <section class="bl-card" data-reply-section>
       <button class="bl-button" type="button" data-reply-toggle>{% t "post.reply" %}</button>
-      <form class="bl-topic-form" data-reply-form data-topic-id="{{ topicId }}" hidden>
+      <form class="bl-topic-form" data-reply-form data-topic-id="{{ topicId }}" hidden
+        data-label-blocked-word="{% t "topic.blockedWord" %}"
+        data-label-too-many-links="{% t "topic.tooManyLinks" %}">
         {% island "Editor" editor %}
         <button class="bl-button" type="submit" data-reply-submit>{% t "post.submitReply" %}</button>
         <p class="bl-error-text" data-form-error hidden>{% t "topic.postFailed" %}</p>

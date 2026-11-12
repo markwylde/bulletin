@@ -1,3 +1,4 @@
+import { type ReplaceWords, replaceWordsInText } from "@bulletin/content";
 import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { can } from "../../permissions/can.ts";
@@ -749,6 +750,7 @@ export async function loadMemberCards(
   sql: SQL,
   memberIds: readonly string[],
   locale: Locale,
+  replaceWords?: ReplaceWords,
 ): Promise<ReadonlyMap<string, MemberCardRecord>> {
   if (memberIds.length === 0) {
     return new Map();
@@ -812,13 +814,15 @@ export async function loadMemberCards(
       row.id,
       {
         id: row.id,
-        displayName: row.display_name,
+        displayName:
+          row.display_name === null ? null : replaceWordsInText(row.display_name, replaceWords),
         postCount: row.post_count,
         groupTitle: row.group_title,
         joinedAt: row.joined_at,
         avatarHash: row.avatar_hash,
         reputation: row.reputation,
-        customTitle: row.custom_title,
+        customTitle:
+          row.custom_title === null ? null : replaceWordsInText(row.custom_title, replaceWords),
         rankTitle:
           row.rank_title_local === null || row.rank_title_local === ""
             ? null

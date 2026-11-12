@@ -1541,3 +1541,30 @@ textarea.form-input {
   height: 24px;
   object-fit: contain;
 }
+
+/* Filter manager: long words/domains wrap instead of widening the 360 px layout. */
+[data-page="filters"] .admin-panel,
+[data-page="filters"] .admin-form,
+[data-page="filters"] .admin-list,
+[data-page="filters"] .admin-list li {
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-page="filters"] .admin-form input,
+[data-page="filters"] .admin-form select {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+[data-page="filters"] .admin-list {
+  list-style: none;
+  padding: 0;
+}
+
+[data-page="filters"] .admin-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}

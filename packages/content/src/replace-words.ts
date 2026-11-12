@@ -34,6 +34,11 @@ function replacer(rules: readonly ReplaceWords["rules"][number][]): (value: stri
   return (value) => value.replace(pattern, (match) => byWord.get(match.toLowerCase()) ?? match);
 }
 
+/** Applies replace words to plain display text (titles, names, labels). */
+export function replaceWordsInText(value: string, replaceWords?: ReplaceWords): string {
+  return replaceWords === undefined ? value : replacer(replaceWords.rules)(value);
+}
+
 /** Applies replace words to HAST text nodes only; `body_md` is never touched (ADR 0007). */
 export function transformReplaceWords(tree: Root, replaceWords?: ReplaceWords): void {
   if (replaceWords === undefined || replaceWords.rules.length === 0) {

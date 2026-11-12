@@ -1,5 +1,6 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
 import { type BoardSettings, readBoardSettings } from "@bulletin/domain/board";
+import { loadReplaceWords } from "@bulletin/domain/filters";
 import { showVisibleForum } from "@bulletin/domain/forums";
 import {
   CapabilityView,
@@ -343,11 +344,12 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     prepare: async () => {
-      const [theme, freshSettings, flags, freshTree] = await Promise.all([
+      const [theme, freshSettings, flags, freshTree, replaceWords] = await Promise.all([
         loadActiveTheme(input.sql),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session),
         loadForumTree(input.sql),
+        loadReplaceWords(input.sql),
       ]);
       const freshSnapshot = await loadPermissionSnapshot(input.sql, principal, {
         tree: freshTree,
@@ -408,6 +410,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
               pollsEnabled: flags.values.polls === true,
               attachmentsEnabled: flags.values.attachments === true,
               publicEditHistory: freshSettings.publicEditHistory,
+              replaceWords,
             });
           }
         }
@@ -527,6 +530,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
             }
           : null,
         latest?.flags.values.badges === true,
+        latest?.page?.replaceWords,
       ),
       signaturesEnabled
         ? renderMemberSignatures(
@@ -535,6 +539,8 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
             pageData.memberIds,
             input.locale,
             input.translate,
+            undefined,
+            pageData.replaceWords,
           )
         : Promise.resolve(new Map<string, string>()),
       pageData.pollId === null

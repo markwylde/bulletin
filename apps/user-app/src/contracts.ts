@@ -113,6 +113,7 @@ export const forumContract = defineContract<ForumViewModel>({
   tags: (model) =>
     [
       GLOBAL_CACHE_TAGS.board,
+      GLOBAL_CACHE_TAGS.filters,
       GLOBAL_CACHE_TAGS.announcements,
       forumAnnouncementsTag(model.forumId),
       ...model.ancestorIds.map(forumTag),
@@ -131,6 +132,7 @@ export const topicContract = defineContract<TopicViewModel>({
     topicTag(model.topicId),
     topicPagesTag(model.topicId),
     GLOBAL_CACHE_TAGS.board,
+    GLOBAL_CACHE_TAGS.filters,
     ...model.forumIds.map(forumTag),
     ...(model.quoteTopicIds ?? []).map(topicTag),
     ...(model.quotePostIds ?? []).map(postSnapshotsTag),
@@ -188,6 +190,7 @@ export const profileContract = defineContract<ProfileViewModel>({
     GLOBAL_CACHE_TAGS.badges,
     GLOBAL_CACHE_TAGS.ranks,
     GLOBAL_CACHE_TAGS.board,
+    GLOBAL_CACHE_TAGS.filters,
   ],
   cdnCacheable: true,
   requiredIslands: ["LanguageSwitcher"],
@@ -326,7 +329,7 @@ export const conversationsContract = defineContract<AccountViewModel>({
   route: "/conversations",
   templates: { page: "conversations", regions: ["header", "breadcrumbs", "empty", "footer"] },
   deps: [],
-  tags: (model) => [`member:${model.memberId}`],
+  tags: (model) => [`member:${model.memberId}`, GLOBAL_CACHE_TAGS.filters],
   cdnCacheable: false,
   requiredIslands: ["LanguageSwitcher"],
 });
@@ -335,7 +338,7 @@ export const conversationContract = defineContract<AccountViewModel>({
   route: "/conversations/[ref]",
   templates: { page: "conversation", regions: ["header", "breadcrumbs", "empty", "footer"] },
   deps: [],
-  tags: (model) => [`member:${model.memberId}`],
+  tags: (model) => [`member:${model.memberId}`, GLOBAL_CACHE_TAGS.filters],
   cdnCacheable: false,
   requiredIslands: ["LanguageSwitcher"],
 });

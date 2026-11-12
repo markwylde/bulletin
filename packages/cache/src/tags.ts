@@ -31,6 +31,8 @@ export const GLOBAL_CACHE_TAGS = {
   reactions: "reactions",
   /** Board name, description, locale and offline state: the shared home shell. */
   board: "board",
+  /** Bad-word replace rules: every rendered content fragment rebuilds when they change. */
+  filters: "filters",
 } as const;
 
 const RESOURCE_ID = /^\d+$/;

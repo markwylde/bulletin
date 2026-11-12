@@ -1,7 +1,8 @@
-import { ContentError, renderContent, renderSnapshot, saveContent } from "@bulletin/content";
+import { renderContent, renderSnapshot } from "@bulletin/content";
 import type { Locale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { readMemberBadges } from "../badges/repository.ts";
+import { isBlockedText } from "../filters/repository.ts";
 import { runMutation } from "../mutations/index.ts";
 import { memberProfileMutation, profileFieldMutation } from "../mutations/members.ts";
 import { can } from "../permissions/can.ts";
@@ -434,6 +435,10 @@ export async function validateMemberSignature(
     return { ok: false, code: "signature_too_many_lines", limit: limits.maxLines };
   }
 
+  if (await isBlockedText(sql, bodyMd)) {
+    return { ok: false, code: "blocked_word" };
+  }
+
   const rendered = await renderContent(bodyMd, {
     profile: "signature",
     context: { kind: "forum_post", forumId: "0" },
@@ -485,6 +490,10 @@ export async function saveMemberProfile(
   const aboutMd = input.aboutMd;
   const byId = new Map(input.fields.map((field) => [field.id, field]));
 
+  if (await isBlockedText(sql, aboutMd)) {
+    return { ok: false, code: "blocked_word" };
+  }
+
   if (aboutMd.length > 20_000) {
     return { ok: false, code: "invalid" };
   }
@@ -506,6 +515,17 @@ export async function saveMemberProfile(
     }
 
     if (result.value !== null) {
+      const rawText =
+        typeof result.value === "string"
+          ? result.value
+          : Array.isArray(result.value)
+            ? result.value.join(" ")
+            : "";
+
+      if (rawText !== "" && (await isBlockedText(sql, rawText))) {
+        return { ok: false, code: "blocked_word", fieldId: field.id };
+      }
+
       normalized.set(field.id, result.value);
     }
 
@@ -548,21 +568,16 @@ export async function saveMemberProfile(
       };
     }
 
-    try {
-      const rendered = await saveContent(titleText, {
-        profile: "profile_field",
-        context: { kind: "forum_post", forumId: "0" },
-        authorId: input.memberId,
-        checks: { blockedWords: input.blockedWords ?? [] },
-      });
-      customTitle = rendered.bodyText.trim() === "" ? null : rendered.bodyText.trim();
-    } catch (error) {
-      if (error instanceof ContentError && error.code === "blocked_word") {
-        return { ok: false, code: "blocked_word" };
-      }
-
-      throw error;
+    if (
+      (await isBlockedText(sql, titleText)) ||
+      (input.blockedWords ?? []).some((word) =>
+        titleText.toLowerCase().includes(word.toLowerCase()),
+      )
+    ) {
+      return { ok: false, code: "blocked_word" };
     }
+
+    customTitle = titleText;
   }
 
   if (typeof customTitle === "string" && customTitle.trim() === "") {

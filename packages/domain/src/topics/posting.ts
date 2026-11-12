@@ -1,10 +1,25 @@
-import type { RenderResult, ReplaceWords } from "@bulletin/content";
-import { saveContent } from "@bulletin/content";
+import {
+  ContentError,
+  countContentImages,
+  countContentLinks,
+  type RenderResult,
+  type ReplaceWords,
+  saveContent,
+} from "@bulletin/content";
 import type { SQL } from "bun";
 import { syncPostAttachments } from "../attachments/store.ts";
 import { redactQuoteSnapshotsInTransaction } from "../content/quotes.ts";
 import { loadContentRenderDependencies } from "../content/rendering.ts";
 import { emit } from "../events/outbox.ts";
+import {
+  bodyHash,
+  evaluateSpam,
+  isBlockedText,
+  loadBlockWords,
+  loadReplaceWords,
+  readLinkPolicy,
+  recordDuplicate,
+} from "../filters/repository.ts";
 import { autoFollowTopic } from "../follows/repository.ts";
 import { decideApproval } from "../moderation/approval/repository.ts";
 import { runMutation } from "../mutations/index.ts";
@@ -109,7 +124,12 @@ async function savePostContent(
     readonly options: PostWriteOptions;
   },
 ): Promise<RenderResult> {
-  const dependencies = await loadContentRenderDependencies(tx);
+  const [dependencies, replaceWords, blocked] = await Promise.all([
+    loadContentRenderDependencies(tx),
+    loadReplaceWords(tx),
+    loadBlockWords(tx),
+  ]);
+  const overrideReplace = input.options.replaceWords ?? replaceWords;
 
   return saveContent(input.bodyMd, {
     profile: "post",
@@ -119,9 +139,11 @@ async function savePostContent(
     ...(input.options.mentions === false ? {} : { mentions: dependencies.mentions }),
     embeds: dependencies.embeds,
     quotes: createPostQuotePipeline(tx, input.tree, input.sessionId),
-    ...(input.options.replaceWords === undefined
-      ? {}
-      : { replaceWords: input.options.replaceWords }),
+    replaceWords: overrideReplace,
+    checks: {
+      blockedWords: blocked.whole,
+      blockedAnyWords: blocked.any,
+    },
   });
 }
 
@@ -149,6 +171,10 @@ export async function startTopic(
 
   if (blockedBefore !== null) {
     return { ok: false, code: blockedBefore };
+  }
+
+  if (await isBlockedText(sql, title)) {
+    return { ok: false, code: "blocked_word" };
   }
 
   const forum = await loadForumTarget(sql, input.forumId);
@@ -231,22 +257,66 @@ export async function startTopic(
           reject(blocked);
         }
 
+        if (await isBlockedText(tx, title)) {
+          reject("blocked_word");
+        }
+
+        const linkPolicy = await readLinkPolicy(tx, input.actorId);
+        const links = countContentLinks(bodyMd);
+        const images = countContentImages(bodyMd);
+        const linkViolation =
+          !linkPolicy.exempt &&
+          ((linkPolicy.maxLinks > 0 && links > linkPolicy.maxLinks) ||
+            (!linkPolicy.imagesAllowed && images > 0));
+
+        if (linkViolation && linkPolicy.action === "reject") {
+          reject("too_many_links");
+        }
+
+        let filterReason: string | null = linkViolation ? "link_limit" : null;
+        let rendered: RenderResult;
+
+        try {
+          rendered = await savePostContent(tx, {
+            bodyMd,
+            authorId: input.actorId,
+            forumId: forum.id,
+            tree,
+            sessionId: input.sessionId ?? null,
+            options,
+          });
+        } catch (error) {
+          if (
+            error instanceof ContentError &&
+            (error.code === "blocked_word" || error.code === "too_many_links")
+          ) {
+            reject(error.code);
+          }
+
+          throw error;
+        }
+
+        const spam = await evaluateSpam(tx, {
+          authorId: input.actorId,
+          bodyText: rendered.bodyText,
+          bodyMd: rendered.bodyMd,
+          hash: bodyHash(rendered.bodyText),
+        });
+
+        if (spam.rule !== null) {
+          filterReason = spam.rule;
+        }
+
         const approval = await decideApproval(tx, {
           actorId: input.actorId,
           forumId: forum.id,
-          content: { kind: "topic" },
+          content: { kind: "topic", filterFlagged: filterReason !== null },
           tree: freshTree,
           sessionId: input.sessionId ?? null,
         });
-        const visibility = approval.hold ? "unapproved" : "visible";
-        const rendered = await savePostContent(tx, {
-          bodyMd,
-          authorId: input.actorId,
-          forumId: forum.id,
-          tree,
-          sessionId: input.sessionId ?? null,
-          options,
-        });
+        const hold = approval.hold || filterReason !== null;
+        const holdReason = filterReason ?? approval.reason;
+        const visibility = hold ? "unapproved" : "visible";
         const topicId = await insertTopic(tx, {
           forumId: forum.id,
           title,
@@ -254,7 +324,7 @@ export async function startTopic(
           prefixId,
           starterId: input.actorId,
           visibility,
-          holdReason: approval.reason,
+          holdReason,
         });
         const post = await insertPost(tx, {
           topicId,
@@ -270,7 +340,7 @@ export async function startTopic(
             .filter((source) => source.kind === "post")
             .map((source) => source.id),
           visibility,
-          holdReason: approval.reason,
+          holdReason,
         });
 
         await syncPostAttachments(tx, {
@@ -291,11 +361,13 @@ export async function startTopic(
           postId: post.id,
           authorId: input.actorId,
           createdAt: post.createdAt,
-          visible: !approval.hold,
+          visible: !hold,
         });
 
+        await recordDuplicate(tx, input.actorId, bodyHash(rendered.bodyText));
+
         // Held content is not a public domain fact yet; approval emits `post.approved`.
-        if (!approval.hold) {
+        if (!hold) {
           await emit(tx, {
             type: "topic.created",
             aggregateId: BigInt(topicId),
@@ -447,21 +519,61 @@ export async function reply(
           reject(blocked);
         }
 
+        const linkPolicy = await readLinkPolicy(tx, input.actorId);
+        const links = countContentLinks(bodyMd);
+        const images = countContentImages(bodyMd);
+        const linkViolation =
+          !linkPolicy.exempt &&
+          ((linkPolicy.maxLinks > 0 && links > linkPolicy.maxLinks) ||
+            (!linkPolicy.imagesAllowed && images > 0));
+
+        if (linkViolation && linkPolicy.action === "reject") {
+          reject("too_many_links");
+        }
+
+        let filterReason: string | null = linkViolation ? "link_limit" : null;
+        let rendered: RenderResult;
+
+        try {
+          rendered = await savePostContent(tx, {
+            bodyMd,
+            authorId: input.actorId,
+            forumId: current.forumId,
+            tree,
+            sessionId: input.sessionId ?? null,
+            options,
+          });
+        } catch (error) {
+          if (
+            error instanceof ContentError &&
+            (error.code === "blocked_word" || error.code === "too_many_links")
+          ) {
+            reject(error.code);
+          }
+
+          throw error;
+        }
+
+        const spam = await evaluateSpam(tx, {
+          authorId: input.actorId,
+          bodyText: rendered.bodyText,
+          bodyMd: rendered.bodyMd,
+          hash: bodyHash(rendered.bodyText),
+        });
+
+        if (spam.rule !== null) {
+          filterReason = spam.rule;
+        }
+
         const approval = await decideApproval(tx, {
           actorId: input.actorId,
           forumId: current.forumId,
-          content: { kind: "post" },
+          content: { kind: "post", filterFlagged: filterReason !== null },
           tree: freshTree,
           sessionId: input.sessionId ?? null,
         });
-        const rendered = await savePostContent(tx, {
-          bodyMd,
-          authorId: input.actorId,
-          forumId: current.forumId,
-          tree,
-          sessionId: input.sessionId ?? null,
-          options,
-        });
+        const hold = approval.hold || filterReason !== null;
+        const holdReason = filterReason ?? approval.reason;
         const post = await insertPost(tx, {
           topicId: current.id,
           authorId: input.actorId,
@@ -475,8 +587,8 @@ export async function reply(
           quotedPostIds: rendered.quoteSources
             .filter((source) => source.kind === "post")
             .map((source) => source.id),
-          visibility: approval.hold ? "unapproved" : "visible",
-          holdReason: approval.reason,
+          visibility: hold ? "unapproved" : "visible",
+          holdReason,
         });
 
         await syncPostAttachments(tx, {
@@ -487,16 +599,18 @@ export async function reply(
           bodyHtml: rendered.bodyHtml,
         });
 
+        await recordDuplicate(tx, input.actorId, bodyHash(rendered.bodyText));
+
         await recordReply(tx, {
           topicId: current.id,
           forumId: current.forumId,
           postId: post.id,
           authorId: input.actorId,
           createdAt: post.createdAt,
-          visible: !approval.hold,
+          visible: !hold,
         });
 
-        if (!approval.hold) {
+        if (!hold) {
           await emit(tx, {
             type: "post.created",
             aggregateId: BigInt(post.id),
@@ -642,14 +756,27 @@ export async function editPost(
 
         await insertPostRevision(tx, current);
 
-        const rendered = await savePostContent(tx, {
-          bodyMd,
-          authorId: input.actorId,
-          forumId: current.forumId,
-          tree,
-          sessionId: input.sessionId ?? null,
-          options,
-        });
+        let rendered: RenderResult;
+
+        try {
+          rendered = await savePostContent(tx, {
+            bodyMd,
+            authorId: input.actorId,
+            forumId: current.forumId,
+            tree,
+            sessionId: input.sessionId ?? null,
+            options,
+          });
+        } catch (error) {
+          if (
+            error instanceof ContentError &&
+            (error.code === "blocked_word" || error.code === "too_many_links")
+          ) {
+            reject(error.code);
+          }
+
+          throw error;
+        }
 
         await updatePostRendering(tx, {
           postId: current.id,

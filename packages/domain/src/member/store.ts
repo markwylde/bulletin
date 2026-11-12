@@ -1,5 +1,6 @@
 import { isLocale, type Locale, resolveRequestLocale } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import { isBlockedText } from "../filters/repository.ts";
 import { NAME_CHANGE_INTERVAL_MS } from "./names.ts";
 
 export interface MemberRecord {
@@ -19,7 +20,8 @@ export type UpdateDisplayNameResult =
   | { readonly kind: "ok"; readonly displayName: string }
   | { readonly kind: "missing" }
   | { readonly kind: "taken" }
-  | { readonly kind: "limit"; readonly nextAllowedAt: Date };
+  | { readonly kind: "limit"; readonly nextAllowedAt: Date }
+  | { readonly kind: "blocked_word" };
 
 function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
@@ -81,6 +83,10 @@ export async function updateDisplayName(
   memberId: string,
   input: { readonly name: string; readonly skeleton: string },
 ): Promise<UpdateDisplayNameResult> {
+  if (await isBlockedText(sql, input.name)) {
+    return { kind: "blocked_word" };
+  }
+
   try {
     return await sql.begin(async (tx) => {
       const [member] = (await tx`

@@ -1,8 +1,9 @@
-import { saveContent } from "@bulletin/content";
+import { ContentError, type RenderResult, saveContent } from "@bulletin/content";
 import type { SQL } from "bun";
 import { syncConversationMessageAttachments } from "../attachments/index.ts";
 import { loadContentRenderDependencies } from "../content/rendering.ts";
 import { emit } from "../events/outbox.ts";
+import { isBlockedText, loadBlockWords, loadReplaceWords } from "../filters/repository.ts";
 import {
   conversationParticipantMutation,
   conversationReplyMutation,
@@ -31,7 +32,7 @@ const MEMBER_ID = /^[1-9]\d{0,18}$/;
 
 export type ReplyFailure = {
   readonly ok: false;
-  readonly code: "not_found" | "pm_disabled" | "invalid_body";
+  readonly code: "not_found" | "pm_disabled" | "invalid_body" | "blocked_word";
 };
 
 export type ConversationParticipantFailure =
@@ -106,19 +107,37 @@ export async function replyToConversation(
         return { ok: false, code: "pm_disabled" };
       }
 
-      const [dependencies, lang] = await Promise.all([
+      if (await isBlockedText(tx, bodyMd)) {
+        return { ok: false, code: "blocked_word" };
+      }
+
+      const [dependencies, lang, replaceWords, blocked] = await Promise.all([
         loadContentRenderDependencies(tx),
         readMemberSearchConfig(tx, input.actorId),
+        loadReplaceWords(tx),
+        loadBlockWords(tx),
       ]);
-      const rendered = await saveContent(bodyMd, {
-        profile: "post",
-        context: { kind: "conversation_message", conversationId: input.conversationId },
-        authorId: input.actorId,
-        emoticons: dependencies.emoticons,
-        mentions: dependencies.mentions,
-        embeds: dependencies.embeds,
-        quotes: createConversationQuotePipeline(tx, input.conversationId),
-      });
+      let rendered: RenderResult;
+
+      try {
+        rendered = await saveContent(bodyMd, {
+          profile: "post",
+          context: { kind: "conversation_message", conversationId: input.conversationId },
+          authorId: input.actorId,
+          emoticons: dependencies.emoticons,
+          mentions: dependencies.mentions,
+          embeds: dependencies.embeds,
+          quotes: createConversationQuotePipeline(tx, input.conversationId),
+          replaceWords,
+          checks: { blockedWords: blocked.whole, blockedAnyWords: blocked.any },
+        });
+      } catch (error) {
+        if (error instanceof ContentError && error.code === "blocked_word") {
+          return { ok: false, code: "blocked_word" };
+        }
+
+        throw error;
+      }
       const message = await insertConversationMessage(tx, {
         conversationId: input.conversationId,
         authorId: input.actorId,

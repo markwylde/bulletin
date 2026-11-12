@@ -19,6 +19,7 @@ import {
   loadContentRenderDependencies,
   quoteSnapshotTags,
 } from "@bulletin/domain/content";
+import { loadReplaceWords } from "@bulletin/domain/filters";
 import { evaluateFlag, GUEST_VIEWER } from "@bulletin/flags";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
@@ -82,14 +83,15 @@ async function renderOptionsFor(
     return options;
   }
 
-  const [dependencies, mentionsEnabled] = await Promise.all([
+  const [dependencies, mentionsEnabled, replaceWords] = await Promise.all([
     loadContentRenderDependencies(sql),
     siteWideFlag(sql, "mentions"),
+    options.replaceWords === undefined ? loadReplaceWords(sql) : options.replaceWords,
   ]);
   const mentions = options.mentions ?? (mentionsEnabled ? dependencies.mentions : undefined);
 
   return {
-    ...(options.replaceWords === undefined ? {} : { replaceWords: options.replaceWords }),
+    replaceWords,
     emoticons: options.emoticons ?? dependencies.emoticons,
     ...(mentions === undefined ? {} : { mentions }),
     embeds: options.embeds ?? dependencies.embeds,
@@ -571,7 +573,8 @@ export async function runContentRerenderJob(
   const sources =
     options.sources ??
     (options.source === undefined ? [quoteSnapshotRerenderSource] : [options.source]);
-  const versions = options.versions ?? currentContentVersions(options.replaceWords);
+  const replaceWords = options.replaceWords ?? (await loadReplaceWords(sql));
+  const versions = options.versions ?? currentContentVersions(replaceWords);
   const batchSize = options.batchSize ?? CONTENT_RERENDER_BATCH;
   const maxBatches = options.maxBatches ?? Number.POSITIVE_INFINITY;
   let rerendered = 0;

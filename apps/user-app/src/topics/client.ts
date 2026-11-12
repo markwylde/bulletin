@@ -193,6 +193,23 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
     const response = await request;
 
     if (!response.ok) {
+      const failure = (await response.json().catch(() => ({}))) as { readonly code?: string };
+      const error = form.querySelector<HTMLElement>("[data-form-error]");
+
+      if (error !== null) {
+        const key =
+          failure.code === "blocked_word"
+            ? "labelBlockedWord"
+            : failure.code === "too_many_links"
+              ? "labelTooManyLinks"
+              : null;
+        const message = key === null ? null : form.dataset[key];
+
+        if (message !== undefined && message !== null && message !== "") {
+          error.textContent = message;
+        }
+      }
+
       showError(form, true);
       return;
     }

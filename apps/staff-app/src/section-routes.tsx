@@ -14,6 +14,7 @@ import { MemberGroupsPage } from "./members/MemberGroupsPage.tsx";
 import { MemberProfilesPage } from "./members/MemberProfilesPage.tsx";
 import { MemberReputationPage } from "./members/MemberReputationPage.tsx";
 import { ProfileFieldsPage } from "./members/ProfileFieldsPage.tsx";
+import { FiltersPage } from "./moderation/FiltersPage.tsx";
 import { ModerationPage } from "./moderation/ModerationPage.tsx";
 import { MultimodPage } from "./moderation/MultimodPage.tsx";
 import { WarningsPage } from "./moderation/WarningsPage.tsx";
@@ -36,6 +37,7 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   deadLetters: DeadLettersPage,
   boardSettings: BoardSettingsPage,
   emoticons: EmoticonsPage,
+  filters: FiltersPage,
   stringOverrides: StringOverridesPage,
   flags: FlagsPage,
   groups: GroupsPage,

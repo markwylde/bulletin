@@ -78,6 +78,7 @@ describe("route contracts", () => {
     expect(forumContract.templates.page).toBe("forum");
     expect(contractTags(forumContract, { forumId: "5", ancestorIds: ["1", "3"] })).toEqual([
       "board",
+      "filters",
       "announcements",
       "forum:5:announcements",
       "forum:1",
@@ -99,6 +100,7 @@ describe("route contracts", () => {
       "topic:9",
       "topic:9:pages",
       "board",
+      "filters",
       "forum:1",
       "forum:3",
       "topic:7",

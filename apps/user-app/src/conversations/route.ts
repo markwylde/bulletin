@@ -1,4 +1,5 @@
 import type { ConversationFolder } from "@bulletin/domain/conversations";
+import { loadReplaceWords } from "@bulletin/domain/filters";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { conversationContract, conversationsContract } from "../contracts.ts";
@@ -128,6 +129,7 @@ export async function renderConversationRoute(
 
   const boardName = boardNameFrom(input.boardName ?? null, input.translate);
   const parsed = /^([1-9]\d{0,18})$/.exec(input.ref);
+  const replaceWords = await loadReplaceWords(input.sql);
   const page =
     parsed === null
       ? null
@@ -139,6 +141,7 @@ export async function renderConversationRoute(
           conversationId: parsed[1] ?? "",
           attachmentsEnabled: flags.values.attachments === true,
           mentionsEnabled: flags.values.mentions === true,
+          replaceWords,
         });
 
   if (page === null) {

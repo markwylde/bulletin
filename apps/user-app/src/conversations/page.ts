@@ -1,3 +1,4 @@
+import { type ReplaceWords, replaceWordsInText } from "@bulletin/content";
 import { readUploadLimits } from "@bulletin/domain/attachments";
 import {
   type ConversationFolder,
@@ -25,6 +26,7 @@ export interface InboxPageInput {
   readonly query?: string;
   /** The viewer's evaluated `mentions` flag for the editor island. */
   readonly mentionsEnabled?: boolean;
+  readonly replaceWords?: ReplaceWords;
 }
 
 export interface ConversationRowView {
@@ -246,6 +248,7 @@ export async function buildConversationPage(input: {
   /** False when the `attachments` flag is off: placeholders and uploads disappear. */
   readonly attachmentsEnabled?: boolean;
   readonly mentionsEnabled?: boolean;
+  readonly replaceWords?: ReplaceWords;
 }): Promise<ConversationPageData | null> {
   const detail = await readConversationForParticipant(
     input.sql,
@@ -276,10 +279,14 @@ export async function buildConversationPage(input: {
     translate: input.translate,
     attachmentsEnabled,
     mentionsEnabled: input.mentionsEnabled !== false,
+    ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
   });
   const messages: MessageView[] = renderedMessages.map((message) => ({
     id: message.id,
-    authorName: message.authorName ?? input.translate("member.deletedName"),
+    authorName: replaceWordsInText(
+      message.authorName ?? input.translate("member.deletedName"),
+      input.replaceWords,
+    ),
     authorHref:
       message.authorName === null
         ? null
@@ -291,7 +298,10 @@ export async function buildConversationPage(input: {
   }));
   const participants: DetailParticipantView[] = detail.participants.map((participant) => ({
     id: participant.id,
-    name: participant.displayName ?? input.translate("member.deletedName"),
+    name: replaceWordsInText(
+      participant.displayName ?? input.translate("member.deletedName"),
+      input.replaceWords,
+    ),
     canRemove: detail.viewer.isStarter && participant.id !== input.memberId,
   }));
   const editor = policy.canUse
@@ -307,7 +317,7 @@ export async function buildConversationPage(input: {
     : null;
 
   return {
-    title: detail.title,
+    title: replaceWordsInText(detail.title, input.replaceWords),
     id: detail.id,
     isStarter: detail.viewer.isStarter,
     archived: detail.viewer.folder === "archive",
@@ -317,7 +327,7 @@ export async function buildConversationPage(input: {
     editor,
     breadcrumbs: [
       { label: input.translate("conversation.title"), href: "/conversations" },
-      { label: detail.title, href: null },
+      { label: replaceWordsInText(detail.title, input.replaceWords), href: null },
     ],
     viewModel: {
       conversationId: detail.id,

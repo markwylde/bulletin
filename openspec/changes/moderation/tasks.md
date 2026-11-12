@@ -29,8 +29,8 @@
 
 ## 5. Filters
 
-- [ ] 5.1 Bad-word filter: block as a write-pipeline stage, and replace as the render-time transform list (never mutating source text; list changes bump the filter version and enqueue re-render), across all content types, with a staff manager; tests for the replace, block and new-word-added-later scenarios
-- [ ] 5.2 Link limits and anti-spam rules (duplicate, rate, domain blocklist) with group exemptions, as pipeline stages holding content; integration tests for each scenario
+- [x] 5.1 Bad-word filter: block as a write-pipeline stage, and replace as the render-time transform list (never mutating source text; list changes bump the filter version and enqueue re-render), across all content types, with a staff manager; tests for the replace, block and new-word-added-later scenarios
+- [x] 5.2 Link limits and anti-spam rules (duplicate, rate, domain blocklist) with group exemptions, as pipeline stages holding content; integration tests for each scenario
 
 ## 6. Bans and IPs
 

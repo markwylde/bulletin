@@ -84,6 +84,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     labelKey: "staff.nav.boardSettings",
   },
   {
+    id: "filters",
+    path: "/settings/filters",
+    navGroup: "configuration",
+    permission: "acp.filters",
+    icon: "settings",
+    labelKey: "staff.nav.filters",
+  },
+  {
     id: "emoticons",
     path: "/settings/emoticons",
     navGroup: "configuration",

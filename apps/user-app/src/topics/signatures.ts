@@ -1,4 +1,5 @@
-import { memberTag, type RenderCache } from "@bulletin/cache";
+import { GLOBAL_CACHE_TAGS, memberTag, type RenderCache } from "@bulletin/cache";
+import { applyReplaceWordsToHtml, type ReplaceWords } from "@bulletin/content";
 import { readMemberSignatures } from "@bulletin/domain/profiles";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml } from "@bulletin/templates";
@@ -18,6 +19,7 @@ export async function renderMemberSignatures(
   translate: Translator,
   loadSignature: (memberId: string) => Promise<string | null> = async (memberId) =>
     (await readMemberSignatures(sql, [memberId])).get(memberId) ?? null,
+  replaceWords?: ReplaceWords,
 ): Promise<ReadonlyMap<string, string>> {
   const unique = [...new Set(memberIds)];
   const rendered = new Map<string, string>();
@@ -26,10 +28,10 @@ export async function renderMemberSignatures(
   await Promise.all(
     unique.map(async (memberId) => {
       const fragment = await cache.getOrRender({
-        tags: [memberTag(memberId)],
+        tags: [memberTag(memberId), GLOBAL_CACHE_TAGS.filters],
         prepare: async () => ({
           key: `member-signature:${memberId}:${locale}`,
-          data: (await loadSignature(memberId)) ?? "",
+          data: await applyReplaceWordsToHtml((await loadSignature(memberId)) ?? "", replaceWords),
         }),
         render: (html) =>
           html.trim() === ""

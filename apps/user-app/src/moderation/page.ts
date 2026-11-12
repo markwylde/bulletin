@@ -39,6 +39,14 @@ function reasonLabel(translate: Translator, reason: string | null): string {
       return translate("moderation.holdReason.warning");
     case "filter":
       return translate("moderation.holdReason.filter");
+    case "link_limit":
+      return translate("moderation.holdReason.linkLimit");
+    case "duplicate":
+      return translate("moderation.holdReason.duplicate");
+    case "rate":
+      return translate("moderation.holdReason.rate");
+    case "domain_blocklist":
+      return translate("moderation.holdReason.domainBlocklist");
     default:
       return translate("moderation.holdReason.other");
   }

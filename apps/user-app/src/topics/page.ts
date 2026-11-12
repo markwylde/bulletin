@@ -1,5 +1,10 @@
 import { forumTag, GLOBAL_CACHE_TAGS, postSnapshotsTag, postTag, topicTag } from "@bulletin/cache";
-import { ensureCurrentRendering, resolveQuotePlaceholders } from "@bulletin/content";
+import {
+  ensureCurrentRendering,
+  type ReplaceWords,
+  replaceWordsInText,
+  resolveQuotePlaceholders,
+} from "@bulletin/content";
 import { type PostAttachmentRecord, readPostAttachments } from "@bulletin/domain/attachments";
 import { listEmbedProviders, loadQuoteSnapshot } from "@bulletin/domain/content";
 import { listVisibleForums } from "@bulletin/domain/forums";
@@ -112,6 +117,7 @@ export interface TopicPageInput {
   readonly pollsEnabled?: boolean;
   readonly attachmentsEnabled?: boolean;
   readonly publicEditHistory?: boolean;
+  readonly replaceWords?: ReplaceWords;
 }
 
 export interface TopicPageData {
@@ -125,6 +131,7 @@ export interface TopicPageData {
   readonly pollId: string | null;
   readonly quoteTopicIds: readonly string[];
   readonly quotePostIds: readonly string[];
+  readonly replaceWords?: ReplaceWords;
   readonly postTags: ReadonlyMap<string, readonly string[]>;
   readonly allPostTags: readonly string[];
   readonly loadPost: (postId: string) => Promise<TopicPagePost | null>;
@@ -322,7 +329,12 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
           renderVersion: post.renderVersion,
           sanitiserVersion: post.sanitiserVersion,
         },
-        { profile: "post", embedProviders, mentions: mentionsEnabled },
+        {
+          profile: "post",
+          embedProviders,
+          mentions: mentionsEnabled,
+          ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
+        },
       );
 
       return { post, html: current.bodyHtml };
@@ -469,7 +481,12 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
         renderVersion: fresh.renderVersion,
         sanitiserVersion: fresh.sanitiserVersion,
       },
-      { profile: "post", embedProviders, mentions: mentionsEnabled },
+      {
+        profile: "post",
+        embedProviders,
+        mentions: mentionsEnabled,
+        ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
+      },
     );
     const missing = quoteSourceIds(current.bodyHtml).filter((id) => !sources.has(id));
 
@@ -554,6 +571,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
   const poll = pollsEnabled ? await readPollForTopic(input.sql, input.topic.id) : null;
   const allPostTags = [
     GLOBAL_CACHE_TAGS.board,
+    GLOBAL_CACHE_TAGS.filters,
     ...quoteTopicIds.map(topicTag),
     ...quotePostIds.map(postSnapshotsTag),
     ...[...sources.values()].map((source) => forumTag(source.forumId)),
@@ -584,7 +602,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     viewModel: {
       topicId: input.topic.id,
       forumId: input.topic.forumId,
-      title: input.topic.title,
+      title: replaceWordsInText(input.topic.title, input.replaceWords),
       href: canonicalUrl("topic", input.topic.id, input.topic.slug),
       prefix:
         input.topic.prefixId === null

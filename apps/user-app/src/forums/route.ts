@@ -1,5 +1,6 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
 import { readBoardSettings } from "@bulletin/domain/board";
+import { loadReplaceWords } from "@bulletin/domain/filters";
 import { showVisibleForum } from "@bulletin/domain/forums";
 import {
   CapabilityView,
@@ -193,11 +194,12 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
     tagVersions: input.tagVersions ?? null,
     shell: { visitor: input.session === null ? "guest" : "member" },
     prepare: async () => {
-      const [theme, settings, flags, freshTree] = await Promise.all([
+      const [theme, settings, flags, freshTree, replaceWords] = await Promise.all([
         loadActiveTheme(input.sql),
         readBoardSettings(input.sql),
         loadViewerFlags(input.sql, input.session),
         loadForumTree(input.sql),
+        loadReplaceWords(input.sql),
       ]);
       // The pre-cache load only routed the request. Forum settings and permissions must be
       // reloaded here, after the cache captured tag versions, or a concurrent save can store
@@ -244,6 +246,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
             mentionsEnabled: flags.values.mentions === true,
             pollsEnabled: flags.values.polls === true,
             attachmentsEnabled: flags.values.attachments === true,
+            replaceWords,
           });
         }
       }

@@ -38,7 +38,8 @@
     "./events/stream": "./src/events/stream.ts",
     "./moderation": "./src/moderation/index.ts",
     "./reports": "./src/reports/index.ts",
-    "./warnings": "./src/warnings/index.ts"
+    "./warnings": "./src/warnings/index.ts",
+    "./filters": "./src/filters/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

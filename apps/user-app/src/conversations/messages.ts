@@ -1,4 +1,8 @@
-import { ensureCurrentRendering, resolveQuotePlaceholders } from "@bulletin/content";
+import {
+  ensureCurrentRendering,
+  type ReplaceWords,
+  resolveQuotePlaceholders,
+} from "@bulletin/content";
 import { readConversationMessageAttachments } from "@bulletin/domain/attachments";
 import { listEmbedProviders, loadQuoteSnapshot } from "@bulletin/domain/content";
 import {
@@ -27,6 +31,7 @@ export interface RenderConversationMessagesInput {
   readonly translate: Translator;
   readonly attachmentsEnabled: boolean;
   readonly mentionsEnabled: boolean;
+  readonly replaceWords?: ReplaceWords;
 }
 
 /**
@@ -76,6 +81,7 @@ export async function renderConversationMessages(
           profile: "post",
           embedProviders,
           mentions: input.mentionsEnabled,
+          ...(input.replaceWords === undefined ? {} : { replaceWords: input.replaceWords }),
         },
       );
       const bodyHtml = await resolveQuotePlaceholders(current.bodyHtml, {

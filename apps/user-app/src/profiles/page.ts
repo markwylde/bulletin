@@ -1,3 +1,4 @@
+import { applyReplaceWordsToHtml, type ReplaceWords, replaceWordsInText } from "@bulletin/content";
 import type { ForumTree } from "@bulletin/domain/permissions";
 import {
   CapabilityView,
@@ -34,6 +35,7 @@ export interface ProfilePageInput {
   readonly translate: Translator;
   /** How many recent posts to show. */
   readonly recentLimit?: number;
+  readonly replaceWords?: ReplaceWords;
 }
 
 export interface ProfileFieldView {
@@ -247,12 +249,16 @@ export async function buildProfilePage(input: ProfilePageInput): Promise<Profile
   const posts = recent.posts.map((post) => ({
     id: post.id,
     href: canonicalUrl("topic", post.topicId, post.topicSlug),
-    title: post.topicTitle,
+    title: replaceWordsInText(post.topicTitle, input.replaceWords),
     forumTitle: post.forumTitle,
     dateLabel: formatter.format(post.createdAt),
     iso: post.createdAt.toISOString(),
   }));
-  const name = profile.displayName;
+  const name = replaceWordsInText(profile.displayName, input.replaceWords);
+  const aboutHtml =
+    profile.aboutHtml === ""
+      ? null
+      : safeHtml(await applyReplaceWordsToHtml(profile.aboutHtml, input.replaceWords));
 
   return {
     title: name,
@@ -268,13 +274,19 @@ export async function buildProfilePage(input: ProfilePageInput): Promise<Profile
         initialsHtml: initialsSvg(profile.id, name),
         groupTitle: profile.groupTitle,
         groupColour: profile.groupColour,
-        customTitle: profile.customTitle,
-        rankTitle:
-          profile.rankTitleLabels === null
+        customTitle:
+          profile.customTitle === null
             ? null
-            : profile.rankTitleLabels[input.locale]?.trim() ||
-              profile.rankTitleLabels.en?.trim() ||
-              null,
+            : replaceWordsInText(profile.customTitle, input.replaceWords),
+        rankTitle:
+          replaceWordsInText(
+            profile.rankTitleLabels === null
+              ? ""
+              : profile.rankTitleLabels[input.locale]?.trim() ||
+                  profile.rankTitleLabels.en?.trim() ||
+                  "",
+            input.replaceWords,
+          ) || null,
         rankPips: profile.rankPips,
         rankImageKey: profile.rankImageKey,
         joinedLabel: formatter.format(profile.joinedAt),
@@ -285,9 +297,14 @@ export async function buildProfilePage(input: ProfilePageInput): Promise<Profile
           profile.lastActiveAt === null || (profile.hideOnline && !canViewHidden)
             ? null
             : lastActiveFormatter.format(profile.lastActiveAt),
-        aboutHtml: profile.aboutHtml === "" ? null : safeHtml(profile.aboutHtml),
+        aboutHtml,
         fields: fields
-          .map((field) => fieldView(field, values.get(field.id), input.locale))
+          .map((field) => {
+            const view = fieldView(field, values.get(field.id), input.locale);
+            return view === null
+              ? null
+              : { ...view, value: replaceWordsInText(view.value, input.replaceWords) };
+          })
           .filter((field): field is ProfileFieldView => field !== null),
         badges: badges.map((badge) => ({
           id: badge.id,
@@ -297,7 +314,7 @@ export async function buildProfilePage(input: ProfilePageInput): Promise<Profile
         })),
         friends: friends.map((friend) => ({
           id: friend.id,
-          name: friend.displayName,
+          name: replaceWordsInText(friend.displayName, input.replaceWords),
           href: canonicalUrl("profile", friend.id, friend.displayName),
         })),
         posts,

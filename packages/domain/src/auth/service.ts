@@ -270,6 +270,10 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         return json({ code: "display_name_taken" }, 409);
       }
 
+      if (result.kind === "blocked_word") {
+        return json({ code: "blocked_word" }, 400);
+      }
+
       if (result.kind === "limit") {
         return json(
           {

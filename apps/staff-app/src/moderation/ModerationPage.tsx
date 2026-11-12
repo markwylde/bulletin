@@ -33,6 +33,14 @@ function reasonText(t: ReturnType<typeof useT>, reason: string | null): string {
       return t("staff.moderation.reason.warning");
     case "filter":
       return t("staff.moderation.reason.filter");
+    case "link_limit":
+      return t("staff.moderation.reason.linkLimit");
+    case "duplicate":
+      return t("staff.moderation.reason.duplicate");
+    case "rate":
+      return t("staff.moderation.reason.rate");
+    case "domain_blocklist":
+      return t("staff.moderation.reason.domainBlocklist");
     default:
       return t("staff.moderation.reason.other");
   }

@@ -84,7 +84,9 @@
         {% if canStart and editor %}
           <details class="bl-card" data-new-topic>
             <summary class="bl-card__title">{% t "topic.new" %}</summary>
-            <form class="bl-topic-form" data-new-topic-form data-forum-id="{{ forumId }}">
+            <form class="bl-topic-form" data-new-topic-form data-forum-id="{{ forumId }}"
+              data-label-blocked-word="{% t "topic.blockedWord" %}"
+              data-label-too-many-links="{% t "topic.tooManyLinks" %}">
               <label class="bl-label" for="new-topic-title">{% t "topic.title" %}</label>
               <input class="bl-input" id="new-topic-title" name="title" type="text" minlength="3" maxlength="150" required />
               {% if prefixes.size > 0 %}

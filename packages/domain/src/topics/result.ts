@@ -1,6 +1,8 @@
 /** Stable outcomes the API layer maps to status codes and message keys. */
 export type TopicMutationCode =
   | "invalid_request"
+  | "blocked_word"
+  | "too_many_links"
   | "invalid_title"
   | "invalid_body"
   | "invalid_poll"

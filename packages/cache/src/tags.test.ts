@@ -46,6 +46,7 @@ describe("cache tags", () => {
       online: "online",
       reactions: "reactions",
       board: "board",
+      filters: "filters",
     });
   });
 
