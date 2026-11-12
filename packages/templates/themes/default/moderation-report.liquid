@@ -1,0 +1,90 @@
+{{ header }}
+<main id="main" class="bl-main" data-report-page data-report-id="{{ report.id }}"
+  data-label-saved="{% t "report.detail.saved" %}"
+  data-label-failed="{% t "report.detail.failed" %}"
+  data-label-assigned="{% t "report.detail.assigned" %}"
+  data-label-unassigned="{% t "report.detail.unassigned" %}">
+  {{ breadcrumbs }}
+  <header class="bl-page__header">
+    <h1 class="bl-page__title">{{ title }}</h1>
+    <p class="bl-muted">
+      <span class="bl-badge" data-report-status-label>{{ report.statusKey }}</span>
+      {{ report.targetLabel }} · {{ report.createdAt }}
+    </p>
+    <p class="bl-muted">
+      {% if report.subjectHref %}<a href="{{ report.subjectHref }}">{{ report.subject }}</a>{% else %}{{ report.subject }}{% endif %}
+    </p>
+    <p class="bl-muted">{% t "report.centre.assignee" %}: <span data-report-assignee>{{ report.assignee }}</span></p>
+  </header>
+
+  <section class="bl-card" data-report-manage>
+    <h2 class="bl-card__title">{% t "report.detail.manage" %}</h2>
+    <div class="bl-actions">
+      <label class="bl-label" for="report-status">{% t "report.detail.status" %}</label>
+      <select class="bl-input" id="report-status" data-report-status-select>
+        {% for option in statusOptions %}
+          <option value="{{ option.value }}"{% if option.value == report.status %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+      <button class="bl-button" type="button" data-report-status-save>{% t "report.detail.save" %}</button>
+      <button class="bl-button bl-button--quiet" type="button" data-report-assign data-assigned="{{ report.assigned }}">
+        {% if report.assigned %}{% t "report.detail.unassign" %}{% else %}{% t "report.detail.assignMe" %}{% endif %}
+      </button>
+    </div>
+    <p class="bl-muted" data-report-action-status hidden></p>
+  </section>
+
+  {% if report.pmMessages != null %}
+    <section class="bl-card" data-report-pm-context>
+      <h2 class="bl-card__title">{% t "report.detail.pmContext" %}</h2>
+      <p class="bl-muted">{% t "report.detail.pmContextHelp" %}</p>
+      <ol class="bl-message-list">
+        {% for message in report.pmMessages %}
+          <li class="bl-message{% if message.reported %} is-reported{% endif %}" data-report-pm-message="{{ message.messageId }}"{% if message.reported %} data-report-pm-reported{% endif %}>
+            <header class="bl-message__header">
+              <span data-conversation-author>{{ message.author }}</span>
+              <time class="bl-muted" datetime="{{ message.time }}">{{ message.time }}</time>
+              {% if message.reported %}<span class="bl-badge bl-badge--danger">{% t "report.detail.reportedMessage" %}</span>{% endif %}
+            </header>
+            <div class="bl-message__body">{{ message.body }}</div>
+          </li>
+        {% endfor %}
+      </ol>
+    </section>
+  {% endif %}
+
+  <section class="bl-card" data-report-reporters>
+    <h2 class="bl-card__title">{% t "report.detail.reporters" %}</h2>
+    <ul class="bl-report__reporters">
+      {% for reporter in report.reporters %}
+        <li data-report-reporter="{{ reporter.id }}">
+          {{ reporter.name }} — {{ reporter.reason }} · <span class="bl-muted">{{ reporter.time }}</span>
+          {% if reporter.comment != "" %}<p class="bl-muted">{{ reporter.comment }}</p>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="bl-card" data-report-comments>
+    <h2 class="bl-card__title">{% t "report.detail.comments" %}</h2>
+    {% if report.comments.size > 0 %}
+      <ul class="bl-report__comments">
+        {% for comment in report.comments %}
+          <li data-report-comment="{{ comment.id }}">
+            <p>{{ comment.body }}</p>
+            <p class="bl-muted">{{ comment.actor }} · {{ comment.time }}</p>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="bl-muted" data-report-comments-empty>{% t "report.detail.commentsEmpty" %}</p>
+    {% endif %}
+    <form class="bl-form" data-report-comment-form>
+      <label class="bl-label" for="report-comment">{% t "report.detail.addComment" %}</label>
+      <textarea class="bl-input" id="report-comment" name="body" rows="3" maxlength="5000" required></textarea>
+      <button class="bl-button" type="submit" data-report-comment-submit>{% t "report.detail.commentSubmit" %}</button>
+      <p class="bl-error-text" data-form-error hidden>{% t "report.detail.failed" %}</p>
+    </form>
+  </section>
+</main>
+{{ footer }}

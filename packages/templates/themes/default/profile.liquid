@@ -1,5 +1,20 @@
 {{ header }}
-<main id="main" class="bl-main" data-profile-page data-profile-member="{{ profile.id }}" data-overlay-ctx="board">
+<main id="main" class="bl-main" data-profile-page data-profile-member="{{ profile.id }}" data-overlay-ctx="board"
+  data-report-labels
+  data-label-report-title="{% t "report.dialog.title" %}"
+  data-label-report-intro="{% t "report.dialog.intro" %}"
+  data-label-report-reason="{% t "report.dialog.reason" %}"
+  data-label-report-reason-spam="{% t "report.reason.spam" %}"
+  data-label-report-reason-abuse="{% t "report.reason.abuse" %}"
+  data-label-report-reason-harassment="{% t "report.reason.harassment" %}"
+  data-label-report-reason-off-topic="{% t "report.reason.offTopic" %}"
+  data-label-report-reason-other="{% t "report.reason.other" %}"
+  data-label-report-comment="{% t "report.dialog.comment" %}"
+  data-label-report-submit="{% t "report.dialog.submit" %}"
+  data-label-report-cancel="{% t "report.dialog.cancel" %}"
+  data-label-report-sent="{% t "report.dialog.sent" %}"
+  data-label-report-failed="{% t "report.dialog.failed" %}"
+  data-label-report-already="{% t "report.dialog.already" %}">
   {{ breadcrumbs }}
 
   <section class="bl-card bl-profile" data-profile-summary>
@@ -26,6 +41,7 @@
         {% elsif profile.rankPips > 0 %}
           <p class="bl-profile__pips" data-profile-rank-pips="{{ profile.rankPips }}" aria-hidden="true">{% for i in (1..profile.rankPips) %}●{% endfor %}</p>
         {% endif %}
+        <button type="button" class="bl-button bl-button--quiet bl-button--small" data-report-member="{{ profile.id }}" data-overlay-member-only hidden>{% t "report.reportMember" %}</button>
         <div class="bl-actions" data-member-actions data-member-id="{{ profile.id }}" hidden>
           {% if flags.friends %}<button type="button" class="bl-button bl-button--small" data-friend-request hidden>{% t "profile.friends.add" %}</button>
           <button type="button" class="bl-button bl-button--small" data-friend-pending hidden disabled>{% t "profile.friends.pending" %}</button>

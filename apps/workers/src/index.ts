@@ -89,6 +89,8 @@ const subscribers: EventSubscriber[] = [
       "badge.awarded",
       "pm.sent",
       "post.approved",
+      "report.resolved",
+      "report.rejected",
     ],
   },
   {

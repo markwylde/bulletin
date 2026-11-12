@@ -22,7 +22,7 @@
   </header>
 
   {% if isModerator %}
-    <p class="bl-note" data-forum-mod-note>{% t "forum.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a></p>
+    <p class="bl-note" data-forum-mod-note>{% t "forum.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a> · <a href="/moderation/reports" data-reports-link>{% t "moderation.reports.open" %}</a></p>
   {% endif %}
 
   {% if locked %}

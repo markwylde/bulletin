@@ -9,6 +9,7 @@ export * from "./mutations/index.ts";
 export * from "./permissions/index.ts";
 export * from "./polls/index.ts";
 export * from "./reactions/index.ts";
+export * from "./reports/index.ts";
 export * from "./reputation/index.ts";
 export * from "./topics/index.ts";
 export * from "./urls/index.ts";

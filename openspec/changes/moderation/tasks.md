@@ -9,10 +9,10 @@
 
 ## 2. Reports
 
-- [ ] 2.1 Migrations and API for reports (post, member, PM; grouping; no duplicates while open), with integration tests
-- [ ] 2.2 Report centre (scoped by moderated forums and report permissions, status, assignee, comments) with permission-denial tests; E2E
-- [ ] 2.3 PM report access (reported message plus 5 prior, logged) with tests proving no other PM content is reachable; insert `conversation_message_holds` for those messages when the report opens and release them on close, with a test that the last participant leaving keeps the held messages and attachments until the report closes
-- [ ] 2.4 Outcome notifications to reporters, with an integration test
+- [x] 2.1 Migrations and API for reports (post, member, PM; grouping; no duplicates while open), with integration tests
+- [x] 2.2 Report centre (scoped by moderated forums and report permissions, status, assignee, comments) with permission-denial tests; E2E
+- [x] 2.3 PM report access (reported message plus 5 prior, logged) with tests proving no other PM content is reachable; insert `conversation_message_holds` for those messages when the report opens and release them on close, with a test that the last participant leaving keeps the held messages and attachments until the report closes
+- [x] 2.4 Outcome notifications to reporters, with an integration test
 
 ## 3. Topic moderation
 

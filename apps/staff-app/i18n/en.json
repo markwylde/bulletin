@@ -316,6 +316,8 @@
   "staff.groups.permission.membersViewHidden": "View members who hide their status",
   "staff.groups.permission.membersViewList": "View the member list",
   "staff.groups.permission.membersViewNameHistory": "View display-name history",
+  "staff.groups.permission.reportsMembers": "View member reports",
+  "staff.groups.permission.reportsPms": "View private-message reports",
   "staff.groups.permission.sessionsRevoke": "Revoke sessions",
   "staff.groups.power.approve": "Approve",
   "staff.groups.power.edit": "Edit",

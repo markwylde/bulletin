@@ -60,6 +60,14 @@ export const EVENT_CATALOG = {
     aggregateType: "report",
     payloadIds: ["reportId", "reporterId", "targetMemberId"],
   },
+  "report.resolved": {
+    aggregateType: "report",
+    payloadIds: ["reportId", "reporterId", "actorId"],
+  },
+  "report.rejected": {
+    aggregateType: "report",
+    payloadIds: ["reportId", "reporterId", "actorId"],
+  },
   "warning.issued": {
     aggregateType: "warning",
     payloadIds: ["warningId", "memberId", "actorId"],

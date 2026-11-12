@@ -40,6 +40,11 @@ export interface AccountViewModel {
 }
 
 /** The profile route's own member tag. */
+export interface ReportViewModel {
+  readonly reportId: string;
+}
+
+/** The profile route's own member tag. */
 export interface ProfileViewModel {
   readonly memberId: string;
 }
@@ -265,6 +270,32 @@ export const moderationQueueContract = defineContract<AccountViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/** The report centre list; participants see only reports their permissions scope. */
+export const moderationReportsContract = defineContract<AccountViewModel>({
+  route: "/moderation/reports",
+  templates: {
+    page: "moderation-reports",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: () => ["reports"],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+/** One report; PM context is private and audited per view. */
+export const moderationReportContract = defineContract<ReportViewModel>({
+  route: "/moderation/reports/[id]",
+  templates: {
+    page: "moderation-report",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`report:${model.reportId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const conversationsContract = defineContract<AccountViewModel>({
   route: "/conversations",
   templates: { page: "conversations", regions: ["header", "breadcrumbs", "empty", "footer"] },
@@ -334,6 +365,8 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [followsContract.route]: followsContract,
   [attachmentsContract.route]: attachmentsContract,
   [moderationQueueContract.route]: moderationQueueContract,
+  [moderationReportsContract.route]: moderationReportsContract,
+  [moderationReportContract.route]: moderationReportContract,
   [conversationsContract.route]: conversationsContract,
   [conversationContract.route]: conversationContract,
 };

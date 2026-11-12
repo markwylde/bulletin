@@ -1,5 +1,20 @@
 {{ header }}
-<main id="main" class="bl-main" data-conversation-page data-conversation-id="{{ conversationId }}" data-archived="{{ archived }}" data-starter="{{ isStarter }}">
+<main id="main" class="bl-main" data-conversation-page data-conversation-id="{{ conversationId }}" data-archived="{{ archived }}" data-starter="{{ isStarter }}"
+  data-report-labels
+  data-label-report-title="{% t "report.dialog.title" %}"
+  data-label-report-intro="{% t "report.dialog.intro" %}"
+  data-label-report-reason="{% t "report.dialog.reason" %}"
+  data-label-report-reason-spam="{% t "report.reason.spam" %}"
+  data-label-report-reason-abuse="{% t "report.reason.abuse" %}"
+  data-label-report-reason-harassment="{% t "report.reason.harassment" %}"
+  data-label-report-reason-off-topic="{% t "report.reason.offTopic" %}"
+  data-label-report-reason-other="{% t "report.reason.other" %}"
+  data-label-report-comment="{% t "report.dialog.comment" %}"
+  data-label-report-submit="{% t "report.dialog.submit" %}"
+  data-label-report-cancel="{% t "report.dialog.cancel" %}"
+  data-label-report-sent="{% t "report.dialog.sent" %}"
+  data-label-report-failed="{% t "report.dialog.failed" %}"
+  data-label-report-already="{% t "report.dialog.already" %}">
   {{ breadcrumbs }}
   <p class="bl-muted"><a href="/conversations" data-conversation-back>{% t "conversation.back" %}</a></p>
   <header class="bl-page__header">
@@ -25,6 +40,7 @@
             <span data-conversation-author>{{ message.authorName }}</span>
           {% endif %}
           <time class="bl-muted" datetime="{{ message.iso }}">{{ message.time }}</time>
+          <button class="bl-button bl-button--quiet bl-button--small" type="button" data-report-message="{{ message.id }}" data-overlay-member-only hidden>{% t "report.reportMessage" %}</button>
         </header>
         <div class="bl-message__body">{{ message.body }}</div>
         {% if message.files %}{{ message.files }}{% endif %}

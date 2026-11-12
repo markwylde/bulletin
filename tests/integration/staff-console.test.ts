@@ -1188,7 +1188,13 @@ integrationDescribe("ACP permission catalog", () => {
         rows
           .filter((row) => row.key === "super_moderators" && permissions.has(row.permission))
           .map((row) => row.permission),
-      ).toEqual(["acp.access", "acp.members", "members.view_list"]);
+      ).toEqual([
+        "acp.access",
+        "acp.members",
+        "members.view_list",
+        "reports.members",
+        "reports.pms",
+      ]);
       expect(
         rows.filter((row) => row.key === "members" && permissions.has(row.permission)),
       ).toEqual([{ key: "members", permission: "members.view_list" }]);

@@ -50,6 +50,12 @@ import { reactionMembersResponse, reactionSetResponse } from "./reactions.ts";
 import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
 import { friendResponse, ignoreResponse, relationshipStateResponse } from "./relationships.ts";
+import {
+  createReportResponse,
+  reportActionResponse,
+  reportDetailResponse,
+  reportsListResponse,
+} from "./reports.ts";
 import { reputationGiveResponse } from "./reputation.ts";
 import { streamResponse } from "./stream.ts";
 import { createStreamHub } from "./stream-hub.ts";
@@ -601,6 +607,53 @@ await startService({
         }
 
         return queueCountResponse(sql, session);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/reports") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return createReportResponse(sql, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/reports") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return reportsListResponse(sql, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const reportMatch = /^\/api\/reports\/(\d+)$/.exec(pathname);
+
+    if (reportMatch !== null) {
+      const reportId = reportMatch[1] ?? "";
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        if (request.method === "GET") {
+          return reportDetailResponse(sql, session, reportId);
+        }
+
+        if (request.method === "POST") {
+          return reportActionResponse(sql, session, reportId, request);
+        }
+
+        return Response.json({ code: "method_not_allowed" }, { status: 405 });
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

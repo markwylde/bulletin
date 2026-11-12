@@ -1639,3 +1639,25 @@ html[data-hide-signatures] [data-signature] {
   border-radius: 999px;
   background: var(--bl-surface-raised, var(--bl-surface));
 }
+
+/* Report dialog: a native modal that fits the 360 px first target. */
+.bl-report-dialog {
+  width: min(32rem, calc(100vw - 1rem));
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  background: var(--surface);
+  color: inherit;
+}
+
+.bl-report-dialog::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.bl-report-dialog .bl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}

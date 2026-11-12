@@ -248,6 +248,24 @@ export const groupsSeedModule: SeedModule = {
       }
     }
 
+    // Report access outside a moderated forum's own scope. Forum moderators still see post
+    // reports for their forums without these group permissions.
+    for (const groupKey of ["moderators", "super_moderators", "administrators"] as const) {
+      const groupId = ids.get(groupKey);
+
+      if (groupId === undefined) {
+        continue;
+      }
+
+      for (const key of ["reports.members", "reports.pms"] as const) {
+        await sql`
+          INSERT INTO core.group_settings (group_id, key, value)
+          VALUES (${groupId}, ${key}, 'true'::jsonb)
+          ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+        `;
+      }
+    }
+
     const displayColours: Array<[string, string]> = [
       ["regulars", "green"],
       ["vip", "gold"],

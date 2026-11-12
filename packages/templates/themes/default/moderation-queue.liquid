@@ -10,6 +10,7 @@
   <header class="bl-page__header">
     <h1 class="bl-page__title">{{ title }}</h1>
     <p class="bl-muted">{% t "moderation.queue.intro" %}</p>
+    <p class="bl-muted"><a href="/moderation/reports" data-reports-link>{% t "moderation.reports.open" %}</a></p>
     <p class="bl-muted">
       {% t "moderation.queue.pending" %} <strong data-moderation-count>{{ total }}</strong>
     </p>

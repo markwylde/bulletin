@@ -1,5 +1,20 @@
 {{ header }}
-<main id="main" class="bl-main" data-topic-page data-topic-id="{{ topicId }}" data-forum-id="{{ forumId }}" data-overlay-ctx="topic:{{ topicId }}" data-label-unapproved="{% t "post.unapproved" %}"{% if readMarkerAt %} data-overlay-last-post-at="{{ readMarkerAt }}" data-overlay-last-post-id="{{ readMarkerPostId }}"{% endif %}>
+<main id="main" class="bl-main" data-topic-page data-topic-id="{{ topicId }}" data-forum-id="{{ forumId }}" data-overlay-ctx="topic:{{ topicId }}" data-label-unapproved="{% t "post.unapproved" %}"{% if readMarkerAt %} data-overlay-last-post-at="{{ readMarkerAt }}" data-overlay-last-post-id="{{ readMarkerPostId }}"{% endif %}
+  data-report-labels
+  data-label-report-title="{% t "report.dialog.title" %}"
+  data-label-report-intro="{% t "report.dialog.intro" %}"
+  data-label-report-reason="{% t "report.dialog.reason" %}"
+  data-label-report-reason-spam="{% t "report.reason.spam" %}"
+  data-label-report-reason-abuse="{% t "report.reason.abuse" %}"
+  data-label-report-reason-harassment="{% t "report.reason.harassment" %}"
+  data-label-report-reason-off-topic="{% t "report.reason.offTopic" %}"
+  data-label-report-reason-other="{% t "report.reason.other" %}"
+  data-label-report-comment="{% t "report.dialog.comment" %}"
+  data-label-report-submit="{% t "report.dialog.submit" %}"
+  data-label-report-cancel="{% t "report.dialog.cancel" %}"
+  data-label-report-sent="{% t "report.dialog.sent" %}"
+  data-label-report-failed="{% t "report.dialog.failed" %}"
+  data-label-report-already="{% t "report.dialog.already" %}">
   {{ breadcrumbs }}
   <header class="bl-page__header">
     <p class="bl-muted">
@@ -16,7 +31,7 @@
       {{ viewsSlot }}
     </p>
     {% if isModerator %}
-      <p class="bl-note" data-topic-mod-note>{% t "topic.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a></p>
+      <p class="bl-note" data-topic-mod-note>{% t "topic.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a> · <a href="/moderation/reports" data-reports-link>{% t "moderation.reports.open" %}</a></p>
     {% endif %}
     {% if flags.follows %}
     <span class="bl-follow" data-overlay-member-only hidden data-follow-context="topic:{{ topicId }}">

@@ -34,6 +34,8 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "leaderboards",
   "profile",
   "moderation-queue",
+  "moderation-reports",
+  "moderation-report",
   "unsubscribe",
 ] as const;
 

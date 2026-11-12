@@ -1,0 +1,77 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { isReportStatus } from "@bulletin/domain/reports";
+import { USER_CATALOGS } from "../../catalogs.ts";
+import { moderationReportsContract } from "../../contracts.ts";
+import { readSql } from "../../db.ts";
+import { loadViewerFlags } from "../../flags.ts";
+import ThemeLayout from "../../layouts/ThemeLayout.astro";
+import { buildReportsPage } from "../../reports/page.ts";
+import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
+import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
+
+const loginUrl = `/auth/login?return_to=${encodeURIComponent("/moderation/reports")}`;
+const session = Astro.locals.session ?? null;
+
+if (session === null) {
+  return Astro.redirect(loginUrl, 303);
+}
+
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const sql = readSql();
+const flags = await loadViewerFlags(sql, session);
+const requestedStatus = Astro.url.searchParams.get("status");
+const page = await buildReportsPage({
+  sql,
+  memberId: session.memberId,
+  sessionId: session.sessionId,
+  locale,
+  translate,
+  status: isReportStatus(requestedStatus) ? requestedStatus : null,
+});
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+
+const rendered = await renderCachedPage({
+  tags: ["reports"],
+  cache: null,
+  tagVersions: null,
+  shell: { visitor: "member", authState: "authenticated" },
+  prepare: async () => ({
+    variant: pageVariant({
+      route: moderationReportsContract.route,
+      visibilityKey: "member",
+      theme: null,
+      pluginsGeneration: PLUGIN_GENERATION,
+      locale,
+      colourScheme: "system",
+      renderFlagsHash: flags.hash,
+    }),
+    data: undefined,
+  }),
+  render: async () => {
+    const themed = await renderThemedPage({
+      sql,
+      boardName,
+      locale,
+      translate,
+      template: page === null ? "error" : moderationReportsContract.templates.page,
+      viewModel:
+        page === null
+          ? { code: "forbidden", message: translate("theme.error.forbidden"), flags: flags.values }
+          : { ...page.viewModel, title: page.title, flags: flags.values },
+      breadcrumbs: page?.breadcrumbs ?? [],
+      route: moderationReportsContract,
+    });
+
+    return { html: themed.html, errors: themed.errors };
+  },
+});
+
+Astro.response.status = page === null ? 403 : 200;
+Astro.response.headers.set("cache-control", "private, no-store");
+const title = page?.title ?? translate("theme.error.title");
+---
+
+<ThemeLayout title={`${title} · ${boardName}`} locale={locale} body={rendered.html} authState="authenticated" visitor="member">
+</ThemeLayout>

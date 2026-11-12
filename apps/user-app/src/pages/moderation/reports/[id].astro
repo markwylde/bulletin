@@ -1,0 +1,108 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { USER_CATALOGS } from "../../../catalogs.ts";
+import { moderationReportContract } from "../../../contracts.ts";
+import { readSql } from "../../../db.ts";
+import { loadViewerFlags } from "../../../flags.ts";
+import ThemeLayout from "../../../layouts/ThemeLayout.astro";
+import {
+  buildReportDetailView,
+  parseReportDetail,
+} from "../../../reports/page.ts";
+import { pageVariant, renderCachedPage } from "../../../theme/cached-route.ts";
+import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../../theme/render.ts";
+
+const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
+const loginUrl = `/auth/login?return_to=${encodeURIComponent(Astro.url.pathname)}`;
+const session = Astro.locals.session ?? null;
+
+if (session === null) {
+  return Astro.redirect(loginUrl, 303);
+}
+
+const reportId = Astro.params.id ?? "";
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const sql = readSql();
+const flags = await loadViewerFlags(sql, session);
+let status = 200;
+let report = null;
+
+if (/^\d+$/.test(reportId)) {
+  try {
+    const response = await fetch(`${userApiUrl}/api/reports/${reportId}`, {
+      headers: {
+        accept: "application/json",
+        cookie: Astro.request.headers.get("cookie") ?? "",
+      },
+    });
+
+    if (response.ok) {
+      report = parseReportDetail(await response.json());
+    } else {
+      status = response.status === 403 ? 403 : 404;
+    }
+  } catch {
+    status = 503;
+  }
+} else {
+  status = 404;
+}
+
+const detail =
+  report === null
+    ? null
+    : buildReportDetailView({ report, locale, translate });
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+
+const rendered = await renderCachedPage({
+  tags: [`report:${reportId}`],
+  cache: null,
+  tagVersions: null,
+  shell: { visitor: "member", authState: "authenticated" },
+  prepare: async () => ({
+    variant: pageVariant({
+      route: moderationReportContract.route,
+      params: { id: reportId },
+      visibilityKey: "member",
+      theme: null,
+      pluginsGeneration: PLUGIN_GENERATION,
+      locale,
+      colourScheme: "system",
+      renderFlagsHash: flags.hash,
+    }),
+    data: undefined,
+  }),
+  render: async () => {
+    const themed = await renderThemedPage({
+      sql,
+      boardName,
+      locale,
+      translate,
+      template: detail === null ? "error" : moderationReportContract.templates.page,
+      viewModel:
+        detail === null
+          ? {
+              code: status === 403 ? "forbidden" : "not_found",
+              message: translate(
+                status === 403 ? "theme.error.forbidden" : "theme.error.notFound",
+              ),
+              flags: flags.values,
+            }
+          : { ...detail.viewModel, title: detail.title, flags: flags.values },
+      breadcrumbs: detail?.breadcrumbs ?? [],
+      route: moderationReportContract,
+    });
+
+    return { html: themed.html, errors: themed.errors };
+  },
+});
+
+Astro.response.status = detail === null ? (status === 503 ? 503 : status) : 200;
+Astro.response.headers.set("cache-control", "private, no-store");
+const title = detail?.title ?? translate("theme.error.title");
+---
+
+<ThemeLayout title={`${title} · ${boardName}`} locale={locale} body={rendered.html} authState="authenticated" visitor="member">
+  <script>import "../../../reports/client.ts";</script>
+</ThemeLayout>

@@ -20,6 +20,8 @@ export const NOTIFICATION_TYPES = [
   "badge.awarded",
   "conversation.message",
   "post.approved",
+  "report.resolved",
+  "report.rejected",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -317,6 +319,8 @@ export async function eventRecipients(
     "reaction.added": 0,
     "reputation.given": 0,
     "post.approved": 0,
+    "report.resolved": 0,
+    "report.rejected": 0,
   };
   let tree: ForumTree | null = null;
 
@@ -361,6 +365,40 @@ export async function eventRecipients(
         postId: null,
         conversationId: conversationId.toString(),
       }));
+    }
+    case "report.resolved":
+    case "report.rejected": {
+      const reportId = event.payloadIds.reportId;
+      const reporterId = event.payloadIds.reporterId;
+
+      if (reportId === undefined || reporterId === undefined) {
+        return [];
+      }
+
+      const [report] = (await sql`
+        SELECT target_type, target_id::text AS target_id
+        FROM core.reports
+        WHERE id = ${reportId}
+      `) as Array<{ target_type: string; target_id: string }>;
+      const [reporter] = (await sql`
+        SELECT 1 FROM core.members WHERE id = ${reporterId} AND state = 'active'
+      `) as unknown[];
+
+      if (report === undefined || reporter === undefined) {
+        return [];
+      }
+
+      return [
+        {
+          memberId: reporterId.toString(),
+          type: event.type,
+          source: "moderation" as const,
+          actorId: event.payloadIds.actorId?.toString() ?? null,
+          topicId: null,
+          forumId: null,
+          postId: report.target_type === "post" ? report.target_id : null,
+        },
+      ];
     }
     case "post.approved": {
       const postId = event.payloadIds.postId;
