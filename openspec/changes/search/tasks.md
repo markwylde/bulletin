@@ -7,10 +7,10 @@
 
 ## 2. Query
 
-- [ ] 2.1 Search service (parsing, dual-config query, ranking, filters, sorting, cap) with permission and visibility filtering; tests for stemming, phrase/exclusion, the hidden-forum, deleted-after-indexing and quote scenarios
-- [ ] 2.2 Safe snippets with sentinel highlighting, with a unit test for the markup-in-snippet scenario
-- [ ] 2.3 Member search with trigram ranking and opt-out respect, with tests
-- [ ] 2.4 Search flood control from group settings, with a test
+- [x] 2.1 Search service (parsing, dual-config query, ranking, filters, sorting, cap) with permission and visibility filtering; tests for stemming, phrase/exclusion, the hidden-forum, deleted-after-indexing and quote scenarios
+- [x] 2.2 Safe snippets with sentinel highlighting, with a unit test for the markup-in-snippet scenario
+- [x] 2.3 Member search with trigram ranking and opt-out respect, with tests
+- [x] 2.4 Search flood control from group settings, with a test
 
 ## 3. UI
 

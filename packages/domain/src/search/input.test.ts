@@ -1,0 +1,38 @@
+import { describe, expect, test } from "bun:test";
+import {
+  normalizeSearchQuery,
+  parseSearchDate,
+  parseSearchId,
+  parseSearchIds,
+  parseSearchKind,
+  parseSearchPage,
+  parseSearchPageSize,
+  parseSearchSort,
+} from "./input.ts";
+
+describe("search input parsing", () => {
+  test("normalises free-form query text", () => {
+    expect(normalizeSearchQuery("  running\u0000fast  ")).toBe("running fast");
+    expect(normalizeSearchQuery("x".repeat(500))).toHaveLength(200);
+    expect(normalizeSearchQuery(null)).toBe("");
+  });
+
+  test("falls back to safe defaults for unknown options", () => {
+    expect(parseSearchKind("topics")).toBe("topics");
+    expect(parseSearchKind("nope")).toBe("posts");
+    expect(parseSearchSort("date")).toBe("date");
+    expect(parseSearchSort("nope")).toBe("relevance");
+    expect(parseSearchPage("-2")).toBe(1);
+    expect(parseSearchPage("3")).toBe(3);
+    expect(parseSearchPageSize("500")).toBe(100);
+    expect(parseSearchPageSize("nope")).toBe(20);
+  });
+
+  test("parses dates and bigint IDs", () => {
+    expect(parseSearchDate("2026-02-03")?.toISOString()).toBe("2026-02-03T00:00:00.000Z");
+    expect(parseSearchDate("03/02/2026")).toBeNull();
+    expect(parseSearchId("12")).toBe("12");
+    expect(parseSearchId("0")).toBeNull();
+    expect(parseSearchIds(["1", "1", "2", "x", null])).toEqual(["1", "2"]);
+  });
+});
