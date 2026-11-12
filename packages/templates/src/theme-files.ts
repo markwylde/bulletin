@@ -4,7 +4,12 @@
  * sync. A theme file may be `.liquid`; themes cannot include other files.
  */
 
-import type { SchemeTokens, ThemeScheme, ThemeTokens } from "./contrast.ts";
+import {
+  type SchemeTokens,
+  THEME_SCHEMES,
+  type ThemeScheme,
+  type ThemeTokens,
+} from "./contrast.ts";
 
 export const DEFAULT_THEME_NAME = "default";
 export const DEFAULT_THEME_VERSION = 1;
@@ -76,8 +81,6 @@ export async function loadDemoHookFragments(): Promise<Readonly<Record<string, s
   };
 }
 
-const TOKEN_SCHEMES = ["light", "dark"] as const;
-
 function schemeTokens(value: unknown, scheme: ThemeScheme): SchemeTokens {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`Default theme tokens are missing the ${scheme} scheme`);
@@ -108,7 +111,7 @@ export async function loadDefaultThemeTokens(): Promise<ThemeTokens> {
 
   const record = source as Record<string, unknown>;
   const tokens = Object.fromEntries(
-    TOKEN_SCHEMES.map((scheme) => [scheme, schemeTokens(record[scheme], scheme)]),
+    THEME_SCHEMES.map((scheme) => [scheme, schemeTokens(record[scheme], scheme)]),
   ) as Record<ThemeScheme, SchemeTokens>;
 
   return tokens;

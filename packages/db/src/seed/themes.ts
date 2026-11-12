@@ -70,7 +70,6 @@ interface ExistingTheme {
 
 interface ExistingTemplate {
   readonly name: string;
-  readonly body: string;
 }
 
 /**
@@ -161,7 +160,7 @@ export async function syncDefaultThemeInTransaction(
   }
 
   const stored = (await tx`
-    SELECT name, body FROM core.theme_templates WHERE theme_id = ${theme.id}
+    SELECT name FROM core.theme_templates WHERE theme_id = ${theme.id}
   `) as ExistingTemplate[];
 
   for (const template of stored) {
