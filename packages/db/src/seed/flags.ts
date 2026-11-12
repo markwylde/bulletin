@@ -323,6 +323,18 @@ const FLAGS: readonly SeededFlag[] = [
     fullyOnDaysAgo: 1,
   },
   {
+    key: "search",
+    description: "Full-text search, the quick-search box and member activity views.",
+    owner: "search",
+    defaultValue: true,
+    affectsRender: true,
+    clientVisible: false,
+    rules: [],
+    createdDaysAgo: 6,
+    updatedDaysAgo: 1,
+    fullyOnDaysAgo: 1,
+  },
+  {
     key: "compactTopicList",
     description: "Compact topic rows with a smaller author column.",
     owner: "core",

@@ -73,6 +73,19 @@ function breadcrumbsFor(
  */
 export async function renderSearchRoute(input: SearchRouteInput): Promise<SearchRouteResult> {
   const contract = CONTRACTS[input.mode];
+  const flags = await loadViewerFlags(input.sql, input.session);
+
+  // ADR 0010: a disabled search is indistinguishable from a route that does not exist.
+  if (flags.values.search !== true) {
+    const notFound = await renderThemedNotFound({
+      sql: input.sql,
+      locale: input.locale,
+      translate: input.translate,
+      route: contract,
+    });
+
+    return { ...notFound, kind: "page", status: 404 };
+  }
 
   if (input.mode === "new" && input.session === null) {
     return {
@@ -91,10 +104,9 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
     deps: searchCapabilityDeps(tree),
     view: "search-route",
   });
-  const [theme, settings, flags] = await Promise.all([
+  const [theme, settings] = await Promise.all([
     loadActiveTheme(input.sql),
     readBoardSettings(input.sql),
-    loadViewerFlags(input.sql, input.session),
   ]);
   const boardName = boardNameFrom(settings.boardName, input.translate);
   const common = {

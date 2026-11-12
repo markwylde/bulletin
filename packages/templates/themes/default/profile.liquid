@@ -139,7 +139,7 @@
 
   <section class="bl-card" data-profile-posts>
     <h2 class="bl-card__title">{% t "profile.posts.title" %}</h2>
-    <a class="bl-button bl-button--quiet bl-button--small" href="/search/member/{{ profile.id }}" data-profile-content-link>{% t "search.member.profileLink" name: profile.name %}</a>
+    {% if flags.search %}<a class="bl-button bl-button--quiet bl-button--small" href="/search/member/{{ profile.id }}" data-profile-content-link>{% t "search.member.profileLink" name: profile.name %}</a>{% endif %}
     {% if profile.posts.size > 0 %}
       <ol class="bl-profile__posts">
         {% for post in profile.posts %}

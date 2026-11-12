@@ -265,6 +265,16 @@ export const warningsFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Full-text search, the quick-search box and the member activity views (change `search`). */
+export const searchFlag = defineFlag({
+  key: "search",
+  description: "Full-text search, the quick-search box and member activity views.",
+  owner: "search",
+  default: false,
+  affectsRender: true,
+  clientVisible: false,
+});
+
 /** Saved multi-moderation actions applied by moderators (change `moderation`). */
 export const multimodFlag = defineFlag({
   key: "multimod",
@@ -300,4 +310,5 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   badgesFlag,
   warningsFlag,
   multimodFlag,
+  searchFlag,
 ]);

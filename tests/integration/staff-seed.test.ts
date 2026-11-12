@@ -124,6 +124,7 @@ integrationDescribe("flags seed", () => {
         "reactions",
         "realtime",
         "reputation",
+        "search",
         "signatures",
         "unfurls",
         "warnings",
