@@ -341,7 +341,7 @@ export async function readLinkPolicy(sql: SQL, memberId: string): Promise<LinkPo
 
   return {
     maxLinks: applies ? maxLinks : 0,
-    imagesAllowed,
+    imagesAllowed: applies ? imagesAllowed : true,
     action,
     exempt,
   };

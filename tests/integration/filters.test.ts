@@ -920,6 +920,55 @@ integrationDescribe("content filters", () => {
     });
   }, 60_000);
 
+  test("allows images once a new member passes both link-limit thresholds", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      await database.sql`
+        UPDATE core.members SET post_count = 0, joined_at = now() WHERE id = ${member}
+      `;
+      await setMemberSetting(database, "members", "posting.link_limit", 5);
+      await setMemberSetting(database, "members", "posting.link_limit_min_posts", 10);
+      await setMemberSetting(database, "members", "posting.link_limit_min_days", 30);
+      await setMemberSetting(database, "members", "posting.link_limit_images", false);
+      await setMemberSetting(database, "members", "posting.link_limit_action", "hold");
+      const image = "![screenshot](https://img.example/screenshot.png)";
+
+      const held = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Images while restricted",
+          bodyMd: image,
+        }),
+      );
+      expect((await readTopic(database.sql, held.topicId))?.visibility).toBe("unapproved");
+      const [heldPost] = (await database.sql`
+        SELECT hold_reason FROM core.posts WHERE id = ${held.postId}
+      `) as Array<{ hold_reason: string | null }>;
+      expect(heldPost?.hold_reason).toBe("link_limit");
+
+      await database.sql`
+        UPDATE core.members
+        SET post_count = 10, joined_at = now() - interval '31 days'
+        WHERE id = ${member}
+      `;
+      const allowed = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Images after the thresholds",
+          bodyMd: image,
+        }),
+      );
+      expect((await readTopic(database.sql, allowed.topicId))?.visibility).toBe("visible");
+      const [allowedPost] = (await database.sql`
+        SELECT hold_reason FROM core.posts WHERE id = ${allowed.postId}
+      `) as Array<{ hold_reason: string | null }>;
+      expect(allowedPost?.hold_reason).toBeNull();
+    });
+  }, 60_000);
+
   test("holds duplicate, rapid and blocklisted-link posts with the rule label", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "new-member");
