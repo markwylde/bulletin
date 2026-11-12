@@ -458,7 +458,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
         publicEditHistory: input.publicEditHistory === true,
         editWindow,
         canDeleteOwn,
-        canBulk: canSoftDelete || canRestore || canApprovePosts,
+        canBulk: canSoftDelete || canRestore || canApprovePosts || canSplit,
         canWarn,
       }),
     };

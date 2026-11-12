@@ -1,8 +1,10 @@
 /**
  * The default theme's source files (ADR 0008). The seed installs them into
- * `core.themes`/`core.theme_templates`, CI checks them, and task 8.2 keeps the DB copy in
+ * `core.themes`/`core.theme_templates`, CI checks them, and task 1.2 keeps the DB copy in
  * sync. A theme file may be `.liquid`; themes cannot include other files.
  */
+
+import type { SchemeTokens, ThemeScheme, ThemeTokens } from "./contrast.ts";
 
 export const DEFAULT_THEME_NAME = "default";
 export const DEFAULT_THEME_VERSION = 1;
@@ -72,4 +74,42 @@ export async function loadDemoHookFragments(): Promise<Readonly<Record<string, s
   return {
     "demo.after.topics": await readLiquid(HOOKS_DIR, "demo.after.topics.liquid"),
   };
+}
+
+const TOKEN_SCHEMES = ["light", "dark"] as const;
+
+function schemeTokens(value: unknown, scheme: ThemeScheme): SchemeTokens {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`Default theme tokens are missing the ${scheme} scheme`);
+  }
+
+  const tokens: Record<string, string> = {};
+
+  for (const [name, token] of Object.entries(value)) {
+    if (typeof token !== "string" || token.trim() === "") {
+      throw new Error(`Default theme token ${scheme}.${name} must be a non-empty string`);
+    }
+
+    tokens[name] = token;
+  }
+
+  return tokens;
+}
+
+/** Reads the default theme's light and dark design tokens from `themes/default/tokens.json`. */
+export async function loadDefaultThemeTokens(): Promise<ThemeTokens> {
+  const source: unknown = await Bun.file(
+    new URL(`${DEFAULT_THEME_NAME}/tokens.json`, THEMES_DIR),
+  ).json();
+
+  if (typeof source !== "object" || source === null || Array.isArray(source)) {
+    throw new Error("Default theme tokens must be an object with light and dark schemes");
+  }
+
+  const record = source as Record<string, unknown>;
+  const tokens = Object.fromEntries(
+    TOKEN_SCHEMES.map((scheme) => [scheme, schemeTokens(record[scheme], scheme)]),
+  ) as Record<ThemeScheme, SchemeTokens>;
+
+  return tokens;
 }

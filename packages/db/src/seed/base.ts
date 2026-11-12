@@ -17,7 +17,7 @@ import { notificationsSeedModule } from "./notifications.ts";
 import { profilesSeedModule } from "./profiles.ts";
 import { reactionsSeedModule } from "./reactions.ts";
 import { reputationSeedModule } from "./reputation.ts";
-import { themesSeedModule } from "./themes.ts";
+import { syncDefaultTheme, themesSeedModule } from "./themes.ts";
 import { topicsSeedModule } from "./topics.ts";
 
 export const baseSeedModule: SeedModule = {
@@ -53,7 +53,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
   const sql = new SQL(options.databaseUrl, { connectionTimeout: 5 });
 
   try {
-    return await runSeeds({
+    const result = await runSeeds({
       sql,
       registry: new SeedRegistry([
         baseSeedModule,
@@ -79,6 +79,12 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
       size: options.size ?? "default",
       ...(options.storage === undefined ? {} : { storage: options.storage }),
     });
+
+    // The seed is a no-op on a seeded database, but the default theme must still follow the
+    // repository after an upgrade (ADR 0008). A hash match makes this a single read.
+    await syncDefaultTheme(sql);
+
+    return result;
   } finally {
     await sql.close();
   }

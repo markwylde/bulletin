@@ -1,8 +1,13 @@
-import { ensureCurrentRendering, resolveQuotePlaceholders } from "@bulletin/content";
+import {
+  ensureCurrentRendering,
+  replaceWordsInText,
+  resolveQuotePlaceholders,
+} from "@bulletin/content";
 import type { Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { listEmbedProviders } from "../../content/embeds.ts";
 import { loadQuoteSnapshot } from "../../content/quotes.ts";
+import { loadReplaceWords } from "../../filters/repository.ts";
 import { can } from "../../permissions/can.ts";
 import { loadPermissionSnapshot, type PermissionSnapshot } from "../../permissions/snapshot.ts";
 import type { ForumTree } from "../../permissions/tree.ts";
@@ -47,6 +52,7 @@ async function resolveHeldBodies(
   rows: readonly {
     readonly postId: string;
     readonly bodyHtml: string;
+    readonly bodyHtmlUnfiltered: string | null;
     readonly bodyText: string;
     readonly renderVersion: number;
     readonly sanitiserVersion: number;
@@ -57,6 +63,7 @@ async function resolveHeldBodies(
   sessionId: string | null,
   embedProviders: Awaited<ReturnType<typeof listEmbedProviders>>,
   translate: Translator,
+  replaceWords: Awaited<ReturnType<typeof loadReplaceWords>>,
 ): Promise<ReadonlyMap<string, string>> {
   const rendered = new Map<string, string>();
   const sources = new Map(
@@ -110,14 +117,23 @@ async function resolveHeldBodies(
   };
 
   for (const row of rows) {
+    const unfilteredSource = row.bodyHtmlUnfiltered !== null;
     const current = await ensureCurrentRendering(
       {
-        bodyHtml: row.bodyHtml,
+        bodyHtml: row.bodyHtmlUnfiltered ?? row.bodyHtml,
         bodyText: row.bodyText,
         renderVersion: row.renderVersion,
         sanitiserVersion: row.sanitiserVersion,
       },
-      { profile: "post", embedProviders, mentions: false },
+      {
+        profile: "post",
+        embedProviders,
+        mentions: false,
+        replaceWords,
+        // The unfiltered source always needs the current replacement list; the stored
+        // filtered HTML only needs it when its render versions are stale.
+        ...(unfilteredSource ? { versions: { renderVersion: -1, sanitiserVersion: -1 } } : {}),
+      },
     );
     rendered.set(
       row.postId,
@@ -139,6 +155,7 @@ interface HeldPostRow {
   readonly forum_id: string;
   readonly position: number;
   readonly body_html: string;
+  readonly body_html_unfiltered: string | null;
   readonly body_text: string;
   readonly render_version: number;
   readonly sanitiser_version: number;
@@ -170,8 +187,9 @@ export async function heldPostsForOverlay(
     }));
   const rows = (await sql`
     SELECT p.id::text AS post_id, p.topic_id::text AS topic_id, t.slug AS topic_slug,
-      t.forum_id::text AS forum_id, p.position, p.body_html, p.body_text,
-      p.render_version, p.sanitiser_version, p.created_at, author.display_name AS author_name
+      t.forum_id::text AS forum_id, p.position, p.body_html, p.body_html_unfiltered,
+      p.body_text, p.render_version, p.sanitiser_version, p.created_at,
+      author.display_name AS author_name
     FROM core.posts p
     JOIN core.topics t ON t.id = p.topic_id
     LEFT JOIN core.members author ON author.id = p.author_id
@@ -210,11 +228,13 @@ export async function heldPostsForOverlay(
   }
 
   const embedProviders = await listEmbedProviders(sql);
+  const replaceWords = await loadReplaceWords(sql);
   const bodies = await resolveHeldBodies(
     sql,
     rows.map((row) => ({
       postId: row.post_id,
       bodyHtml: row.body_html,
+      bodyHtmlUnfiltered: row.body_html_unfiltered,
       bodyText: row.body_text,
       renderVersion: row.render_version,
       sanitiserVersion: row.sanitiser_version,
@@ -225,6 +245,7 @@ export async function heldPostsForOverlay(
     input.sessionId,
     embedProviders,
     input.translate,
+    replaceWords,
   );
 
   return rows.map((row) => ({
@@ -292,10 +313,11 @@ export async function heldTopicsForOverlay(
     ORDER BY created_at, id
     LIMIT ${OVERLAY_HELD_LIMIT}
   `) as HeldTopicRow[];
+  const replaceWords = await loadReplaceWords(sql);
 
   return rows.map((row) => ({
     topicId: row.id,
-    title: row.title,
+    title: replaceWordsInText(row.title, replaceWords),
     href: canonicalUrl("topic", row.id, row.slug),
     createdAt: row.created_at.toISOString(),
     reason: row.hold_reason,

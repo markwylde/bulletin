@@ -10,6 +10,11 @@
               <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-reveal>{% t "profile.ignore.reveal" %}</button>
             </div>
             <div class="bl-post__meta">
+              {% if post.canBulk %}
+                <label class="bl-check bl-post__select">
+                  <input type="checkbox" data-bulk-post-check="{{ post.id }}" value="{{ post.id }}" aria-label="{% t "moderation.bulk.select" %}" />
+                </label>
+              {% endif %}
               <span class="bl-muted" data-post-time>{{ post.createdAt }}</span>
               {% if post.unapproved %}<span class="bl-badge bl-badge--danger" data-post-unapproved>{% t "post.unapproved" %}</span>{% endif %}
               {% if post.editedMarker %}<span class="bl-muted" data-post-edited>{{ post.editedMarker }}</span>{% endif %}

@@ -2,7 +2,7 @@
 
 ## 1. Default theme
 
-- [ ] 1.1 Complete the default theme templates for every user-app route built so far, with light/dark tokens; E2E visual check at 360/390/1440 in both schemes, and the contrast check passing
+- [x] 1.1 Complete the default theme templates for every user-app route built so far, with light/dark tokens; E2E visual check at 360/390/1440 in both schemes, and the contrast check passing
 - [ ] 1.2 Implement repo-to-DB sync of the default theme by hash, with an integration test
 - [ ] 1.3 CI WebView smoke renders at 360 px for the default and seed themes
 

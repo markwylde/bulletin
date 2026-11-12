@@ -19,6 +19,7 @@ import {
   sessionCookieName,
 } from "@bulletin/domain/auth";
 import { loadEvent } from "@bulletin/domain/events";
+import { deleteFilterWord, saveFilterWord } from "@bulletin/domain/filters";
 import {
   approveHeldPosts,
   heldPostsForOverlay,
@@ -994,6 +995,96 @@ integrationDescribe("moderation queue", () => {
       expect(
         (overlay.body.heldTopics as Array<{ topicId: string }>).map((row) => row.topicId),
       ).toEqual([topic.topicId]);
+    });
+  }, 60_000);
+
+  test("held overlays apply the current replace words to bodies and titles", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+
+      await database.sql`
+        UPDATE core.forums
+        SET require_approval_topics = true, require_approval_posts = true
+        WHERE id = ${offTopic}
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Held damn topic",
+          bodyMd: "Opening damn body.",
+        }),
+      );
+      expectOk(
+        await reply(database.sql, {
+          actorId: author.memberId,
+          topicId: topic.topicId,
+          bodyMd: "A held damn reply.",
+        }),
+      );
+
+      const read = async () => {
+        const posts = await heldPostsForOverlay(database.sql, {
+          memberId: author.memberId,
+          topicId: topic.topicId,
+          translate,
+          sessionId: "0",
+        });
+        const topics = await heldTopicsForOverlay(database.sql, {
+          memberId: author.memberId,
+          forumId: offTopic,
+          sessionId: "0",
+        });
+
+        return {
+          bodies: posts.map((post) => post.bodyHtml).join("\n"),
+          title: topics[0]?.title ?? "",
+        };
+      };
+
+      // No rule yet: the stored rendering keeps the original word.
+      const initial = await read();
+      expect(initial.title).toBe("Held damn topic");
+      expect(initial.bodies).toContain("damn");
+
+      const saved = await saveFilterWord(database.sql, {
+        word: "damn",
+        mode: "replace",
+        replacement: "darn",
+        matchMode: "whole",
+      });
+
+      if (!saved.ok) {
+        throw new Error("Could not save the filter word");
+      }
+
+      // Editing the rule before the workers run still changes the overlay immediately.
+      const replaced = await read();
+      expect(replaced.title).toBe("Held darn topic");
+      expect(replaced.bodies).toContain("darn");
+      expect(replaced.bodies).not.toContain("damn");
+
+      expect(
+        await saveFilterWord(database.sql, {
+          id: saved.id,
+          word: "damn",
+          mode: "replace",
+          replacement: "dang",
+          matchMode: "whole",
+        }),
+      ).toMatchObject({ ok: true });
+      const changed = await read();
+      expect(changed.title).toBe("Held dang topic");
+      expect(changed.bodies).toContain("dang");
+      expect(changed.bodies).not.toContain("darn");
+
+      // Removing the rule restores the original text without waiting for a worker.
+      await deleteFilterWord(database.sql, saved.id);
+      const removed = await read();
+      expect(removed.title).toBe("Held damn topic");
+      expect(removed.bodies).toContain("damn");
+      expect(removed.bodies).not.toContain("dang");
     });
   }, 60_000);
 

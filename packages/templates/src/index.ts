@@ -1,6 +1,7 @@
 /** Liquid template engine, view-model contracts and hook points. */
 export * from "./compile.ts";
 export * from "./contract.ts";
+export * from "./contrast.ts";
 export * from "./engine.ts";
 export * from "./flag-context.ts";
 export * from "./hook-registry.ts";

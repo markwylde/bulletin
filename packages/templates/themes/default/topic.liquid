@@ -45,7 +45,7 @@
     {% endif %}
   </header>
 
-  {% if topicTools.pin or topicTools.lock or topicTools.move or topicTools.merge or topicTools.split or topicTools.multimod and flags.multimod %}
+  {% if topicTools.pin or topicTools.unpin or topicTools.lock or topicTools.unlock or topicTools.move or topicTools.merge or topicTools.split or topicTools.multimod and flags.multimod %}
     <details class="bl-card" data-topic-tools
       data-label-failed="{% t "moderation.tools.failed" %}"
       data-label-saved="{% t "moderation.tools.saved" %}"

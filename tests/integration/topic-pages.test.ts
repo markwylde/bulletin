@@ -666,6 +666,79 @@ integrationDescribe("forum topic list and topic view", () => {
     });
   }, 45_000);
 
+  test("a lock-only moderator gets Unlock and a pin-only moderator gets Unpin", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberSession(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author.memberId,
+          forumId: offTopic,
+          title: "Stateful moderator tools",
+          bodyMd: "Body.",
+        }),
+      );
+      const render = async () => {
+        const versions = await createTagVersions({
+          sql: database.sql,
+          heartbeatMs: 100,
+          heartbeatTimeoutMs: 1_000,
+        });
+
+        try {
+          return await topicCache(
+            database,
+            author,
+            `${topic.topicId}-stateful-moderator-tools`,
+            createRenderCache({ tags: versions }),
+            versions,
+          );
+        } finally {
+          await versions.close();
+        }
+      };
+
+      // Lock-only: the topic is locked, so Unlock must appear even though Pin is unavailable.
+      await database.sql`
+        INSERT INTO core.moderators (forum_id, member_id, powers)
+        VALUES (${offTopic}, ${author.memberId}, ARRAY['lock']::text[])
+      `;
+      await database.sql`UPDATE core.topics SET locked = true WHERE id = ${topic.topicId}`;
+
+      const lockOnly = await render();
+      const lockHtml = lockOnly.kind === "page" ? lockOnly.html : "";
+      expect(lockHtml).toContain('data-topic-tool="unlock"');
+      expect(lockHtml).not.toContain('data-topic-tool="pin"');
+      expect(lockHtml).not.toContain("data-bulk-post-check");
+
+      // Pin-only: the topic is pinned, so Unpin must appear even though Lock is unavailable.
+      await database.sql`
+        UPDATE core.moderators SET powers = ARRAY['pin']::text[]
+        WHERE forum_id = ${offTopic} AND member_id = ${author.memberId}
+      `;
+      await database.sql`
+        UPDATE core.topics SET locked = false, pinned = true WHERE id = ${topic.topicId}
+      `;
+
+      const pinOnly = await render();
+      const pinHtml = pinOnly.kind === "page" ? pinOnly.html : "";
+      expect(pinHtml).toContain('data-topic-tool="unpin"');
+      expect(pinHtml).not.toContain('data-topic-tool="lock"');
+      expect(pinHtml).not.toContain("data-bulk-post-check");
+
+      // Split-only: selecting posts is the only way to split, so every post gets a checkbox.
+      await database.sql`
+        UPDATE core.moderators SET powers = ARRAY['split']::text[]
+        WHERE forum_id = ${offTopic} AND member_id = ${author.memberId}
+      `;
+
+      const splitOnly = await render();
+      const splitHtml = splitOnly.kind === "page" ? splitOnly.html : "";
+      expect(splitHtml).toContain("data-bulk-post-check");
+      expect(splitHtml).not.toContain('data-bulk-post-action="soft_delete"');
+    });
+  }, 45_000);
+
   test("a redaction committed while the page renders never caches the old body", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");
