@@ -88,6 +88,11 @@ integrationDescribe("theme management", () => {
     await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
       await waitForSelector(view, "[data-appearance-chooser]:not([hidden])", 20_000);
       await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
+      const guestThemes = await view.evaluate<string[]>(
+        `[...document.querySelectorAll("[data-appearance-theme] option")].map((option) => option.textContent ?? "")`,
+      );
+      expect(guestThemes).toContain("sunset");
+      expect(guestThemes).not.toContain("vip-gold");
       await setInputValue(view, "[data-appearance-theme]", chosenTheme);
       await setInputValue(view, "[data-appearance-scheme]", "dark");
       await clickSelector(view, "[data-appearance-save]");
@@ -103,6 +108,11 @@ integrationDescribe("theme management", () => {
       await view.navigate(USER_URL);
       await waitForSelector(view, "[data-appearance-chooser]:not([hidden])", 20_000);
       await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
+      const memberThemes = await view.evaluate<string[]>(
+        `[...document.querySelectorAll("[data-appearance-theme] option")].map((option) => option.textContent ?? "")`,
+      );
+      expect(memberThemes).toContain("sunset");
+      expect(memberThemes).not.toContain("vip-gold");
       await setInputValue(view, "[data-appearance-theme]", chosenTheme);
       await setInputValue(view, "[data-appearance-scheme]", "dark");
       await clickSelector(view, "[data-appearance-save]");

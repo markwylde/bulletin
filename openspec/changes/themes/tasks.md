@@ -26,8 +26,8 @@
 
 ## 5. Strings and seed
 
-- [ ] 5.1 Add en/es/fr strings for the theme manager and chooser; verify completeness
-- [ ] 5.2 Seed a second theme (child of default, distinct tokens and one overridden template), a VIP-only theme, and a marketplace theme package; verify after `docker compose up --watch`
+- [x] 5.1 Add en/es/fr strings for the theme manager and chooser; verify completeness
+- [x] 5.2 Seed a second theme (child of default, distinct tokens and one overridden template), a VIP-only theme, and a marketplace theme package; verify after `docker compose up --watch`
 
 ## 6. Feature flag
 

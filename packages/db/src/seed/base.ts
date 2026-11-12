@@ -4,6 +4,7 @@ import { SQL } from "bun";
 import { adminLogSeedModule } from "./admin-log.ts";
 import { attachmentSeedModule } from "./attachments.ts";
 import { conversationSeedModule } from "./conversations.ts";
+import { demoThemesSeedModule } from "./demo-themes.ts";
 import { emoticonSeedModule } from "./emoticons.ts";
 import { flagsSeedModule } from "./flags.ts";
 import { forumExtrasSeedModule } from "./forum-extras.ts";
@@ -74,6 +75,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         adminLogSeedModule,
         flagsSeedModule,
         themesSeedModule,
+        demoThemesSeedModule,
       ]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",

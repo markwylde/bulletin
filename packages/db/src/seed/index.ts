@@ -2,6 +2,7 @@ export * from "./admin-log.ts";
 export * from "./attachments.ts";
 export * from "./base.ts";
 export * from "./conversations.ts";
+export * from "./demo-themes.ts";
 export * from "./emoticons.ts";
 export * from "./flags.ts";
 export * from "./forum-extras.ts";
