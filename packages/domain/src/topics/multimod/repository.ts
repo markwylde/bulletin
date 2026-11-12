@@ -458,11 +458,20 @@ export async function applyMultimod(
               }
 
               const postCount = await visiblePostCount(tx, topic.id);
-              await adjustForumTopicCount(tx, currentForumId, -1);
-              await adjustForumPostCount(tx, currentForumId, -postCount);
+              // A hidden topic stays out of both forums' counters until it is restored.
+              const counted = topic.visibility === "visible";
+
+              if (counted) {
+                await adjustForumTopicCount(tx, currentForumId, -1);
+                await adjustForumPostCount(tx, currentForumId, -postCount);
+              }
+
               await moveTopicRow(tx, topic.id, destination.id);
-              await adjustForumTopicCount(tx, destination.id, 1);
-              await adjustForumPostCount(tx, destination.id, postCount);
+
+              if (counted) {
+                await adjustForumTopicCount(tx, destination.id, 1);
+                await adjustForumPostCount(tx, destination.id, postCount);
+              }
               forumIds.add(currentForumId);
               forumIds.add(destination.id);
               currentForumId = destination.id;

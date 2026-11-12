@@ -23,6 +23,7 @@ import {
 import {
   adjustForumPostCount,
   adjustForumTopicCount,
+  adjustMemberPostCount,
   deleteTopicRow,
   insertTopic,
   loadForumTarget,
@@ -31,6 +32,7 @@ import {
   lockTopicForWrite,
   recountTopic,
   refreshForumLastPost,
+  visiblePostCountsByAuthor,
 } from "../repository.ts";
 import type { TopicMutationOutcome } from "../result.ts";
 
@@ -252,6 +254,7 @@ export async function mergeTopics(
 
         const sourceForumCounts = new Map<string, number>();
         const sourcePostCounts = new Map<string, number>();
+        const memberPostDeltas = new Map<string, number>();
         // A hidden source's posts were never counted in its forum, so the merge must not
         // subtract them again; they only count once the destination is visible.
         const destinationVisible = destinationCurrent.visibility === "visible";
@@ -269,6 +272,19 @@ export async function mergeTopics(
             FROM core.posts WHERE topic_id = ${source.id}
           `) as Array<{ visible_posts: number; all_posts: number }>;
           const visible = counts?.visible_posts ?? 0;
+          const sourceVisible = source.visibility === "visible";
+          const authorDeltas =
+            sourceVisible === destinationVisible
+              ? null
+              : await visiblePostCountsByAuthor(tx, source.id);
+          const direction = destinationVisible ? 1 : -1;
+
+          for (const [authorId, count] of authorDeltas ?? []) {
+            memberPostDeltas.set(
+              authorId,
+              (memberPostDeltas.get(authorId) ?? 0) + count * direction,
+            );
+          }
 
           await tx`
             UPDATE core.posts
@@ -279,7 +295,7 @@ export async function mergeTopics(
 
           // Hidden topics were never counted in their forum, so only a visible source loses a
           // topic; counting every source would subtract the hidden ones a second time.
-          if (source.visibility === "visible") {
+          if (sourceVisible) {
             sourceForumCounts.set(source.forumId, (sourceForumCounts.get(source.forumId) ?? 0) + 1);
             sourcePostCounts.set(
               source.forumId,
@@ -312,6 +328,12 @@ export async function mergeTopics(
 
         if (movedVisible > 0) {
           await adjustForumPostCount(tx, destinationCurrent.forumId, movedVisible);
+        }
+
+        for (const [authorId, delta] of memberPostDeltas) {
+          if (delta !== 0) {
+            await adjustMemberPostCount(tx, authorId, delta);
+          }
         }
 
         const stubDays = input.stubDays ?? 0;
@@ -371,7 +393,7 @@ export async function mergeTopics(
           postIds: [],
           topicIds: [destinationCurrent.id, ...sourceIds],
           forumIds: unique(currentForums.flatMap((forumId) => chain(freshTree, forumId))),
-          memberIds: [],
+          memberIds: [...memberPostDeltas.keys()],
         } satisfies TopicToolsSummary;
       },
     });
@@ -550,12 +572,29 @@ export async function splitTopic(
           FROM ranked WHERE p.id = ranked.id
         `;
 
-        const visibleMoved = rows.filter((row) => row.visibility === "visible").length;
+        const visibleRows = rows.filter((row) => row.visibility === "visible");
+        const visibleMoved = visibleRows.length;
         // A hidden source's posts were already removed from its forum's counters; only a
         // visible target adds them back, and a visible source loses the posts it no longer
         // holds.
         const sourceCounted = currentSource.visibility === "visible";
         const targetCounted = currentTarget === null || currentTarget.visibility === "visible";
+        const memberPostDeltas = new Map<string, number>();
+
+        if (sourceCounted !== targetCounted) {
+          for (const row of visibleRows) {
+            if (row.author_id !== null) {
+              memberPostDeltas.set(
+                row.author_id,
+                (memberPostDeltas.get(row.author_id) ?? 0) + (targetCounted ? 1 : -1),
+              );
+            }
+          }
+        }
+
+        for (const [authorId, delta] of memberPostDeltas) {
+          await adjustMemberPostCount(tx, authorId, delta);
+        }
 
         if (currentSource.forumId === currentTargetForumId) {
           if (sourceCounted !== targetCounted && visibleMoved > 0) {
@@ -606,7 +645,7 @@ export async function splitTopic(
             ...chain(freshTree, currentSource.forumId),
             ...chain(freshTree, currentTargetForumId),
           ]),
-          memberIds: [],
+          memberIds: [...memberPostDeltas.keys()],
         } satisfies TopicToolsSummary;
       },
     });

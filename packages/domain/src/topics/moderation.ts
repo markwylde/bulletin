@@ -700,21 +700,23 @@ async function hardDeleteTopic(
           details: { title: current.title },
         });
 
-        // A redirect stub never contributed to the source forum's topic count.
-        if (current.movedTo === null) {
-          await adjustForumTopicCount(tx, current.forumId, -1);
-        }
+        // A redirect stub and a hidden topic never contributed to the source forum's counts.
+        const counted = current.movedTo === null && current.visibility === "visible";
 
-        if (postCount > 0) {
-          await adjustForumPostCount(tx, current.forumId, -postCount);
-          await adjustMemberPostCounts(tx, authorCounts, -1);
-          await refreshForumLastPost(tx, current.forumId, current.lastPostId);
+        if (counted) {
+          await adjustForumTopicCount(tx, current.forumId, -1);
+
+          if (postCount > 0) {
+            await adjustForumPostCount(tx, current.forumId, -postCount);
+            await adjustMemberPostCounts(tx, authorCounts, -1);
+            await refreshForumLastPost(tx, current.forumId, current.lastPostId);
+          }
         }
 
         return {
           topicId: current.id,
           forumIds: forumChain(tree, current.forumId),
-          memberIds: [...authorCounts.keys()],
+          memberIds: counted ? [...authorCounts.keys()] : [],
         } satisfies TopicContentSummary;
       },
     });
@@ -959,9 +961,15 @@ export async function move(
         }
 
         const postCount = await visiblePostCount(tx, current.id);
+        // A hidden topic was never in its source forum's counters and does not join the
+        // destination's until it is restored.
+        const counted = current.visibility === "visible";
 
-        await adjustForumTopicCount(tx, current.forumId, -1);
-        await adjustForumPostCount(tx, current.forumId, -postCount);
+        if (counted) {
+          await adjustForumTopicCount(tx, current.forumId, -1);
+          await adjustForumPostCount(tx, current.forumId, -postCount);
+        }
+
         await moveTopicRow(tx, current.id, freshDestination.id);
         await writeModerationLog(tx, {
           actorId: input.actorId,
@@ -976,8 +984,11 @@ export async function move(
             stubDays,
           },
         });
-        await adjustForumTopicCount(tx, freshDestination.id, 1);
-        await adjustForumPostCount(tx, freshDestination.id, postCount);
+
+        if (counted) {
+          await adjustForumTopicCount(tx, freshDestination.id, 1);
+          await adjustForumPostCount(tx, freshDestination.id, postCount);
+        }
 
         if (stubDays > 0) {
           await insertMovedStub(tx, {

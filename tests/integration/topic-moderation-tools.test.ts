@@ -18,6 +18,7 @@ import { readRecentProfilePosts } from "@bulletin/domain/profiles";
 import {
   applyMultimod,
   bulkAction,
+  hardDelete,
   listMultimodActions,
   loadQuoteSources,
   mergeTopics,
@@ -92,6 +93,51 @@ function expectOk<T>(
   return outcome.result;
 }
 
+async function visibleCounters(
+  database: TestDatabase,
+  forum: string,
+): Promise<{ readonly topic_count: number; readonly post_count: number }> {
+  const [row] = (await database.sql`
+    SELECT
+      (
+        SELECT count(*)::int FROM core.topics
+        WHERE forum_id = ${forum} AND visibility = 'visible'
+      ) AS topic_count,
+      (
+        SELECT count(*)::int
+        FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+        WHERE t.forum_id = ${forum}
+          AND t.visibility = 'visible'
+          AND p.visibility = 'visible'
+      ) AS post_count
+  `) as Array<{ topic_count: number; post_count: number }>;
+
+  return { topic_count: row?.topic_count ?? 0, post_count: row?.post_count ?? 0 };
+}
+
+async function storedCounters(
+  database: TestDatabase,
+  forum: string,
+): Promise<{ readonly topic_count: number; readonly post_count: number }> {
+  const [row] = (await database.sql`
+    SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+  `) as Array<{ topic_count: number; post_count: number }>;
+
+  return { topic_count: row?.topic_count ?? 0, post_count: row?.post_count ?? 0 };
+}
+
+async function memberVisiblePostCount(database: TestDatabase, member: string): Promise<number> {
+  const [row] = (await database.sql`
+    SELECT count(*)::int AS count
+    FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+    WHERE p.author_id = ${member}
+      AND t.visibility = 'visible'
+      AND p.visibility = 'visible'
+  `) as Array<{ count: number }>;
+
+  return row?.count ?? 0;
+}
+
 /** Replaces seeded synthetic counters with a fresh count of the forum's visible rows. */
 async function syncForumCounters(database: TestDatabase, forum: string): Promise<void> {
   await database.sql`
@@ -108,6 +154,20 @@ async function syncForumCounters(database: TestDatabase, forum: string): Promise
             AND p.visibility = 'visible'
         )
     WHERE f.id = ${forum}
+  `;
+}
+
+async function syncMemberPostCounter(database: TestDatabase, member: string): Promise<void> {
+  await database.sql`
+    UPDATE core.members m
+    SET post_count = (
+      SELECT count(*)::int
+      FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+      WHERE p.author_id = m.id
+        AND t.visibility = 'visible'
+        AND p.visibility = 'visible'
+    )
+    WHERE m.id = ${member}
   `;
 }
 
@@ -404,10 +464,12 @@ integrationDescribe("topic moderation tools", () => {
         await softDeleteTopic(database.sql, { actorId: admin, topicId: mergeSource.topicId }),
       );
       await syncForumCounters(database, forum);
-
+      await syncMemberPostCounter(database, withRestore);
+      const memberTagBefore = await readTagVersion(database.sql, `member:${withRestore}`);
       const [mergeBefore] = (await database.sql`
         SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
       `) as Array<{ topic_count: number; post_count: number }>;
+      const mergeMemberBefore = await memberVisiblePostCount(database, withRestore);
 
       expect(
         await mergeTopics(database.sql, {
@@ -463,6 +525,15 @@ integrationDescribe("topic moderation tools", () => {
       expect(mergeAfter).toEqual(mergeFresh);
       expect(mergeAfter?.topic_count).toBe(mergeBefore?.topic_count);
       expect(mergeAfter?.post_count).toBe((mergeBefore?.post_count ?? 0) + 1);
+      expect(await memberVisiblePostCount(database, withRestore)).toBe(mergeMemberBefore + 1);
+      expect(
+        (
+          await database.sql`
+          SELECT post_count FROM core.members WHERE id = ${withRestore}
+        `
+        )[0],
+      ).toMatchObject({ post_count: mergeMemberBefore + 1 });
+      expect(await readTagVersion(database.sql, `member:${withRestore}`)).not.toBe(memberTagBefore);
 
       const splitSource = expectOk(
         await startTopic(database.sql, {
@@ -489,10 +560,13 @@ integrationDescribe("topic moderation tools", () => {
       expectOk(
         await softDeleteTopic(database.sql, { actorId: admin, topicId: splitSource.topicId }),
       );
-
+      await syncForumCounters(database, forum);
+      await syncMemberPostCounter(database, withRestore);
+      const splitMemberTagBefore = await readTagVersion(database.sql, `member:${withRestore}`);
       const [splitBefore] = (await database.sql`
         SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
       `) as Array<{ topic_count: number; post_count: number }>;
+      const splitMemberBefore = await memberVisiblePostCount(database, withRestore);
 
       expect(
         await splitTopic(database.sql, {
@@ -532,6 +606,18 @@ integrationDescribe("topic moderation tools", () => {
       `) as Array<{ topic_count: number; post_count: number }>;
       expect(splitAfter?.topic_count).toBe((splitBefore?.topic_count ?? 0) + 1);
       expect(splitAfter?.post_count).toBe((splitBefore?.post_count ?? 0) + 2);
+      expect(splitAfter?.post_count).toBe((await visibleCounters(database, forum)).post_count);
+      expect(await memberVisiblePostCount(database, withRestore)).toBe(splitMemberBefore + 2);
+      expect(
+        (
+          await database.sql`
+          SELECT post_count FROM core.members WHERE id = ${withRestore}
+        `
+        )[0],
+      ).toMatchObject({ post_count: splitMemberBefore + 2 });
+      expect(await readTagVersion(database.sql, `member:${withRestore}`)).not.toBe(
+        splitMemberTagBefore,
+      );
     });
   }, 60_000);
 
@@ -564,9 +650,11 @@ integrationDescribe("topic moderation tools", () => {
         }),
       );
       expect(
-        (await database.sql`
+        (
+          await database.sql`
           SELECT visibility FROM core.topics WHERE id = ${heldSource.topicId}
-        `)[0],
+        `
+        )[0],
       ).toMatchObject({ visibility: "unapproved" });
       await syncForumCounters(database, forum);
 
@@ -602,6 +690,89 @@ integrationDescribe("topic moderation tools", () => {
 
       expect(after).toEqual(fresh);
       expect(after).toEqual(before);
+    });
+  }, 60_000);
+
+  test("moving, multi-moving or hard-deleting a hidden topic leaves forum counters alone", async () => {
+    await withSeededDb(async (database) => {
+      const source = await forumId(database, "off-topic");
+      const destination = await forumId(database, "bug-reports");
+      const admin = await memberId(database, "admin");
+      const author = await memberId(database, "member-1");
+
+      const hiddenTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: source,
+          title: "Hidden move source",
+          bodyMd: "Hidden move body.",
+        }),
+      );
+      expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: hiddenTopic.topicId,
+          bodyMd: "Hidden reply.",
+        }),
+      );
+      expectOk(
+        await softDeleteTopic(database.sql, { actorId: admin, topicId: hiddenTopic.topicId }),
+      );
+      await syncForumCounters(database, source);
+      await syncForumCounters(database, destination);
+      await syncMemberPostCounter(database, author);
+      const sourceBefore = await visibleCounters(database, source);
+      const destinationBefore = await visibleCounters(database, destination);
+      const memberBefore = await memberVisiblePostCount(database, author);
+
+      expectOk(
+        await move(database.sql, {
+          actorId: admin,
+          topicId: hiddenTopic.topicId,
+          toForumId: destination,
+        }),
+      );
+      expect(await storedCounters(database, source)).toEqual(sourceBefore);
+      expect(await storedCounters(database, destination)).toEqual(destinationBefore);
+      expect(await visibleCounters(database, destination)).toEqual(destinationBefore);
+      expect(await memberVisiblePostCount(database, author)).toBe(memberBefore);
+
+      expectOk(await hardDelete(database.sql, { actorId: admin, topicId: hiddenTopic.topicId }));
+      expect(await storedCounters(database, destination)).toEqual(destinationBefore);
+      expect(await visibleCounters(database, destination)).toEqual(destinationBefore);
+      expect(await memberVisiblePostCount(database, author)).toBe(memberBefore);
+
+      const multiSource = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: source,
+          title: "Hidden multi-move source",
+          bodyMd: "Hidden multi-move body.",
+        }),
+      );
+      expectOk(
+        await softDeleteTopic(database.sql, { actorId: admin, topicId: multiSource.topicId }),
+      );
+      await syncForumCounters(database, source);
+      const multiSourceBefore = await visibleCounters(database, source);
+      const action = expectOk(
+        await saveMultimodAction(database.sql, admin, {
+          name: `Hidden move ${Date.now()}`,
+          forumIds: [source],
+          steps: [{ type: "move", forumId: destination }],
+        }),
+      );
+
+      expectOk(
+        await applyMultimod(database.sql, {
+          actorId: admin,
+          actionId: action.id,
+          topicId: multiSource.topicId,
+        }),
+      );
+      expect(await storedCounters(database, source)).toEqual(multiSourceBefore);
+      expect(await storedCounters(database, destination)).toEqual(destinationBefore);
+      expect(await memberVisiblePostCount(database, author)).toBe(memberBefore);
     });
   }, 60_000);
 

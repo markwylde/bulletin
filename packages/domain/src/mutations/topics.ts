@@ -135,6 +135,7 @@ export const topicMergeMutation: Mutation<
       ...input.sourceTopicIds.flatMap((id) => [topicTag(id), topicPagesTag(id)]),
       ...result.forumIds.map(forumTag),
       GLOBAL_CACHE_TAGS.board,
+      ...result.memberIds.map(memberTag),
     ]),
 };
 
@@ -157,6 +158,7 @@ export const topicSplitMutation: Mutation<
       ...input.postIds.map(postTag),
       ...result.forumIds.map(forumTag),
       GLOBAL_CACHE_TAGS.board,
+      ...result.memberIds.map(memberTag),
     ]),
 };
 
