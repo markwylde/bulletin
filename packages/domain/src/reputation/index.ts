@@ -14,6 +14,7 @@ import {
   lockMember,
   lockMembers,
   lockReputationPost,
+  lockReputationRebuild,
   memberPostCount,
   readDailyUsage,
   readEntry,
@@ -296,6 +297,14 @@ export async function removeReputationEntry(
   }
 
   return sql.begin(async (tx) => {
+    // Same lock order as a reaction write: shared rebuild lock, then the post, then the
+    // receiver member. The old receiver-first order could deadlock with `setReaction()`.
+    await lockReputationRebuild(tx, "shared");
+
+    if (entry.source === "reaction" && entry.giverId !== null) {
+      await lockReputationPost(tx, entry.postId);
+    }
+
     await lockMember(tx, entry.receiverId);
 
     // Removing reaction-derived reputation must remove the reaction too, otherwise the next

@@ -1271,6 +1271,68 @@ integrationDescribe("reputation", () => {
     });
   }, 60_000);
 
+  test("a concurrent staff reaction removal and reaction write complete with correct totals", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberSession(database, "admin");
+      const giver = await memberSession(database, "member-1");
+      const author = await memberSession(database, "member-2");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Reaction lock order");
+      const like = (await listReactions(database.sql)).find((reaction) => reaction.key === "like");
+      const thanks = (await listReactions(database.sql)).find(
+        (reaction) => reaction.key === "thanks",
+      );
+
+      if (like === undefined || thanks === undefined) {
+        throw new Error("Missing seeded reactions");
+      }
+
+      await setReactionsLink(database, true);
+
+      // Both paths touch the receiver and the post. The old receiver-first staff order could
+      // deadlock against a reaction write; every pair must commit and the totals stay exact.
+      for (let index = 0; index < 8; index += 1) {
+        await setReaction(database.sql, {
+          actorId: giver.memberId,
+          postId: topic.postId,
+          reactionId: like.id,
+        });
+        const [entry] = (await database.sql`
+          SELECT id::text AS id FROM core.reputation_entries
+          WHERE post_id = ${topic.postId} AND source = 'reaction'
+        `) as Array<{ id: string }>;
+
+        if (entry === undefined) {
+          throw new Error("Missing the reaction reputation entry");
+        }
+
+        const [removed, written] = await Promise.all([
+          removeReputationEntry(database.sql, {
+            actorId: admin.memberId,
+            entryId: entry.id,
+          }),
+          setReaction(database.sql, {
+            actorId: giver.memberId,
+            postId: topic.postId,
+            reactionId: thanks.id,
+          }),
+        ]);
+
+        expect(removed.ok).toBe(true);
+        expect(written.ok).toBe(true);
+
+        const [row] = (await database.sql`
+          SELECT
+            m.reputation,
+            COALESCE((SELECT sum(points) FROM core.reputation_entries WHERE receiver_id = m.id), 0)::int
+              AS entry_total
+          FROM core.members m
+          WHERE m.id = ${author.memberId}
+        `) as Array<{ reputation: number; entry_total: number }>;
+        expect(row?.reputation).toBe(row?.entry_total);
+      }
+    });
+  }, 90_000);
+
   test("the viewer vote state and the target are read for the overlay and API", async () => {
     await withSeededDb(async (database) => {
       const giver = await memberSession(database, "member-1");
