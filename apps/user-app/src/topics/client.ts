@@ -751,3 +751,186 @@ document.addEventListener("click", (event) => {
     }).catch(() => undefined);
   });
 });
+
+function checkedValues(selector: string): string[] {
+  return [...document.querySelectorAll<HTMLInputElement>(selector)]
+    .filter((input) => input.checked)
+    .map((input) => input.value);
+}
+
+function showToolError(root: HTMLElement, message: string): void {
+  const target =
+    root.querySelector<HTMLElement>("[data-topic-tools-error]") ??
+    root.querySelector<HTMLElement>("[data-bulk-posts-error]") ??
+    root.querySelector<HTMLElement>("[data-bulk-topics-error]");
+
+  if (target !== null) {
+    target.textContent = message;
+    target.hidden = false;
+  }
+}
+
+async function runTool(
+  root: HTMLElement,
+  request: () => Promise<Response>,
+  reload = true,
+): Promise<void> {
+  try {
+    const response = await request();
+
+    if (response.ok) {
+      if (reload) {
+        window.location.reload();
+      }
+      return;
+    }
+
+    showToolError(root, root.getAttribute("data-label-failed") ?? "");
+  } catch {
+    showToolError(root, root.getAttribute("data-label-failed") ?? "");
+  }
+}
+
+const topicTools = document.querySelector<HTMLElement>("[data-topic-tools]");
+const bulkPosts = document.querySelector<HTMLElement>("[data-bulk-posts]");
+const bulkTopics = document.querySelector<HTMLElement>("[data-bulk-topics]");
+
+document.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const action = target.closest<HTMLElement>("[data-topic-tool]");
+
+  if (action !== null && topicTools !== null) {
+    const tool = action.getAttribute("data-topic-tool");
+    const topicId = action.getAttribute("data-topic-id") ?? "";
+
+    if (tool === null) {
+      return;
+    }
+
+    const body =
+      tool === "pin" || tool === "unpin" ? { pinned: tool === "pin" } : { locked: tool === "lock" };
+    const path = tool === "pin" || tool === "unpin" ? "pin" : "lock";
+    void runTool(topicTools, () => postJson(`/api/topics/${topicId}/${path}`, body));
+    return;
+  }
+
+  const bulkPostButton = target.closest<HTMLElement>("[data-bulk-post-action]");
+
+  if (bulkPostButton !== null && bulkPosts !== null) {
+    const actionName = bulkPostButton.getAttribute("data-bulk-post-action");
+    const ids = checkedValues("[data-bulk-post-check]");
+
+    if (actionName === null || ids.length === 0) {
+      showToolError(bulkPosts, bulkPosts.getAttribute("data-label-nothing-selected") ?? "");
+      return;
+    }
+
+    void runTool(bulkPosts, () =>
+      postJson("/api/moderation/bulk", { target: "posts", action: actionName, ids }),
+    );
+    return;
+  }
+
+  const bulkTopicButton = target.closest<HTMLElement>("[data-bulk-topic-action]");
+
+  if (bulkTopicButton !== null && bulkTopics !== null) {
+    const actionName = bulkTopicButton.getAttribute("data-bulk-topic-action");
+    const ids = checkedValues("[data-bulk-topic-check]");
+
+    if (actionName === null || ids.length === 0) {
+      showToolError(bulkTopics, bulkTopics.getAttribute("data-label-nothing-selected") ?? "");
+      return;
+    }
+
+    const forumId =
+      bulkTopics.querySelector<HTMLSelectElement>("[data-bulk-topic-forum]")?.value ?? "";
+    const stubDays = Number(
+      bulkTopics.querySelector<HTMLInputElement>("[data-bulk-topic-stub]")?.value ?? "0",
+    );
+    void runTool(bulkTopics, () =>
+      postJson("/api/moderation/bulk", {
+        target: "topics",
+        action: actionName,
+        ids,
+        ...(actionName === "move" && forumId !== "" ? { forumId, stubDays } : {}),
+      }),
+    );
+  }
+});
+
+topicTools
+  ?.querySelector<HTMLFormElement>("[data-topic-move-form]")
+  ?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const topicId = form.getAttribute("data-topic-id") ?? "";
+    void runTool(topicTools, () =>
+      postJson(`/api/topics/${topicId}/move`, {
+        forumId: String(data.get("forumId") ?? ""),
+        stubDays: Number(data.get("stubDays") ?? 0),
+      }),
+    );
+  });
+
+topicTools
+  ?.querySelector<HTMLFormElement>("[data-topic-merge-form]")
+  ?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const topicId = form.getAttribute("data-topic-id") ?? "";
+    void runTool(topicTools, () =>
+      postJson(`/api/topics/${topicId}/merge`, {
+        sourceTopicIds: [String(data.get("sourceTopicId") ?? "")],
+        ...(String(data.get("title") ?? "") === "" ? {} : { title: String(data.get("title")) }),
+        stubDays: Number(data.get("stubDays") ?? 0),
+      }),
+    );
+  });
+
+topicTools
+  ?.querySelector<HTMLFormElement>("[data-topic-split-form]")
+  ?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const topicId = form.getAttribute("data-topic-id") ?? "";
+    const postIds = checkedValues("[data-bulk-post-check]");
+
+    if (postIds.length === 0) {
+      showToolError(topicTools, topicTools.getAttribute("data-label-nothing-selected") ?? "");
+      return;
+    }
+
+    void runTool(topicTools, () =>
+      postJson(`/api/topics/${topicId}/split`, {
+        postIds,
+        target: {
+          kind: "new",
+          forumId: String(data.get("forumId") ?? ""),
+          title: String(data.get("title") ?? ""),
+        },
+      }),
+    );
+  });
+
+topicTools
+  ?.querySelector<HTMLFormElement>("[data-topic-multimod-form]")
+  ?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const topicId = form.getAttribute("data-topic-id") ?? "";
+    void runTool(topicTools, () =>
+      postJson("/api/moderation/multimod", {
+        actionId: String(data.get("actionId") ?? ""),
+        topicId,
+      }),
+    );
+  });

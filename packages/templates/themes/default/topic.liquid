@@ -45,6 +45,73 @@
     {% endif %}
   </header>
 
+  {% if topicTools.pin or topicTools.lock or topicTools.move or topicTools.merge or topicTools.split or topicTools.multimod %}
+    <details class="bl-card" data-topic-tools
+      data-label-failed="{% t "moderation.tools.failed" %}"
+      data-label-saved="{% t "moderation.tools.saved" %}"
+      data-label-nothing-selected="{% t "moderation.bulk.nothingSelected" %}">
+      <summary class="bl-card__title">{% t "moderation.tools.title" %}</summary>
+      <div class="bl-actions">
+        {% if topicTools.pin %}<button class="bl-button bl-button--small" type="button" data-topic-tool="pin" data-topic-id="{{ topicId }}">{% t "topic.pin" %}</button>{% endif %}
+        {% if topicTools.unpin %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-topic-tool="unpin" data-topic-id="{{ topicId }}">{% t "topic.unpin" %}</button>{% endif %}
+        {% if topicTools.lock %}<button class="bl-button bl-button--small" type="button" data-topic-tool="lock" data-topic-id="{{ topicId }}">{% t "topic.lock" %}</button>{% endif %}
+        {% if topicTools.unlock %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-topic-tool="unlock" data-topic-id="{{ topicId }}">{% t "topic.unlock" %}</button>{% endif %}
+      </div>
+
+      {% if topicTools.move %}
+        <form class="bl-form" data-topic-move-form data-topic-id="{{ topicId }}">
+          <label class="bl-label" for="topic-move-forum">{% t "moderation.tools.moveTo" %}</label>
+          <select class="bl-input" id="topic-move-forum" name="forumId" required>
+            <option value="">{% t "moderation.tools.chooseForum" %}</option>
+            {% for target in moveTargets %}<option value="{{ target.id }}">{{ target.title }}</option>{% endfor %}
+          </select>
+          <label class="bl-label" for="topic-move-stub">{% t "moderation.tools.stubDays" %}</label>
+          <input class="bl-input" id="topic-move-stub" name="stubDays" type="number" min="0" max="365" value="0" />
+          <button class="bl-button" type="submit" data-topic-move-submit>{% t "moderation.tools.move" %}</button>
+        </form>
+      {% endif %}
+
+      {% if topicTools.merge and mergeTargets.size > 0 %}
+        <form class="bl-form" data-topic-merge-form data-topic-id="{{ topicId }}">
+          <label class="bl-label" for="topic-merge-target">{% t "moderation.tools.mergeInto" %}</label>
+          <select class="bl-input" id="topic-merge-target" name="sourceTopicId" required>
+            <option value="">{% t "moderation.tools.chooseTopic" %}</option>
+            {% for target in mergeTargets %}<option value="{{ target.id }}">{{ target.title }}</option>{% endfor %}
+          </select>
+          <label class="bl-label" for="topic-merge-title">{% t "moderation.tools.mergedTitle" %}</label>
+          <input class="bl-input" id="topic-merge-title" name="title" type="text" maxlength="150" placeholder="{% t "moderation.tools.keepTitle" %}" />
+          <label class="bl-label" for="topic-merge-stub">{% t "moderation.tools.stubDays" %}</label>
+          <input class="bl-input" id="topic-merge-stub" name="stubDays" type="number" min="0" max="365" value="0" />
+          <button class="bl-button" type="submit" data-topic-merge-submit>{% t "moderation.tools.merge" %}</button>
+        </form>
+      {% endif %}
+
+      {% if topicTools.split %}
+        <form class="bl-form" data-topic-split-form data-topic-id="{{ topicId }}">
+          <p class="bl-muted">{% t "moderation.tools.splitHelp" %}</p>
+          <label class="bl-label" for="topic-split-title">{% t "moderation.tools.splitTitle" %}</label>
+          <input class="bl-input" id="topic-split-title" name="title" type="text" minlength="3" maxlength="150" required />
+          <label class="bl-label" for="topic-split-forum">{% t "moderation.tools.splitForum" %}</label>
+          <select class="bl-input" id="topic-split-forum" name="forumId" required>
+            {% for target in moveTargets %}<option value="{{ target.id }}"{% if target.id == forumId %} selected{% endif %}>{{ target.title }}</option>{% endfor %}
+          </select>
+          <button class="bl-button" type="submit" data-topic-split-submit>{% t "moderation.tools.split" %}</button>
+        </form>
+      {% endif %}
+
+      {% if topicTools.multimod and multimodActions.size > 0 %}
+        <form class="bl-form" data-topic-multimod-form data-topic-id="{{ topicId }}">
+          <label class="bl-label" for="topic-multimod-action">{% t "moderation.tools.multimod" %}</label>
+          <select class="bl-input" id="topic-multimod-action" name="actionId" required>
+            {% for action in multimodActions %}<option value="{{ action.id }}">{{ action.name }}</option>{% endfor %}
+          </select>
+          <button class="bl-button" type="submit" data-topic-multimod-submit>{% t "moderation.tools.apply" %}</button>
+        </form>
+      {% endif %}
+      <p class="bl-error-text" data-topic-tools-error hidden></p>
+    </details>
+  {% endif %}
+
   {% if flags.realtime %}
   <button class="bl-button bl-new-replies" type="button" data-new-replies
     data-label-one="{% t "realtime.newReplyOne" %}"
@@ -70,6 +137,21 @@
         {% endif %}
       </nav>
     {% endif %}
+  {% if topicTools.deletePosts or topicTools.restorePosts or topicTools.approvePosts %}
+    <div class="bl-card" data-bulk-posts data-topic-id="{{ topicId }}"
+      data-label-failed="{% t "moderation.bulk.failed" %}"
+      data-label-saved="{% t "moderation.bulk.saved" %}"
+      data-label-nothing-selected="{% t "moderation.bulk.nothingSelected" %}">
+      <h2 class="bl-card__title">{% t "moderation.bulk.postsTitle" %}</h2>
+      <div class="bl-actions">
+        {% if topicTools.deletePosts %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-post-action="soft_delete">{% t "moderation.bulk.softDelete" %}</button>{% endif %}
+        {% if topicTools.restorePosts %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-post-action="restore">{% t "moderation.bulk.restore" %}</button>{% endif %}
+        {% if topicTools.approvePosts %}<button class="bl-button bl-button--small" type="button" data-bulk-post-action="approve">{% t "moderation.bulk.approve" %}</button>{% endif %}
+      </div>
+      <p class="bl-error-text" data-bulk-posts-error hidden></p>
+    </div>
+  {% endif %}
+
   {% else %}
     <div data-topic-empty>{{ emptyState }}</div>
   {% endif %}

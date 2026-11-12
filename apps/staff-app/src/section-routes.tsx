@@ -15,6 +15,7 @@ import { MemberProfilesPage } from "./members/MemberProfilesPage.tsx";
 import { MemberReputationPage } from "./members/MemberReputationPage.tsx";
 import { ProfileFieldsPage } from "./members/ProfileFieldsPage.tsx";
 import { ModerationPage } from "./moderation/ModerationPage.tsx";
+import { MultimodPage } from "./moderation/MultimodPage.tsx";
 import { ModeratorsPage } from "./moderators/ModeratorsPage.tsx";
 import { MasksPage } from "./permissions/MasksPage.tsx";
 import { PromotionsPage } from "./promotions/PromotionsPage.tsx";
@@ -28,6 +29,7 @@ import { StringOverridesPage } from "./strings/StringOverridesPage.tsx";
 export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   dashboard: DashboardPage,
   moderation: ModerationPage,
+  multimod: MultimodPage,
   adminLog: AdminLogPage,
   deadLetters: DeadLettersPage,
   boardSettings: BoardSettingsPage,

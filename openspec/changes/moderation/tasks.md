@@ -16,10 +16,10 @@
 
 ## 3. Topic moderation
 
-- [ ] 3.1 Merge, split and move (with stubs) mutations with locking, renumbering and declared tags; integration tests for each scenario, and cache invalidation tests for affected pages
-- [ ] 3.2 Bulk actions in forum and topic views, with integration tests and E2E at 360
-- [ ] 3.3 Multi-moderation definitions (staff app) and application (user app), with tests for the mark-solved scenario and permission denial
-- [ ] 3.4 Multi-moderation reply steps post as the acting moderator or a designated `is_service` member only; a test that any other author is rejected at definition time
+- [x] 3.1 Merge, split and move (with stubs) mutations with locking, renumbering and declared tags; integration tests for each scenario, and cache invalidation tests for affected pages
+- [x] 3.2 Bulk actions in forum and topic views, with integration tests and E2E at 360
+- [x] 3.3 Multi-moderation definitions (staff app) and application (user app), with tests for the mark-solved scenario and permission denial
+- [x] 3.4 Multi-moderation reply steps post as the acting moderator or a designated `is_service` member only; a test that any other author is rejected at definition time
 
 ## 4. Warnings
 

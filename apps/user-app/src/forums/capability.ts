@@ -14,5 +14,11 @@ export function forumCapabilityDeps(tree: ForumTree): readonly CapabilityDep[] {
     { forumId, bit: "start" as const },
     { forumId, bit: "reply" as const },
     { forumId, bit: "upload" as const },
+    { forumId, bit: "pin" as const },
+    { forumId, bit: "lock" as const },
+    { forumId, bit: "move" as const },
+    { forumId, bit: "soft_delete" as const },
+    { forumId, bit: "restore" as const },
+    { forumId, bit: "approve" as const },
   ]);
 }

@@ -102,6 +102,49 @@ export interface BulkHeldContentSummary {
 }
 
 /** Approval changes counters and the forum's last post, exactly like a restore. */
+/** A multi-moderation application touches its topic, both forum chains and reply authors. */
+export const topicMergeMutation: Mutation<
+  { readonly destinationTopicId: string; readonly sourceTopicIds: readonly string[] },
+  TopicContentSummary
+> = {
+  name: "topic.merge",
+  tags: (input, result) =>
+    uniqueTags([
+      topicTag(input.destinationTopicId),
+      topicPagesTag(input.destinationTopicId),
+      ...input.sourceTopicIds.flatMap((id) => [topicTag(id), topicPagesTag(id)]),
+      ...result.forumIds.map(forumTag),
+      GLOBAL_CACHE_TAGS.board,
+    ]),
+};
+
+export const topicSplitMutation: Mutation<
+  {
+    readonly sourceTopicId: string;
+    readonly targetTopicId: string | null;
+    readonly postIds: readonly string[];
+  },
+  TopicContentSummary
+> = {
+  name: "topic.split",
+  tags: (input, result) =>
+    uniqueTags([
+      topicTag(input.sourceTopicId),
+      topicPagesTag(input.sourceTopicId),
+      ...(input.targetTopicId === null
+        ? []
+        : [topicTag(input.targetTopicId), topicPagesTag(input.targetTopicId)]),
+      ...input.postIds.map(postTag),
+      ...result.forumIds.map(forumTag),
+      GLOBAL_CACHE_TAGS.board,
+    ]),
+};
+
+export const multimodApplyMutation: Mutation<{ readonly topicId: string }, TopicContentSummary> = {
+  name: "moderation.multimod",
+  tags: (_input, result) => contentTags(result),
+};
+
 export const postApproveMutation: Mutation<
   { readonly postIds: readonly string[] },
   BulkHeldContentSummary

@@ -118,11 +118,43 @@
           </details>
         {% endif %}
 
+        {% if bulkTopics.pin or bulkTopics.lock or bulkTopics.move or bulkTopics.softDelete or bulkTopics.restore or bulkTopics.approve %}
+          <div class="bl-card" data-bulk-topics data-forum-id="{{ forumId }}"
+            data-label-failed="{% t "moderation.bulk.failed" %}"
+            data-label-saved="{% t "moderation.bulk.saved" %}"
+            data-label-nothing-selected="{% t "moderation.bulk.nothingSelected" %}">
+            <h2 class="bl-card__title">{% t "moderation.bulk.topicsTitle" %}</h2>
+            <div class="bl-actions">
+              {% if bulkTopics.pin %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-topic-action="pin">{% t "topic.pin" %}</button>{% endif %}
+              {% if bulkTopics.unpin %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-topic-action="unpin">{% t "topic.unpin" %}</button>{% endif %}
+              {% if bulkTopics.lock %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-topic-action="lock">{% t "topic.lock" %}</button>{% endif %}
+              {% if bulkTopics.unlock %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-topic-action="unlock">{% t "topic.unlock" %}</button>{% endif %}
+              {% if bulkTopics.softDelete %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-topic-action="soft_delete">{% t "moderation.bulk.softDelete" %}</button>{% endif %}
+              {% if bulkTopics.restore %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-topic-action="restore">{% t "moderation.bulk.restore" %}</button>{% endif %}
+              {% if bulkTopics.approve %}<button class="bl-button bl-button--small" type="button" data-bulk-topic-action="approve">{% t "moderation.bulk.approve" %}</button>{% endif %}
+            </div>
+            {% if bulkTopics.move %}
+              <div class="bl-form">
+                <label class="bl-label" for="bulk-topic-forum">{% t "moderation.bulk.moveTo" %}</label>
+                <select class="bl-input" id="bulk-topic-forum" data-bulk-topic-forum>
+                  <option value="">{% t "moderation.tools.chooseForum" %}</option>
+                  {% for target in moveTargets %}<option value="{{ target.id }}">{{ target.title }}</option>{% endfor %}
+                </select>
+                <label class="bl-label" for="bulk-topic-stub">{% t "moderation.tools.stubDays" %}</label>
+                <input class="bl-input" id="bulk-topic-stub" data-bulk-topic-stub type="number" min="0" max="365" value="0" />
+                <button class="bl-button" type="button" data-bulk-topic-action="move">{% t "moderation.bulk.move" %}</button>
+              </div>
+            {% endif %}
+            <p class="bl-error-text" data-bulk-topics-error hidden></p>
+          </div>
+        {% endif %}
+
         {% if topics.size > 0 %}
           <ol class="bl-topic-list" data-topic-list data-topic-page="{{ pagination.page }}">
             {% for topic in topics %}
               <li class="bl-topic-list__item{% if topic.moved %} is-moved{% endif %}" data-topic-row="{{ topic.id }}">
                 <div class="bl-topic-row__main">
+                  {% if topic.bulk %}<input type="checkbox" value="{{ topic.id }}" data-bulk-topic-check="{{ topic.id }}" aria-label="{% t "moderation.bulk.select" %}" />{% endif %}
                   {% if topic.prefix %}
                     <span class="bl-prefix-tag" style="--bl-prefix: {{ topic.prefix.colour }}" data-topic-prefix="{{ topic.prefix.key }}">{{ topic.prefix.label }}</span>
                   {% endif %}

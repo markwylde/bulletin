@@ -60,6 +60,15 @@ import { reputationGiveResponse } from "./reputation.ts";
 import { streamResponse } from "./stream.ts";
 import { createStreamHub } from "./stream-hub.ts";
 import {
+  bulkResponse,
+  multimodApplyResponse,
+  topicLockResponse,
+  topicMergeResponse,
+  topicMoveResponse,
+  topicPinResponse,
+  topicSplitResponse,
+} from "./topic-tools.ts";
+import {
   createTopicResponse,
   editPostResponse,
   postDeleteResponse,
@@ -712,6 +721,100 @@ await startService({
         }
 
         return topicDeleteResponse(sql, session, topicDeleteMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const topicPinMatch = /^\/api\/topics\/(\d+)\/pin$/.exec(pathname);
+
+    if (request.method === "POST" && topicPinMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return topicPinResponse(sql, session, topicPinMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const topicLockMatch = /^\/api\/topics\/(\d+)\/lock$/.exec(pathname);
+
+    if (request.method === "POST" && topicLockMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return topicLockResponse(sql, session, topicLockMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const topicMoveMatch = /^\/api\/topics\/(\d+)\/move$/.exec(pathname);
+
+    if (request.method === "POST" && topicMoveMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return topicMoveResponse(sql, session, topicMoveMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const topicMergeMatch = /^\/api\/topics\/(\d+)\/merge$/.exec(pathname);
+
+    if (request.method === "POST" && topicMergeMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return topicMergeResponse(sql, session, topicMergeMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const topicSplitMatch = /^\/api\/topics\/(\d+)\/split$/.exec(pathname);
+
+    if (request.method === "POST" && topicSplitMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return topicSplitResponse(sql, session, topicSplitMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/moderation/bulk") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return bulkResponse(sql, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/moderation/multimod") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return multimodApplyResponse(sql, session, request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

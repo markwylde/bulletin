@@ -13,7 +13,9 @@ import {
 import { readPollForTopic } from "@bulletin/domain/polls";
 import {
   countTopicPosts,
+  listMultimodForForum,
   loadQuoteSources,
+  readTopicList,
   readTopicPostById,
   readTopicPostPage,
   readTopicPrefix,
@@ -47,6 +49,7 @@ export interface TopicPagePost {
   readonly canRestore: boolean;
   readonly canHardDelete: boolean;
   readonly canViewHistory: boolean;
+  readonly canBulk: boolean;
 }
 
 export interface TopicPageView {
@@ -71,6 +74,22 @@ export interface TopicPageView {
   readonly readMarkerPostId: string | null;
   readonly canReply: boolean;
   readonly canHardDeleteTopic: boolean;
+  readonly topicTools: {
+    readonly pin: boolean;
+    readonly unpin: boolean;
+    readonly lock: boolean;
+    readonly unlock: boolean;
+    readonly move: boolean;
+    readonly merge: boolean;
+    readonly split: boolean;
+    readonly multimod: boolean;
+    readonly approvePosts: boolean;
+    readonly deletePosts: boolean;
+    readonly restorePosts: boolean;
+  };
+  readonly moveTargets: readonly { readonly id: string; readonly title: string }[];
+  readonly mergeTargets: readonly { readonly id: string; readonly title: string }[];
+  readonly multimodActions: readonly { readonly id: string; readonly name: string }[];
   readonly editor: EditorView | null;
   readonly pollId: string | null;
   readonly pollSlot: SafeHtml | null;
@@ -223,6 +242,48 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     snapshot: input.snapshot,
   });
   view.track(input.topic.forumId, "lock", canLock);
+  const canPin = await can(input.sql, input.principal, "pin", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "pin", canPin);
+  const canMove = await can(input.sql, input.principal, "move", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "move", canMove);
+  const canMerge = await can(input.sql, input.principal, "merge", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "merge", canMerge);
+  const canSplit = await can(input.sql, input.principal, "split", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "split", canSplit);
+  const canUseMultimod = await can(input.sql, input.principal, "use_multimod", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "use_multimod", canUseMultimod);
+  const canApprovePosts = await can(input.sql, input.principal, "approve", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "approve", canApprovePosts);
   const editWindow = Number(input.snapshot.settings["posting.edit_window_minutes"] ?? 0);
   const canDeleteOwn = input.snapshot.settings["posting.can_delete_own"] === true;
   const viewerId = principalMemberId(input.principal);
@@ -373,6 +434,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
         publicEditHistory: input.publicEditHistory === true,
         editWindow,
         canDeleteOwn,
+        canBulk: canSoftDelete || canRestore || canApprovePosts,
       }),
     };
   };
@@ -422,6 +484,30 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
 
   const visibleForums = await listVisibleForums(input.sql, view);
   const visibleById = new Map(visibleForums.map((forum) => [forum.id, forum]));
+  const moveTargets = visibleForums
+    .filter((forum) => forum.type === "forum")
+    .map((forum) => ({ id: forum.id, title: forum.title }));
+  const mergeList = canMerge
+    ? await readTopicList(input.sql, {
+        forumId: input.topic.forumId,
+        locale: input.locale,
+        sort: "last_post",
+        prefixId: null,
+        page: 1,
+        perPage: 100,
+        seeUnapproved,
+        seeDeleted,
+      })
+    : { rows: [], total: 0 };
+  const mergeTargets = mergeList.rows
+    .filter((row) => row.id !== input.topic.id && row.movedTo === null)
+    .map((row) => ({ id: row.id, title: row.title }));
+  const multimodActions = canUseMultimod
+    ? (await listMultimodForForum(input.sql, input.topic.forumId)).map((action) => ({
+        id: action.id,
+        name: action.name,
+      }))
+    : [];
   const ancestorIds = tree.ancestors(input.topic.forumId).map((node) => node.id);
   const breadcrumbs = [...ancestorIds, input.topic.forumId].map((forumId) => {
     const forum = visibleById.get(forumId);
@@ -514,6 +600,22 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
       readMarkerPostId: posts.rows[posts.rows.length - 1]?.id ?? null,
       canReply: reply && (!input.topic.locked || canLock),
       canHardDeleteTopic: canHardDelete,
+      topicTools: {
+        pin: canPin && !input.topic.pinned,
+        unpin: canPin && input.topic.pinned,
+        lock: canLock && !input.topic.locked,
+        unlock: canLock && input.topic.locked,
+        move: canMove,
+        merge: canMerge,
+        split: canSplit,
+        multimod: canUseMultimod,
+        approvePosts: canApprovePosts,
+        deletePosts: canSoftDelete,
+        restorePosts: canRestore,
+      },
+      moveTargets,
+      mergeTargets,
+      multimodActions,
       pollId: poll?.id ?? null,
       pollSlot: poll === null ? null : safeHtml("<bl-poll></bl-poll>"),
       editor:
@@ -547,6 +649,7 @@ function postActions(input: {
   readonly publicEditHistory: boolean;
   readonly editWindow: number;
   readonly canDeleteOwn: boolean;
+  readonly canBulk: boolean;
 }): Pick<
   TopicPagePost,
   | "canEdit"
@@ -556,6 +659,7 @@ function postActions(input: {
   | "canRestore"
   | "canHardDelete"
   | "canViewHistory"
+  | "canBulk"
 > {
   const visible = input.post.visibility === "visible";
   void input.editWindow;
@@ -572,6 +676,7 @@ function postActions(input: {
     canRestore: !visible && input.canRestore,
     canHardDelete: input.canHardDelete && input.post.position !== 1,
     canViewHistory: input.canViewHistory || input.publicEditHistory,
+    canBulk: input.canBulk,
   };
 }
 

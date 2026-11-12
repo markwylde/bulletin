@@ -57,6 +57,7 @@ export interface ForumPageTopic {
   readonly prefix: ForumPagePrefix | null;
   readonly replies: string;
   readonly views: string;
+  readonly bulk: boolean;
   readonly lastPost: { readonly date: string; readonly memberName: string | null } | null;
 }
 
@@ -91,6 +92,17 @@ export interface ForumPageView {
   readonly topics: readonly ForumPageTopic[];
   readonly pagination: ForumPagePagination;
   readonly canStart: boolean;
+  readonly bulkTopics: {
+    readonly pin: boolean;
+    readonly unpin: boolean;
+    readonly lock: boolean;
+    readonly unlock: boolean;
+    readonly move: boolean;
+    readonly softDelete: boolean;
+    readonly restore: boolean;
+    readonly approve: boolean;
+  };
+  readonly moveTargets: readonly { readonly id: string; readonly title: string }[];
   readonly prefixRequired: boolean;
   readonly editor: EditorView | null;
   readonly flags: Readonly<Record<string, boolean>>;
@@ -236,6 +248,17 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         topics: [],
         pagination: { page: 1, pageCount: 1, previousHref: null, nextHref: null },
         canStart: false,
+        bulkTopics: {
+          pin: false,
+          unpin: false,
+          lock: false,
+          unlock: false,
+          move: false,
+          softDelete: false,
+          restore: false,
+          approve: false,
+        },
+        moveTargets: [],
         prefixRequired: false,
         editor: null,
         flags: {
@@ -285,6 +308,55 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     snapshot: input.snapshot,
   });
   view.track(input.forum.id, "upload", canUpload);
+  const [canPin, canLockTopic, canMove, canSoftDeleteTopic, canRestoreTopic, canApproveTopic] =
+    await Promise.all([
+      can(input.sql, input.principal, "pin", {
+        forumId: input.forum.id,
+        tree,
+        sessionId: input.sessionId,
+        snapshot: input.snapshot,
+      }),
+      can(input.sql, input.principal, "lock", {
+        forumId: input.forum.id,
+        tree,
+        sessionId: input.sessionId,
+        snapshot: input.snapshot,
+      }),
+      can(input.sql, input.principal, "move", {
+        forumId: input.forum.id,
+        tree,
+        sessionId: input.sessionId,
+        snapshot: input.snapshot,
+      }),
+      can(input.sql, input.principal, "soft_delete", {
+        forumId: input.forum.id,
+        tree,
+        sessionId: input.sessionId,
+        snapshot: input.snapshot,
+      }),
+      can(input.sql, input.principal, "restore", {
+        forumId: input.forum.id,
+        tree,
+        sessionId: input.sessionId,
+        snapshot: input.snapshot,
+      }),
+      can(input.sql, input.principal, "approve", {
+        forumId: input.forum.id,
+        tree,
+        sessionId: input.sessionId,
+        snapshot: input.snapshot,
+      }),
+    ]);
+  for (const [bit, allowed] of [
+    ["pin", canPin],
+    ["lock", canLockTopic],
+    ["move", canMove],
+    ["soft_delete", canSoftDeleteTopic],
+    ["restore", canRestoreTopic],
+    ["approve", canApproveTopic],
+  ] as const) {
+    view.track(input.forum.id, bit, allowed);
+  }
   const editor = canStart
     ? await buildEditorView(input.sql, input.translate, {
         contextKey: `topic:new:${input.forum.id}`,
@@ -371,6 +443,8 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
           },
     replies: input.translate("index.topicReplies", { count: topic.replyCount }),
     views: input.translate("index.topicViews", { count: Number(topic.viewCount) }),
+    bulk:
+      canPin || canLockTopic || canMove || canSoftDeleteTopic || canRestoreTopic || canApproveTopic,
     lastPost:
       topic.movedTo !== null || topic.lastPostAt === null
         ? null
@@ -460,6 +534,19 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         nextHref: topicPage < pageCount ? pageHref(topicPage + 1) : null,
       },
       canStart: canStart && !locked,
+      bulkTopics: {
+        pin: canPin,
+        unpin: canPin,
+        lock: canLockTopic,
+        unlock: canLockTopic,
+        move: canMove,
+        softDelete: canSoftDeleteTopic,
+        restore: canRestoreTopic,
+        approve: canApproveTopic,
+      },
+      moveTargets: visibleRows
+        .filter((forum) => forum.type === "forum" && forum.id !== input.forum.id)
+        .map((forum) => ({ id: forum.id, title: forum.title })),
       prefixRequired: input.forum.prefixMode === "required",
       editor,
       flags: {

@@ -72,6 +72,11 @@ import {
   saveModerator,
   searchModeratorMembers,
 } from "./moderators.ts";
+import {
+  listMultimodForStaff,
+  listServiceMembersForStaff,
+  mutateMultimodForStaff,
+} from "./multimod.ts";
 import { deletePrefix, listPrefixesAdmin, type PrefixMutation, savePrefix } from "./prefixes.ts";
 import { listProfileFieldsForStaff, mutateProfileFieldForStaff } from "./profile-fields.ts";
 import { mutateMemberProfileForStaff, readMemberProfileForStaff } from "./profiles.ts";
@@ -1011,6 +1016,28 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/dashboard/moderation",
     permission: "acp.members",
     handler: async ({ sql, session }) => staffQueueCountResponse(sql, session),
+  },
+  {
+    id: "moderation.multimod",
+    method: "GET",
+    path: "/api/staff/multimod",
+    permission: "acp.groups",
+    handler: async ({ sql }) => listMultimodForStaff(sql),
+  },
+  {
+    id: "moderation.multimod.serviceMembers",
+    method: "GET",
+    path: "/api/staff/multimod/service-members",
+    permission: "acp.groups",
+    handler: async ({ sql }) => listServiceMembersForStaff(sql),
+  },
+  {
+    id: "moderation.multimod.mutate",
+    method: "POST",
+    path: "/api/staff/multimod",
+    permission: "acp.groups",
+    handler: async ({ sql, session, request }) =>
+      mutateMultimodForStaff(sql, session.memberId, request),
   },
   {
     id: "moderation.queue",
