@@ -119,6 +119,7 @@ export async function renderStaffWarningsRoute(
     ? await buildStaffWarningsPage({
         sql: input.sql,
         actorId: input.session.memberId,
+        sessionId: input.session.sessionId,
         memberId: input.memberId,
         locale: input.locale,
         translate: input.translate,

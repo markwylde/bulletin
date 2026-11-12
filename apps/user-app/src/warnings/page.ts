@@ -75,6 +75,7 @@ export async function buildOwnWarningsPage(input: {
 export async function buildStaffWarningsPage(input: {
   readonly sql: SQL;
   readonly actorId: string;
+  readonly sessionId: string | null;
   readonly memberId: string;
   readonly locale: Locale;
   readonly translate: Translator;
@@ -83,7 +84,7 @@ export async function buildStaffWarningsPage(input: {
   readonly breadcrumbs: readonly BreadcrumbItem[];
   readonly viewModel: Record<string, unknown>;
 } | null> {
-  if (!(await canViewWarningHistory(input.sql, input.actorId))) {
+  if (!(await canViewWarningHistory(input.sql, input.actorId, input.sessionId))) {
     return null;
   }
 

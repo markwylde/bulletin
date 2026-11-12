@@ -412,6 +412,98 @@ integrationDescribe("warnings", () => {
     });
   }, 60_000);
 
+  test("requires this session's password unlock to warn, revoke and read history", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const moderator = await memberId(database, "member-2");
+      const forum = await forumId(database, "general-discussion");
+      const reasonId = await seedReason(database, { key: "locked_note", points: 1 });
+
+      // This member only has the warn power in the password forum, so any other forum's
+      // open warn power cannot mask a missing session unlock.
+      await database.sql`
+        INSERT INTO core.moderators (forum_id, member_id, powers, this_forum_only)
+        VALUES (${forum}, ${moderator}, '{warn}'::text[], true)
+      `;
+      const [authorSession] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${author}, 'user', decode(md5(random()::text), 'hex'), now() + interval '1 day')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (authorSession === undefined) {
+        throw new Error("Could not create the author session");
+      }
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${authorSession.id}, 'forum_password', ${forum})
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: forum,
+          sessionId: authorSession.id,
+          title: "Locked warning target",
+          bodyMd: "A post behind a password.",
+        }),
+      );
+      const [staffSession] = (await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (${moderator}, 'staff', decode(md5(random()::text), 'hex'), now() + interval '1 hour')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (staffSession === undefined) {
+        throw new Error("Could not create the staff session");
+      }
+
+      // The member-level warn power reaches the forum, but this session has not unlocked it.
+      expect(
+        await issueWarning(database.sql, {
+          actorId: moderator,
+          memberId: author,
+          reasonId,
+          contentType: "post",
+          contentId: topic.postId,
+          sessionId: staffSession.id,
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+      expect(await canViewWarningHistory(database.sql, moderator, staffSession.id)).toBe(false);
+
+      await database.sql`
+        INSERT INTO core.session_grants (session_id, kind, resource_id)
+        VALUES (${staffSession.id}, 'forum_password', ${forum})
+      `;
+      const issued = expectOk(
+        await issueWarning(database.sql, {
+          actorId: moderator,
+          memberId: author,
+          reasonId,
+          contentType: "post",
+          contentId: topic.postId,
+          sessionId: staffSession.id,
+        }),
+      );
+      expect(await canViewWarningHistory(database.sql, moderator, staffSession.id)).toBe(true);
+
+      await database.sql`
+        UPDATE core.session_grants
+        SET expires_at = now() - interval '1 minute'
+        WHERE session_id = ${staffSession.id} AND kind = 'forum_password'
+      `;
+      expect(await canViewWarningHistory(database.sql, moderator, staffSession.id)).toBe(false);
+      expect(
+        await revokeWarning(database.sql, {
+          actorId: moderator,
+          warningId: issued.warningId,
+          reason: "No longer locked",
+          sessionId: staffSession.id,
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+    });
+  }, 60_000);
+
   test("shows staff notes only to warning moderators and denies other members", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");

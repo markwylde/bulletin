@@ -500,7 +500,12 @@ export async function expireWarnings(sql: SQL, now: Date = new Date()): Promise<
   return rows.length;
 }
 
-async function canWarnAnywhere(sql: SQL, actorId: string, tree?: ForumTree): Promise<boolean> {
+async function canWarnAnywhere(
+  sql: SQL,
+  actorId: string,
+  sessionId: string | null = null,
+  tree?: ForumTree,
+): Promise<boolean> {
   const loadedTree = tree ?? (await loadForumTree(sql));
 
   for (const forumId of loadedTree.ids) {
@@ -508,7 +513,7 @@ async function canWarnAnywhere(sql: SQL, actorId: string, tree?: ForumTree): Pro
       continue;
     }
 
-    if (await can(sql, actorId, "warn", { forumId, tree: loadedTree })) {
+    if (await can(sql, actorId, "warn", { forumId, tree: loadedTree, sessionId })) {
       return true;
     }
   }
@@ -534,8 +539,12 @@ export async function readWarningContentTargets(
   return new Map(rows.map((row) => [row.id, { topicId: row.topic_id, slug: row.slug }]));
 }
 
-export async function canViewWarningHistory(sql: SQL, actorId: string): Promise<boolean> {
-  return canWarnAnywhere(sql, actorId);
+export async function canViewWarningHistory(
+  sql: SQL,
+  actorId: string,
+  sessionId: string | null = null,
+): Promise<boolean> {
+  return canWarnAnywhere(sql, actorId, sessionId);
 }
 
 async function contentForumId(
@@ -567,6 +576,7 @@ export interface IssueWarningInput {
   readonly memberNote?: string;
   readonly staffNote?: string;
   readonly ackRequired?: boolean;
+  readonly sessionId?: string | null;
 }
 
 function actionRestriction(action: WarningAction): MemberRestriction["kind"] {
@@ -600,8 +610,12 @@ export async function issueWarning(
       : null;
   const allowed =
     forumId === null
-      ? await canWarnAnywhere(sql, input.actorId, tree)
-      : await can(sql, input.actorId, "warn", { forumId, tree });
+      ? await canWarnAnywhere(sql, input.actorId, input.sessionId ?? null, tree)
+      : await can(sql, input.actorId, "warn", {
+          forumId,
+          tree,
+          sessionId: input.sessionId ?? null,
+        });
 
   if (!allowed) {
     return { ok: false, code: "forbidden" };
@@ -734,6 +748,7 @@ export async function revokeWarning(
     readonly actorId: string;
     readonly warningId: string;
     readonly reason: string;
+    readonly sessionId?: string | null;
   },
 ): Promise<WarningOutcome<{ readonly revoked: boolean }>> {
   if (!/^\d+$/.test(input.warningId) || input.reason.trim() === "") {
@@ -760,8 +775,12 @@ export async function revokeWarning(
       : null;
   const allowed =
     forumId === null
-      ? await canWarnAnywhere(sql, input.actorId, tree)
-      : await can(sql, input.actorId, "warn", { forumId, tree });
+      ? await canWarnAnywhere(sql, input.actorId, input.sessionId ?? null, tree)
+      : await can(sql, input.actorId, "warn", {
+          forumId,
+          tree,
+          sessionId: input.sessionId ?? null,
+        });
 
   if (!allowed) {
     return { ok: false, code: "forbidden" };

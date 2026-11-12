@@ -46,6 +46,10 @@ function failure(code: string): Response {
   );
 }
 
+function sessionIdOf(session: Session): string | null {
+  return session.id ?? session.sessionId ?? null;
+}
+
 function warningJson(warning: Awaited<ReturnType<typeof listMemberWarnings>>[number]) {
   return {
     ...warning,
@@ -95,7 +99,7 @@ export async function memberWarningHistoryResponse(
     return json({ code: "not_found" }, 404);
   }
 
-  if (!(await canViewWarningHistory(sql, session.memberId))) {
+  if (!(await canViewWarningHistory(sql, session.memberId, sessionIdOf(session)))) {
     return json({ code: "forbidden" }, 403);
   }
 
@@ -142,6 +146,7 @@ export async function issueWarningResponse(
     ...(typeof body.memberNote === "string" ? { memberNote: body.memberNote } : {}),
     ...(typeof body.staffNote === "string" ? { staffNote: body.staffNote } : {}),
     ...(typeof body.ackRequired === "boolean" ? { ackRequired: body.ackRequired } : {}),
+    sessionId: sessionIdOf(session),
   });
 
   return result.ok ? json({ ok: true, ...result.result }) : failure(result.code);
@@ -163,6 +168,7 @@ export async function revokeWarningResponse(
     actorId: session.memberId,
     warningId,
     reason: body.reason,
+    sessionId: sessionIdOf(session),
   });
 
   return result.ok ? json({ ok: true, ...result.result }) : failure(result.code);
