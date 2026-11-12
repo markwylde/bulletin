@@ -30,7 +30,7 @@ export async function resolveRequestTheme(
 ): Promise<RequestTheme> {
   if (session !== null) {
     const [preview, appearance] = await Promise.all([
-      previewThemeForSession(sql, session.sessionId),
+      previewThemeForSession(sql, session.sessionId, session.memberId),
       memberAppearance(sql, session.memberId),
     ]);
 

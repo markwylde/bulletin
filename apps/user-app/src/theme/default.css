@@ -606,7 +606,13 @@ input:focus-visible {
   background: var(--bl-surface);
 }
 
+.bl-card > * {
+  min-width: 0;
+}
+
 .bl-appearance {
+  min-width: 0;
+  max-width: 100%;
   display: flex;
   flex-wrap: wrap;
   align-items: end;
@@ -618,9 +624,15 @@ input:focus-visible {
 
 .bl-appearance__field {
   display: grid;
+  min-width: 0;
   flex: 1 1 9rem;
   gap: 0.25rem;
   font-size: 0.875rem;
+}
+
+.bl-appearance select {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .bl-appearance[hidden] {

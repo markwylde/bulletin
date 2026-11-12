@@ -466,8 +466,8 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
       expect(previewBody.url).toContain("return_to=%2Fforum%2F5-off-topic");
 
       expect(await grantPreviewTheme(database.sql, session.id, childId)).toBe(true);
-      expect(await previewThemeForSession(database.sql, session.id)).toBe(childId);
-      expect(await previewThemeForSession(database.sql, "0")).toBeNull();
+      expect(await previewThemeForSession(database.sql, session.id, admin)).toBe(childId);
+      expect(await previewThemeForSession(database.sql, "0", admin)).toBeNull();
 
       const [vip] = (await database.sql`
         SELECT id FROM core.groups WHERE key = 'vip'
@@ -639,6 +639,22 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
         await saveMemberAppearance(database.sql, other, { themeId: theme, scheme: "system" }),
       ).toMatchObject({ ok: false, code: "not_found" });
 
+      // Distinct primary, secondary and board defaults make the fallback unambiguous.
+      const primaryDefault = await child(database, "vip-primary-default", admin);
+      const secondaryDefault = await child(database, "members-secondary-default", admin);
+      expect(
+        await saveGroupDefaultTheme(database.sql, {
+          groupId: group("vip"),
+          themeId: primaryDefault,
+        }),
+      ).toMatchObject({ ok: true });
+      expect(
+        await saveGroupDefaultTheme(database.sql, {
+          groupId: group("members"),
+          themeId: secondaryDefault,
+        }),
+      ).toMatchObject({ ok: true });
+
       // Lost access: revoke the VIP allowance after the choice was saved.
       expect(
         await saveThemeAllowedGroups(database.sql, {
@@ -647,7 +663,7 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
         }),
       ).toMatchObject({ ok: true });
       const lost = await appearanceOptions(database.sql, vipMember);
-      expect(lost.themeId).not.toBe(theme);
+      expect(lost.themeId).toBe(primaryDefault);
 
       // The Guests group's default theme is used when no cookie names one.
       expect(
@@ -794,7 +810,15 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
       ).id;
       await grantPreviewTheme(database.sql, session.id, inactive);
       await grantPreviewTheme(database.sql, session.id, second);
-      expect(await previewThemeForSession(database.sql, session.id)).toBe(second);
+      expect(await previewThemeForSession(database.sql, session.id, admin)).toBe(second);
+
+      // Revoking acp.themes stops the existing preview immediately.
+      await database.sql`
+        DELETE FROM core.group_settings
+        WHERE key = 'acp.themes'
+          AND group_id IN (SELECT id FROM core.groups WHERE key = 'administrators')
+      `;
+      expect(await previewThemeForSession(database.sql, session.id, admin)).toBeNull();
 
       expect(await setThemeActive(database.sql, { themeId: inactive, active: true })).toMatchObject(
         {
@@ -851,6 +875,62 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
       );
       expect(tokens.status).toBe(400);
       expect(await tokens.json()).toMatchObject({ code: "checks_failed" });
+
+      const escaped = await saveTokensResponse(
+        database.sql,
+        admin,
+        new Request("http://staff.localhost/api/staff/themes/tokens", {
+          method: "POST",
+          body: JSON.stringify({
+            themeId: childId,
+            scheme: "light",
+            tokens: { accent: "u\\72l(/not-a-theme-asset)" },
+          }),
+        }),
+      );
+      expect(escaped.status).toBe(400);
+      expect(await escaped.json()).toMatchObject({ code: "invalid_theme" });
+
+      const firstTokens = await saveTokensResponse(
+        database.sql,
+        admin,
+        new Request("http://staff.localhost/api/staff/themes/tokens", {
+          method: "POST",
+          body: JSON.stringify({
+            themeId: childId,
+            scheme: "light",
+            tokens: {
+              bg: "#000000",
+              surface: "#111111",
+              "surface-muted": "#222222",
+              text: "#ffffff",
+              muted: "#cccccc",
+              border: "#333333",
+              accent: "#9fc2ff",
+              "accent-text": "#0d1420",
+              "accent-soft": "#1e2a3a",
+              danger: "#ff9d9d",
+            },
+          }),
+        }),
+      );
+      expect(firstTokens.status).toBe(200);
+
+      // Removing the text override exposes the inherited dark text on the black background.
+      const removedText = await saveTokensResponse(
+        database.sql,
+        admin,
+        new Request("http://staff.localhost/api/staff/themes/tokens", {
+          method: "POST",
+          body: JSON.stringify({
+            themeId: childId,
+            scheme: "light",
+            tokens: { bg: "#000000" },
+          }),
+        }),
+      );
+      expect(removedText.status).toBe(400);
+      expect(await removedText.json()).toMatchObject({ code: "checks_failed" });
 
       const css = await saveCssResponse(
         database.sql,

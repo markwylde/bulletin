@@ -128,6 +128,29 @@ export interface CssResponsiveIssue {
  * page with that theme scroll sideways on the smallest supported screen. The design's
  * install-time check rejects it before a browser is involved.
  */
+export function responsiveStyleIssue(property: string, value: string): CssResponsiveIssue | null {
+  const name = property.trim().toLowerCase();
+
+  if (!["min-width", "width", "min-inline-size", "inline-size"].includes(name)) {
+    return null;
+  }
+
+  const size = /^(\d+(?:\.\d+)?)(px|rem|vw)$/i.exec(value.trim());
+
+  if (size === null) {
+    return null;
+  }
+
+  const number = Number(size[1]);
+  const unit = size[2]?.toLowerCase();
+  const tooWide =
+    (unit === "px" && number > 360) ||
+    (unit === "rem" && number > 22.5) ||
+    (unit === "vw" && number > 100);
+
+  return tooWide ? { property: name, value: value.trim() } : null;
+}
+
 export function responsiveCssIssues(source: string): readonly CssResponsiveIssue[] {
   const issues: CssResponsiveIssue[] = [];
   const pattern = /(?:^|[;{])\s*(min-width|width|min-inline-size|inline-size)\s*:\s*([^;{}]+)/gi;
@@ -140,23 +163,39 @@ export function responsiveCssIssues(source: string): readonly CssResponsiveIssue
       continue;
     }
 
-    const size = /^(\d+(?:\.\d+)?)(px|rem|vw)$/i.exec(value);
+    const issue = responsiveStyleIssue(property, value);
 
-    if (size === null) {
-      continue;
-    }
-
-    const number = Number(size[1]);
-    const unit = size[2]?.toLowerCase();
-    const tooWide =
-      (unit === "px" && number > 360) ||
-      (unit === "rem" && number > 22.5) ||
-      (unit === "vw" && number > 100);
-
-    if (tooWide) {
-      issues.push({ property, value });
+    if (issue !== null) {
+      issues.push(issue);
     }
   }
 
   return issues;
+}
+
+/** True when a token value contains any URL/image resource, including escaped spellings. */
+export function cssValueHasResource(value: string): boolean {
+  const found: string[] = [];
+  const visitor: Visitor<never> = {
+    Url(url) {
+      found.push(url.url);
+    },
+    Image(image) {
+      imageUrls(image, found);
+    },
+  };
+
+  try {
+    transform({
+      filename: "token.css",
+      code: new TextEncoder().encode(`:root { --bl-token: ${value}; }`),
+      minify: false,
+      errorRecovery: false,
+      visitor,
+    });
+  } catch {
+    return true;
+  }
+
+  return found.length > 0;
 }

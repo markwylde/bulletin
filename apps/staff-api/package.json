@@ -17,6 +17,7 @@
     "sharp": "0.35.5",
     "@bulletin/templates": "workspace:*",
     "file-type": "21.0.0",
-    "jose": "6.2.16"
+    "jose": "6.2.16",
+    "parse5": "8.1.1"
   }
 }

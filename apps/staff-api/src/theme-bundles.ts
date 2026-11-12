@@ -16,7 +16,7 @@ import {
   verifyThemeBundle,
 } from "@bulletin/domain/themes";
 import { opaqueKey, type StorageClient } from "@bulletin/storage";
-import { loadTheme } from "@bulletin/templates";
+import { loadDefaultThemeTokens, loadTheme, type ThemeTokens } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { fileTypeFromBuffer } from "file-type";
 import type { JWK } from "jose";
@@ -168,6 +168,39 @@ interface AssetWrite {
   readonly data: Uint8Array;
 }
 
+async function parentTokens(sql: SQL, parentName: string | null): Promise<ThemeTokens | undefined> {
+  if (parentName === null) {
+    return undefined;
+  }
+
+  const [parent] = (await sql`
+    SELECT id::text AS id FROM core.themes WHERE name = ${parentName}
+  `) as Array<{ id: string }>;
+
+  if (parent === undefined) {
+    return undefined;
+  }
+
+  const loaded = await loadTheme(sql, parent.id);
+
+  if (loaded === null) {
+    return undefined;
+  }
+
+  const [defaults, resources] = await Promise.all([
+    loadDefaultThemeTokens(),
+    loadThemeResources(
+      sql,
+      loaded.chain.map((entry) => entry.id),
+    ),
+  ]);
+
+  return {
+    light: { ...defaults.light, ...resources.tokens.light },
+    dark: { ...defaults.dark, ...resources.tokens.dark },
+  };
+}
+
 async function install(
   sql: SQL,
   storage: StorageClient,
@@ -181,7 +214,11 @@ async function install(
     return { ok: false, code: "invalid_bundle" };
   }
 
-  const checks = await checkThemeBundle(manifest, await userAppBaseCatalog());
+  const checks = await checkThemeBundle(
+    manifest,
+    await userAppBaseCatalog(),
+    await parentTokens(sql, manifest.parent),
+  );
 
   if (!checks.ok) {
     return { ok: false, code: "checks_failed", issues: checks.issues };

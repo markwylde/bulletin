@@ -4,7 +4,12 @@ import {
   type ThemeBundleString,
   validateTokenInput,
 } from "@bulletin/domain/themes";
-import { filterThemeCss, responsiveCssIssues } from "@bulletin/domain/themes/css";
+import {
+  cssValueHasResource,
+  filterThemeCss,
+  responsiveCssIssues,
+  responsiveStyleIssue,
+} from "@bulletin/domain/themes/css";
 import { type Catalog, isLocale, validateRuntimeCatalog } from "@bulletin/i18n";
 import {
   checkThemeContrast,
@@ -15,10 +20,13 @@ import {
   HOOK_NAMES,
   loadDefaultThemeTokens,
   loadTheme,
+  maskLiquid,
   type TemplateIssue,
+  type ThemeTokens,
   validateTemplateMarkup,
 } from "@bulletin/templates";
 import type { SQL } from "bun";
+import { parse } from "parse5";
 
 const engine = createTemplateEngine({ islands: {} });
 
@@ -65,6 +73,7 @@ export type ThemeCheckIssue =
       readonly code: "responsive";
       readonly property: string;
       readonly value: string;
+      readonly template?: string;
     };
 
 /** Islands every theme route must place. `Editor` is required on topic pages (ADR 0008). */
@@ -77,6 +86,57 @@ export interface ThemeCheckResult {
   readonly ok: boolean;
   readonly issues: readonly ThemeCheckIssue[];
   readonly css: string;
+}
+
+interface StaticNode {
+  readonly attrs?: readonly { readonly name: string; readonly value: string }[];
+  readonly childNodes?: readonly StaticNode[];
+  readonly content?: { readonly childNodes?: readonly StaticNode[] };
+}
+
+function staticLayoutIssues(name: string, body: string): readonly ThemeCheckIssue[] {
+  const issues: ThemeCheckIssue[] = [];
+  const root = parse(maskLiquid(body)) as unknown as StaticNode;
+
+  const walk = (node: StaticNode): void => {
+    for (const attribute of node.attrs ?? []) {
+      if (attribute.name === "style") {
+        for (const declaration of attribute.value.split(";")) {
+          const [property, value] = declaration.split(":", 2);
+
+          if (property === undefined || value === undefined) {
+            continue;
+          }
+
+          const issue = responsiveStyleIssue(property, value);
+
+          if (issue !== null) {
+            issues.push({ code: "responsive", ...issue, template: name });
+          }
+        }
+      }
+
+      if (attribute.name === "width" && /^\d+$/.test(attribute.value.trim())) {
+        const width = Number(attribute.value.trim());
+
+        if (width > 360) {
+          issues.push({
+            code: "responsive",
+            property: "width",
+            value: `${width}px`,
+            template: name,
+          });
+        }
+      }
+    }
+
+    for (const child of node.childNodes ?? node.content?.childNodes ?? []) {
+      walk(child);
+    }
+  };
+
+  walk(root);
+  return issues;
 }
 
 function checkTemplate(name: string, body: string): readonly ThemeCheckIssue[] {
@@ -101,6 +161,8 @@ function checkTemplate(name: string, body: string): readonly ThemeCheckIssue[] {
       unknownHooks,
     });
   }
+
+  issues.push(...staticLayoutIssues(name, body));
 
   const declared = new Set(declaredIslandsIn({ [name]: body }));
 
@@ -158,6 +220,7 @@ function checkStrings(
 export async function checkThemeBundle(
   manifest: ThemeBundleManifest,
   baseCatalog: Catalog | null,
+  baseTokens?: ThemeTokens,
 ): Promise<ThemeCheckResult> {
   const issues: ThemeCheckIssue[] = [];
   const provided = Object.keys(manifest.templates);
@@ -180,12 +243,12 @@ export async function checkThemeBundle(
       tokens: manifest.tokens[scheme],
     });
 
-    if (tokens === null) {
+    if (tokens === null || Object.values(manifest.tokens[scheme]).some(cssValueHasResource)) {
       issues.push({ code: "invalid_tokens", scheme });
     }
   }
 
-  const defaults = await loadDefaultThemeTokens();
+  const defaults = baseTokens ?? (await loadDefaultThemeTokens());
   const mergedTokens = {
     light: { ...defaults.light, ...manifest.tokens.light },
     dark: { ...defaults.dark, ...manifest.tokens.dark },
@@ -273,6 +336,8 @@ export async function checkResolvedTemplateChange(
       continue;
     }
 
+    issues.push(...staticLayoutIssues(name, body));
+
     const declared = new Set(declaredIslandsIn({ [name]: body }));
 
     for (const island of required) {
@@ -297,21 +362,35 @@ export async function checkResolvedTokenChange(
     readonly tokens: Readonly<Record<string, string>>;
   },
 ): Promise<readonly ThemeCheckIssue[]> {
+  if (Object.values(input.tokens).some(cssValueHasResource)) {
+    return [{ code: "invalid_tokens", scheme: input.scheme }];
+  }
+
   const loaded = await loadTheme(sql, input.themeId);
 
   if (loaded === null) {
     return [{ code: "invalid_tokens", scheme: input.scheme }];
   }
 
-  const resources = await loadThemeResources(
-    sql,
-    loaded.chain.map((entry) => entry.id),
-  );
+  const [resources, ancestors] = await Promise.all([
+    loadThemeResources(
+      sql,
+      loaded.chain.map((entry) => entry.id),
+    ),
+    loadThemeResources(
+      sql,
+      loaded.chain.slice(1).map((entry) => entry.id),
+    ),
+  ]);
   const defaults = await loadDefaultThemeTokens();
+  const other = input.scheme === "light" ? "dark" : "light";
+  // The saved row replaces this scheme entirely, so validate the proposed set over the
+  // ancestors' inherited tokens. The untouched scheme keeps the theme's current row.
   const merged = {
-    light: { ...defaults.light, ...resources.tokens.light },
-    dark: { ...defaults.dark, ...resources.tokens.dark },
+    light: { ...defaults.light, ...ancestors.tokens.light },
+    dark: { ...defaults.dark, ...ancestors.tokens.dark },
   };
+  merged[other] = { ...merged[other], ...resources.tokens[other] };
   merged[input.scheme] = { ...merged[input.scheme], ...input.tokens };
 
   return checkThemeContrast(merged).map((issue) => ({

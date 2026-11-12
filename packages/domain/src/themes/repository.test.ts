@@ -43,6 +43,8 @@ describe("theme input validation", () => {
       'image-set("https://evil.example/x" 1x)',
       "image(https://evil.example/x)",
       "cross-fade(https://evil.example/x)",
+      "u\\72l(/not-a-theme-asset)",
+      "u\\72l(/theme-assets/logo.png)",
     ]) {
       expect(validateTokenInput({ scheme: "light", tokens: { accent: value } })).toBeNull();
       expect(isSafeTokenValue(value)).toBe(false);

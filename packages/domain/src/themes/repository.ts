@@ -6,6 +6,8 @@ import {
   type Translator,
 } from "@bulletin/i18n";
 import type { SQL } from "bun";
+import { can } from "../permissions/can.ts";
+import { GUEST_PRINCIPAL } from "../permissions/principal.ts";
 
 export type ThemeSource = "core" | "marketplace" | "upload" | "custom";
 
@@ -205,13 +207,29 @@ export function validateTokenInput(value: unknown): TokenInput | null {
   return { scheme: value.scheme, tokens };
 }
 
+/** Decodes CSS escapes such as `u\72l` so a token cannot hide a resource function. */
+function decodeCssEscapes(value: string): string {
+  return value.replace(/\\([0-9a-f]{1,6}\s?|.)/gi, (_match, escaped: string) => {
+    if (/^[0-9a-f]{1,6}\s?$/i.test(escaped)) {
+      const codePoint = Number.parseInt(escaped.trim(), 16);
+      return Number.isSafeInteger(codePoint) && codePoint > 0 && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : "";
+    }
+
+    return escaped;
+  });
+}
+
 /** A token value safe to write into a CSS custom property declaration. */
 export function isSafeTokenValue(value: string): boolean {
+  const decoded = decodeCssEscapes(value);
+
   return (
     value.length <= 120 &&
     !/[;{}<>]/.test(value) &&
-    !/(?:url|image|image-set|cross-fade|element|paint)\s*\(/i.test(value) &&
-    !/(?:https?:|data:|javascript:|vbscript:)/i.test(value)
+    !/(?:url|image|image-set|cross-fade|element|paint)\s*\(/i.test(decoded) &&
+    !/(?:https?:|data:|javascript:|vbscript:)/i.test(decoded)
   );
 }
 
@@ -1115,23 +1133,7 @@ export async function themeAllowedForGuests(sql: SQL, themeId: string): Promise<
     return false;
   }
 
-  const rows = (await sql`
-    SELECT 1
-    FROM core.themes t
-    WHERE t.id::text = ${id}
-      AND t.is_active
-      AND (
-        NOT EXISTS (SELECT 1 FROM core.theme_allowed_groups g WHERE g.theme_id = t.id)
-        OR EXISTS (
-          SELECT 1
-          FROM core.theme_allowed_groups g
-          JOIN core.groups grp ON grp.id = g.group_id
-          WHERE g.theme_id = t.id AND grp.key = 'guests'
-        )
-      )
-  `) as unknown[];
-
-  return rows.length > 0;
+  return can(sql, GUEST_PRINCIPAL, "use_theme", { themeId: id });
 }
 
 /** The theme named by the guest's `bp` cookie when it is active and allowed, else null. */
@@ -1150,8 +1152,14 @@ export async function guestThemeId(
 export async function previewThemeForSession(
   sql: SQL,
   sessionId: string | null | undefined,
+  memberId: string,
 ): Promise<string | null> {
-  if (sessionId === null || sessionId === undefined || !/^\d+$/.test(sessionId)) {
+  if (
+    sessionId === null ||
+    sessionId === undefined ||
+    !/^\d+$/.test(sessionId) ||
+    !(await can(sql, memberId, "acp.themes"))
+  ) {
     return null;
   }
 
@@ -1231,23 +1239,26 @@ export async function allowedThemesForGroups(
     return [];
   }
 
-  const ids = `{${groupIds.join(",")}}`;
-
-  return (await sql`
+  const themes = (await sql`
     SELECT t.id::text AS id, t.name, t.description
     FROM core.themes t
     WHERE t.is_active
-      AND (
-        NOT EXISTS (
-          SELECT 1 FROM core.theme_allowed_groups g WHERE g.theme_id = t.id
-        )
-      OR EXISTS (
-          SELECT 1 FROM core.theme_allowed_groups g
-          WHERE g.theme_id = t.id AND g.group_id = ANY(${ids}::bigint[])
-        )
-      )
     ORDER BY t.name
   `) as ThemeOption[];
+  const allowed: ThemeOption[] = [];
+
+  for (const theme of themes) {
+    if (
+      await can(sql, GUEST_PRINCIPAL, "use_theme", {
+        themeId: theme.id,
+        groupIds,
+      })
+    ) {
+      allowed.push(theme);
+    }
+  }
+
+  return allowed;
 }
 
 export async function coreDefaultThemeId(sql: SQL): Promise<string | null> {
@@ -1353,16 +1364,14 @@ export async function saveMemberAppearance(
   }
 
   const groups = await viewerGroups(sql, memberId);
-  const allowed = new Set(
-    (
-      await allowedThemesForGroups(
-        sql,
-        groups.map((group) => group.id),
-      )
-    ).map((theme) => theme.id),
-  );
 
-  if (input.themeId !== null && !allowed.has(input.themeId)) {
+  if (
+    input.themeId !== null &&
+    !(await can(sql, memberId, "use_theme", {
+      themeId: input.themeId,
+      groupIds: groups.map((group) => group.id),
+    }))
+  ) {
     return { ok: false, code: "not_found" };
   }
 

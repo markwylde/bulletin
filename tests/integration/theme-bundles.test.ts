@@ -320,6 +320,91 @@ integrationDescribe("theme bundles and distribution", () => {
     });
   }, 60_000);
 
+  test("refuses fixed widths in template inline styles", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const storage = storageStub();
+      const bundle = await signedManifest({
+        format: "bulletin-theme",
+        formatVersion: 1,
+        name: "inline-width-child",
+        parent: "default",
+        description: "",
+        version: 1,
+        templates: { footer: '<footer style="width: 1000px">child</footer>' },
+        tokens: { light: {}, dark: {} },
+        css: "",
+        strings: [],
+        assets: [],
+      });
+      const result = await installThemeBundle(
+        database.sql,
+        storage,
+        admin,
+        bundle.bundle,
+        bundle.signature,
+        DEV_THEME_PUBLIC_KEY,
+        "upload",
+      );
+
+      expect(result).toMatchObject({ ok: false, code: "checks_failed" });
+
+      if (!result.ok) {
+        expect(result.issues).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ code: "responsive", template: "footer" }),
+          ]),
+        );
+      }
+    });
+  }, 60_000);
+
+  test("checks an imported child against its declared parent's tokens", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const defaultId = await themeId(database, "default");
+      const storage = storageStub();
+      const parent = expectOk(
+        await createChildTheme(database.sql, {
+          name: "dark-parent",
+          parentId: defaultId,
+          actorId: admin,
+        }),
+      ).id;
+      expectOk(
+        await saveThemeTokens(database.sql, {
+          themeId: parent,
+          scheme: "light",
+          tokens: { bg: "#ffffff", text: "#fafafa" },
+        }),
+      );
+      const bundle = await signedManifest({
+        format: "bulletin-theme",
+        formatVersion: 1,
+        name: "parent-contrast-child",
+        parent: "dark-parent",
+        description: "",
+        version: 1,
+        templates: { footer: "<footer>child</footer>" },
+        tokens: { light: {}, dark: {} },
+        css: "",
+        strings: [],
+        assets: [],
+      });
+      const result = await installThemeBundle(
+        database.sql,
+        storage,
+        admin,
+        bundle.bundle,
+        bundle.signature,
+        DEV_THEME_PUBLIC_KEY,
+        "upload",
+      );
+
+      expect(result).toMatchObject({ ok: false, code: "checks_failed" });
+    });
+  }, 60_000);
+
   test("installs a signed marketplace theme and refuses the failing package", async () => {
     await withDb(async (database) => {
       const admin = await memberId(database, "admin");

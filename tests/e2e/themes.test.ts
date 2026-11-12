@@ -208,7 +208,7 @@ integrationDescribe("theme management", () => {
           url: STAFF_URL,
           viewport: viewportName,
           // The validation journey deliberately asks the API for refusals.
-          allowConsoleErrors: [/status of 400 .*\/api\/staff\/themes\/(template|css)/],
+          allowConsoleErrors: [/status of (400|409) .*\/api\/staff\/themes\//],
         },
         async (view) => {
           await loginAs(view, "admin");

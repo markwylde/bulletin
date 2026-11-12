@@ -71,6 +71,12 @@ export interface PrefixScope {
   readonly prefixId: string;
 }
 
+/** Theme selection/cookie scope: the theme and the viewer's groups (loaded when omitted). */
+export interface ThemeUseScope {
+  readonly themeId: string;
+  readonly groupIds?: readonly string[];
+}
+
 /** One staff-defined custom profile field. */
 export interface ProfileFieldScope {
   readonly fieldId: string;
@@ -146,6 +152,12 @@ async function canViewPrefix(
 export function can(
   sql: SQL,
   principal: ViewerPrincipal,
+  action: "use_theme",
+  scope: ThemeUseScope,
+): Promise<boolean>;
+export function can(
+  sql: SQL,
+  principal: ViewerPrincipal,
   action: "view_prefix",
   scope: PrefixScope,
 ): Promise<boolean>;
@@ -172,12 +184,51 @@ export async function can(
   principal: ViewerPrincipal,
   action:
     | PermissionAction
+    | "use_theme"
     | "view_prefix"
     | "view_announcement"
     | "view_profile_field"
     | "edit_profile_field",
-  scope?: PermissionScope | PrefixScope | AnnouncementPermissionScope | ProfileFieldScope,
+  scope?:
+    | PermissionScope
+    | PrefixScope
+    | AnnouncementPermissionScope
+    | ProfileFieldScope
+    | ThemeUseScope,
 ): Promise<boolean> {
+  if (action === "use_theme") {
+    if (scope === undefined || !("themeId" in scope)) {
+      return false;
+    }
+
+    const groupIds =
+      scope.groupIds ?? (await loadMemberGroups(sql, principal)).map((group) => group.groupId);
+
+    if (!/^\d+$/.test(scope.themeId)) {
+      return false;
+    }
+
+    const ids = `{${groupIds.join(",")}}`;
+    const rows = (await sql`
+      SELECT 1
+      FROM core.themes t
+      WHERE t.id::text = ${scope.themeId}
+        AND t.is_active
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM core.theme_allowed_groups g WHERE g.theme_id = t.id
+          )
+          OR EXISTS (
+            SELECT 1 FROM core.theme_allowed_groups g
+            WHERE g.theme_id = t.id AND g.group_id = ANY(${ids}::bigint[])
+          )
+        )
+      LIMIT 1
+    `) as unknown[];
+
+    return rows.length > 0;
+  }
+
   if (action === "view_announcement") {
     if (scope === undefined || !("announcementId" in scope)) {
       return false;
