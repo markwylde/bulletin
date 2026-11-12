@@ -10,6 +10,7 @@ import {
   setMemberAvatar,
   withAvatarObjectLock,
 } from "@bulletin/domain/member";
+import { memberWriteBlocked } from "@bulletin/domain/warnings";
 import { type AvatarVariant, avatarKey, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import type { AttachmentRouteFlags } from "./attachments.ts";
@@ -69,6 +70,12 @@ export async function avatarUploadResponse(
 
   if (typeof raw !== "string" || raw === "" || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
     return json({ code: "avatar_invalid" }, 400);
+  }
+
+  const writeBlock = await memberWriteBlocked(sql, session.memberId);
+
+  if (writeBlock !== null) {
+    return json({ code: writeBlock }, 403);
   }
 
   const policy = await readAvatarPolicy(sql, session.memberId);
@@ -163,6 +170,12 @@ export async function avatarRemoveResponse(
   storage: StorageClient,
   session: Session,
 ): Promise<Response> {
+  const writeBlock = await memberWriteBlocked(sql, session.memberId);
+
+  if (writeBlock !== null) {
+    return json({ code: writeBlock }, 403);
+  }
+
   const removed = await withAvatarObjectLock(sql, session.memberId, async (tx) => {
     const current = await readMemberAvatar(tx, session.memberId);
 

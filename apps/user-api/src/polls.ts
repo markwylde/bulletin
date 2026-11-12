@@ -29,7 +29,7 @@ async function bodyRecord(request: Request): Promise<Record<string, unknown> | n
 
 function failure(code: PollErrorCode): Response {
   const status =
-    code === "forbidden"
+    code === "forbidden" || code === "acknowledgement_required" || code === "posting_suspended"
       ? 403
       : code === "not_found"
         ? 404

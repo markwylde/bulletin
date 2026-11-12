@@ -472,6 +472,42 @@ integrationDescribe("reactions", () => {
     });
   }, 45_000);
 
+  test("a warned or suspended member cannot react through the API", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const target = await startedTopic(database, "member-2", "off-topic", "Reaction gate target");
+      const like = await reactionId(database, "like");
+      const request = () =>
+        new Request(`http://localhost/api/posts/${target.postId}/reactions`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reactionId: like }),
+        });
+
+      await database.sql`
+        INSERT INTO core.warnings (member_id, points, expires_at, ack_required, member_note)
+        VALUES (${member.memberId}, 1, now() + interval '7 days', true, 'Please read this.')
+      `;
+      const warned = await reactionSetResponse(database.sql, member, target.postId, request());
+      expect(warned.status).toBe(403);
+      expect(await warned.json()).toEqual({ code: "acknowledgement_required" });
+
+      await database.sql`DELETE FROM core.warnings WHERE member_id = ${member.memberId}`;
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${member.memberId}, 'cannot_post', now() + interval '7 days')
+      `;
+      const suspended = await reactionSetResponse(database.sql, member, target.postId, request());
+      expect(suspended.status).toBe(403);
+      expect(await suspended.json()).toEqual({ code: "posting_suspended" });
+
+      const [rows] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.post_reactions WHERE post_id = ${target.postId}
+      `) as Array<{ count: number }>;
+      expect(rows?.count).toBe(0);
+    });
+  }, 30_000);
+
   test("a reaction rebuilds only the reaction bar, never the post body block", async () => {
     await withSeededDb(async (database) => {
       const member = await memberSession(database, "member-1");

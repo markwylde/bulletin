@@ -275,7 +275,11 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         return json({ code: "blocked_word" }, 400);
       }
 
-      if (result.kind === "banned") {
+      if (
+        result.kind === "banned" ||
+        result.kind === "acknowledgement_required" ||
+        result.kind === "posting_suspended"
+      ) {
         return json({ code: "forbidden" }, 403);
       }
 

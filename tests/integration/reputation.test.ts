@@ -364,6 +364,37 @@ integrationDescribe("reputation", () => {
     });
   }, 45_000);
 
+  test("a warned or suspended member cannot give reputation through the API", async () => {
+    await withSeededDb(async (database) => {
+      const giver = await memberSession(database, "member-1");
+      const topic = await startedTopic(database, "member-2", "off-topic", "Gated reputation");
+      const request = () =>
+        new Request(`http://bulletin.localhost/api/posts/${topic.postId}/reputation`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ points: 1 }),
+        });
+
+      await database.sql`
+        INSERT INTO core.warnings (member_id, points, expires_at, ack_required, member_note)
+        VALUES (${giver.memberId}, 1, now() + interval '7 days', true, 'Please read this.')
+      `;
+      const warned = await reputationGiveResponse(database.sql, giver, topic.postId, request());
+      expect(warned.status).toBe(403);
+      expect(await warned.json()).toEqual({ code: "acknowledgement_required" });
+
+      await database.sql`DELETE FROM core.warnings WHERE member_id = ${giver.memberId}`;
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${giver.memberId}, 'cannot_post', now() + interval '7 days')
+      `;
+      const suspended = await reputationGiveResponse(database.sql, giver, topic.postId, request());
+      expect(suspended.status).toBe(403);
+      expect(await suspended.json()).toEqual({ code: "posting_suspended" });
+      expect(await entryFor(database, topic.postId, giver.memberId)).toBeNull();
+    });
+  }, 30_000);
+
   test("refuses own posts, unreadable posts and posts whose author opts out", async () => {
     await withSeededDb(async (database) => {
       const giver = await memberSession(database, "member-1");

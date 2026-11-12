@@ -10,6 +10,7 @@ import {
   SeedRegistry,
 } from "@bulletin/db/seed";
 import { loadEvent } from "@bulletin/domain/events";
+import { displayNameSkeleton, updateDisplayName } from "@bulletin/domain/member";
 import { listNotifications } from "@bulletin/domain/notifications";
 import {
   can,
@@ -350,6 +351,35 @@ integrationDescribe("warnings", () => {
       });
     });
   }, 60_000);
+
+  test("a display-name change is blocked by a warning or a posting suspension", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-2");
+
+      await database.sql`
+        INSERT INTO core.warnings (member_id, points, expires_at, ack_required, member_note)
+        VALUES (${member}, 1, now() + interval '7 days', true, 'Please read this warning.')
+      `;
+      expect(
+        await updateDisplayName(database.sql, member, {
+          name: "Renamed While Warned",
+          skeleton: displayNameSkeleton("Renamed While Warned"),
+        }),
+      ).toEqual({ kind: "acknowledgement_required" });
+
+      await database.sql`DELETE FROM core.warnings WHERE member_id = ${member}`;
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${member}, 'cannot_post', now() + interval '7 days')
+      `;
+      expect(
+        await updateDisplayName(database.sql, member, {
+          name: "Renamed While Suspended",
+          skeleton: displayNameSkeleton("Renamed While Suspended"),
+        }),
+      ).toEqual({ kind: "posting_suspended" });
+    });
+  }, 30_000);
 
   test("expires points automatically and keeps restrictions after revocation", async () => {
     await withSeededDb(async (database) => {

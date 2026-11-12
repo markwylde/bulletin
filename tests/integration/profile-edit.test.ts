@@ -266,6 +266,82 @@ integrationDescribe("profile editing", () => {
     });
   });
 
+  test("bans, suspensions and unacknowledged warnings block the member's own profile write", async () => {
+    await withDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const admin = await memberId(database, "admin");
+
+      const cases = [
+        {
+          apply: async () => {
+            await database.sql`
+              INSERT INTO core.member_restrictions (member_id, kind, until)
+              VALUES (${member}, 'banned', NULL)
+            `;
+          },
+          code: "posting_suspended",
+        },
+        {
+          apply: async () => {
+            await database.sql`
+              INSERT INTO core.member_restrictions (member_id, kind, until)
+              VALUES (${member}, 'cannot_post', now() + interval '7 days')
+            `;
+          },
+          code: "posting_suspended",
+        },
+        {
+          apply: async () => {
+            await database.sql`
+              INSERT INTO core.warnings (member_id, points, expires_at, ack_required, member_note)
+              VALUES (${member}, 1, now() + interval '7 days', true, 'Please read this warning.')
+            `;
+          },
+          code: "acknowledgement_required",
+        },
+      ] as const;
+
+      for (const scenario of cases) {
+        await database.sql`DELETE FROM core.member_restrictions WHERE member_id = ${member}`;
+        await database.sql`DELETE FROM core.warnings WHERE member_id = ${member}`;
+        await scenario.apply();
+
+        const denied = await profileSaveResponse(
+          database.sql,
+          session(member),
+          request({
+            about: "Written around the restriction.",
+            hideOnline: false,
+            hideFromMemberList: false,
+            values: {},
+          }),
+        );
+        expect(denied.status).toBe(403);
+        expect(await denied.json()).toEqual({ code: scenario.code });
+        expect((await readProfile(database.sql, member))?.aboutMd).not.toBe(
+          "Written around the restriction.",
+        );
+      }
+
+      // Staff moderation is not a member write: a posting-suspended member's profile is
+      // still editable through the staff API.
+      await database.sql`DELETE FROM core.warnings WHERE member_id = ${member}`;
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${member}, 'cannot_post', now() + interval '7 days')
+      `;
+      const staffEdit = await mutateMemberProfileForStaff(database.sql, admin, {
+        memberId: member,
+        about: "Staff can still edit this.",
+        hideOnline: false,
+        hideFromMemberList: false,
+        values: {},
+      });
+      expect(staffEdit.ok).toBe(true);
+      expect((await readProfile(database.sql, member))?.aboutMd).toBe("Staff can still edit this.");
+    });
+  });
+
   test("saves preserve restricted field values and a fields-off save deletes nothing", async () => {
     await withDb(async (database) => {
       const member = await memberId(database, "member-1");

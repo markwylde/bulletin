@@ -1070,4 +1070,95 @@ Thanks.`;
       expect(after?.promotion_version).toBe("1");
     });
   }, 30_000);
+
+  test("a banned, suspended or warned author cannot edit or reply through the API", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+
+      await database.sql`
+        UPDATE core.group_settings
+        SET value = to_jsonb(0)
+        WHERE key = 'posting.flood_control_seconds'
+      `;
+
+      const created = await startTopic(database.sql, {
+        actorId: author,
+        forumId: offTopic,
+        title: "Editable topic",
+        bodyMd: "Original body.",
+      });
+
+      if (!created.ok) {
+        throw new Error(`Could not start the topic: ${created.code}`);
+      }
+
+      const cases = [
+        {
+          restriction: "banned",
+          apply: async () => {
+            await database.sql`
+              INSERT INTO core.member_restrictions (member_id, kind, until)
+              VALUES (${author}, 'banned', NULL)
+            `;
+          },
+          code: "posting_suspended",
+        },
+        {
+          restriction: "warning suspension",
+          apply: async () => {
+            await database.sql`
+              INSERT INTO core.member_restrictions (member_id, kind, until)
+              VALUES (${author}, 'cannot_post', now() + interval '7 days')
+            `;
+          },
+          code: "posting_suspended",
+        },
+        {
+          restriction: "unacknowledged warning",
+          apply: async () => {
+            await database.sql`
+              INSERT INTO core.warnings (member_id, points, expires_at, ack_required, member_note)
+              VALUES (${author}, 1, now() + interval '7 days', true, 'Please read this warning.')
+            `;
+          },
+          code: "acknowledgement_required",
+        },
+      ] as const;
+
+      for (const scenario of cases) {
+        await database.sql`DELETE FROM core.member_restrictions WHERE member_id = ${author}`;
+        await database.sql`DELETE FROM core.warnings WHERE member_id = ${author}`;
+        await scenario.apply();
+
+        const deniedEdit = await editPostResponse(
+          database.sql,
+          session(author),
+          created.result.postId,
+          request("POST", { bodyMd: "Edited around the restriction." }),
+        );
+        expect(deniedEdit.status).toBe(403);
+        expect(await deniedEdit.json()).toEqual({ code: scenario.code });
+
+        const deniedReply = await replyResponse(
+          database.sql,
+          session(author),
+          created.result.topicId,
+          request("POST", { bodyMd: "A reply around the restriction." }),
+        );
+        expect(deniedReply.status).toBe(403);
+        expect(await deniedReply.json()).toEqual({ code: scenario.code });
+
+        const [stored] = (await database.sql`
+          SELECT body_md FROM core.posts WHERE id = ${created.result.postId}
+        `) as Array<{ body_md: string }>;
+        expect(stored?.body_md).toBe("Original body.");
+
+        const [replies] = (await database.sql`
+          SELECT count(*)::int AS count FROM core.posts WHERE topic_id = ${created.result.topicId}
+        `) as Array<{ count: number }>;
+        expect(replies?.count).toBe(1);
+      }
+    });
+  }, 30_000);
 });

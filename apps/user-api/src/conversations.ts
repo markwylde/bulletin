@@ -52,6 +52,8 @@ function failure(outcome: StartConversationFailure): Response {
       return json({ code: outcome.code, quota: outcome.quota }, 409);
     case "pm_disabled":
     case "recipient_unavailable":
+    case "acknowledgement_required":
+    case "posting_suspended":
       return json({ code: outcome.code }, 403);
     default:
       return json({ code: outcome.code }, 400);
@@ -136,6 +138,8 @@ function participantFailure(outcome: ConversationParticipantFailure): Response {
     case "pm_disabled":
     case "recipient_unavailable":
     case "invite_blocked":
+    case "acknowledgement_required":
+    case "posting_suspended":
       return json({ code: outcome.code }, 403);
     default:
       return json({ code: outcome.code }, 400);
@@ -166,7 +170,14 @@ export async function replyConversationResponse(
       return json({ code: outcome.code }, 404);
     }
 
-    return json({ code: outcome.code }, outcome.code === "pm_disabled" ? 403 : 400);
+    return json(
+      { code: outcome.code },
+      outcome.code === "pm_disabled" ||
+        outcome.code === "acknowledgement_required" ||
+        outcome.code === "posting_suspended"
+        ? 403
+        : 400,
+    );
   }
 
   return json({ ok: true, ...outcome.result });

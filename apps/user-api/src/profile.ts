@@ -1,6 +1,7 @@
 import type { SessionRecord } from "@bulletin/domain/auth";
 import { editableProfileFieldIds } from "@bulletin/domain/permissions";
 import { readProfileFields, saveMemberProfile } from "@bulletin/domain/profiles";
+import { memberWriteBlocked } from "@bulletin/domain/warnings";
 import type { SQL } from "bun";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
@@ -39,6 +40,14 @@ export async function profileSaveResponse(
 
   if (!isRecord(body) || typeof body.about !== "string" || !isRecord(body.values ?? {})) {
     return json({ code: "invalid" }, 400);
+  }
+
+  // About text, signature, custom title, status/privacy toggles and custom fields are all
+  // public-facing writes: a ban, suspension or unacknowledged warning blocks the whole form.
+  const writeBlock = await memberWriteBlocked(sql, session.memberId);
+
+  if (writeBlock !== null) {
+    return json({ code: writeBlock }, 403);
   }
 
   const editable = features.customFields

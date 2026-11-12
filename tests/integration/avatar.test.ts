@@ -294,6 +294,61 @@ integrationDescribe("avatars", () => {
     });
   }, 30_000);
 
+  test("a warning, suspension or ban blocks the member's own avatar writes", async () => {
+    await withHarness("avatar_restrictions", async ({ database, storage }) => {
+      const member = await memberId(database, "member-1");
+      const bytes = base64(await imageBytes());
+
+      const uploaded = await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(bytes),
+      );
+      expect(uploaded.status).toBe(200);
+      const hash = (await readMemberAvatar(database.sql, member))?.hash ?? "";
+
+      await database.sql`
+        INSERT INTO core.warnings (member_id, points, expires_at, ack_required, member_note)
+        VALUES (${member}, 1, now() + interval '7 days', true, 'Please read this warning.')
+      `;
+      const warned = await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(bytes),
+      );
+      expect(warned.status).toBe(403);
+      expect(await warned.json()).toEqual({ code: "acknowledgement_required" });
+
+      const warnedRemove = await avatarRemoveResponse(database.sql, storage, { memberId: member });
+      expect(warnedRemove.status).toBe(403);
+      expect(await warnedRemove.json()).toEqual({ code: "acknowledgement_required" });
+      expect((await readMemberAvatar(database.sql, member))?.hash).toBe(hash);
+
+      await database.sql`DELETE FROM core.warnings WHERE member_id = ${member}`;
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${member}, 'cannot_post', now() + interval '7 days')
+      `;
+      const suspended = await avatarUploadResponse(
+        database.sql,
+        storage,
+        { memberId: member },
+        avatarRequest(bytes),
+      );
+      expect(suspended.status).toBe(403);
+      expect(await suspended.json()).toEqual({ code: "posting_suspended" });
+
+      const suspendedRemove = await avatarRemoveResponse(database.sql, storage, {
+        memberId: member,
+      });
+      expect(suspendedRemove.status).toBe(403);
+      expect(await suspendedRemove.json()).toEqual({ code: "posting_suspended" });
+      expect((await readMemberAvatar(database.sql, member))?.hash).toBe(hash);
+    });
+  }, 30_000);
+
   test("retries a failed avatar object deletion and blocks the old URL immediately", async () => {
     await withHarness("avatar_deletion_retry", async ({ database, storage }) => {
       const member = await memberId(database, "member-1");

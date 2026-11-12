@@ -6,6 +6,7 @@ import { emit } from "../events/outbox.ts";
 import { isBlockedText, loadBlockWords, loadReplaceWords } from "../filters/repository.ts";
 import { conversationStartMutation } from "../mutations/conversations.ts";
 import { runMutation } from "../mutations/index.ts";
+import { memberWriteBlocked } from "../warnings/repository.ts";
 import {
   insertConversation,
   insertConversationMessage,
@@ -50,7 +51,9 @@ export type StartConversationFailure =
         | "blocked_word"
         | "no_recipients"
         | "pm_disabled"
-        | "recipient_unavailable";
+        | "recipient_unavailable"
+        | "acknowledgement_required"
+        | "posting_suspended";
     }
   | { readonly ok: false; readonly code: "recipient_limit"; readonly limit: number }
   | {
@@ -107,6 +110,12 @@ export async function startConversation(
     return { ok: false, code: "recipient_unavailable" };
   }
 
+  const writeBlockBefore = await memberWriteBlocked(sql, input.actorId);
+
+  if (writeBlockBefore !== null) {
+    return { ok: false, code: writeBlockBefore };
+  }
+
   const initialPolicy = await readPmPolicy(sql, input.actorId);
 
   if (!initialPolicy.canUse) {
@@ -124,6 +133,12 @@ export async function startConversation(
     apply: async (tx) => {
       if (!(await lockMemberForStart(tx, input.actorId))) {
         return { ok: false, code: "pm_disabled" };
+      }
+
+      const writeBlock = await memberWriteBlocked(tx, input.actorId);
+
+      if (writeBlock !== null) {
+        return { ok: false, code: writeBlock };
       }
 
       const policy = await readPmPolicy(tx, input.actorId);

@@ -5,6 +5,7 @@ import { runMutation } from "../mutations/index.ts";
 import { reputationGiveMutation } from "../mutations/reputation.ts";
 import { can } from "../permissions/can.ts";
 import { recomputeReactionSummary } from "../reactions/repository.ts";
+import { memberWriteBlocked } from "../warnings/repository.ts";
 import {
   addToReputation,
   canReadPost,
@@ -37,7 +38,9 @@ export type ReputationErrorCode =
   | "daily_limit"
   | "negative_not_allowed"
   | "min_posts"
-  | "cannot_receive";
+  | "cannot_receive"
+  | "acknowledgement_required"
+  | "posting_suspended";
 
 export type ReputationOutcome<T> =
   | { readonly ok: true; readonly result: T }
@@ -110,6 +113,12 @@ export async function giveReputation(
     return { ok: false, code: "forbidden" };
   }
 
+  const writeBlock = await memberWriteBlocked(sql, input.actorId);
+
+  if (writeBlock !== null) {
+    return { ok: false, code: writeBlock };
+  }
+
   if (receiverId === input.actorId) {
     return { ok: false, code: "own_post" };
   }
@@ -152,6 +161,12 @@ export async function giveReputation(
         // locked in id order so reciprocal A→B and B→A votes cannot deadlock.
         await lockReputationPost(tx, target.postId);
         await lockMembers(tx, [input.actorId, receiverId]);
+
+        const writeBlockNow = await memberWriteBlocked(tx, input.actorId);
+
+        if (writeBlockNow !== null) {
+          reject(writeBlockNow);
+        }
 
         if ((await readVoteEntry(tx, target.postId, input.actorId)) !== null) {
           reject("already_given");

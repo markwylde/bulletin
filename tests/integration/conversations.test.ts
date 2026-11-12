@@ -358,8 +358,63 @@ integrationDescribe("starting a conversation", () => {
       );
 
       expect(response.status).toBe(403);
-      expect(await response.json()).toEqual({ code: "pm_disabled" });
+      expect(await response.json()).toEqual({ code: "posting_suspended" });
       expect(await conversationCount(database)).toBe(0);
+    });
+  }, 30_000);
+
+  test("an unacknowledged warning and a posting suspension block PM writes through the gate", async () => {
+    await withSeededDb(async (database) => {
+      const starter = await memberId(database, "member-1");
+      const recipient = await memberId(database, "member-2");
+      const newcomer = await memberId(database, "member-es");
+      const conversationId = await startFixture(database, { starter, recipients: [recipient] });
+
+      await database.sql`
+        INSERT INTO core.warnings (member_id, points, expires_at, ack_required, member_note)
+        VALUES (${starter}, 1, now() + interval '7 days', true, 'Please read this warning.')
+      `;
+
+      const warned = await replyConversationResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ bodyMd: "Reply before acknowledging." }),
+      );
+      expect(warned.status).toBe(403);
+      expect(await warned.json()).toEqual({ code: "acknowledgement_required" });
+
+      await database.sql`DELETE FROM core.warnings WHERE member_id = ${starter}`;
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${starter}, 'cannot_post', now() + interval '7 days')
+      `;
+
+      const suspendedStart = await createConversationResponse(
+        database.sql,
+        session(starter),
+        postRequest({ title: "Suspended starter", bodyMd: "Body.", recipientIds: [recipient] }),
+      );
+      expect(suspendedStart.status).toBe(403);
+      expect(await suspendedStart.json()).toEqual({ code: "posting_suspended" });
+
+      const suspendedReply = await replyConversationResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ bodyMd: "Suspended reply." }),
+      );
+      expect(suspendedReply.status).toBe(403);
+      expect(await suspendedReply.json()).toEqual({ code: "posting_suspended" });
+
+      const suspendedInvite = await participantResponse(
+        database.sql,
+        session(starter),
+        conversationId,
+        postRequest({ action: "invite", memberId: newcomer }),
+      );
+      expect(suspendedInvite.status).toBe(403);
+      expect(await suspendedInvite.json()).toEqual({ code: "posting_suspended" });
     });
   }, 30_000);
 

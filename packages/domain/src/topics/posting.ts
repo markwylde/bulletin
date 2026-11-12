@@ -37,7 +37,7 @@ import { loadForumTree } from "../permissions/tree-store.ts";
 import { type PollInput, validPollInput } from "../polls/index.ts";
 import { insertPoll } from "../polls/repository.ts";
 import { slugify } from "../urls/index.ts";
-import { postingBlockedByWarning } from "../warnings/repository.ts";
+import { memberWriteBlocked } from "../warnings/repository.ts";
 import {
   actorCanForumAction,
   actorCanModerate,
@@ -194,7 +194,7 @@ export async function writeGuardedReply(
   input: GuardedReplyInput,
 ): Promise<GuardedReplyResult> {
   for (const memberId of new Set([input.actorId, input.authorId])) {
-    const blocked = await postingBlockedByWarning(tx, memberId);
+    const blocked = await memberWriteBlocked(tx, memberId);
 
     if (blocked !== null) {
       reject(blocked);
@@ -345,7 +345,7 @@ export async function startTopic(
     return { ok: false, code: "forbidden" };
   }
 
-  const blockedBefore = await postingBlockedByWarning(sql, input.actorId);
+  const blockedBefore = await memberWriteBlocked(sql, input.actorId);
 
   if (blockedBefore !== null) {
     return { ok: false, code: blockedBefore };
@@ -429,7 +429,7 @@ export async function startTopic(
           reject("forbidden");
         }
 
-        const blocked = await postingBlockedByWarning(tx, input.actorId);
+        const blocked = await memberWriteBlocked(tx, input.actorId);
 
         if (blocked !== null) {
           reject(blocked);
@@ -614,7 +614,7 @@ export async function reply(
     return { ok: false, code: "forbidden" };
   }
 
-  const blockedBefore = await postingBlockedByWarning(sql, input.actorId);
+  const blockedBefore = await memberWriteBlocked(sql, input.actorId);
 
   if (blockedBefore !== null) {
     return { ok: false, code: blockedBefore };
@@ -785,6 +785,16 @@ export async function editPost(
     return { ok: false, code: "forbidden" };
   }
 
+  // An author edit is a publication: bans, posting suspensions and unacknowledged warnings
+  // apply exactly as they do to a new reply. Moderators editing someone else's post moderate.
+  if (isAuthor) {
+    const blocked = await memberWriteBlocked(sql, input.actorId);
+
+    if (blocked !== null) {
+      return { ok: false, code: blocked };
+    }
+  }
+
   const mayRedact = (input.redact ?? !isAuthor) && canModerate && !isAuthor;
 
   try {
@@ -825,6 +835,16 @@ export async function editPost(
 
         if (!currentIsAuthor && !currentCanModerate) {
           reject("forbidden");
+        }
+
+        // A restriction applied since the pre-read (a ban, suspension or new unacknowledged
+        // warning) must stop the edit before any revision or rendering row is written.
+        if (currentIsAuthor) {
+          const blocked = await memberWriteBlocked(tx, input.actorId);
+
+          if (blocked !== null) {
+            reject(blocked);
+          }
         }
 
         if (currentIsAuthor && !currentCanModerate) {

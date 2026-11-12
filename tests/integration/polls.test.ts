@@ -31,7 +31,11 @@ import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import type { SQL } from "bun";
-import { pollResultsResponse } from "../../apps/user-api/src/polls.ts";
+import {
+  pollEditResponse,
+  pollResultsResponse,
+  pollVoteResponse,
+} from "../../apps/user-api/src/polls.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderPollFragment } from "../../apps/user-app/src/polls/fragment.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
@@ -873,6 +877,81 @@ integrationDescribe("polls", () => {
         },
       });
       expect(result).toEqual({ ok: false, code: "invalid_poll" });
+    });
+  }, 30_000);
+
+  test("a warned or suspended member cannot vote or edit their poll", async () => {
+    await withSeededDb(async (database) => {
+      const created = await createPollTopic(database, poll(), "Restricted poll");
+      const member = await memberSession(database, "member-1");
+      const stored = await readPollForTopic(database.sql, created.topicId);
+
+      if (stored === null) {
+        throw new Error("Missing poll");
+      }
+
+      const voteRequest = () =>
+        new Request(`http://bulletin.localhost/api/polls/${created.pollId}/vote`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ selections: selectionsFor(stored) }),
+        });
+      const editRequest = () =>
+        new Request(`http://bulletin.localhost/api/polls/${created.pollId}/edit`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ poll: poll() }),
+        });
+
+      await database.sql`
+        INSERT INTO core.warnings (member_id, points, expires_at, ack_required, member_note)
+        VALUES (${member.memberId}, 1, now() + interval '7 days', true, 'Please read this.')
+      `;
+      const warnedVote = await pollVoteResponse(
+        database.sql,
+        { memberId: member.memberId },
+        created.pollId,
+        voteRequest(),
+      );
+      expect(warnedVote.status).toBe(403);
+      expect(await warnedVote.json()).toEqual({ code: "acknowledgement_required" });
+
+      const warnedEdit = await pollEditResponse(
+        database.sql,
+        { memberId: member.memberId },
+        created.pollId,
+        editRequest(),
+      );
+      expect(warnedEdit.status).toBe(403);
+      expect(await warnedEdit.json()).toEqual({ code: "acknowledgement_required" });
+
+      await database.sql`DELETE FROM core.warnings WHERE member_id = ${member.memberId}`;
+      await database.sql`
+        INSERT INTO core.member_restrictions (member_id, kind, until)
+        VALUES (${member.memberId}, 'cannot_post', now() + interval '7 days')
+      `;
+      const suspendedVote = await pollVoteResponse(
+        database.sql,
+        { memberId: member.memberId },
+        created.pollId,
+        voteRequest(),
+      );
+      expect(suspendedVote.status).toBe(403);
+      expect(await suspendedVote.json()).toEqual({ code: "posting_suspended" });
+
+      const suspendedEdit = await pollEditResponse(
+        database.sql,
+        { memberId: member.memberId },
+        created.pollId,
+        editRequest(),
+      );
+      expect(suspendedEdit.status).toBe(403);
+      expect(await suspendedEdit.json()).toEqual({ code: "posting_suspended" });
+
+      const [votes] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.poll_votes WHERE poll_id = ${created.pollId}
+      `) as Array<{ count: number }>;
+      expect(votes?.count).toBe(0);
     });
   }, 30_000);
 });

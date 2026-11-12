@@ -4,6 +4,7 @@ import { emit } from "../events/outbox.ts";
 import { runMutation } from "../mutations/index.ts";
 import { reactionAdminMutation, reactionSetMutation } from "../mutations/reactions.ts";
 import { applyReactionReputation, lockReputationRebuild } from "../reputation/index.ts";
+import { memberWriteBlocked } from "../warnings/repository.ts";
 import {
   canReactInForum,
   lockReactionPost,
@@ -36,7 +37,9 @@ export type ReactionErrorCode =
   | "forbidden"
   | "own_post"
   | "invalid_reaction"
-  | "reaction_disabled";
+  | "reaction_disabled"
+  | "acknowledgement_required"
+  | "posting_suspended";
 
 export type ReactionOutcome<T> =
   | { readonly ok: true; readonly result: T }
@@ -91,6 +94,12 @@ export async function setReaction(
     return { ok: false, code: "not_found" };
   }
 
+  const writeBlock = await memberWriteBlocked(sql, input.actorId);
+
+  if (writeBlock !== null) {
+    return { ok: false, code: writeBlock };
+  }
+
   const allowed = await canReactInForum(
     sql,
     input.actorId,
@@ -142,6 +151,12 @@ export async function setReaction(
         // and hold the reaction-rebuild lock shared so a recount cannot straddle this write.
         await lockReputationRebuild(tx, "shared");
         await lockReactionPost(tx, target.postId);
+
+        const writeBlockNow = await memberWriteBlocked(tx, input.actorId);
+
+        if (writeBlockNow !== null) {
+          reject(writeBlockNow);
+        }
 
         let reactionWeight = 0;
 

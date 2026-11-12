@@ -9,6 +9,7 @@ import {
   conversationReplyMutation,
 } from "../mutations/conversations.ts";
 import { runMutation } from "../mutations/index.ts";
+import { memberWriteBlocked } from "../warnings/repository.ts";
 import {
   countActiveParticipants,
   countConversationMessages,
@@ -32,7 +33,13 @@ const MEMBER_ID = /^[1-9]\d{0,18}$/;
 
 export type ReplyFailure = {
   readonly ok: false;
-  readonly code: "not_found" | "pm_disabled" | "invalid_body" | "blocked_word";
+  readonly code:
+    | "not_found"
+    | "pm_disabled"
+    | "invalid_body"
+    | "blocked_word"
+    | "acknowledgement_required"
+    | "posting_suspended";
 };
 
 export type ConversationParticipantFailure =
@@ -45,7 +52,9 @@ export type ConversationParticipantFailure =
         | "recipient_unavailable"
         | "already_participant"
         | "invite_blocked"
-        | "cannot_remove_self";
+        | "cannot_remove_self"
+        | "acknowledgement_required"
+        | "posting_suspended";
     }
   | { readonly ok: false; readonly code: "recipient_limit"; readonly limit: number };
 
@@ -86,6 +95,12 @@ export async function replyToConversation(
     return { ok: false, code: "not_found" };
   }
 
+  const writeBlock = await memberWriteBlocked(sql, input.actorId);
+
+  if (writeBlock !== null) {
+    return { ok: false, code: writeBlock };
+  }
+
   if (!(await memberCanUsePms(sql, input.actorId))) {
     return { ok: false, code: "pm_disabled" };
   }
@@ -101,6 +116,12 @@ export async function replyToConversation(
 
       if ((await readParticipation(tx, input.conversationId, input.actorId)) === null) {
         return { ok: false, code: "not_found" };
+      }
+
+      const writeBlock = await memberWriteBlocked(tx, input.actorId);
+
+      if (writeBlock !== null) {
+        return { ok: false, code: writeBlock };
       }
 
       if (!(await memberCanUsePms(tx, input.actorId))) {
@@ -226,6 +247,12 @@ export async function inviteConversationParticipant(
 
       if (!actor.isStarter) {
         return { ok: false, code: "forbidden" };
+      }
+
+      const writeBlock = await memberWriteBlocked(tx, input.actorId);
+
+      if (writeBlock !== null) {
+        return { ok: false, code: writeBlock };
       }
 
       if (!(await memberCanUsePms(tx, input.actorId))) {

@@ -2,6 +2,7 @@ import { isLocale, type Locale, resolveRequestLocale } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { isBlockedText } from "../filters/repository.ts";
 import { can } from "../permissions/can.ts";
+import { memberWriteBlocked } from "../warnings/repository.ts";
 import { NAME_CHANGE_INTERVAL_MS } from "./names.ts";
 
 export interface MemberRecord {
@@ -23,7 +24,9 @@ export type UpdateDisplayNameResult =
   | { readonly kind: "taken" }
   | { readonly kind: "limit"; readonly nextAllowedAt: Date }
   | { readonly kind: "blocked_word" }
-  | { readonly kind: "banned" };
+  | { readonly kind: "banned" }
+  | { readonly kind: "acknowledgement_required" }
+  | { readonly kind: "posting_suspended" };
 
 function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
@@ -105,6 +108,16 @@ export async function updateDisplayName(
 
       if (member.display_name === input.name) {
         return { kind: "ok", displayName: input.name };
+      }
+
+      // Only an existing name is a public write; the first name (onboarding) must stay
+      // available so a new member can still reach the warning page that gates posting.
+      if (member.display_name !== null) {
+        const writeBlock = await memberWriteBlocked(tx, memberId);
+
+        if (writeBlock !== null) {
+          return { kind: writeBlock };
+        }
       }
 
       if (member.display_name !== null) {

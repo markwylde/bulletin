@@ -31,7 +31,14 @@ async function bodyRecord(request: Request): Promise<Record<string, unknown> | n
 
 function failure(code: ReactionErrorCode): Response {
   const status =
-    code === "not_found" ? 404 : code === "forbidden" || code === "own_post" ? 403 : 400;
+    code === "not_found"
+      ? 404
+      : code === "forbidden" ||
+          code === "own_post" ||
+          code === "acknowledgement_required" ||
+          code === "posting_suspended"
+        ? 403
+        : 400;
 
   return json({ code }, status);
 }

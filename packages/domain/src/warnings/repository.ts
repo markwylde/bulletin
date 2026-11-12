@@ -455,14 +455,20 @@ export async function hasUnacknowledgedWarning(
   return rows.length > 0;
 }
 
+/** Why a member may not write; both codes surface as a 403 at the API. */
+export type MemberWriteBlock = "acknowledgement_required" | "posting_suspended";
+
 /**
- * The posting gate (warnings spec): an unacknowledged warning wins over a suspension so the
- * member is sent to the warning first. A suspended member cannot start or reply.
+ * The one gate every member write passes through (warnings spec): an unacknowledged warning
+ * wins over a suspension so the member is sent to the warning first. `can("post")` folds in
+ * the Banned group, `restrictions.banned`, `restrictions.cannot_post` and the
+ * warning-imposed restrictions, so posts, edits, PMs, polls, reactions and profile writes
+ * cannot publish around a ban or suspension.
  */
-export async function postingBlockedByWarning(
+export async function memberWriteBlocked(
   sql: SQL,
   memberId: string,
-): Promise<"acknowledgement_required" | "posting_suspended" | null> {
+): Promise<MemberWriteBlock | null> {
   if (await hasUnacknowledgedWarning(sql, memberId)) {
     return "acknowledgement_required";
   }

@@ -2,6 +2,7 @@ import { bumpCacheTags, pollResultsTag, pollTag } from "@bulletin/cache";
 import type { SQL } from "bun";
 import { runMutation } from "../mutations/index.ts";
 import { pollEditMutation, pollVoteMutation } from "../mutations/polls.ts";
+import { memberWriteBlocked } from "../warnings/repository.ts";
 import {
   canModeratePoll,
   canReadPoll,
@@ -28,7 +29,9 @@ export type PollErrorCode =
   | "invalid_choice"
   | "invalid_poll"
   | "edit_window_expired"
-  | "voted_choice";
+  | "voted_choice"
+  | "acknowledgement_required"
+  | "posting_suspended";
 
 export type PollOutcome<T> =
   | { readonly ok: true; readonly result: T }
@@ -234,6 +237,12 @@ export async function vote(
     return { ok: false, code: "forbidden" };
   }
 
+  const writeBlock = await memberWriteBlocked(sql, input.actorId);
+
+  if (writeBlock !== null) {
+    return { ok: false, code: writeBlock };
+  }
+
   const now = input.now ?? new Date();
 
   if (poll.closesAt !== null && poll.closesAt.getTime() <= now.getTime()) {
@@ -251,6 +260,12 @@ export async function vote(
       input: { pollId: poll.id },
       apply: async (tx) => {
         await tx`SELECT id FROM core.poll_votes WHERE poll_id = ${poll.id} FOR UPDATE`;
+        const writeBlockVote = await memberWriteBlocked(tx, input.actorId);
+
+        if (writeBlockVote !== null) {
+          reject(writeBlockVote);
+        }
+
         const [locked] = (await tx`
           SELECT closes_at FROM core.polls WHERE id = ${poll.id} FOR UPDATE
         `) as Array<{ closes_at: Date | null }>;
@@ -390,7 +405,18 @@ export async function editPoll(
     if (!starter) {
       return { ok: false, code: "forbidden" };
     }
+  }
 
+  // A starter's poll edit publishes new text; moderators editing someone else's poll moderate.
+  if (starter) {
+    const writeBlock = await memberWriteBlocked(sql, input.actorId);
+
+    if (writeBlock !== null) {
+      return { ok: false, code: writeBlock };
+    }
+  }
+
+  if (!moderator) {
     const windowMinutes = await pollEditWindowMinutes(sql, input.actorId);
     const ageMinutes = ((input.now ?? new Date()).getTime() - poll.createdAt.getTime()) / 60_000;
 
@@ -410,6 +436,14 @@ export async function editPoll(
 
         if (current === null) {
           reject("not_found");
+        }
+
+        if (starter) {
+          const writeBlockEdit = await memberWriteBlocked(tx, input.actorId);
+
+          if (writeBlockEdit !== null) {
+            reject(writeBlockEdit);
+          }
         }
 
         await replacePoll(tx, current, {
