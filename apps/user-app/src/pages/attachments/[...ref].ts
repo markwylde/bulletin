@@ -25,12 +25,15 @@ function guestViewerKey(request: Request): string | undefined {
 export const GET: APIRoute = async ({ params, locals, request }) => {
   const sql = readSql();
   const session = locals.session ?? null;
+  const runtime = createUserFlags(sql);
   const guard = requireFlag("attachments", {
-    runtime: createUserFlags(sql),
+    runtime,
     viewer: () => loadFlagViewer(sql, session),
   });
 
-  return guard(request, () => {
+  return guard(request, async () => {
+    const viewer = await loadFlagViewer(sql, session);
+    await runtime.ensureFresh();
     const id = (params.ref ?? "").split("/")[0] ?? "";
     const preview = new URL(request.url).searchParams.get("preview") === "1";
     const viewerKey = guestViewerKey(request);
@@ -44,6 +47,7 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
       id,
       preview,
       ...(viewerKey === undefined ? {} : { guestViewerKey: viewerKey }),
+      conversationsEnabled: runtime.isOn(viewer, "conversations"),
     });
   });
 };

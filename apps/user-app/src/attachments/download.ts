@@ -30,6 +30,8 @@ export interface AttachmentDownloadInput {
   readonly preview?: boolean;
   /** Pseudonymous guest viewer digest for the rate-limited download counter. */
   readonly guestViewerKey?: string;
+  /** False when the `conversations` flag is off: conversation-only files become 404. */
+  readonly conversationsEnabled?: boolean;
 }
 
 function json(body: unknown, status: number): Response {
@@ -93,6 +95,14 @@ export async function attachmentDownloadResponse(
   }
 
   if (attachment === null) {
+    return json({ code: "not_found" }, 404);
+  }
+
+  if (
+    input.conversationsEnabled === false &&
+    attachment.conversationIds.length > 0 &&
+    attachment.forumIds.length === 0
+  ) {
     return json({ code: "not_found" }, 404);
   }
 
