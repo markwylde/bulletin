@@ -39,7 +39,9 @@ integrationDescribe("staff auto-promotion", () => {
       await setInputValue(view, "[data-promotion-from]", members);
       await setInputValue(view, "[data-promotion-to]", superModerators);
 
-      const threshold = 30 + (Date.now() % 100);
+      // Above every seeded threshold so this row's text cannot match a seeded rule (the seed
+      // has `≥ 30` for Members → Regulars, which made the old match ambiguous).
+      const threshold = 1_000 + (Date.now() % 100_000);
       await setInputValue(
         view,
         '[data-promotion-criterion="days_since_joining"]',
