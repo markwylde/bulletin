@@ -7,6 +7,7 @@
 import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
 import { publishReactionStates } from "@bulletin/ui/islands/reactions/store";
 import { publishReputationStates } from "@bulletin/ui/islands/reputation/store";
+import { BEACON_BACKOFF_KEY, beaconRetryAt, isBeaconBackedOff } from "./beacon-rate.ts";
 import { setFollowState } from "./follows/dom.ts";
 import {
   applyOverlay,
@@ -418,16 +419,47 @@ async function loadOverlay(ctx: string): Promise<void> {
   }
 }
 
+function beaconBackedOff(): boolean {
+  try {
+    return isBeaconBackedOff(sessionStorage.getItem(BEACON_BACKOFF_KEY), Date.now());
+  } catch {
+    return false;
+  }
+}
+
+function backOffBeacon(response: Response): void {
+  try {
+    sessionStorage.setItem(
+      BEACON_BACKOFF_KEY,
+      String(beaconRetryAt(response.headers.get("retry-after"), Date.now())),
+    );
+  } catch {
+    // Storage can be unavailable (private mode); the next page view may retry.
+  }
+}
+
 function sendBeacon(ctx: string): void {
-  if (typeof navigator.sendBeacon !== "function") {
+  if (beaconBackedOff()) {
     return;
   }
 
-  // `sendBeacon` cannot set headers; same-origin requests still carry Origin and cookies.
-  navigator.sendBeacon(
-    "/api/beacon",
-    new Blob([JSON.stringify({ ctx })], { type: "application/json" }),
-  );
+  // `keepalive` preserves the send-on-unload behaviour of `sendBeacon` while letting us read
+  // the response, so a rate-limited guest backs off quietly instead of retrying every page.
+  void fetch("/api/beacon", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ctx }),
+    credentials: "same-origin",
+    keepalive: true,
+  })
+    .then((response) => {
+      if (response.status === 429) {
+        backOffBeacon(response);
+      }
+    })
+    .catch(() => {
+      // The beacon is an enhancement; a failed send never affects the page.
+    });
 }
 
 // Member-only controls are absent from the shared fragment; the per-request shell reveals

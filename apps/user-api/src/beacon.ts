@@ -6,6 +6,7 @@ import {
 } from "@bulletin/domain/auth";
 import { readTopicForumIds } from "@bulletin/domain/topics";
 import {
+  BEACON_IP_RATE_LIMIT,
   BEACON_RATE_LIMIT,
   BEACON_RATE_WINDOW_MS,
   consumeRateBucket,
@@ -63,17 +64,36 @@ export async function beaconResponse(
     return new Response(null, { status: 204, headers: NO_STORE });
   }
 
-  const allowed = await consumeRateBucket(sql, {
+  // The guest cookie is the rate-limit identity: a new browser gets its own budget, while a
+  // shared NAT no longer puts every visitor in one bucket. The IP stays a coarse ceiling.
+  const cookies = parseCookieHeader(request.headers.get("cookie"));
+  const cookieName = guestCookieName(options.nodeEnv);
+  const existing = cookies[cookieName];
+  const guestId = isGuestId(existing) ? existing : crypto.randomUUID();
+  const now = options.now;
+
+  const guestAllowed = await consumeRateBucket(sql, {
     scope: "beacon",
-    // Never the raw IP: `core.rate_buckets` is readable by the app roles (ADR 0012).
-    identity: clientIp(request) ?? "unknown",
+    identity: guestViewerKey(guestId),
     secret: options.rateLimitSecret,
     limit: BEACON_RATE_LIMIT,
     windowMs: BEACON_RATE_WINDOW_MS,
-    ...(options.now === undefined ? {} : { now: options.now }),
+    ...(now === undefined ? {} : { now }),
   });
 
-  if (!allowed) {
+  // Never the raw IP: `core.rate_buckets` is readable by the app roles (ADR 0012).
+  const ipAllowed =
+    guestAllowed &&
+    (await consumeRateBucket(sql, {
+      scope: "beacon_ip",
+      identity: clientIp(request) ?? "unknown",
+      secret: options.rateLimitSecret,
+      limit: BEACON_IP_RATE_LIMIT,
+      windowMs: BEACON_RATE_WINDOW_MS,
+      ...(now === undefined ? {} : { now }),
+    }));
+
+  if (!ipAllowed) {
     return new Response(null, {
       status: 429,
       headers: { ...NO_STORE, "retry-after": String(BEACON_RATE_WINDOW_MS / 1_000) },
@@ -93,10 +113,6 @@ export async function beaconResponse(
     locationForumId = (await readTopicForumIds(sql, [context.id])).get(context.id);
   }
 
-  const cookies = parseCookieHeader(request.headers.get("cookie"));
-  const cookieName = guestCookieName(options.nodeEnv);
-  const existing = cookies[cookieName];
-  const guestId = isGuestId(existing) ? existing : crypto.randomUUID();
   const headers = new Headers(NO_STORE);
 
   if (guestId !== existing) {

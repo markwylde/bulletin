@@ -221,12 +221,29 @@ stackDescribe("beacon and overlay endpoints", () => {
 
     expect(noOrigin.status).toBe(403);
 
+    // The normal limit is per pseudonymous guest; two visitors behind one NAT must not share
+    // a bucket. One guest sending more than its own budget is still refused.
+    const first = await fetch(`${ORIGIN}/api/beacon`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ ctx: "forum:2" }),
+    });
+    expect(first.status).toBe(204);
+    const guest = (first.headers.get("set-cookie") ?? "").split(";")[0] ?? "";
+
+    const other = await fetch(`${ORIGIN}/api/beacon`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: ORIGIN },
+      body: JSON.stringify({ ctx: "forum:2" }),
+    });
+    expect(other.status).toBe(204);
+
     const statuses: number[] = [];
 
     for (let index = 0; index < 61; index += 1) {
       const response = await fetch(`${ORIGIN}/api/beacon`, {
         method: "POST",
-        headers: { "content-type": "application/json", origin: ORIGIN },
+        headers: { "content-type": "application/json", origin: ORIGIN, cookie: guest },
         body: JSON.stringify({ ctx: "forum:2" }),
       });
 

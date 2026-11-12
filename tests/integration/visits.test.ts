@@ -9,6 +9,7 @@ import { flushTopicViews } from "@bulletin/domain/topics";
 import {
   consumeRateBucket,
   expireVisitBuffers,
+  guestViewerKey,
   PRESENCE_REFRESH_MS,
   RATE_BUCKET_RETENTION_MS,
   RATE_KEY_ROTATION_MS,
@@ -195,10 +196,11 @@ integrationDescribe("read-path visits", () => {
     });
   });
 
-  test("the beacon stores a rotating digest of the IP, never the address", async () => {
+  test("the beacon stores rotating digests of the guest and IP, never the address", async () => {
     await withDb(async (database) => {
       const now = new Date("2026-11-10T12:00:00Z");
       const ip = "203.0.113.9";
+      const guestId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
       const response = await beaconResponse(
         database.sql,
         new Request("http://bulletin.localhost/api/beacon", {
@@ -207,6 +209,7 @@ integrationDescribe("read-path visits", () => {
             "content-type": "application/json",
             "x-forwarded-for": ip,
             origin: "http://bulletin.localhost",
+            cookie: `bl_guest=${guestId}`,
           },
           body: JSON.stringify({ ctx: "topic:201" }),
         }),
@@ -221,24 +224,48 @@ integrationDescribe("read-path visits", () => {
       expect(response.status).toBe(204);
 
       const rows = (await database.sql`
-        SELECT key FROM core.rate_buckets
+        SELECT key FROM core.rate_buckets ORDER BY key
       `) as Array<{ key: string }>;
 
-      expect(rows).toHaveLength(1);
-      expect(rows[0]?.key).not.toContain(ip);
-      expect(rows[0]?.key).not.toContain("203.0.113");
-      expect(rows[0]?.key).toBe(
-        rateLimitKey({ secret: "test-secret", scope: "beacon", identity: ip, now }),
-      );
-      // The digest rotates, so yesterday's counter cannot be linked to today's address.
+      expect(rows).toHaveLength(2);
+
+      for (const row of rows) {
+        expect(row.key).not.toContain(ip);
+        expect(row.key).not.toContain("203.0.113");
+        expect(row.key).not.toContain(guestId);
+      }
+
+      const guestKey = rateLimitKey({
+        secret: "test-secret",
+        scope: "beacon",
+        identity: guestViewerKey(guestId),
+        now,
+      });
+      const ipKey = rateLimitKey({
+        secret: "test-secret",
+        scope: "beacon_ip",
+        identity: ip,
+        now,
+      });
+      expect(rows.map((row) => row.key)).toEqual([guestKey, ipKey].sort());
+
+      // The digest rotates, so yesterday's counter cannot be linked to today's guest or IP.
       expect(
         rateLimitKey({
           secret: "test-secret",
           scope: "beacon",
+          identity: guestViewerKey(guestId),
+          now: new Date(now.getTime() + RATE_KEY_ROTATION_MS),
+        }),
+      ).not.toBe(guestKey);
+      expect(
+        rateLimitKey({
+          secret: "test-secret",
+          scope: "beacon_ip",
           identity: ip,
           now: new Date(now.getTime() + RATE_KEY_ROTATION_MS),
         }),
-      ).not.toBe(rows[0]?.key);
+      ).not.toBe(ipKey);
     });
   });
 

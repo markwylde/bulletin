@@ -17,8 +17,14 @@ export const PRESENCE_REFRESH_MS = 60 * 1_000;
  */
 export const VISIT_BUFFER_RETENTION_MS = 15 * 60 * 1_000;
 
-/** Guest beacons per IP per minute (ADR 0003 flood control). */
+/**
+ * Guest beacons per pseudonymous guest per minute (ADR 0003 flood control). Keying by the
+ * guest cookie, not the IP, keeps members of one household or office behind a shared NAT from
+ * sharing a budget: normal browsing never reaches this many views in a minute.
+ */
 export const BEACON_RATE_LIMIT = 60;
+/** A coarse per-IP ceiling so rotating cookies cannot turn the beacon into an unbounded write. */
+export const BEACON_IP_RATE_LIMIT = 600;
 export const BEACON_RATE_WINDOW_MS = 60 * 1_000;
 
 /**
