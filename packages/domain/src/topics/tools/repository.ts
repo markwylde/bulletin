@@ -32,6 +32,7 @@ import {
   lockTopicForWrite,
   recountTopic,
   refreshForumLastPost,
+  type TopicWriteRecord,
   visiblePostCountsByAuthor,
 } from "../repository.ts";
 import type { TopicMutationOutcome } from "../result.ts";
@@ -118,8 +119,8 @@ async function canSplitAll(
 }
 
 /**
- * Moving posts out of a topic that is held, hidden or deleted republishes content that was
- * removed from view, so the actor needs the `restore` power in every forum involved.
+ * Moving posts out of a soft-deleted topic republishes content that was removed from view, so
+ * the actor needs the `restore` power in every forum involved.
  */
 async function canRestoreAll(
   sql: SQL,
@@ -137,10 +138,34 @@ async function canRestoreAll(
   return true;
 }
 
-function republishesHiddenContent(
-  topics: readonly ({ readonly visibility: string } | null)[],
-): boolean {
-  return topics.some((topic) => topic !== null && topic.visibility !== "visible");
+/** Publishing held content into a visible target needs the matching `approve` power. */
+async function canApproveAll(
+  sql: SQL,
+  actorId: string,
+  sessionId: string | null,
+  tree: ForumTree,
+  forums: readonly string[],
+): Promise<boolean> {
+  for (const forumId of unique(forums)) {
+    if (!(await can(sql, actorId, "approve", { forumId, tree, sessionId }))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function needsRestore(topics: readonly (TopicWriteRecord | null)[]): boolean {
+  return topics.some((topic) => topic !== null && topic.visibility === "soft_deleted");
+}
+
+/** A held topic (or a deleted topic that was held before deletion) needs `approve` to publish. */
+function wasHeld(topic: TopicWriteRecord | null): boolean {
+  return (
+    topic !== null &&
+    (topic.visibility === "unapproved" ||
+      (topic.visibility === "soft_deleted" && topic.restoreVisibility === "unapproved"))
+  );
 }
 
 /**
@@ -187,8 +212,16 @@ export async function mergeTopics(
   }
 
   if (
-    republishesHiddenContent(sources) &&
+    needsRestore(sources) &&
     !(await canRestoreAll(sql, input.actorId, input.sessionId ?? null, tree, forums))
+  ) {
+    return { ok: false, code: "forbidden" };
+  }
+
+  if (
+    destination.visibility === "visible" &&
+    sources.some(wasHeld) &&
+    !(await canApproveAll(sql, input.actorId, input.sessionId ?? null, tree, forums))
   ) {
     return { ok: false, code: "forbidden" };
   }
@@ -225,8 +258,22 @@ export async function mergeTopics(
         }
 
         if (
-          republishesHiddenContent(sourcesCurrent) &&
+          needsRestore(sourcesCurrent) &&
           !(await canRestoreAll(
+            tx,
+            input.actorId,
+            input.sessionId ?? null,
+            freshTree,
+            currentForums,
+          ))
+        ) {
+          throw new Error("forbidden");
+        }
+
+        if (
+          destinationCurrent.visibility === "visible" &&
+          sourcesCurrent.some(wasHeld) &&
+          !(await canApproveAll(
             tx,
             input.actorId,
             input.sessionId ?? null,
@@ -457,8 +504,19 @@ export async function splitTopic(
   }
 
   if (
-    republishesHiddenContent([source]) &&
+    needsRestore([source]) &&
     !(await canRestoreAll(sql, input.actorId, input.sessionId ?? null, tree, forums))
+  ) {
+    return { ok: false, code: "forbidden" };
+  }
+
+  // A new topic is visible; an existing target publishes only when it is visible itself.
+  const targetVisible = targetTopic === null || targetTopic.visibility === "visible";
+
+  if (
+    targetVisible &&
+    wasHeld(source) &&
+    !(await canApproveAll(sql, input.actorId, input.sessionId ?? null, tree, forums))
   ) {
     return { ok: false, code: "forbidden" };
   }
@@ -496,8 +554,22 @@ export async function splitTopic(
         }
 
         if (
-          republishesHiddenContent([currentSource]) &&
+          needsRestore([currentSource]) &&
           !(await canRestoreAll(tx, input.actorId, input.sessionId ?? null, freshTree, [
+            currentSource.forumId,
+            currentTargetForumId,
+          ]))
+        ) {
+          throw new Error("forbidden");
+        }
+
+        const currentTargetVisible =
+          currentTarget === null || currentTarget.visibility === "visible";
+
+        if (
+          currentTargetVisible &&
+          wasHeld(currentSource) &&
+          !(await canApproveAll(tx, input.actorId, input.sessionId ?? null, freshTree, [
             currentSource.forumId,
             currentTargetForumId,
           ]))

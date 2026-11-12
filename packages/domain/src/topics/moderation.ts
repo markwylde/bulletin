@@ -35,9 +35,11 @@ import {
   moveTopicRow,
   recountTopic,
   refreshForumLastPost,
+  setPostSoftDeleted,
   setPostVisibility,
   setTopicLocked,
   setTopicPinned,
+  setTopicSoftDeleted,
   setTopicVisibility,
   visiblePostCount,
   visiblePostCountsByAuthor,
@@ -119,7 +121,7 @@ export async function softDelete(
     memberIds: post.authorId === null ? [] : [post.authorId],
   };
 
-  if (post.visibility !== "visible") {
+  if (post.visibility === "soft_deleted") {
     return { ok: true, result: summary };
   }
 
@@ -162,8 +164,14 @@ export async function softDelete(
           reject("forbidden");
         }
 
-        if (current.visibility === "visible") {
-          await setPostVisibility(tx, current.id, "soft_deleted");
+        if (current.visibility !== "soft_deleted") {
+          // Only a visible post inside a visible topic is in the public counters. Held posts
+          // (and posts whose whole topic is hidden) must not be subtracted a second time.
+          const counted = current.visibility === "visible" && current.topicVisibility === "visible";
+          const restoreVisibility =
+            current.visibility === "unapproved" ? ("unapproved" as const) : ("visible" as const);
+
+          await setPostSoftDeleted(tx, current.id, restoreVisibility);
           await writeModerationLog(tx, {
             actorId: input.actorId,
             action: "post.delete",
@@ -171,22 +179,27 @@ export async function softDelete(
             targetId: current.id,
             forumId: current.forumId,
             memberId: current.authorId,
-            details: { topicId: current.topicId, authorAction: currentIsAuthor },
+            details: {
+              topicId: current.topicId,
+              authorAction: currentIsAuthor,
+              previousVisibility: current.visibility,
+            },
           });
-          await adjustForumPostCount(tx, current.forumId, -1);
 
-          if (current.authorId !== null) {
-            await adjustMemberPostCount(tx, current.authorId, -1);
-          }
+          if (counted) {
+            await adjustForumPostCount(tx, current.forumId, -1);
 
-          if (current.position > 1) {
-            await adjustTopicReplyCount(tx, current.topicId, -1);
+            if (current.authorId !== null) {
+              await adjustMemberPostCount(tx, current.authorId, -1);
+            }
+
+            if (current.position > 1) {
+              await adjustTopicReplyCount(tx, current.topicId, -1);
+            }
           }
 
           await recountTopic(tx, current.topicId);
           await refreshForumLastPost(tx, current.forumId, current.id);
-        } else {
-          await setPostVisibility(tx, current.id, "soft_deleted");
         }
 
         return summary;
@@ -271,7 +284,13 @@ export async function restore(
             reject("forbidden");
           }
 
-          await setPostVisibility(tx, current.id, "visible");
+          // A direct approve publishes the post; restoring a soft-deleted row returns it to
+          // the visibility it had before deletion, which may still be `unapproved`.
+          const targetVisibility =
+            current.visibility === "unapproved" ? "visible" : current.restoreVisibility;
+          const counted = targetVisibility === "visible" && current.topicVisibility === "visible";
+
+          await setPostVisibility(tx, current.id, targetVisibility);
           await writeModerationLog(tx, {
             actorId: input.actorId,
             action: current.visibility === "unapproved" ? "post.approve" : "post.restore",
@@ -279,16 +298,19 @@ export async function restore(
             targetId: current.id,
             forumId: current.forumId,
             memberId: current.authorId,
-            details: { topicId: current.topicId },
+            details: { topicId: current.topicId, restoredVisibility: targetVisibility },
           });
-          await adjustForumPostCount(tx, current.forumId, 1);
 
-          if (current.authorId !== null) {
-            await adjustMemberPostCount(tx, current.authorId, 1);
-          }
+          if (counted) {
+            await adjustForumPostCount(tx, current.forumId, 1);
 
-          if (current.position > 1) {
-            await adjustTopicReplyCount(tx, current.topicId, 1);
+            if (current.authorId !== null) {
+              await adjustMemberPostCount(tx, current.authorId, 1);
+            }
+
+            if (current.position > 1) {
+              await adjustTopicReplyCount(tx, current.topicId, 1);
+            }
           }
 
           await recountTopic(tx, current.topicId);
@@ -382,13 +404,26 @@ export async function softDeleteTopic(
           reject("forbidden");
         }
 
-        const postCount = await visiblePostCount(tx, current.id);
-        const authorCounts = await visiblePostCountsByAuthor(tx, current.id);
+        // Only a visible topic was in the public counters. A held or already-hidden topic
+        // leaves them untouched, and restore must return it to the state it had before.
+        const counted = current.visibility === "visible";
+        const postCount = counted ? await visiblePostCount(tx, current.id) : 0;
+        const authorCounts = counted
+          ? await visiblePostCountsByAuthor(tx, current.id)
+          : new Map<string, number>();
 
-        await setTopicVisibility(tx, current.id, "soft_deleted");
-        await adjustForumPostCount(tx, current.forumId, -postCount);
-        await adjustForumTopicCount(tx, current.forumId, -1);
-        await adjustMemberPostCounts(tx, authorCounts, -1);
+        await setTopicSoftDeleted(
+          tx,
+          current.id,
+          current.visibility === "unapproved" ? "unapproved" : "visible",
+        );
+
+        if (counted) {
+          await adjustForumPostCount(tx, current.forumId, -postCount);
+          await adjustForumTopicCount(tx, current.forumId, -1);
+          await adjustMemberPostCounts(tx, authorCounts, -1);
+        }
+
         await refreshForumLastPost(tx, current.forumId);
         await writeModerationLog(tx, {
           actorId: input.actorId,
@@ -397,7 +432,7 @@ export async function softDeleteTopic(
           targetId: current.id,
           forumId: current.forumId,
           memberId: current.starterId,
-          details: { title: current.title, postCount },
+          details: { title: current.title, postCount, previousVisibility: current.visibility },
         });
 
         return {
@@ -487,13 +522,23 @@ export async function restoreTopic(
           reject("forbidden");
         }
 
-        const postCount = await visiblePostCount(tx, current.id);
-        const authorCounts = await visiblePostCountsByAuthor(tx, current.id);
+        // Restore returns the topic to the visibility it had before deletion: a held topic
+        // stays held (and uncounted) until a moderator with `approve` publishes it.
+        const targetVisibility = current.restoreVisibility;
+        const counted = targetVisibility === "visible";
+        const postCount = counted ? await visiblePostCount(tx, current.id) : 0;
+        const authorCounts = counted
+          ? await visiblePostCountsByAuthor(tx, current.id)
+          : new Map<string, number>();
 
-        await setTopicVisibility(tx, current.id, "visible");
-        await adjustForumPostCount(tx, current.forumId, postCount);
-        await adjustForumTopicCount(tx, current.forumId, 1);
-        await adjustMemberPostCounts(tx, authorCounts, 1);
+        await setTopicVisibility(tx, current.id, targetVisibility);
+
+        if (counted) {
+          await adjustForumPostCount(tx, current.forumId, postCount);
+          await adjustForumTopicCount(tx, current.forumId, 1);
+          await adjustMemberPostCounts(tx, authorCounts, 1);
+        }
+
         await refreshForumLastPost(tx, current.forumId);
         await writeModerationLog(tx, {
           actorId: input.actorId,
@@ -502,7 +547,7 @@ export async function restoreTopic(
           targetId: current.id,
           forumId: current.forumId,
           memberId: current.starterId,
-          details: { title: current.title, postCount },
+          details: { title: current.title, postCount, restoredVisibility: targetVisibility },
         });
 
         return {
@@ -603,7 +648,9 @@ async function hardDeletePost(
           details: { topicId: current.topicId },
         });
 
-        if (current.visibility === "visible") {
+        const counted = current.visibility === "visible" && current.topicVisibility === "visible";
+
+        if (counted) {
           await adjustForumPostCount(tx, current.forumId, -1);
 
           if (current.authorId !== null) {
@@ -613,10 +660,10 @@ async function hardDeletePost(
           if (current.position > 1) {
             await adjustTopicReplyCount(tx, current.topicId, -1);
           }
-
-          await recountTopic(tx, current.topicId);
-          await refreshForumLastPost(tx, current.forumId, current.id);
         }
+
+        await recountTopic(tx, current.topicId);
+        await refreshForumLastPost(tx, current.forumId, current.id);
 
         return summary;
       },

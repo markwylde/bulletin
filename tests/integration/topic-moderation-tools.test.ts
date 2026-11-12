@@ -25,7 +25,10 @@ import {
   move,
   readTopicList,
   reply,
+  restore,
+  restoreTopic,
   saveMultimodAction,
+  softDelete,
   softDeleteTopic,
   splitTopic,
   startTopic,
@@ -618,6 +621,188 @@ integrationDescribe("topic moderation tools", () => {
       expect(await readTagVersion(database.sql, `member:${withRestore}`)).not.toBe(
         splitMemberTagBefore,
       );
+    });
+  }, 60_000);
+
+  test("delete and restore of held content never publishes without approve", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const member = await memberId(database, "member-1");
+      const heldAuthor = await memberId(database, "new-member");
+      const noApprove = await memberId(database, "member-2");
+
+      await database.sql`
+        INSERT INTO core.moderators (forum_id, member_id, powers, this_forum_only)
+        VALUES (
+          ${forum}, ${noApprove},
+          ${"{soft_delete,restore,see_deleted}"}::text[], true
+        )
+      `;
+      await database.sql`UPDATE core.members SET post_count = 0 WHERE id = ${heldAuthor}`;
+      await database.sql`
+        UPDATE core.board_settings SET new_member_approval_posts = 1 WHERE id = 1
+      `;
+
+      const heldTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: heldAuthor,
+          forumId: forum,
+          title: "Held delete restore topic",
+          bodyMd: "Held delete restore body.",
+        }),
+      );
+      expectOk(
+        await reply(database.sql, {
+          actorId: member,
+          topicId: heldTopic.topicId,
+          bodyMd: "Visible reply inside the held topic.",
+        }),
+      );
+      await syncForumCounters(database, forum);
+      await syncMemberPostCounter(database, heldAuthor);
+      await syncMemberPostCounter(database, member);
+      const forumBefore = await storedCounters(database, forum);
+      const heldAuthorBefore = await memberVisiblePostCount(database, heldAuthor);
+
+      expectOk(
+        await softDeleteTopic(database.sql, { actorId: noApprove, topicId: heldTopic.topicId }),
+      );
+      expect(await storedCounters(database, forum)).toEqual(forumBefore);
+      expect(await memberVisiblePostCount(database, heldAuthor)).toBe(heldAuthorBefore);
+
+      expectOk(
+        await restoreTopic(database.sql, { actorId: noApprove, topicId: heldTopic.topicId }),
+      );
+
+      const [topicRow] = (await database.sql`
+        SELECT visibility FROM core.topics WHERE id = ${heldTopic.topicId}
+      `) as Array<{ visibility: string }>;
+      expect(topicRow?.visibility).toBe("unapproved");
+      expect(await storedCounters(database, forum)).toEqual(forumBefore);
+      expect(await memberVisiblePostCount(database, heldAuthor)).toBe(heldAuthorBefore);
+
+      const visibleTopic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Visible topic with a held reply",
+          bodyMd: "Visible opening.",
+        }),
+      );
+      const heldReply = expectOk(
+        await reply(database.sql, {
+          actorId: heldAuthor,
+          topicId: visibleTopic.topicId,
+          bodyMd: "Held reply to delete and restore.",
+        }),
+      );
+      await syncForumCounters(database, forum);
+      await syncMemberPostCounter(database, heldAuthor);
+      const replyForumBefore = await storedCounters(database, forum);
+      const replyMemberBefore = await memberVisiblePostCount(database, heldAuthor);
+
+      expectOk(await softDelete(database.sql, { actorId: noApprove, postId: heldReply.postId }));
+      expect(await storedCounters(database, forum)).toEqual(replyForumBefore);
+      expect(await memberVisiblePostCount(database, heldAuthor)).toBe(replyMemberBefore);
+
+      expectOk(await restore(database.sql, { actorId: noApprove, postId: heldReply.postId }));
+
+      const [replyRow] = (await database.sql`
+        SELECT visibility FROM core.posts WHERE id = ${heldReply.postId}
+      `) as Array<{ visibility: string }>;
+      expect(replyRow?.visibility).toBe("unapproved");
+      expect(await storedCounters(database, forum)).toEqual(replyForumBefore);
+      expect(await memberVisiblePostCount(database, heldAuthor)).toBe(replyMemberBefore);
+    });
+  }, 60_000);
+
+  test("publishing held content through merge or split needs approve", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const heldAuthor = await memberId(database, "new-member");
+      const noApprove = await memberId(database, "member-2");
+
+      await database.sql`
+        INSERT INTO core.moderators (forum_id, member_id, powers, this_forum_only)
+        VALUES (
+          ${forum}, ${noApprove},
+          ${"{merge,split,soft_delete,restore,see_deleted}"}::text[], true
+        )
+      `;
+      // Create the destination before approval is switched on so it is a public topic.
+      const destination = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Visible merge destination",
+          bodyMd: "Destination opening.",
+        }),
+      );
+      await database.sql`UPDATE core.members SET post_count = 0 WHERE id = ${heldAuthor}`;
+      await database.sql`
+        UPDATE core.board_settings SET new_member_approval_posts = 1 WHERE id = 1
+      `;
+
+      const heldSource = expectOk(
+        await startTopic(database.sql, {
+          actorId: heldAuthor,
+          forumId: forum,
+          title: "Held merge and split source",
+          bodyMd: "Held opening.",
+        }),
+      );
+      const visibleReply = expectOk(
+        await reply(database.sql, {
+          actorId: member,
+          topicId: heldSource.topicId,
+          bodyMd: "Visible reply in a hidden topic.",
+        }),
+      );
+
+      const [visibilityRows] = (await database.sql`
+        SELECT
+          (SELECT visibility FROM core.topics WHERE id = ${heldSource.topicId}) AS source,
+          (SELECT visibility FROM core.topics WHERE id = ${destination.topicId}) AS destination
+      `) as Array<{ source: string; destination: string }>;
+      expect(visibilityRows).toEqual({ source: "unapproved", destination: "visible" });
+
+      expect(
+        await mergeTopics(database.sql, {
+          actorId: noApprove,
+          destinationTopicId: destination.topicId,
+          sourceTopicIds: [heldSource.topicId],
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+
+      expect(
+        await splitTopic(database.sql, {
+          actorId: noApprove,
+          sourceTopicId: heldSource.topicId,
+          postIds: [visibleReply.postId],
+          target: { kind: "new", forumId: forum, title: "Publishing split" },
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+
+      expect(await topicBodyOrder(database, destination.topicId)).toEqual(["Destination opening."]);
+      expect(await topicBodyOrder(database, heldSource.topicId)).toEqual([
+        "Held opening.",
+        "Visible reply in a hidden topic.",
+      ]);
+
+      expectOk(
+        await mergeTopics(database.sql, {
+          actorId: admin,
+          destinationTopicId: destination.topicId,
+          sourceTopicIds: [heldSource.topicId],
+        }),
+      );
+      expect(await topicBodyOrder(database, destination.topicId)).toEqual([
+        "Destination opening.",
+        "Held opening.",
+        "Visible reply in a hidden topic.",
+      ]);
     });
   }, 60_000);
 

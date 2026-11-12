@@ -468,6 +468,21 @@ export async function approveHeldPosts(
           // every visible post of the topic once, so a reply approved early is not counted twice.
           const topicVisible = topic.visibility === "visible";
 
+          // Approving the opener of a topic that was held before it was deleted also approves
+          // the topic itself. The row stays hidden until restore, but restore then publishes it
+          // instead of returning to an `unapproved` state with nothing left in the queue.
+          if (
+            target.position === 1 &&
+            topic.visibility === "soft_deleted" &&
+            topic.restoreVisibility === "unapproved"
+          ) {
+            await tx`
+              UPDATE core.topics
+              SET restore_visibility = 'visible', updated_at = now()
+              WHERE id = ${topic.id}
+            `;
+          }
+
           await setPostVisibility(tx, target.postId, "visible");
           await tx`UPDATE core.posts SET hold_reason = NULL WHERE id = ${target.postId}`;
 

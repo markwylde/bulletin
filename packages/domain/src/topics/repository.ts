@@ -17,6 +17,8 @@ import {
 } from "../reputation/repository.ts";
 
 export type PostVisibility = "visible" | "unapproved" | "soft_deleted";
+/** The visibility a soft-deleted row returns to; a tombstone is never a restore target. */
+export type RestoreVisibility = "visible" | "unapproved";
 export type ForumPrefixMode = "none" | "optional" | "required";
 
 export interface ForumTopicTarget {
@@ -39,6 +41,7 @@ export interface TopicWriteRecord {
   readonly lastPostAt: Date | null;
   readonly movedTo: string | null;
   readonly visibility: PostVisibility;
+  readonly restoreVisibility: RestoreVisibility;
   readonly holdReason: string | null;
 }
 
@@ -48,6 +51,9 @@ export interface PostWriteRecord {
   readonly forumId: string;
   readonly authorId: string | null;
   readonly visibility: PostVisibility;
+  readonly restoreVisibility: RestoreVisibility;
+  /** The topic's visibility: a visible post inside a hidden topic is not publicly counted. */
+  readonly topicVisibility: PostVisibility;
   readonly holdReason: string | null;
   readonly position: number;
   readonly createdAt: Date;
@@ -82,6 +88,7 @@ interface TopicRow {
   readonly last_post_at: Date | null;
   readonly moved_to: string | null;
   readonly visibility: PostVisibility;
+  readonly restore_visibility: RestoreVisibility;
   readonly hold_reason: string | null;
 }
 
@@ -91,6 +98,8 @@ interface PostRow {
   readonly forum_id: string;
   readonly author_id: string | null;
   readonly visibility: PostVisibility;
+  readonly restore_visibility: RestoreVisibility;
+  readonly topic_visibility: PostVisibility;
   readonly hold_reason: string | null;
   readonly position: number;
   readonly created_at: Date;
@@ -120,6 +129,7 @@ function topicRecord(row: TopicRow): TopicWriteRecord {
     lastPostAt: row.last_post_at,
     movedTo: row.moved_to,
     visibility: row.visibility,
+    restoreVisibility: row.restore_visibility,
     holdReason: row.hold_reason,
   };
 }
@@ -131,6 +141,8 @@ function postRecord(row: PostRow): PostWriteRecord {
     forumId: row.forum_id,
     authorId: row.author_id,
     visibility: row.visibility,
+    restoreVisibility: row.restore_visibility,
+    topicVisibility: row.topic_visibility,
     holdReason: row.hold_reason,
     position: row.position,
     createdAt: row.created_at,
@@ -219,7 +231,7 @@ export async function loadTopicForWrite(
     SELECT
       t.id, t.forum_id, t.title, t.slug, t.prefix_id, t.starter_id, t.pinned, t.locked,
       t.first_post_id, t.last_post_id, t.last_post_at, t.moved_to, t.visibility,
-      t.hold_reason
+      t.restore_visibility, t.hold_reason
     FROM core.topics t
     WHERE t.id = ${topicId}
   `) as TopicRow[];
@@ -237,7 +249,7 @@ export async function lockTopicForWrite(
     SELECT
       t.id, t.forum_id, t.title, t.slug, t.prefix_id, t.starter_id, t.pinned, t.locked,
       t.first_post_id, t.last_post_id, t.last_post_at, t.moved_to, t.visibility,
-      t.hold_reason
+      t.restore_visibility, t.hold_reason
     FROM core.topics t
     WHERE t.id = ${topicId}
     FOR UPDATE
@@ -250,7 +262,8 @@ export async function lockTopicForWrite(
 export async function loadPostForWrite(sql: SQL, postId: string): Promise<PostWriteRecord | null> {
   const rows = (await sql`
     SELECT
-      p.id, p.topic_id, t.forum_id, p.author_id, p.visibility, p.hold_reason, p.position,
+      p.id, p.topic_id, t.forum_id, p.author_id, p.visibility, p.restore_visibility,
+      t.visibility AS topic_visibility, p.hold_reason, p.position,
       p.created_at, p.edited_at, p.edited_by, p.body_md, p.body_html, p.body_text,
       p.render_version, p.sanitiser_version, t.locked AS topic_locked,
       t.moved_to AS topic_moved_to
@@ -266,7 +279,8 @@ export async function loadPostForWrite(sql: SQL, postId: string): Promise<PostWr
 export async function lockPostForWrite(tx: SQL, postId: string): Promise<PostWriteRecord | null> {
   const rows = (await tx`
     SELECT
-      p.id, p.topic_id, t.forum_id, p.author_id, p.visibility, p.hold_reason, p.position,
+      p.id, p.topic_id, t.forum_id, p.author_id, p.visibility, p.restore_visibility,
+      t.visibility AS topic_visibility, p.hold_reason, p.position,
       p.created_at, p.edited_at, p.edited_by, p.body_md, p.body_html, p.body_text,
       p.render_version, p.sanitiser_version, t.locked AS topic_locked,
       t.moved_to AS topic_moved_to
@@ -554,7 +568,24 @@ export async function setPostVisibility(
   postId: string,
   visibility: PostVisibility,
 ): Promise<void> {
-  await tx`UPDATE core.posts SET visibility = ${visibility} WHERE id = ${postId}`;
+  await tx`
+    UPDATE core.posts
+    SET visibility = ${visibility}, restore_visibility = 'visible'
+    WHERE id = ${postId}
+  `;
+}
+
+/** Hides a post but remembers what it was, so restore never publishes held content. */
+export async function setPostSoftDeleted(
+  tx: SQL,
+  postId: string,
+  restoreVisibility: RestoreVisibility,
+): Promise<void> {
+  await tx`
+    UPDATE core.posts
+    SET visibility = 'soft_deleted', restore_visibility = ${restoreVisibility}
+    WHERE id = ${postId}
+  `;
 }
 
 export async function setPostHoldReason(
@@ -767,7 +798,22 @@ export async function setTopicVisibility(
 ): Promise<void> {
   await tx`
     UPDATE core.topics
-    SET visibility = ${visibility}, hold_reason = NULL, updated_at = now()
+    SET visibility = ${visibility}, restore_visibility = 'visible',
+        hold_reason = NULL, updated_at = now()
+    WHERE id = ${topicId}
+  `;
+}
+
+/** Hides a topic but remembers what it was, so restore never publishes held content. */
+export async function setTopicSoftDeleted(
+  tx: SQL,
+  topicId: string,
+  restoreVisibility: RestoreVisibility,
+): Promise<void> {
+  await tx`
+    UPDATE core.topics
+    SET visibility = 'soft_deleted', restore_visibility = ${restoreVisibility},
+        updated_at = now()
     WHERE id = ${topicId}
   `;
 }
