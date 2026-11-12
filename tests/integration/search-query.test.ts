@@ -187,6 +187,34 @@ integrationDescribe("search query", () => {
         body: "My laptop power supply failed twice.",
         lang: "english",
       });
+      const nonadjacent = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Nonadjacent phrase",
+        body: "The power from the supply is stable.",
+        lang: "english",
+      });
+      const reversed = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Reversed phrase",
+        body: "The supply of power is stable.",
+        lang: "english",
+      });
+      const orchids = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Orchid note",
+        body: "Only orchidword grows here.",
+        lang: "english",
+      });
+      const begonias = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Begonia note",
+        body: "Only begoniaword grows here.",
+        lang: "english",
+      });
       const markup = await insertContent(database, {
         forumId: announcements,
         authorId: author,
@@ -215,6 +243,16 @@ integrationDescribe("search query", () => {
       const postIds = phrase.items.map((item) => item.kind === "post" && item.postId);
       expect(postIds).toContain(supply.postId);
       expect(postIds).not.toContain(laptop.postId);
+      expect(postIds).not.toContain(nonadjacent.postId);
+      expect(postIds).not.toContain(reversed.postId);
+
+      const either = await search(database, author, {
+        query: "orchidword OR begoniaword",
+        kind: "posts",
+      });
+      const eitherIds = either.items.map((item) => item.kind === "post" && item.postId);
+      expect(eitherIds).toContain(orchids.postId);
+      expect(eitherIds).toContain(begonias.postId);
 
       const snippetHit = await search(database, author, {
         query: "markersnippet",
@@ -226,6 +264,29 @@ integrationDescribe("search query", () => {
       expect(snippet?.snippet).toContain("&lt;b&gt;");
       expect(snippet?.snippet).toContain("<mark>markersnippet</mark>");
       expect(snippet?.snippet).not.toContain("<b>");
+    });
+  });
+
+  test("matches title typos with the trigram index", async () => {
+    await withSeededDb(async (database) => {
+      const announcements = await forumId(database, "announcements");
+      const author = await memberId(database, "member-1");
+      const maintenance = await insertContent(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Scheduled maintenance window",
+        body: "The board will be offline.",
+        lang: "english",
+      });
+
+      const typo = await search(database, author, {
+        query: "maintanance",
+        kind: "topics",
+      });
+
+      expect(typo.items.map((item) => item.kind === "topic" && item.topicId)).toContain(
+        maintenance.topicId,
+      );
     });
   });
 
@@ -327,32 +388,32 @@ integrationDescribe("search query", () => {
       const held = await insertContent(database, {
         forumId: announcements,
         authorId: author,
-        title: "Held topic heldtopicword",
-        body: "A reply inside the held topic.",
+        title: "Held topic quarantineword",
+        body: "A reply inside the quarantinebody.",
         topicVisibility: "unapproved",
       });
       const deleted = await insertContent(database, {
         forumId: announcements,
         authorId: author,
-        title: "Deleted topic deletedtopicword",
-        body: "A reply inside the deleted topic.",
+        title: "Deleted topic embargoword",
+        body: "A reply inside the embargobody.",
         topicVisibility: "soft_deleted",
       });
 
       const heldTopic = await search(database, author, {
-        query: "heldtopicword",
+        query: "quarantineword",
         kind: "topics",
       });
       const heldPost = await search(database, author, {
-        query: "A reply inside the held topic",
+        query: "quarantinebody",
         kind: "posts",
       });
       const deletedTopic = await search(database, author, {
-        query: "deletedtopicword",
+        query: "embargoword",
         kind: "topics",
       });
       const deletedPost = await search(database, author, {
-        query: "A reply inside the deleted topic",
+        query: "embargobody",
         kind: "posts",
       });
       expect(heldTopic.items).toHaveLength(0);
@@ -370,15 +431,15 @@ integrationDescribe("search query", () => {
       `;
 
       const unapprovedTopics = await search(database, unapprovedMod, {
-        query: "heldtopicword",
+        query: "quarantineword",
         kind: "topics",
       });
       const unapprovedPosts = await search(database, unapprovedMod, {
-        query: "A reply inside the held topic",
+        query: "quarantinebody",
         kind: "posts",
       });
       const unapprovedDeleted = await search(database, unapprovedMod, {
-        query: "deletedtopicword",
+        query: "embargoword",
         kind: "topics",
       });
       expect(unapprovedTopics.items.map((item) => item.kind === "topic" && item.topicId)).toContain(
@@ -390,15 +451,15 @@ integrationDescribe("search query", () => {
       expect(unapprovedDeleted.items).toHaveLength(0);
 
       const deletedTopics = await search(database, deletedMod, {
-        query: "deletedtopicword",
+        query: "embargoword",
         kind: "topics",
       });
       const deletedPosts = await search(database, deletedMod, {
-        query: "A reply inside the deleted topic",
+        query: "embargobody",
         kind: "posts",
       });
       const deletedHeld = await search(database, deletedMod, {
-        query: "heldtopicword",
+        query: "quarantineword",
         kind: "topics",
       });
       expect(deletedTopics.items.map((item) => item.kind === "topic" && item.topicId)).toContain(

@@ -170,7 +170,6 @@ integrationDescribe("search activity views", () => {
       const staffRoom = await forumId(database, "staff-room");
       const memberOne = await memberId(database, "member-1");
       const memberTwo = await memberId(database, "member-2");
-      const admin = await memberId(database, "admin");
       const first = await insertContent(database, {
         forumId: announcements,
         authorId: memberOne,
@@ -200,11 +199,11 @@ integrationDescribe("search activity views", () => {
         visibility: "soft_deleted",
         createdAt: new Date("2026-01-04T10:00:00.000Z"),
       });
-      await insertContent(database, {
+      const hidden = await insertContent(database, {
         forumId: staffRoom,
-        authorId: admin,
-        title: "Staff post",
-        body: "Staff-only content.",
+        authorId: memberOne,
+        title: "Staff post by the member",
+        body: "Staff-only content by the member.",
         createdAt: new Date("2026-01-05T10:00:00.000Z"),
       });
 
@@ -226,6 +225,7 @@ integrationDescribe("search activity views", () => {
       expect(view?.results[0]?.key).toBe(`post:${second.postId}`);
       expect(view?.results[0]?.title).toBe("Second member post");
       expect(view?.pagination.pageCount).toBe(2);
+      expect(view?.pagination.page).toBe(1);
       expect(view?.pagination.nextHref).toBe(
         `/search/member/${memberOne}-regular-member-one?page=2`,
       );
@@ -244,6 +244,8 @@ integrationDescribe("search activity views", () => {
       expect(pageTwo?.results[0]?.title).toBe("First member post");
       expect(pageTwo?.results.map((item) => item.key)).not.toContain(`post:${deleted.postId}`);
       expect(view?.results.map((item) => item.key)).not.toContain(`post:${deleted.postId}`);
+      expect(view?.results.map((item) => item.key)).not.toContain(`post:${hidden.postId}`);
+      expect(pageTwo?.results.map((item) => item.key)).not.toContain(`post:${hidden.postId}`);
     });
   });
 

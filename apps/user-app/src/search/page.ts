@@ -169,7 +169,7 @@ async function prefixOptions(
   selectedId: string,
 ): Promise<readonly SearchOption[]> {
   // A prefix list is forum metadata: never load it for a forum the viewer cannot read.
-  if (forumId === "" || !capability.read(forumId)) {
+  if (forumId === "" || capability.tree.get(forumId) === undefined || !capability.read(forumId)) {
     return [];
   }
 

@@ -118,10 +118,11 @@ function postVisibility(sql: SQL, unapproved: string, deleted: string) {
   )`;
 }
 
-function topicScore(sql: SQL) {
+function topicScore(sql: SQL, query: string) {
   return sql`GREATEST(
     ts_rank_cd(topic.tsv, search_query.stemmed),
-    ts_rank_cd(topic.tsv_simple, search_query.simple)
+    ts_rank_cd(topic.tsv_simple, search_query.simple),
+    word_similarity(lower(${query}), lower(topic.title))
   )::float8 * (
     1.0 / (
       1.0 + GREATEST(
@@ -172,7 +173,11 @@ export async function countTopicHits(sql: SQL, input: SearchRepositoryInput): Pr
         AND (${prefixes}::bigint[] IS NULL OR topic.prefix_id = ANY(${prefixes}::bigint[]))
         AND (${input.createdFrom}::timestamptz IS NULL OR topic.created_at >= ${input.createdFrom})
         AND (${input.createdTo}::timestamptz IS NULL OR topic.created_at < ${input.createdTo})
-        AND (topic.tsv @@ search_query.stemmed OR topic.tsv_simple @@ search_query.simple)
+        AND (
+      topic.tsv @@ search_query.stemmed
+      OR topic.tsv_simple @@ search_query.simple
+      OR lower(${input.query}) <% lower(topic.title)
+    )
       LIMIT ${SEARCH_RESULT_CAP}
     ) AS capped
   `) as Array<{ total: number }>;
@@ -201,7 +206,11 @@ export async function searchTopicPage(
     AND (${prefixes}::bigint[] IS NULL OR topic.prefix_id = ANY(${prefixes}::bigint[]))
     AND (${input.createdFrom}::timestamptz IS NULL OR topic.created_at >= ${input.createdFrom})
     AND (${input.createdTo}::timestamptz IS NULL OR topic.created_at < ${input.createdTo})
-    AND (topic.tsv @@ search_query.stemmed OR topic.tsv_simple @@ search_query.simple)
+    AND (
+      topic.tsv @@ search_query.stemmed
+      OR topic.tsv_simple @@ search_query.simple
+      OR lower(${input.query}) <% lower(topic.title)
+    )
   `;
   const rows = (await sql`
     WITH search_query AS (
@@ -212,7 +221,7 @@ export async function searchTopicPage(
     candidates AS (
       SELECT
         topic.id,
-        ${topicScore(sql)} AS score,
+        ${topicScore(sql, input.query)} AS score,
         COALESCE(topic.last_post_at, topic.created_at) AS sort_at
       FROM core.topics AS topic
       CROSS JOIN search_query

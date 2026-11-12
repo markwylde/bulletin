@@ -150,6 +150,27 @@ integrationDescribe("search feature flag", () => {
     });
   });
 
+  test("an unknown forum filter is ignored instead of failing the route", async () => {
+    await withSeededDb(async (database) => {
+      const result = await renderSearchRoute({
+        sql: database.sql,
+        locale: "en",
+        translate,
+        session: null,
+        params: new URLSearchParams("q=board&forum=999999999"),
+        mode: "search",
+        viewerKey: "unknown-forum-viewer",
+      });
+
+      expect(result.kind).toBe("page");
+
+      if (result.kind === "page") {
+        expect(result.status).toBe(200);
+        expect(result.html).toContain("data-search-page");
+      }
+    });
+  });
+
   test("member search results are available through the gated route", async () => {
     await withSeededDb(async (database) => {
       const member = await memberSession(database, "member-1");
