@@ -29,8 +29,8 @@ import {
   pendingApprovalCount,
   rejectHeldPosts,
 } from "@bulletin/domain/moderation";
-import { can, loadForumTree } from "@bulletin/domain/permissions";
-import { readTopic, reply, startTopic } from "@bulletin/domain/topics";
+import { loadForumTree } from "@bulletin/domain/permissions";
+import { readTopic, reply, softDeleteTopic, startTopic } from "@bulletin/domain/topics";
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants, type VariantCase } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -325,6 +325,113 @@ integrationDescribe("moderation queue", () => {
       expect(
         (await database.sql`SELECT visibility FROM core.posts WHERE id = ${third.postId}`)[0],
       ).toMatchObject({ visibility: "visible" });
+    });
+  }, 60_000);
+
+  test("approving a held reply keeps it out of the counters until its held topic is approved", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "new-member");
+      const moderator = await memberId(database, "super-mod");
+
+      await database.sql`UPDATE core.members SET post_count = 0 WHERE id = ${author}`;
+      await database.sql`
+        UPDATE core.board_settings SET new_member_approval_posts = 3 WHERE id = 1
+      `;
+      const before = await counters(database, offTopic, author);
+
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Held opener and reply",
+          bodyMd: "Held opener.",
+        }),
+      );
+      const heldReply = expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "Held reply.",
+        }),
+      );
+
+      expectOk(
+        await approveHeldPosts(database.sql, {
+          actorId: moderator,
+          postIds: [heldReply.postId],
+        }),
+      );
+
+      // The opener is still held, so neither the forum nor the member counts move.
+      expect(await counters(database, offTopic, author)).toEqual(before);
+
+      expectOk(
+        await approveHeldPosts(database.sql, {
+          actorId: moderator,
+          postIds: [topic.postId],
+        }),
+      );
+
+      expect(await counters(database, offTopic, author)).toEqual({
+        forum: {
+          topic_count: (before.forum?.topic_count ?? 0) + 1,
+          post_count: (before.forum?.post_count ?? 0) + 2,
+        },
+        member: { post_count: 2 },
+      });
+      const [topicRow] = (await database.sql`
+        SELECT reply_count FROM core.topics WHERE id = ${topic.topicId}
+      `) as Array<{ reply_count: number }>;
+      expect(topicRow?.reply_count).toBe(1);
+    });
+  }, 60_000);
+
+  test("approving a held reply inside a soft-deleted topic leaves the counters alone", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const heldAuthor = await memberId(database, "new-member");
+      const moderator = await memberId(database, "super-mod");
+
+      await database.sql`UPDATE core.members SET post_count = 0 WHERE id = ${heldAuthor}`;
+      await database.sql`
+        UPDATE core.board_settings SET new_member_approval_posts = 1 WHERE id = 1
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Topic deleted with a held reply",
+          bodyMd: "Visible opener.",
+        }),
+      );
+      const heldReply = expectOk(
+        await reply(database.sql, {
+          actorId: heldAuthor,
+          topicId: topic.topicId,
+          bodyMd: "Held reply in a topic about to be deleted.",
+        }),
+      );
+
+      expectOk(await softDeleteTopic(database.sql, { actorId: moderator, topicId: topic.topicId }));
+      const afterDelete = await counters(database, offTopic, heldAuthor);
+
+      expectOk(
+        await approveHeldPosts(database.sql, {
+          actorId: moderator,
+          postIds: [heldReply.postId],
+        }),
+      );
+
+      expect(await counters(database, offTopic, heldAuthor)).toEqual(afterDelete);
+
+      const [row] = (await database.sql`
+        SELECT p.visibility, t.visibility AS topic_visibility
+        FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+        WHERE p.id = ${heldReply.postId}
+      `) as Array<{ visibility: string; topic_visibility: string }>;
+      expect(row).toEqual({ visibility: "visible", topic_visibility: "soft_deleted" });
     });
   }, 60_000);
 

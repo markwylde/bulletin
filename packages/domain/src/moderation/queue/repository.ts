@@ -463,6 +463,10 @@ export async function approveHeldPosts(
           }
 
           const topicBecomesVisible = target.position === 1 && topic.visibility === "unapproved";
+          // A reply inside a hidden (held or deleted) topic was never in the public counters.
+          // It joins them only when its topic is published; approving the opener then restores
+          // every visible post of the topic once, so a reply approved early is not counted twice.
+          const topicVisible = topic.visibility === "visible";
 
           await setPostVisibility(tx, target.postId, "visible");
           await tx`UPDATE core.posts SET hold_reason = NULL WHERE id = ${target.postId}`;
@@ -481,6 +485,8 @@ export async function approveHeldPosts(
             await adjustForumPostCount(tx, target.forumId, total);
             await adjustMemberPostCounts(tx, counts, 1);
             memberIds.push(...counts.keys());
+          } else if (!topicVisible) {
+            // Held/deleted topic: the post is visible to its author and moderators only.
           } else if (target.position > 1) {
             await adjustForumPostCount(tx, target.forumId, 1);
             await adjustTopicReplyCount(tx, target.topicId, 1);
