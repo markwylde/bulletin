@@ -152,6 +152,16 @@ export const realtimeFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Private multi-participant conversations (change `conversations`). */
+export const conversationsFlag = defineFlag({
+  key: "conversations",
+  description: "Private multi-participant conversations, their inbox and live replies.",
+  owner: "conversations",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Post reactions, the reaction bar and the who-reacted list (change `reactions-reputation`). */
 export const reactionsFlag = defineFlag({
   key: "reactions",
@@ -257,6 +267,7 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   followsFlag,
   digestsFlag,
   realtimeFlag,
+  conversationsFlag,
   reactionsFlag,
   reputationFlag,
   customProfileFieldsFlag,

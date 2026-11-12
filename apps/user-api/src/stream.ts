@@ -42,6 +42,8 @@ export interface StreamOptions {
   readonly now?: () => Date;
   /** The process-wide LISTEN hub; without it the stream subscribes directly (tests). */
   readonly hub?: StreamHub;
+  /** False turns the conversation stream into a 404 (ADR 0010); defaults to enabled in tests. */
+  readonly conversationsEnabled?: boolean;
 }
 
 interface TopicScope {
@@ -113,6 +115,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
 
   if (conversationId !== null) {
     if (
+      options.conversationsEnabled === false ||
       topicId !== null ||
       (await readParticipation(sql, conversationId, session.memberId)) === null
     ) {

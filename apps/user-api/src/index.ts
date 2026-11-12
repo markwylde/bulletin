@@ -114,8 +114,14 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return flags.guard("realtime", session.memberId)(request, () =>
-          streamResponse({ sql, session, request, hub: streamHub }),
+        return flags.guard("realtime", session.memberId)(request, async () =>
+          streamResponse({
+            sql,
+            session,
+            request,
+            hub: streamHub,
+            conversationsEnabled: await flags.enabled("conversations", session.memberId),
+          }),
         );
       });
 
@@ -468,7 +474,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return createConversationResponse(sql, session, request);
+        return flags.guard("conversations", session.memberId)(request, () =>
+          createConversationResponse(sql, session, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -482,7 +490,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return conversationResponse(sql, session, conversationMatch[1] ?? "");
+        return flags.guard("conversations", session.memberId)(request, () =>
+          conversationResponse(sql, session, conversationMatch[1] ?? ""),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -496,11 +506,13 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return conversationMessagesResponse(
-          sql,
-          session,
-          conversationMessagesMatch[1] ?? "",
-          new URL(request.url),
+        return flags.guard("conversations", session.memberId)(request, () =>
+          conversationMessagesResponse(
+            sql,
+            session,
+            conversationMessagesMatch[1] ?? "",
+            new URL(request.url),
+          ),
         );
       });
 
@@ -515,11 +527,8 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return archiveConversationResponse(
-          sql,
-          session,
-          conversationArchiveMatch[1] ?? "",
-          request,
+        return flags.guard("conversations", session.memberId)(request, () =>
+          archiveConversationResponse(sql, session, conversationArchiveMatch[1] ?? "", request),
         );
       });
 
@@ -534,7 +543,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return readConversationResponse(sql, session, conversationReadMatch[1] ?? "");
+        return flags.guard("conversations", session.memberId)(request, () =>
+          readConversationResponse(sql, session, conversationReadMatch[1] ?? ""),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -548,7 +559,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return replyConversationResponse(sql, session, conversationReplyMatch[1] ?? "", request);
+        return flags.guard("conversations", session.memberId)(request, () =>
+          replyConversationResponse(sql, session, conversationReplyMatch[1] ?? "", request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -564,7 +577,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return participantResponse(sql, session, conversationParticipantsMatch[1] ?? "", request);
+        return flags.guard("conversations", session.memberId)(request, () =>
+          participantResponse(sql, session, conversationParticipantsMatch[1] ?? "", request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -578,7 +593,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return leaveConversationResponse(sql, session, conversationLeaveMatch[1] ?? "", request);
+        return flags.guard("conversations", session.memberId)(request, () =>
+          leaveConversationResponse(sql, session, conversationLeaveMatch[1] ?? "", request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

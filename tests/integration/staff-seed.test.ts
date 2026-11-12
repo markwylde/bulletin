@@ -107,6 +107,7 @@ integrationDescribe("flags seed", () => {
         "avatar_upload",
         "badges",
         "compactTopicList",
+        "conversations",
         "custom_profile_fields",
         "digests",
         "follows",

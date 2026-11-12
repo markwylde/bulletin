@@ -79,6 +79,7 @@ export async function attachmentRequestResponse(
   storage: StorageClient,
   session: Session,
   request: Request,
+  options: { readonly conversationsEnabled?: boolean } = {},
 ): Promise<Response> {
   const parsed = parseUploadRequest(await bodyRecord(request));
 
@@ -87,6 +88,10 @@ export async function attachmentRequestResponse(
   }
 
   const { forumId, conversationId, filename, contentType, sizeBytes } = parsed.value;
+
+  if (conversationId !== undefined && options.conversationsEnabled === false) {
+    return json({ code: "not_found" }, 404);
+  }
 
   if (forumId !== undefined) {
     const permissions = await permissionSnapshot(sql, session);
@@ -284,6 +289,7 @@ export interface AttachmentRouteFlags {
     key: string,
     memberId: string,
   ): (request: Request, next: () => Response | Promise<Response>) => Promise<Response>;
+  enabled?(key: string, memberId: string): Promise<boolean>;
 }
 
 export function attachmentRequestRoute(
@@ -293,8 +299,11 @@ export function attachmentRequestRoute(
   session: Session,
   request: Request,
 ): Promise<Response> {
-  return flags.guard("attachments", session.memberId)(request, () =>
-    attachmentRequestResponse(sql, storage, session, request),
+  return flags.guard("attachments", session.memberId)(request, async () =>
+    attachmentRequestResponse(sql, storage, session, request, {
+      conversationsEnabled:
+        flags.enabled === undefined ? true : await flags.enabled("conversations", session.memberId),
+    }),
   );
 }
 

@@ -263,6 +263,18 @@ const FLAGS: readonly SeededFlag[] = [
     fullyOnDaysAgo: 1,
   },
   {
+    key: "conversations",
+    description: "Private multi-participant conversations, their inbox and live replies.",
+    owner: "conversations",
+    defaultValue: true,
+    affectsRender: true,
+    clientVisible: true,
+    rules: [],
+    createdDaysAgo: 8,
+    updatedDaysAgo: 1,
+    fullyOnDaysAgo: 1,
+  },
+  {
     key: "reactions",
     description: "Post reactions, reaction totals and the who-reacted list.",
     owner: "reactions",

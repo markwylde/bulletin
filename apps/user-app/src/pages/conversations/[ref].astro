@@ -1,14 +1,10 @@
 ---
 import { createServerT } from "@bulletin/i18n";
-import { buildConversationPage } from "../../conversations/page.ts";
+import { renderConversationRoute } from "../../conversations/route.ts";
 import { USER_CATALOGS } from "../../catalogs.ts";
-import { conversationContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
-import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
-import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
-import { renderThemedNotFound } from "../../theme/not-found.ts";
-import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
+import { PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
 
 const session = Astro.locals.session ?? null;
 
@@ -19,77 +15,25 @@ if (session === null) {
 
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
-const sql = readSql();
-const flags = await loadViewerFlags(sql, session);
-const ref = Astro.params.ref ?? "";
-const conversationId = /^[1-9]\d{0,18}$/.test(ref) ? ref : "";
-const page =
-  conversationId === ""
-    ? null
-    : await buildConversationPage({
-        sql,
-        memberId: session.memberId,
-        locale,
-        translate,
-        conversationId,
-        attachmentsEnabled: flags.values.attachments === true,
-      });
-const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+const result = await renderConversationRoute({
+  sql: readSql(),
+  locale,
+  translate,
+  session,
+  ref: Astro.params.ref ?? "",
+  pluginsGeneration: PLUGIN_GENERATION,
+  colourScheme: requestColourScheme(Astro.request.headers.get("cookie")),
+  boardName: Astro.locals.board?.boardName ?? null,
+});
 
-let notFound: Awaited<ReturnType<typeof renderThemedNotFound>> | null = null;
-
-if (page === null) {
-  notFound = await renderThemedNotFound({ sql, locale, translate, route: conversationContract });
-  Astro.response.status = 404;
-  Astro.response.headers.set("cache-control", "private, no-store");
-}
-
-const rendered =
-  page === null
-    ? null
-    : await renderCachedPage({
-        tags: [`member:${session.memberId}`],
-        cache: null,
-        tagVersions: null,
-        shell: { visitor: "member", authState: "authenticated" },
-        prepare: async () => ({
-          variant: pageVariant({
-            route: conversationContract.route,
-            params: { id: page.id },
-            visibilityKey: "member",
-            theme: null,
-            pluginsGeneration: PLUGIN_GENERATION,
-            locale,
-            colourScheme: "system",
-            renderFlagsHash: flags.hash,
-          }),
-          data: undefined,
-        }),
-        render: async () => {
-          const themed = await renderThemedPage({
-            sql,
-            boardName,
-            locale,
-            translate,
-            template: "conversation",
-            viewModel: { title: page.title, ...page.viewModel, flags: flags.values },
-            breadcrumbs: page.breadcrumbs,
-            route: conversationContract,
-          });
-
-          return { html: themed.html, errors: themed.errors };
-        },
-      });
-
-if (page !== null) {
-  Astro.response.headers.set("cache-control", "private, no-store");
-}
+Astro.response.status = result.status;
+Astro.response.headers.set("cache-control", "private, no-store");
 ---
 
 <ThemeLayout
-  title={`${page?.title ?? translate("theme.error.title")} · ${boardName}`}
+  title={`${result.title} · ${result.boardName}`}
   locale={locale}
-  body={rendered?.html ?? notFound?.html ?? ""}
+  body={result.html}
   authState="authenticated"
   visitor="member"
 >
