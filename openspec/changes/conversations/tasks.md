@@ -19,8 +19,8 @@
 
 ## 4. Strings and seed
 
-- [ ] 4.1 Add en/es/fr strings for conversations UI, errors and notifications; verify completeness
-- [ ] 4.2 Seed conversations (1:1 and group, archived, with attachments, one where a participant left) for seeded members; verify after `docker compose up --watch`
+- [x] 4.1 Add en/es/fr strings for conversations UI, errors and notifications; verify completeness
+- [x] 4.2 Seed conversations (1:1 and group, archived, with attachments, one where a participant left) for seeded members; verify after `docker compose up --watch`
 
 ## 5. Feature flag
 

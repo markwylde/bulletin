@@ -35,7 +35,9 @@
   {% if canReply and editor %}
     <section class="bl-card" data-reply-section>
       <h2 class="bl-card__title">{% t "conversation.reply" %}</h2>
-      <form class="bl-form" data-conversation-reply-form data-conversation-id="{{ conversationId }}">
+      <form class="bl-form" data-conversation-reply-form data-conversation-id="{{ conversationId }}"
+        data-label-pm-disabled="{% t "conversation.error.pmDisabled" %}"
+        data-label-not-found="{% t "conversation.error.notFound" %}">
         {% island "Editor" editor %}
         <button class="bl-button" type="submit" data-reply-submit>{% t "conversation.submitReply" %}</button>
         <p class="bl-error-text" data-form-error hidden>{% t "conversation.replyFailed" %}</p>
@@ -44,7 +46,13 @@
   {% endif %}
 
   {% if isStarter %}
-    <section class="bl-card" data-conversation-manage>
+    <section class="bl-card" data-conversation-manage
+      data-label-recipient-limit="{% t "conversation.error.recipientLimit" %}"
+      data-label-recipient-unavailable="{% t "conversation.error.recipientUnavailable" %}"
+      data-label-invite-blocked="{% t "conversation.error.inviteBlocked" %}"
+      data-label-already-participant="{% t "conversation.error.alreadyParticipant" %}"
+      data-label-pm-disabled="{% t "conversation.error.pmDisabled" %}"
+      data-label-not-found="{% t "conversation.error.notFound" %}">
       <h2 class="bl-card__title">{% t "conversation.participants" %}</h2>
       <ul class="bl-participant-list">
         {% for participant in participants %}

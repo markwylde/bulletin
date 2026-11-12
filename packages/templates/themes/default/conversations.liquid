@@ -19,7 +19,13 @@
   {% if canStart %}
     <details class="bl-card" data-new-conversation>
       <summary class="bl-card__title">{% t "conversation.new" %}</summary>
-      <form class="bl-form" data-new-conversation-form>
+      <form class="bl-form" data-new-conversation-form
+        data-label-recipient-limit="{% t "conversation.error.recipientLimit" %}"
+        data-label-daily-limit="{% t "conversation.error.dailyLimit" %}"
+        data-label-quota="{% t "conversation.error.quota" %}"
+        data-label-pm-disabled="{% t "conversation.error.pmDisabled" %}"
+        data-label-recipient-unavailable="{% t "conversation.error.recipientUnavailable" %}"
+        data-label-not-found="{% t "conversation.error.notFound" %}">
         <label class="bl-label" for="conversation-title">{% t "conversation.titleLabel" %}</label>
         <input class="bl-input" id="conversation-title" name="title" type="text" minlength="3" maxlength="150" required />
         <div class="bl-recipient-picker" data-recipient-picker

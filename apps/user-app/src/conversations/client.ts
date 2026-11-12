@@ -31,6 +31,37 @@ function showError(element: Element | null, show: boolean): void {
   }
 }
 
+const ERROR_LABEL_KEYS: Readonly<Record<string, string>> = {
+  recipient_limit: "labelRecipientLimit",
+  daily_limit: "labelDailyLimit",
+  quota_reached: "labelQuota",
+  pm_disabled: "labelPmDisabled",
+  recipient_unavailable: "labelRecipientUnavailable",
+  invite_blocked: "labelInviteBlocked",
+  already_participant: "labelAlreadyParticipant",
+  not_found: "labelNotFound",
+};
+
+/** Prefer the code-specific translated label from the form, then the template's generic text. */
+async function errorText(
+  response: Response,
+  container: Element | null,
+  fallback: Element | null,
+): Promise<string> {
+  const generic = fallback instanceof HTMLElement ? (fallback.textContent ?? "") : "";
+  const body = (await response.json().catch(() => ({}))) as { readonly code?: string };
+  const key = body.code === undefined ? undefined : ERROR_LABEL_KEYS[body.code];
+  const label = key === undefined ? undefined : (container as HTMLElement | null)?.dataset[key];
+
+  return label ?? generic;
+}
+
+function setErrorText(element: Element | null, text: string): void {
+  if (element instanceof HTMLElement) {
+    element.textContent = text;
+  }
+}
+
 function buttonsIn(container: Element): readonly HTMLButtonElement[] {
   return [...container.querySelectorAll<HTMLButtonElement>("button")];
 }
@@ -201,6 +232,7 @@ function newConversation(form: HTMLFormElement): void {
     })
       .then(async (response) => {
         if (!response.ok) {
+          setErrorText(error, await errorText(response, form, error));
           showError(error, true);
           return;
         }
@@ -237,8 +269,9 @@ function reply(form: HTMLFormElement): void {
     void postJson(`/api/conversations/${conversationId}/replies`, {
       bodyMd: inputValue(form, "bodyMd"),
     })
-      .then((response) => {
+      .then(async (response) => {
         if (!response.ok) {
+          setErrorText(error, await errorText(response, form, error));
           showError(error, true);
           return;
         }
@@ -350,8 +383,9 @@ function invite(button: HTMLButtonElement): void {
     action: "invite",
     memberId,
   })
-    .then((response) => {
+    .then(async (response) => {
       if (!response.ok) {
+        setErrorText(error, await errorText(response, container, error));
         showError(error, true);
         return;
       }
