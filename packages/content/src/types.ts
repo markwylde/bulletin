@@ -82,6 +82,8 @@ export interface ReplaceWordRule {
   /** Literal word/phrase, matched case-insensitively. */
   readonly word: string;
   readonly replacement: string;
+  /** `whole` matches only at word boundaries; the default `any` matches substrings. */
+  readonly matchMode?: "whole" | "any";
 }
 
 export interface ReplaceWords {

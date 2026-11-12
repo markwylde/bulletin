@@ -347,6 +347,85 @@ integrationDescribe("reports", () => {
     });
   }, 60_000);
 
+  test("denies report detail and mutations to members and moderators outside the forum", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const reporter = await memberId(database, "member-2");
+      const forumMod = await memberId(database, "forum-mod");
+      const outsideMod = await memberId(database, "member-mod");
+      const tree = await loadForumTree(database.sql);
+      const forumModForums = new Set(
+        (await moderatedForums(database.sql, forumMod, null, tree)).map((forum) => forum.id),
+      );
+      const outsideForums = new Set(
+        (await moderatedForums(database.sql, outsideMod, null, tree)).map((forum) => forum.id),
+      );
+      const forums = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE type = 'forum' ORDER BY id
+      `) as Array<{ id: string }>;
+      let target: string | null = null;
+
+      for (const forum of forums) {
+        if (
+          forumModForums.has(forum.id) &&
+          !outsideForums.has(forum.id) &&
+          (await can(database.sql, author, "start", { forumId: forum.id, tree }))
+        ) {
+          target = forum.id;
+          break;
+        }
+      }
+
+      if (target === null) {
+        throw new Error("Missing a forum moderated by only one of the two moderators");
+      }
+
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: target,
+          title: "Scoped report target",
+          bodyMd: "Only the forum moderator may triage this report.",
+        }),
+      );
+      const report = expectOk(
+        await createReport(database.sql, {
+          actorId: reporter,
+          targetType: "post",
+          targetId: topic.postId,
+          reason: "spam",
+          comment: "Scoped report",
+        }),
+      );
+
+      expect(
+        await readReportDetail(database.sql, { actorId: reporter, reportId: report.reportId }),
+      ).toEqual({ ok: false, code: "forbidden" });
+      expect(
+        await updateReport(database.sql, {
+          actorId: reporter,
+          reportId: report.reportId,
+          action: { kind: "status", status: "resolved" },
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+
+      expect(
+        await readReportDetail(database.sql, { actorId: outsideMod, reportId: report.reportId }),
+      ).toEqual({ ok: false, code: "forbidden" });
+      expect(
+        await updateReport(database.sql, {
+          actorId: outsideMod,
+          reportId: report.reportId,
+          action: { kind: "comment", body: "Outside my forums" },
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+
+      expect(
+        await readReportDetail(database.sql, { actorId: forumMod, reportId: report.reportId }),
+      ).toMatchObject({ ok: true, result: { id: report.reportId } });
+    });
+  }, 60_000);
+
   test("scopes member and PM reports by report permissions and audits PM context", async () => {
     await withSeededDb(async (database) => {
       const member = await memberId(database, "member-1");

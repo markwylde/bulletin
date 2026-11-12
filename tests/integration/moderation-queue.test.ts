@@ -564,6 +564,103 @@ integrationDescribe("moderation queue", () => {
     });
   }, 60_000);
 
+  test("rejection never deletes published content", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "member-1");
+      const moderator = await memberId(database, "super-mod");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Published rejection target",
+          bodyMd: "This opening must survive.",
+        }),
+      );
+      const replyPost = expectOk(
+        await reply(database.sql, {
+          actorId: author,
+          topicId: topic.topicId,
+          bodyMd: "This reply must survive too.",
+        }),
+      );
+
+      const rejected = expectOk(
+        await rejectHeldPosts(database.sql, {
+          actorId: moderator,
+          postIds: [topic.postId, replyPost.postId],
+        }),
+      );
+      expect(rejected.postIds).toEqual([]);
+      expect(
+        (await database.sql`SELECT 1 FROM core.topics WHERE id = ${topic.topicId}`).length,
+      ).toBe(1);
+      expect((await database.sql`SELECT 1 FROM core.posts WHERE id = ${topic.postId}`).length).toBe(
+        1,
+      );
+      expect(
+        (await database.sql`SELECT 1 FROM core.posts WHERE id = ${replyPost.postId}`).length,
+      ).toBe(1);
+    });
+  }, 60_000);
+
+  test("serializes concurrent approval and rejection of the same held post", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const author = await memberId(database, "new-member");
+      const moderator = await memberId(database, "super-mod");
+
+      await database.sql`UPDATE core.members SET post_count = 0 WHERE id = ${author}`;
+      await database.sql`
+        UPDATE core.board_settings SET new_member_approval_posts = 1 WHERE id = 1
+      `;
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: author,
+          forumId: offTopic,
+          title: "Concurrent approval target",
+          bodyMd: "Approve or reject exactly once.",
+        }),
+      );
+
+      const [approved, rejected] = await Promise.all([
+        approveHeldPosts(database.sql, {
+          actorId: moderator,
+          postIds: [topic.postId],
+        }),
+        rejectHeldPosts(database.sql, {
+          actorId: moderator,
+          postIds: [topic.postId],
+        }),
+      ]);
+      expect(approved.ok).toBe(true);
+      expect(rejected.ok).toBe(true);
+      const approvedIds = approved.ok ? approved.result.postIds : [];
+      const rejectedIds = rejected.ok ? rejected.result.postIds : [];
+      expect(approvedIds.length + rejectedIds.length).toBe(1);
+
+      const rows = (await database.sql`
+        SELECT t.visibility AS topic_visibility, p.visibility AS post_visibility
+        FROM core.topics t
+        LEFT JOIN core.posts p ON p.topic_id = t.id
+        WHERE t.id = ${topic.topicId}
+      `) as Array<{ topic_visibility: string; post_visibility: string | null }>;
+
+      if (approvedIds.length === 1) {
+        expect(rows).toEqual([{ topic_visibility: "visible", post_visibility: "visible" }]);
+      } else {
+        expect(rows).toEqual([]);
+        expect(
+          (
+            await database.sql`
+            SELECT count(*)::int AS count FROM core.posts WHERE topic_id = ${topic.topicId}
+          `
+          )[0],
+        ).toEqual({ count: 0 });
+      }
+    });
+  }, 60_000);
+
   test("delivers a held topic to its author through the forum overlay only", async () => {
     await withSeededDb(async (database) => {
       const offTopic = await forumId(database, "off-topic");

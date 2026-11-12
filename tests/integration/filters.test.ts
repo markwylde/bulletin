@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRenderCache, createTagVersions } from "@bulletin/cache";
+import { replaceWordsInText } from "@bulletin/content";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -13,6 +14,7 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import {
+  loadReplaceWords,
   readFilterSettings,
   saveFilterDomain,
   saveFilterSettings,
@@ -263,6 +265,38 @@ integrationDescribe("content filters", () => {
       } finally {
         await versions.close();
       }
+    });
+  }, 60_000);
+
+  test("carries whole-word and substring matching into the replacement transform", async () => {
+    await withSeededDb(async (database) => {
+      expectOk(
+        await saveFilterWord(database.sql, {
+          word: "bad",
+          mode: "replace",
+          replacement: "@@@",
+          matchMode: "whole",
+          enabled: true,
+        }),
+      );
+      expectOk(
+        await saveFilterWord(database.sql, {
+          word: "ass",
+          mode: "replace",
+          replacement: "#",
+          matchMode: "any",
+          enabled: true,
+        }),
+      );
+
+      const words = await loadReplaceWords(database.sql);
+      expect(words.rules).toEqual(
+        expect.arrayContaining([
+          { word: "bad", replacement: "@@@", matchMode: "whole" },
+          { word: "ass", replacement: "#", matchMode: "any" },
+        ]),
+      );
+      expect(replaceWordsInText("bad badge badly class", words)).toBe("@@@ badge badly cl#");
     });
   }, 60_000);
 

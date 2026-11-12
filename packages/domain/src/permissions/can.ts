@@ -5,6 +5,7 @@ import {
   isModeratorPower,
   type ModeratorPower,
 } from "./actions.ts";
+import { memberBanned } from "./moderator.ts";
 import { isGuestPrincipal, type ViewerPrincipal } from "./principal.ts";
 import { canEditProfileField, canViewProfileField } from "./profile-fields.ts";
 import { isPermissionKey, type PermissionKey } from "./registry.ts";
@@ -207,11 +208,11 @@ export async function can(
     const capability = CAPABILITY_SETTINGS[action];
     const enabled = settings[capability.key] === true;
 
-    // The Banned group is the board's hard restriction for every capability (posting,
-    // reactions, PMs, custom titles); keep it inside can() so no caller re-implements it.
+    // Banned-group membership and the warning-threshold `restrictions.banned` overlay are the
+    // board's hard restriction for every capability; keep both inside can().
     const groups = await loadMemberGroups(sql, principal);
 
-    if (groups.some((group) => group.key === "banned")) {
+    if (memberBanned(groups, settings)) {
       return false;
     }
 

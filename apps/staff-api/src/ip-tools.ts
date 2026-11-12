@@ -77,14 +77,20 @@ export async function readIpAccessResponse(sql: SQL, request: Request): Promise<
     return json({ code: "invalid_request" }, 400);
   }
 
+  const token = sessionToken(request);
+
+  if (token === null) {
+    return json({ code: "unauthenticated" }, 401);
+  }
+
   if (body.kind === "post") {
-    const result = await readPostIp(sql, body.grantId);
+    const result = await readPostIp(sql, token, body.grantId);
     return result === null ? json({ code: "not_found" }, 404) : json(result);
   }
 
   if (body.kind === "members") {
     return json({
-      members: (await readMembersByIp(sql, body.grantId)).map((member) => ({
+      members: (await readMembersByIp(sql, token, body.grantId)).map((member) => ({
         ...member,
         createdAt: member.createdAt.toISOString(),
       })),
@@ -92,7 +98,7 @@ export async function readIpAccessResponse(sql: SQL, request: Request): Promise<
   }
 
   return json({
-    logins: (await readLoginIps(sql, body.grantId)).map((login) => ({
+    logins: (await readLoginIps(sql, token, body.grantId)).map((login) => ({
       ip: login.ip,
       createdAt: login.createdAt.toISOString(),
     })),

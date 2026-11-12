@@ -176,6 +176,16 @@ export const postRejectMutation: Mutation<
     ]),
 };
 
+export const topicDeleteMutation: Mutation<{ readonly topicId: string }, TopicContentSummary> = {
+  name: "topic.delete",
+  tags: (_input, result) => contentTags(result),
+};
+
+export const topicRestoreMutation: Mutation<{ readonly topicId: string }, TopicContentSummary> = {
+  name: "topic.restore",
+  tags: (_input, result) => contentTags(result),
+};
+
 export const topicHardDeleteMutation: Mutation<{ readonly topicId: string }, TopicContentSummary> =
   {
     name: "topic.hard_delete",

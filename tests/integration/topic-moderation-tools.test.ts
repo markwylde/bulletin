@@ -15,6 +15,7 @@ import {
   bulkAction,
   listMultimodActions,
   mergeTopics,
+  readTopicList,
   reply,
   saveMultimodAction,
   splitTopic,
@@ -88,6 +89,14 @@ async function topicBodyOrder(database: TestDatabase, topicId: string): Promise<
   `) as Array<{ body_text: string }>;
 
   return rows.map((row) => row.body_text);
+}
+
+async function topicPositions(database: TestDatabase, topicId: string): Promise<number[]> {
+  const rows = (await database.sql`
+    SELECT position FROM core.posts WHERE topic_id = ${topicId} ORDER BY position
+  `) as Array<{ position: number }>;
+
+  return rows.map((row) => row.position);
 }
 
 integrationDescribe("topic moderation tools", () => {
@@ -289,6 +298,8 @@ integrationDescribe("topic moderation tools", () => {
         "First reply.",
         "Fourth reply.",
       ]);
+      expect(await topicPositions(database, source.topicId)).toEqual([1, 2, 3]);
+      expect(await topicPositions(database, split.topicId)).toEqual([1, 2]);
 
       const [forumAfter] = (await database.sql`
         SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
@@ -322,6 +333,8 @@ integrationDescribe("topic moderation tools", () => {
         "First reply.",
       ]);
       expect(await topicBodyOrder(database, source.topicId)).toEqual(["Opening.", "Fourth reply."]);
+      expect(await topicPositions(database, source.topicId)).toEqual([1, 2]);
+      expect(await topicPositions(database, existing.topicId)).toEqual([1, 2]);
     });
   }, 60_000);
 
@@ -412,6 +425,140 @@ integrationDescribe("topic moderation tools", () => {
         SELECT visibility FROM core.posts WHERE id = ${post.postId}
       `) as Array<{ visibility: string }>;
       expect(restored?.visibility).toBe("visible");
+    });
+  }, 60_000);
+
+  test("bulk topic deletion hides every reply and restores the complete topic", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const topic = expectOk(
+        await startTopic(database.sql, {
+          actorId: member,
+          forumId: forum,
+          title: "Whole topic deletion",
+          bodyMd: "Topic opening.",
+        }),
+      );
+
+      for (const body of ["Reply one.", "Reply two.", "Reply three."]) {
+        expectOk(
+          await reply(database.sql, {
+            actorId: member,
+            topicId: topic.topicId,
+            bodyMd: body,
+          }),
+        );
+      }
+
+      const [forumBefore] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+      const [memberBefore] = (await database.sql`
+        SELECT post_count FROM core.members WHERE id = ${member}
+      `) as Array<{ post_count: number }>;
+      const beforeList = await readTopicList(database.sql, {
+        forumId: forum,
+        locale: "en",
+        sort: "last_post",
+        prefixId: null,
+        page: 1,
+        perPage: 100,
+        seeUnapproved: false,
+        seeDeleted: false,
+      });
+      expect(beforeList.rows.map((row) => row.id)).toContain(topic.topicId);
+
+      expectOk(
+        await bulkAction(database.sql, {
+          actorId: admin,
+          target: "topics",
+          action: "soft_delete",
+          ids: [topic.topicId],
+        }),
+      );
+
+      const [deleted] = (await database.sql`
+        SELECT visibility, reply_count FROM core.topics WHERE id = ${topic.topicId}
+      `) as Array<{ visibility: string; reply_count: number }>;
+      expect(deleted).toEqual({ visibility: "soft_deleted", reply_count: 3 });
+      const deletedPosts = (await database.sql`
+        SELECT visibility FROM core.posts WHERE topic_id = ${topic.topicId}
+      `) as Array<{ visibility: string }>;
+      expect(deletedPosts).toHaveLength(4);
+      expect(deletedPosts.every((post) => post.visibility === "visible")).toBe(true);
+
+      const [forumDuring] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+      const [memberDuring] = (await database.sql`
+        SELECT post_count FROM core.members WHERE id = ${member}
+      `) as Array<{ post_count: number }>;
+      expect(forumDuring).toEqual({
+        topic_count: (forumBefore?.topic_count ?? 0) - 1,
+        post_count: (forumBefore?.post_count ?? 0) - 4,
+      });
+      expect(memberDuring?.post_count).toBe((memberBefore?.post_count ?? 0) - 4);
+
+      const duringList = await readTopicList(database.sql, {
+        forumId: forum,
+        locale: "en",
+        sort: "last_post",
+        prefixId: null,
+        page: 1,
+        perPage: 100,
+        seeUnapproved: false,
+        seeDeleted: false,
+      });
+      expect(duringList.rows.map((row) => row.id)).not.toContain(topic.topicId);
+
+      expectOk(
+        await bulkAction(database.sql, {
+          actorId: admin,
+          target: "topics",
+          action: "restore",
+          ids: [topic.topicId],
+        }),
+      );
+
+      const [restored] = (await database.sql`
+        SELECT visibility, reply_count FROM core.topics WHERE id = ${topic.topicId}
+      `) as Array<{ visibility: string; reply_count: number }>;
+      expect(restored).toEqual({ visibility: "visible", reply_count: 3 });
+      expect(await topicBodyOrder(database, topic.topicId)).toEqual([
+        "Topic opening.",
+        "Reply one.",
+        "Reply two.",
+        "Reply three.",
+      ]);
+      expect(await topicPositions(database, topic.topicId)).toEqual([1, 2, 3, 4]);
+      const [forumAfter] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+      const [memberAfter] = (await database.sql`
+        SELECT post_count FROM core.members WHERE id = ${member}
+      `) as Array<{ post_count: number }>;
+      expect(forumAfter).toEqual(forumBefore);
+      expect(memberAfter).toEqual(memberBefore);
+      const afterList = await readTopicList(database.sql, {
+        forumId: forum,
+        locale: "en",
+        sort: "last_post",
+        prefixId: null,
+        page: 1,
+        perPage: 100,
+        seeUnapproved: false,
+        seeDeleted: false,
+      });
+      expect(afterList.rows.map((row) => row.id)).toContain(topic.topicId);
+
+      const logActions = (await database.sql`
+        SELECT action FROM core.moderation_log
+        WHERE target_type = 'topic' AND target_id = ${topic.topicId}
+        ORDER BY id
+      `) as Array<{ action: string }>;
+      expect(logActions.map((row) => row.action)).toEqual(["topic.delete", "topic.restore"]);
     });
   }, 60_000);
 

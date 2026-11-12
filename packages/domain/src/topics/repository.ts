@@ -717,30 +717,42 @@ export async function refreshForumLastPost(
     SET last_topic_id = (
           SELECT t.id
           FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
-          WHERE t.forum_id = f.id AND p.visibility = 'visible'
+          WHERE t.forum_id = f.id AND t.visibility = 'visible' AND p.visibility = 'visible'
           ORDER BY p.created_at DESC, p.id DESC LIMIT 1
         ),
         last_post_id = (
           SELECT p.id
           FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
-          WHERE t.forum_id = f.id AND p.visibility = 'visible'
+          WHERE t.forum_id = f.id AND t.visibility = 'visible' AND p.visibility = 'visible'
           ORDER BY p.created_at DESC, p.id DESC LIMIT 1
         ),
         last_post_member_id = (
           SELECT p.author_id
           FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
-          WHERE t.forum_id = f.id AND p.visibility = 'visible'
+          WHERE t.forum_id = f.id AND t.visibility = 'visible' AND p.visibility = 'visible'
           ORDER BY p.created_at DESC, p.id DESC LIMIT 1
         ),
         last_post_at = (
           SELECT p.created_at
           FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
-          WHERE t.forum_id = f.id AND p.visibility = 'visible'
+          WHERE t.forum_id = f.id AND t.visibility = 'visible' AND p.visibility = 'visible'
           ORDER BY p.created_at DESC, p.id DESC LIMIT 1
         ),
         updated_at = now()
     WHERE f.id = ${forumId}
       AND (${expectedLastPostId}::bigint IS NULL OR f.last_post_id = ${expectedLastPostId})
+  `;
+}
+
+export async function setTopicVisibility(
+  tx: SQL,
+  topicId: string,
+  visibility: PostVisibility,
+): Promise<void> {
+  await tx`
+    UPDATE core.topics
+    SET visibility = ${visibility}, hold_reason = NULL, updated_at = now()
+    WHERE id = ${topicId}
   `;
 }
 

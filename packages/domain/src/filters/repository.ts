@@ -270,14 +270,18 @@ export async function listFilterDomains(sql: SQL): Promise<readonly FilterDomain
 export async function loadReplaceWords(sql: SQL): Promise<ReplaceWords> {
   const settings = await readFilterSettings(sql);
   const rows = (await sql`
-    SELECT word, replacement FROM core.filter_words
+    SELECT word, replacement, match_mode FROM core.filter_words
     WHERE mode = 'replace' AND enabled
     ORDER BY lower(word)
-  `) as Array<{ word: string; replacement: string }>;
+  `) as Array<{ word: string; replacement: string; match_mode: "whole" | "any" }>;
 
   return {
     version: Number(settings.version),
-    rules: rows.map((row) => ({ word: row.word, replacement: row.replacement })),
+    rules: rows.map((row) => ({
+      word: row.word,
+      replacement: row.replacement,
+      matchMode: row.match_mode,
+    })),
   };
 }
 

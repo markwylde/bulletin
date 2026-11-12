@@ -26,13 +26,17 @@ export interface PostIpResult {
   readonly expired: boolean;
 }
 
-export async function readPostIp(sql: SQL, grantId: string): Promise<PostIpResult | null> {
+export async function readPostIp(
+  sql: SQL,
+  sessionToken: string,
+  grantId: string,
+): Promise<PostIpResult | null> {
   if (!/^\d+$/.test(grantId)) {
     return null;
   }
 
   const rows = (await sql`
-    SELECT ip, expired FROM pii.read_post_ip(${grantId})
+    SELECT ip, expired FROM pii.read_post_ip(${sessionToken}, ${grantId})
   `) as Array<{ ip: string | null; expired: boolean }>;
   const row = rows[0];
 
@@ -47,7 +51,11 @@ export interface MemberFromIp {
   readonly createdAt: Date;
 }
 
-export async function readMembersByIp(sql: SQL, grantId: string): Promise<readonly MemberFromIp[]> {
+export async function readMembersByIp(
+  sql: SQL,
+  sessionToken: string,
+  grantId: string,
+): Promise<readonly MemberFromIp[]> {
   if (!/^\d+$/.test(grantId)) {
     return [];
   }
@@ -55,7 +63,7 @@ export async function readMembersByIp(sql: SQL, grantId: string): Promise<readon
   const rows = (await sql`
     SELECT member_id::text AS member_id, display_name, post_id::text AS post_id,
       forum_id::text AS forum_id, created_at
-    FROM pii.read_members_by_ip(${grantId})
+    FROM pii.read_members_by_ip(${sessionToken}, ${grantId})
   `) as Array<{
     member_id: string;
     display_name: string | null;
@@ -78,13 +86,17 @@ export interface LoginIp {
   readonly createdAt: Date;
 }
 
-export async function readLoginIps(sql: SQL, grantId: string): Promise<readonly LoginIp[]> {
+export async function readLoginIps(
+  sql: SQL,
+  sessionToken: string,
+  grantId: string,
+): Promise<readonly LoginIp[]> {
   if (!/^\d+$/.test(grantId)) {
     return [];
   }
 
   const rows = (await sql`
-    SELECT ip, created_at FROM pii.read_login_ips(${grantId})
+    SELECT ip, created_at FROM pii.read_login_ips(${sessionToken}, ${grantId})
   `) as Array<{ ip: string; created_at: Date }>;
 
   return rows.map((row) => ({ ip: row.ip, createdAt: row.created_at }));

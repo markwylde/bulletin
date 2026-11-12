@@ -521,6 +521,12 @@ export async function rejectHeldPosts(
             continue;
           }
 
+          // A concurrent approval can publish the row between the target read and this lock;
+          // rejection must never hard-delete published content.
+          if (post.visibility !== "unapproved") {
+            continue;
+          }
+
           if (post.position === 1) {
             await deleteTopicRow(tx, target.topicId);
           } else {

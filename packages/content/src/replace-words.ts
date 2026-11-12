@@ -23,12 +23,20 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function rulePattern(rule: ReplaceWords["rules"][number]): string {
+  const escaped = escapeRegExp(rule.word);
+
+  return rule.matchMode === "whole"
+    ? `(?<![\\p{L}\\p{N}])(?:${escaped})(?![\\p{L}\\p{N}])`
+    : escaped;
+}
+
 function replacer(rules: readonly ReplaceWords["rules"][number][]): (value: string) => string {
   if (rules.length === 0) {
     return (value) => value;
   }
 
-  const pattern = new RegExp(rules.map((rule) => escapeRegExp(rule.word)).join("|"), "giu");
+  const pattern = new RegExp(rules.map(rulePattern).join("|"), "giu");
   const byWord = new Map(rules.map((rule) => [rule.word.toLowerCase(), rule.replacement]));
 
   return (value) => value.replace(pattern, (match) => byWord.get(match.toLowerCase()) ?? match);

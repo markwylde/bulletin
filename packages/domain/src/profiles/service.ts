@@ -6,7 +6,8 @@ import { isBlockedText } from "../filters/repository.ts";
 import { runMutation } from "../mutations/index.ts";
 import { memberProfileMutation, profileFieldMutation } from "../mutations/members.ts";
 import { can } from "../permissions/can.ts";
-import { loadMergedGroupSettings } from "../permissions/store.ts";
+import { memberBanned } from "../permissions/moderator.ts";
+import { loadMemberGroups, loadMergedGroupSettings } from "../permissions/store.ts";
 import {
   deleteProfileField,
   type ProfileFieldWrite,
@@ -490,14 +491,12 @@ export async function saveMemberProfile(
 ): Promise<SaveProfileResult> {
   const aboutMd = input.aboutMd;
   const byId = new Map(input.fields.map((field) => [field.id, field]));
-  const banned = (await sql`
-    SELECT 1 FROM core.member_groups mg
-    JOIN core.groups g ON g.id = mg.group_id
-    WHERE mg.member_id = ${input.memberId} AND g.key = 'banned'
-    LIMIT 1
-  `) as unknown[];
+  const [groups, settings] = await Promise.all([
+    loadMemberGroups(sql, input.memberId),
+    loadMergedGroupSettings(sql, input.memberId),
+  ]);
 
-  if (banned.length > 0) {
+  if (memberBanned(groups, settings)) {
     return { ok: false, code: "banned" };
   }
 

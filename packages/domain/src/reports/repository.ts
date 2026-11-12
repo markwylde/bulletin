@@ -345,14 +345,7 @@ async function reportRow(sql: SQL, reportId: string): Promise<ReportRow | null> 
   return rows[0] ?? null;
 }
 
-async function canSeeReport(
-  sql: SQL,
-  access: ReportAccess,
-  row: ReportRow,
-  actorId: string,
-  sessionId: string | null,
-  tree: ForumTree,
-): Promise<boolean> {
+async function canSeeReport(sql: SQL, access: ReportAccess, row: ReportRow): Promise<boolean> {
   if (row.target_type === "member") {
     return access.members;
   }
@@ -373,10 +366,7 @@ async function canSeeReport(
     return false;
   }
 
-  return (
-    access.forumIds.includes(forumId) ||
-    (await can(sql, actorId, "read", { forumId, tree, sessionId }))
-  );
+  return access.forumIds.includes(forumId);
 }
 
 async function pmMessagesFor(sql: SQL, report: ReportRow): Promise<readonly PmContextMessage[]> {
@@ -442,7 +432,7 @@ export async function readReportDetail(
       return { ok: false as const, code: "not_found" as const };
     }
 
-    if (!(await canSeeReport(tx, access, report, input.actorId, input.sessionId ?? null, tree))) {
+    if (!(await canSeeReport(tx, access, report))) {
       return { ok: false as const, code: "forbidden" as const };
     }
 
@@ -729,7 +719,7 @@ export async function updateReport(
       return { ok: false as const, code: "not_found" as const };
     }
 
-    if (!(await canSeeReport(tx, access, current, input.actorId, input.sessionId ?? null, tree))) {
+    if (!(await canSeeReport(tx, access, current))) {
       return { ok: false as const, code: "forbidden" as const };
     }
 

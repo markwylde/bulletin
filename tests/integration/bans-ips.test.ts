@@ -187,7 +187,9 @@ integrationDescribe("member bans", () => {
         UPDATE core.member_bans SET expires_at = now() - interval '1 minute'
         WHERE member_id = ${member}
       `;
-      expect(await restoreExpiredMemberBans(database.sql)).toBe(1);
+      await withRole(database, "workers", async (sql) => {
+        expect(await restoreExpiredMemberBans(sql)).toBe(1);
+      });
       const restored = (await database.sql`
         SELECT group_id::text AS group_id, is_primary FROM core.member_groups
         WHERE member_id = ${member} ORDER BY group_id
@@ -303,11 +305,14 @@ integrationDescribe("IP bans and audited lookups", () => {
       `) as Array<{ purpose: string; resource_id: string }>;
       expect(audit).toEqual({ purpose: "post_ip", resource_id: topic.postId });
 
-      expect(await readPostIp(database.sql, grant ?? "")).toEqual({
+      // Another staff member cannot redeem the sequential grant id.
+      const intruder = await staffToken(database, await memberId(database, "forum-mod"));
+      expect(await readPostIp(database.sql, intruder, grant ?? "")).toBeNull();
+      expect(await readPostIp(database.sql, token, grant ?? "")).toEqual({
         ip: "203.0.113.77",
         expired: false,
       });
-      expect(await readPostIp(database.sql, grant ?? "")).toBeNull();
+      expect(await readPostIp(database.sql, token, grant ?? "")).toBeNull();
 
       await database.sql`
         UPDATE core.posts SET created_at = now() - interval '120 days' WHERE id = ${topic.postId}
@@ -318,7 +323,7 @@ integrationDescribe("IP bans and audited lookups", () => {
         resourceType: "post",
         resourceId: topic.postId,
       });
-      expect(await readPostIp(database.sql, expiredGrant ?? "")).toEqual({
+      expect(await readPostIp(database.sql, token, expiredGrant ?? "")).toEqual({
         ip: null,
         expired: true,
       });
@@ -365,7 +370,7 @@ integrationDescribe("IP bans and audited lookups", () => {
 
       const grants = (await database.sql`
         SELECT r,
-          has_function_privilege(r, 'pii.read_post_ip(bigint)', 'EXECUTE') AS post_allowed,
+          has_function_privilege(r, 'pii.read_post_ip(text, bigint)', 'EXECUTE') AS post_allowed,
           has_function_privilege(r, 'pii.record_post_ip(bigint, inet)', 'EXECUTE') AS record_allowed,
           has_table_privilege(r, 'pii.post_ips', 'SELECT') AS table_allowed
         FROM unnest(ARRAY['staff_api', 'user_api', 'user_app', 'workers']) AS r
@@ -450,7 +455,9 @@ integrationDescribe("IP bans and audited lookups", () => {
         resourceType: "post",
         resourceId: source.postId,
       });
-      const members = await readMembersByIp(database.sql, grant ?? "");
+      const intruder = await staffToken(database, admin);
+      expect(await readMembersByIp(database.sql, intruder, grant ?? "")).toEqual([]);
+      const members = await readMembersByIp(database.sql, staff, grant ?? "");
       expect(members.map((row) => row.forumId)).toEqual([inScope]);
       const [audit] = (await database.sql`
         SELECT purpose FROM pii.access_log ORDER BY id DESC LIMIT 1
@@ -476,7 +483,11 @@ integrationDescribe("IP bans and audited lookups", () => {
       await withRole(database, "user_api", async (sql) => {
         await sql`SELECT pii.record_login_ip(${member}, '198.51.100.10'::inet)`;
       });
-      expect((await readLoginIps(database.sql, loginGrant ?? ""))[0]?.ip).toBe("198.51.100.10");
+      const loginIntruder = await staffToken(database, forumMod);
+      expect(await readLoginIps(database.sql, loginIntruder, loginGrant ?? "")).toEqual([]);
+      expect((await readLoginIps(database.sql, token, loginGrant ?? ""))[0]?.ip).toBe(
+        "198.51.100.10",
+      );
       const [loginAudit] = (await database.sql`
         SELECT purpose, resource_id::text AS resource_id FROM pii.access_log
         ORDER BY id DESC LIMIT 1

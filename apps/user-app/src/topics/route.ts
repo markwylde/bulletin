@@ -261,6 +261,10 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     return renderErrorPage(input, 404);
   }
 
+  if (topic.visibility === "soft_deleted" && !seeDeleted) {
+    return renderErrorPage(input, 404);
+  }
+
   if (
     (await countTopicPosts(input.sql, {
       topicId: topic.id,

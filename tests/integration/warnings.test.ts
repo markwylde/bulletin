@@ -11,6 +11,8 @@ import {
 } from "@bulletin/db/seed";
 import { loadEvent } from "@bulletin/domain/events";
 import { listNotifications } from "@bulletin/domain/notifications";
+import { can } from "@bulletin/domain/permissions";
+import { saveMemberProfile } from "@bulletin/domain/profiles";
 import { startTopic } from "@bulletin/domain/topics";
 import {
   acknowledgeWarnings,
@@ -262,6 +264,47 @@ integrationDescribe("warnings", () => {
         bodyMd: "This must not publish either.",
       });
       expect(suspendedPost).toEqual({ ok: false, code: "posting_suspended" });
+    });
+  }, 60_000);
+
+  test("a ban-only warning threshold blocks every capability and profile edits", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-2");
+      const moderator = await memberId(database, "super-mod");
+      const reasonId = await seedReason(database, { key: "ban_only", points: 1 });
+
+      expectOk(
+        await saveWarningThreshold(database.sql, {
+          points: 1,
+          action: "ban",
+          durationHours: 24,
+        }),
+      );
+      expectOk(
+        await issueWarning(database.sql, {
+          actorId: moderator,
+          memberId: member,
+          reasonId,
+        }),
+      );
+
+      const restrictions = await listMemberRestrictions(database.sql, member);
+      expect(restrictions).toHaveLength(1);
+      expect(restrictions[0]).toMatchObject({ kind: "banned" });
+      expect(restrictions[0]?.until).toBeInstanceOf(Date);
+      expect(await can(database.sql, member, "post")).toBe(false);
+      expect(await can(database.sql, member, "react")).toBe(false);
+      expect(await can(database.sql, member, "send_pm")).toBe(false);
+      expect(
+        await saveMemberProfile(database.sql, {
+          memberId: member,
+          aboutMd: "A warning ban must stop this edit.",
+          hideOnline: false,
+          hideFromMemberList: false,
+          values: {},
+          fields: [],
+        }),
+      ).toEqual({ ok: false, code: "banned" });
     });
   }, 60_000);
 

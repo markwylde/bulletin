@@ -6,10 +6,12 @@ import {
   postHardDeleteMutation,
   postRestoreMutation,
   type TopicContentSummary,
+  topicDeleteMutation,
   topicHardDeleteMutation,
   topicLockMutation,
   topicMoveMutation,
   topicPinMutation,
+  topicRestoreMutation,
 } from "../mutations/topics.ts";
 import type { ForumTree } from "../permissions/tree.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
@@ -36,6 +38,7 @@ import {
   setPostVisibility,
   setTopicLocked,
   setTopicPinned,
+  setTopicVisibility,
   visiblePostCount,
   visiblePostCountsByAuthor,
 } from "./repository.ts";
@@ -293,6 +296,220 @@ export async function restore(
         }
 
         return summary;
+      },
+    });
+
+    return { ok: true, result };
+  } catch (error) {
+    const rejected = rejectOutcome(error);
+
+    if (rejected !== null) {
+      return rejected;
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Soft-deletes a whole topic by hiding the topic row, leaving each post's own visibility
+ * untouched so a later restore returns the exact topic, including replies that were already
+ * deleted individually. Public readers and counters drop the topic as one unit.
+ */
+export async function softDeleteTopic(
+  sql: SQL,
+  input: TopicTargetInput,
+): Promise<TopicMutationOutcome<TopicContentSummary>> {
+  const topic = await loadTopicForWrite(sql, input.topicId);
+
+  if (topic === null) {
+    return { ok: false, code: "topic_not_found" };
+  }
+
+  const tree = await loadForumTree(sql);
+
+  if (
+    !(await actorCanModerate(
+      sql,
+      input.actorId,
+      "soft_delete",
+      topic.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
+    return { ok: false, code: "forbidden" };
+  }
+
+  const summary: TopicContentSummary = {
+    topicId: topic.id,
+    forumIds: forumChain(tree, topic.forumId),
+    memberIds: [],
+  };
+
+  if (topic.visibility === "soft_deleted") {
+    return { ok: true, result: summary };
+  }
+
+  try {
+    const result = await runMutation({
+      sql,
+      mutation: topicDeleteMutation,
+      input: { topicId: input.topicId },
+      apply: async (tx) => {
+        const current = await lockTopicForWrite(tx, input.topicId);
+
+        if (current === null) {
+          reject("topic_not_found");
+        }
+
+        if (current.visibility === "soft_deleted") {
+          return summary;
+        }
+
+        const freshTree = await loadForumTree(tx);
+
+        if (
+          !(await actorCanModerate(
+            tx,
+            input.actorId,
+            "soft_delete",
+            current.forumId,
+            freshTree,
+            input.sessionId ?? null,
+          ))
+        ) {
+          reject("forbidden");
+        }
+
+        const postCount = await visiblePostCount(tx, current.id);
+        const authorCounts = await visiblePostCountsByAuthor(tx, current.id);
+
+        await setTopicVisibility(tx, current.id, "soft_deleted");
+        await adjustForumPostCount(tx, current.forumId, -postCount);
+        await adjustForumTopicCount(tx, current.forumId, -1);
+        await adjustMemberPostCounts(tx, authorCounts, -1);
+        await refreshForumLastPost(tx, current.forumId);
+        await writeModerationLog(tx, {
+          actorId: input.actorId,
+          action: "topic.delete",
+          targetType: "topic",
+          targetId: current.id,
+          forumId: current.forumId,
+          memberId: current.starterId,
+          details: { title: current.title, postCount },
+        });
+
+        return {
+          topicId: current.id,
+          forumIds: forumChain(freshTree, current.forumId),
+          memberIds: [...authorCounts.keys()],
+        } satisfies TopicContentSummary;
+      },
+    });
+
+    return { ok: true, result };
+  } catch (error) {
+    const rejected = rejectOutcome(error);
+
+    if (rejected !== null) {
+      return rejected;
+    }
+
+    throw error;
+  }
+}
+
+/** Restores a topic hidden by `softDeleteTopic` and puts its visible posts back in counters. */
+export async function restoreTopic(
+  sql: SQL,
+  input: TopicTargetInput,
+): Promise<TopicMutationOutcome<TopicContentSummary>> {
+  const topic = await loadTopicForWrite(sql, input.topicId);
+
+  if (topic === null) {
+    return { ok: false, code: "topic_not_found" };
+  }
+
+  const tree = await loadForumTree(sql);
+
+  if (
+    !(await actorCanModerate(
+      sql,
+      input.actorId,
+      "restore",
+      topic.forumId,
+      tree,
+      input.sessionId ?? null,
+    ))
+  ) {
+    return { ok: false, code: "forbidden" };
+  }
+
+  const summary: TopicContentSummary = {
+    topicId: topic.id,
+    forumIds: forumChain(tree, topic.forumId),
+    memberIds: [],
+  };
+
+  if (topic.visibility !== "soft_deleted") {
+    return { ok: true, result: summary };
+  }
+
+  try {
+    const result = await runMutation({
+      sql,
+      mutation: topicRestoreMutation,
+      input: { topicId: input.topicId },
+      apply: async (tx) => {
+        const current = await lockTopicForWrite(tx, input.topicId);
+
+        if (current === null) {
+          reject("topic_not_found");
+        }
+
+        if (current.visibility !== "soft_deleted") {
+          return summary;
+        }
+
+        const freshTree = await loadForumTree(tx);
+
+        if (
+          !(await actorCanModerate(
+            tx,
+            input.actorId,
+            "restore",
+            current.forumId,
+            freshTree,
+            input.sessionId ?? null,
+          ))
+        ) {
+          reject("forbidden");
+        }
+
+        const postCount = await visiblePostCount(tx, current.id);
+        const authorCounts = await visiblePostCountsByAuthor(tx, current.id);
+
+        await setTopicVisibility(tx, current.id, "visible");
+        await adjustForumPostCount(tx, current.forumId, postCount);
+        await adjustForumTopicCount(tx, current.forumId, 1);
+        await adjustMemberPostCounts(tx, authorCounts, 1);
+        await refreshForumLastPost(tx, current.forumId);
+        await writeModerationLog(tx, {
+          actorId: input.actorId,
+          action: "topic.restore",
+          targetType: "topic",
+          targetId: current.id,
+          forumId: current.forumId,
+          memberId: current.starterId,
+          details: { title: current.title, postCount },
+        });
+
+        return {
+          topicId: current.id,
+          forumIds: forumChain(freshTree, current.forumId),
+          memberIds: [...authorCounts.keys()],
+        } satisfies TopicContentSummary;
       },
     });
 

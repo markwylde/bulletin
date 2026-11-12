@@ -11,7 +11,15 @@ import { can } from "../../permissions/can.ts";
 import type { ForumTree } from "../../permissions/tree.ts";
 import { loadForumTree } from "../../permissions/tree-store.ts";
 import { slugify } from "../../urls/index.ts";
-import { lock, move, pin, restore, softDelete } from "../moderation.ts";
+import {
+  lock,
+  move,
+  pin,
+  restore,
+  restoreTopic,
+  softDelete,
+  softDeleteTopic,
+} from "../moderation.ts";
 import {
   adjustForumPostCount,
   adjustForumTopicCount,
@@ -447,6 +455,14 @@ export async function splitTopic(
           UPDATE core.posts p SET position = ranked.position
           FROM ranked WHERE p.id = ranked.id
         `;
+        await tx`
+          WITH ranked AS (
+            SELECT id, row_number() OVER (ORDER BY position, id) AS position
+            FROM core.posts WHERE topic_id = ${currentSource.id}
+          )
+          UPDATE core.posts p SET position = ranked.position
+          FROM ranked WHERE p.id = ranked.id
+        `;
 
         const visibleMoved = rows.filter((row) => row.visibility === "visible").length;
 
@@ -696,23 +712,16 @@ export async function bulkAction(
           return result;
         }
       } else {
-        const topic = await loadTopicForWrite(sql, id);
-        const firstPostId = topic?.firstPostId;
-
-        if (firstPostId === null || firstPostId === undefined) {
-          return { ok: false, code: "invalid_request" };
-        }
-
         const result =
           input.action === "soft_delete"
-            ? await softDelete(sql, {
+            ? await softDeleteTopic(sql, {
                 actorId: input.actorId,
-                postId: firstPostId,
+                topicId: id,
                 sessionId: input.sessionId ?? null,
               })
-            : await restore(sql, {
+            : await restoreTopic(sql, {
                 actorId: input.actorId,
-                postId: firstPostId,
+                topicId: id,
                 sessionId: input.sessionId ?? null,
               });
 
