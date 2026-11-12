@@ -25,6 +25,7 @@ import {
   readTopicList,
   reply,
   saveMultimodAction,
+  softDeleteTopic,
   splitTopic,
   startTopic,
 } from "@bulletin/domain/topics";
@@ -343,6 +344,156 @@ integrationDescribe("topic moderation tools", () => {
       expect(await topicBodyOrder(database, source.topicId)).toEqual(["Opening.", "Fourth reply."]);
       expect(await topicPositions(database, source.topicId)).toEqual([1, 2]);
       expect(await topicPositions(database, existing.topicId)).toEqual([1, 2]);
+    });
+  }, 60_000);
+
+  test("hidden sources need the restore power to be merged or split", async () => {
+    await withSeededDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const admin = await memberId(database, "admin");
+      const withoutRestore = await memberId(database, "member-2");
+      const withRestore = await memberId(database, "member-1");
+
+      await database.sql`
+        INSERT INTO core.moderators (forum_id, member_id, powers, this_forum_only)
+        VALUES (
+          ${forum}, ${withoutRestore},
+          ${"{merge,split,soft_delete,see_deleted}"}::text[], false
+        ), (
+          ${forum}, ${withRestore},
+          ${"{merge,split,restore,soft_delete,see_deleted}"}::text[], false
+        )
+      `;
+
+      const destination = expectOk(
+        await startTopic(database.sql, {
+          actorId: withRestore,
+          forumId: forum,
+          title: "Hidden merge destination",
+          bodyMd: "Destination opening.",
+        }),
+      );
+      const mergeSource = expectOk(
+        await startTopic(database.sql, {
+          actorId: withRestore,
+          forumId: forum,
+          title: "Hidden merge source",
+          bodyMd: "Deleted merge body.",
+        }),
+      );
+      expectOk(
+        await softDeleteTopic(database.sql, { actorId: admin, topicId: mergeSource.topicId }),
+      );
+
+      const [mergeBefore] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+
+      expect(
+        await mergeTopics(database.sql, {
+          actorId: withoutRestore,
+          destinationTopicId: destination.topicId,
+          sourceTopicIds: [mergeSource.topicId],
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+
+      const [stillHidden] = (await database.sql`
+        SELECT visibility FROM core.topics WHERE id = ${mergeSource.topicId}
+      `) as Array<{ visibility: string }>;
+      expect(stillHidden?.visibility).toBe("soft_deleted");
+      expect(await topicBodyOrder(database, destination.topicId)).toEqual(["Destination opening."]);
+
+      const [mergeDenied] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+      expect(mergeDenied).toEqual(mergeBefore);
+
+      expectOk(
+        await mergeTopics(database.sql, {
+          actorId: withRestore,
+          destinationTopicId: destination.topicId,
+          sourceTopicIds: [mergeSource.topicId],
+        }),
+      );
+      expect(await topicBodyOrder(database, destination.topicId)).toEqual([
+        "Destination opening.",
+        "Deleted merge body.",
+      ]);
+
+      const [mergeAfter] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+      expect(mergeAfter?.topic_count).toBe((mergeBefore?.topic_count ?? 0) - 1);
+      expect(mergeAfter?.post_count).toBe((mergeBefore?.post_count ?? 0) + 1);
+
+      const splitSource = expectOk(
+        await startTopic(database.sql, {
+          actorId: withRestore,
+          forumId: forum,
+          title: "Hidden split source",
+          bodyMd: "Split opening.",
+        }),
+      );
+      const splitReplies: string[] = [];
+
+      for (const body of ["Split reply one.", "Split reply two."]) {
+        splitReplies.push(
+          expectOk(
+            await reply(database.sql, {
+              actorId: withRestore,
+              topicId: splitSource.topicId,
+              bodyMd: body,
+            }),
+          ).postId,
+        );
+      }
+
+      expectOk(
+        await softDeleteTopic(database.sql, { actorId: admin, topicId: splitSource.topicId }),
+      );
+
+      const [splitBefore] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+
+      expect(
+        await splitTopic(database.sql, {
+          actorId: withoutRestore,
+          sourceTopicId: splitSource.topicId,
+          postIds: splitReplies,
+          target: { kind: "new", forumId: forum, title: "Denied restored split" },
+        }),
+      ).toEqual({ ok: false, code: "forbidden" });
+
+      const [splitDenied] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+      expect(splitDenied).toEqual(splitBefore);
+      expect(await topicBodyOrder(database, splitSource.topicId)).toEqual([
+        "Split opening.",
+        "Split reply one.",
+        "Split reply two.",
+      ]);
+
+      const split = expectOk(
+        await splitTopic(database.sql, {
+          actorId: withRestore,
+          sourceTopicId: splitSource.topicId,
+          postIds: splitReplies,
+          target: { kind: "new", forumId: forum, title: "Restored split" },
+        }),
+      );
+      expect(await topicBodyOrder(database, split.topicId)).toEqual([
+        "Split reply one.",
+        "Split reply two.",
+      ]);
+      expect(await topicBodyOrder(database, splitSource.topicId)).toEqual(["Split opening."]);
+
+      const [splitAfter] = (await database.sql`
+        SELECT topic_count, post_count FROM core.forums WHERE id = ${forum}
+      `) as Array<{ topic_count: number; post_count: number }>;
+      expect(splitAfter?.topic_count).toBe((splitBefore?.topic_count ?? 0) + 1);
+      expect(splitAfter?.post_count).toBe((splitBefore?.post_count ?? 0) + 2);
     });
   }, 60_000);
 

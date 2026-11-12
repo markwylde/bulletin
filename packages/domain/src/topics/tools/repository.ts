@@ -116,6 +116,32 @@ async function canSplitAll(
 }
 
 /**
+ * Moving posts out of a topic that is held, hidden or deleted republishes content that was
+ * removed from view, so the actor needs the `restore` power in every forum involved.
+ */
+async function canRestoreAll(
+  sql: SQL,
+  actorId: string,
+  sessionId: string | null,
+  tree: ForumTree,
+  forums: readonly string[],
+): Promise<boolean> {
+  for (const forumId of unique(forums)) {
+    if (!(await can(sql, actorId, "restore", { forumId, tree, sessionId }))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function republishesHiddenContent(
+  topics: readonly ({ readonly visibility: string } | null)[],
+): boolean {
+  return topics.some((topic) => topic !== null && topic.visibility !== "visible");
+}
+
+/**
  * Merges one or more source topics into a destination. All affected topic rows are locked in
  * id order; posts are renumbered by creation time, then each source is removed or left as a
  * redirect stub.
@@ -158,6 +184,13 @@ export async function mergeTopics(
     return { ok: false, code: "forbidden" };
   }
 
+  if (
+    republishesHiddenContent(sources) &&
+    !(await canRestoreAll(sql, input.actorId, input.sessionId ?? null, tree, forums))
+  ) {
+    return { ok: false, code: "forbidden" };
+  }
+
   try {
     const result = await runMutation({
       sql,
@@ -189,6 +222,19 @@ export async function mergeTopics(
           throw new Error("forbidden");
         }
 
+        if (
+          republishesHiddenContent(sourcesCurrent) &&
+          !(await canRestoreAll(
+            tx,
+            input.actorId,
+            input.sessionId ?? null,
+            freshTree,
+            currentForums,
+          ))
+        ) {
+          throw new Error("forbidden");
+        }
+
         if (input.title !== undefined) {
           await tx`
             UPDATE core.topics
@@ -206,6 +252,10 @@ export async function mergeTopics(
 
         const sourceForumCounts = new Map<string, number>();
         const sourcePostCounts = new Map<string, number>();
+        // A hidden source's posts were never counted in its forum, so the merge must not
+        // subtract them again; they only count once the destination is visible.
+        const destinationVisible = destinationCurrent.visibility === "visible";
+        let movedVisible = 0;
 
         for (const [index, source] of sourcesCurrent.entries()) {
           if (source === null) {
@@ -226,10 +276,18 @@ export async function mergeTopics(
                 position = position + ${OFFSET * (index + 2)}
             WHERE topic_id = ${source.id}
           `;
-          sourcePostCounts.set(
-            source.forumId,
-            (sourcePostCounts.get(source.forumId) ?? 0) + visible,
-          );
+
+          if (source.visibility === "visible") {
+            sourcePostCounts.set(
+              source.forumId,
+              (sourcePostCounts.get(source.forumId) ?? 0) + visible,
+            );
+          }
+
+          if (destinationVisible) {
+            movedVisible += visible;
+          }
+
           sourceForumCounts.set(source.forumId, (sourceForumCounts.get(source.forumId) ?? 0) + 1);
         }
 
@@ -250,8 +308,6 @@ export async function mergeTopics(
         for (const [forumId, count] of sourcePostCounts) {
           await adjustForumPostCount(tx, forumId, -count);
         }
-
-        const movedVisible = [...sourcePostCounts.values()].reduce((sum, count) => sum + count, 0);
 
         if (movedVisible > 0) {
           await adjustForumPostCount(tx, destinationCurrent.forumId, movedVisible);
@@ -377,6 +433,13 @@ export async function splitTopic(
     return { ok: false, code: "forbidden" };
   }
 
+  if (
+    republishesHiddenContent([source]) &&
+    !(await canRestoreAll(sql, input.actorId, input.sessionId ?? null, tree, forums))
+  ) {
+    return { ok: false, code: "forbidden" };
+  }
+
   try {
     const result = await runMutation({
       sql,
@@ -402,6 +465,16 @@ export async function splitTopic(
 
         if (
           !(await canSplitAll(tx, input.actorId, input.sessionId ?? null, freshTree, [
+            currentSource.forumId,
+            currentTargetForumId,
+          ]))
+        ) {
+          throw new Error("forbidden");
+        }
+
+        if (
+          republishesHiddenContent([currentSource]) &&
+          !(await canRestoreAll(tx, input.actorId, input.sessionId ?? null, freshTree, [
             currentSource.forumId,
             currentTargetForumId,
           ]))
@@ -477,10 +550,28 @@ export async function splitTopic(
         `;
 
         const visibleMoved = rows.filter((row) => row.visibility === "visible").length;
+        // A hidden source's posts were already removed from its forum's counters; only a
+        // visible target adds them back, and a visible source loses the posts it no longer
+        // holds.
+        const sourceCounted = currentSource.visibility === "visible";
+        const targetCounted = currentTarget === null || currentTarget.visibility === "visible";
 
-        if (currentSource.forumId !== currentTargetForumId) {
-          await adjustForumPostCount(tx, currentSource.forumId, -visibleMoved);
-          await adjustForumPostCount(tx, currentTargetForumId, visibleMoved);
+        if (currentSource.forumId === currentTargetForumId) {
+          if (sourceCounted !== targetCounted && visibleMoved > 0) {
+            await adjustForumPostCount(
+              tx,
+              currentTargetForumId,
+              targetCounted ? visibleMoved : -visibleMoved,
+            );
+          }
+        } else {
+          if (sourceCounted && visibleMoved > 0) {
+            await adjustForumPostCount(tx, currentSource.forumId, -visibleMoved);
+          }
+
+          if (targetCounted && visibleMoved > 0) {
+            await adjustForumPostCount(tx, currentTargetForumId, visibleMoved);
+          }
         }
 
         if (currentTarget === null) {
