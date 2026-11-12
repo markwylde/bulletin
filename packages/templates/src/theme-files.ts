@@ -27,6 +27,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "account-follows",
   "account-notifications",
   "account-notification-preferences",
+  "account-warnings",
   "conversations",
   "conversation",
   "members",
@@ -36,6 +37,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "moderation-queue",
   "moderation-reports",
   "moderation-report",
+  "moderation-warnings",
   "unsubscribe",
 ] as const;
 

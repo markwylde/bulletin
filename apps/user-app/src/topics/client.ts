@@ -934,3 +934,5 @@ topicTools
       }),
     );
   });
+
+document.documentElement.dataset.moderationToolsReady = "true";

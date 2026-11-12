@@ -24,6 +24,7 @@ import {
   createPromotionJobs,
   createReputationJobs,
   createUnfurlJobs,
+  createWarningJobs,
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
@@ -91,6 +92,7 @@ const subscribers: EventSubscriber[] = [
       "post.approved",
       "report.resolved",
       "report.rejected",
+      "warning.issued",
     ],
   },
   {
@@ -170,6 +172,7 @@ const notificationFanout = await createNotificationsFanoutWorker({
 });
 const leaderboardJobs = await createLeaderboardJobs({ boss: boss.boss, sql, logger });
 const badgeJobs = await createBadgeJobs({ boss: boss.boss, sql, logger });
+const warningJobs = await createWarningJobs({ boss: boss.boss, sql, logger });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
 const reputationJobs = await createReputationJobs({ boss: boss.boss, sql, logger });
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
@@ -238,6 +241,7 @@ await startService({
     await unfurlJobs.stop();
     await attachmentJobs.stop();
     await conversationJobs.stop();
+    await warningJobs.stop();
     await promotionJobs.stop();
     await reputationJobs.stop();
     await eventWorker.stop();
@@ -257,6 +261,7 @@ await startService({
   await unfurlJobs.stop();
   await attachmentJobs.stop();
   await conversationJobs.stop();
+  await warningJobs.stop();
   await promotionJobs.stop();
   await reputationJobs.stop();
   await boss.stop();

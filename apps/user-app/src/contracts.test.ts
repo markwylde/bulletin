@@ -18,6 +18,7 @@ import {
   moderationQueueContract,
   moderationReportContract,
   moderationReportsContract,
+  moderationWarningsContract,
   notificationPreferencesContract,
   notificationsContract,
   onlineContract,
@@ -27,6 +28,7 @@ import {
   topicContract,
   unsubscribeConfirmedContract,
   unsubscribeContract,
+  warningsContract,
 } from "./contracts.ts";
 
 describe("route contracts", () => {
@@ -57,6 +59,8 @@ describe("route contracts", () => {
         unsubscribeContract.route,
         unsubscribeConfirmedContract.route,
         moderationQueueContract.route,
+        warningsContract.route,
+        moderationWarningsContract.route,
         moderationReportsContract.route,
         moderationReportContract.route,
         notificationPreferencesContract.route,

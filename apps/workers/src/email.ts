@@ -83,6 +83,8 @@ function subjectFor(translate: Translator, type: NotificationType, topic: string
       return translate("email.subject.report.resolved");
     case "report.rejected":
       return translate("email.subject.report.rejected");
+    case "warning.issued":
+      return translate("email.subject.warning.issued");
   }
 }
 
@@ -119,6 +121,8 @@ function bodyFor(
       return translate("email.body.report.resolved");
     case "report.rejected":
       return translate("email.body.report.rejected");
+    case "warning.issued":
+      return translate("email.body.warning.issued", { actor });
   }
 }
 

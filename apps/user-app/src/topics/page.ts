@@ -50,6 +50,7 @@ export interface TopicPagePost {
   readonly canHardDelete: boolean;
   readonly canViewHistory: boolean;
   readonly canBulk: boolean;
+  readonly canWarn: boolean;
 }
 
 export interface TopicPageView {
@@ -284,6 +285,13 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
     snapshot: input.snapshot,
   });
   view.track(input.topic.forumId, "approve", canApprovePosts);
+  const canWarn = await can(input.sql, input.principal, "warn", {
+    forumId: input.topic.forumId,
+    tree,
+    sessionId: input.sessionId,
+    snapshot: input.snapshot,
+  });
+  view.track(input.topic.forumId, "warn", canWarn);
   const editWindow = Number(input.snapshot.settings["posting.edit_window_minutes"] ?? 0);
   const canDeleteOwn = input.snapshot.settings["posting.can_delete_own"] === true;
   const viewerId = principalMemberId(input.principal);
@@ -435,6 +443,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
         editWindow,
         canDeleteOwn,
         canBulk: canSoftDelete || canRestore || canApprovePosts,
+        canWarn,
       }),
     };
   };
@@ -650,6 +659,7 @@ function postActions(input: {
   readonly editWindow: number;
   readonly canDeleteOwn: boolean;
   readonly canBulk: boolean;
+  readonly canWarn: boolean;
 }): Pick<
   TopicPagePost,
   | "canEdit"
@@ -660,6 +670,7 @@ function postActions(input: {
   | "canHardDelete"
   | "canViewHistory"
   | "canBulk"
+  | "canWarn"
 > {
   const visible = input.post.visibility === "visible";
   void input.editWindow;
@@ -677,6 +688,7 @@ function postActions(input: {
     canHardDelete: input.canHardDelete && input.post.position !== 1,
     canViewHistory: input.canViewHistory || input.publicEditHistory,
     canBulk: input.canBulk,
+    canWarn: input.canWarn && input.post.authorId !== null,
   };
 }
 

@@ -50,7 +50,10 @@ async function bodyRecord(request: Request): Promise<Record<string, unknown> | n
 
 function failure(code: TopicMutationCode, retryAfterSeconds?: number): Response {
   const status =
-    code === "forbidden" || code === "edit_window_expired"
+    code === "forbidden" ||
+    code === "edit_window_expired" ||
+    code === "posting_suspended" ||
+    code === "acknowledgement_required"
       ? 403
       : code === "topic_not_found" || code === "post_not_found" || code === "forum_not_found"
         ? 404

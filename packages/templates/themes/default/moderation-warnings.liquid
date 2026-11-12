@@ -1,0 +1,72 @@
+{{ header }}
+<main id="main" class="bl-main" data-staff-warnings-page data-member-id="{{ memberId }}"
+  data-label-issue-failed="{% t "warnings.issue.failed" %}"
+  data-label-issue-saved="{% t "warnings.issue.saved" %}"
+  data-label-revoke-failed="{% t "warnings.revoke.failed" %}">
+  {{ breadcrumbs }}
+  <header class="bl-page__header">
+    <h1 class="bl-page__title">{{ title }}</h1>
+    <p class="bl-muted">{% t "warnings.memberPoints" count: points %}</p>
+    {% if restrictions.size > 0 %}
+      <ul class="bl-warning-restrictions">
+        {% for restriction in restrictions %}
+          <li data-warning-restriction="{{ restriction.kind }}">{{ restriction.label }}{% if restriction.until %} — {% t "warnings.restrictions.until" date: restriction.until %}{% endif %}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </header>
+
+  <section class="bl-card" data-warning-issue>
+    <h2 class="bl-card__title">{% t "warnings.issue.title" %}</h2>
+    <form class="bl-form" data-warning-issue-form data-member-id="{{ memberId }}">
+      <label class="bl-label" for="warning-reason">{% t "warnings.issue.reason" %}</label>
+      <select class="bl-input" id="warning-reason" name="reasonId" data-warning-reason required>
+        {% for reason in reasons %}
+          <option value="{{ reason.id }}" data-points="{{ reason.points }}" data-expiry="{{ reason.expiryDays }}" data-override="{{ reason.allowPointsOverride }}">{{ reason.label }}</option>
+        {% endfor %}
+      </select>
+      <label class="bl-label" for="warning-points">{% t "warnings.issue.points" %}</label>
+      <input class="bl-input" id="warning-points" name="points" type="number" min="0" max="1000" data-warning-points />
+      <label class="bl-label" for="warning-expiry">{% t "warnings.issue.expiry" %}</label>
+      <input class="bl-input" id="warning-expiry" name="expiryDays" type="number" min="0" max="3650" data-warning-expiry />
+      <label class="bl-label" for="warning-member-note">{% t "warnings.issue.memberNote" %}</label>
+      <textarea class="bl-input" id="warning-member-note" name="memberNote" rows="2" maxlength="2000" data-warning-member-note></textarea>
+      <label class="bl-label" for="warning-staff-note">{% t "warnings.issue.staffNote" %}</label>
+      <textarea class="bl-input" id="warning-staff-note" name="staffNote" rows="2" maxlength="2000" data-warning-staff-note></textarea>
+      <label class="bl-check"><input type="checkbox" name="ackRequired" data-warning-ack-required /> {% t "warnings.issue.ackRequired" %}</label>
+      <button class="bl-button" type="submit" data-warning-issue-submit>{% t "warnings.issue.submit" %}</button>
+      <p class="bl-error-text" data-form-error hidden>{% t "warnings.issue.failed" %}</p>
+    </form>
+  </section>
+
+  <section class="bl-card">
+    <h2 class="bl-card__title">{% t "warnings.history.title" %}</h2>
+    {% if warnings.size > 0 %}
+      <ul class="bl-warning-list" data-warning-list>
+        {% for warning in warnings %}
+          <li class="bl-card bl-warning" data-warning-id="{{ warning.id }}" data-warning-revoked="{{ warning.revoked }}">
+            <div class="bl-warning__meta">
+              <span class="bl-badge">{{ warning.reason }}</span>
+              <span class="bl-muted">{% t "warnings.pointsValue" count: warning.points %}</span>
+              <span class="bl-muted">{% t "warnings.expires" date: warning.expiresAt %}</span>
+              {% if warning.revoked %}<span class="bl-badge bl-badge--danger">{% t "warnings.revoked" %}</span>{% endif %}
+              {% if warning.ackRequired %}<span class="bl-muted">{% if warning.acked %}{% t "warnings.acknowledged" %}{% else %}{% t "warnings.unacknowledged" %}{% endif %}</span>{% endif %}
+            </div>
+            {% if warning.memberNote != "" %}<p><strong>{% t "warnings.issue.memberNote" %}:</strong> {{ warning.memberNote }}</p>{% endif %}
+            {% if warning.staffNote != "" %}<p><strong>{% t "warnings.issue.staffNote" %}:</strong> {{ warning.staffNote }}</p>{% endif %}
+            {% if not warning.revoked %}
+              <div class="bl-actions" data-warning-revoke="{{ warning.id }}">
+                <input class="bl-input" type="text" placeholder="{% t "warnings.revoke.reason" %}" data-warning-revoke-reason maxlength="1000" />
+                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-warning-revoke-button="{% t "warnings.revoke.confirm" %}">{% t "warnings.revoke" %}</button>
+              </div>
+            {% endif %}
+            {% if warning.contentHref %}<p class="bl-muted"><a href="{{ warning.contentHref }}">{% t "warnings.viewContent" %}</a></p>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ emptyState }}
+    {% endif %}
+  </section>
+</main>
+{{ footer }}

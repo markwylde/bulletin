@@ -21,6 +21,7 @@
   "email.body.reputation.given": "You received reputation.",
   "email.body.topic.created": "{actor} started \"{topic}\".",
   "email.body.topic.reply": "{actor} replied in \"{topic}\".",
+  "email.body.warning.issued": "{actor} issued you a warning. Open your warnings page for the reason and note.",
   "email.fallbackActor": "Someone",
   "email.fallbackName": "there",
   "email.greeting": "Hi {name},",
@@ -38,5 +39,6 @@
   "email.subject.reputation.given": "New reputation",
   "email.subject.topic.created": "New topic in a forum you follow",
   "email.subject.topic.reply": "New reply in {topic}",
+  "email.subject.warning.issued": "You received a warning",
   "email.unsubscribe": "Unsubscribe from these emails: {url}"
 }

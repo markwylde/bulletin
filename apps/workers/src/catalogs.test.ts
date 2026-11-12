@@ -27,6 +27,8 @@ const REQUIRED_EMAIL_KEYS = [
   "email.subject.report.rejected",
   "email.body.report.resolved",
   "email.body.report.rejected",
+  "email.subject.warning.issued",
+  "email.body.warning.issued",
   "email.greeting",
   "email.fallbackName",
   "email.fallbackActor",

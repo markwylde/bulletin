@@ -16,6 +16,7 @@
               <a class="bl-muted" href="{{ post.href }}" data-post-link="{{ post.id }}">{% t "post.permalink" %}</a>
               <button class="bl-button bl-button--quiet bl-button--small" type="button" data-quote-post="{{ post.id }}" aria-pressed="false">{% t "post.quote" %}</button>
               <button class="bl-button bl-button--quiet bl-button--small" type="button" data-report-post="{{ post.id }}" data-overlay-member-only hidden>{% t "report.reportPost" %}</button>
+              {% if post.canWarn %}<a class="bl-button bl-button--quiet bl-button--small" href="/moderation/warnings/{{ post.authorId }}?post={{ post.id }}" data-warn-post="{{ post.id }}">{% t "warnings.warnPost" %}</a>{% endif %}
               {% if flags.reputation %}<bl-post-reputation data-post="{{ post.id }}"></bl-post-reputation>{% endif %}
               {% if post.canViewHistory %}
                 <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-history="{{ post.id }}">{% t "post.history" %}</button>

@@ -20,6 +20,7 @@ import { loadForumTree } from "../permissions/tree-store.ts";
 import { type PollInput, validPollInput } from "../polls/index.ts";
 import { insertPoll } from "../polls/repository.ts";
 import { slugify } from "../urls/index.ts";
+import { postingBlockedByWarning } from "../warnings/repository.ts";
 import {
   actorCanForumAction,
   actorCanModerate,
@@ -144,6 +145,12 @@ export async function startTopic(
     return { ok: false, code: "invalid_poll" };
   }
 
+  const blockedBefore = await postingBlockedByWarning(sql, input.actorId);
+
+  if (blockedBefore !== null) {
+    return { ok: false, code: blockedBefore };
+  }
+
   const forum = await loadForumTarget(sql, input.forumId);
 
   if (forum === null || forum.type !== "forum") {
@@ -216,6 +223,12 @@ export async function startTopic(
           ))
         ) {
           reject("forbidden");
+        }
+
+        const blocked = await postingBlockedByWarning(tx, input.actorId);
+
+        if (blocked !== null) {
+          reject(blocked);
         }
 
         const approval = await decideApproval(tx, {
@@ -344,6 +357,12 @@ export async function reply(
     return { ok: false, code: "invalid_body" };
   }
 
+  const blockedBefore = await postingBlockedByWarning(sql, input.actorId);
+
+  if (blockedBefore !== null) {
+    return { ok: false, code: blockedBefore };
+  }
+
   const topic = await loadTopicForWrite(sql, input.topicId);
 
   if (topic === null || topic.movedTo !== null) {
@@ -420,6 +439,12 @@ export async function reply(
 
         if (current.locked && !currentMayBypassLock) {
           reject("locked");
+        }
+
+        const blocked = await postingBlockedByWarning(tx, input.actorId);
+
+        if (blocked !== null) {
+          reject(blocked);
         }
 
         const approval = await decideApproval(tx, {

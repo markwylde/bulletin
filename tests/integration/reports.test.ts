@@ -26,7 +26,7 @@ import {
   updateReport,
 } from "@bulletin/domain/reports";
 import { startTopic } from "@bulletin/domain/topics";
-import { type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
+import type { StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { createNotificationsEventHandler } from "../../apps/workers/src/notifications.ts";
 

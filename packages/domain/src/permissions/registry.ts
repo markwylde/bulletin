@@ -248,6 +248,15 @@ const PERMISSION_DEFINITIONS = [
     labelKey: "staff.groups.permission.acpReactions",
   },
   {
+    key: "acp.warnings",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "acp",
+    labelKey: "staff.groups.permission.acpWarnings",
+  },
+  {
     key: "reports.members",
     kind: "permission",
     type: "bool",
@@ -676,6 +685,15 @@ const VALUE_SETTING_DEFINITIONS = [
     defaultValue: false,
     section: "restrictions",
     labelKey: "staff.groups.setting.cannotPm",
+  },
+  {
+    key: "restrictions.cannot_post",
+    kind: "setting",
+    type: "bool",
+    merge: "restrict-any",
+    defaultValue: false,
+    section: "restrictions",
+    labelKey: "staff.groups.setting.cannotPost",
   },
   {
     // The moderation change applies posting suspensions through this restriction; PM sends

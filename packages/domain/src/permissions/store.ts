@@ -81,11 +81,47 @@ export async function loadMemberGroups(
   }));
 }
 
+/**
+ * Active warning restrictions overlay the group result as `restrict-any` booleans. They are
+ * time-limited (or permanent) state, not group settings, so they are merged here once.
+ */
+async function loadActiveRestrictions(
+  sql: SQL,
+  memberId: string | null,
+): Promise<MergedGroupSettings> {
+  if (memberId === null) {
+    return {};
+  }
+
+  const rows = (await sql`
+    SELECT kind FROM core.member_restrictions
+    WHERE member_id = ${memberId}
+      AND (until IS NULL OR until > now())
+  `) as Array<{ kind: string }>;
+  const overlay: Record<string, boolean> = {};
+
+  for (const row of rows) {
+    if (row.kind === "posts_require_approval") {
+      overlay["posting.posts_require_approval"] = true;
+    } else if (row.kind === "cannot_post") {
+      overlay["restrictions.cannot_post"] = true;
+    } else if (row.kind === "banned") {
+      overlay["restrictions.banned"] = true;
+    }
+  }
+
+  return overlay;
+}
+
 export async function loadMergedGroupSettings(
   sql: SQL,
   principal: ViewerPrincipal,
 ): Promise<MergedGroupSettings> {
-  return mergeGroupSettings(await loadMemberGroups(sql, principal));
+  const groups = await loadMemberGroups(sql, principal);
+  const merged = mergeGroupSettings(groups);
+  const restrictions = await loadActiveRestrictions(sql, principalMemberId(principal));
+
+  return Object.keys(restrictions).length === 0 ? merged : { ...merged, ...restrictions };
 }
 
 /** Member-specific and group assignments that can apply to the member. */
@@ -124,7 +160,7 @@ export async function loadModeratorContext(
   tree: ForumTree,
 ): Promise<ModeratorContext> {
   const groups = await loadMemberGroups(sql, memberId);
-  const merged = mergeGroupSettings(groups);
+  const merged = await loadMergedGroupSettings(sql, memberId);
 
   return {
     memberId,

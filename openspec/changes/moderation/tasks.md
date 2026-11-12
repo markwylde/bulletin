@@ -23,9 +23,9 @@
 
 ## 4. Warnings
 
-- [ ] 4.1 Warning reasons, thresholds, and issue/revoke with notifications; integration tests
-- [ ] 4.2 Points calculation, threshold actions (member_restrictions feeding settings merge), the expiry job and acknowledgement gate; tests for the suspension, expiry and acknowledgement scenarios
-- [ ] 4.3 Warning history views (member without staff notes, moderator full), with permission-denial tests
+- [x] 4.1 Warning reasons, thresholds, and issue/revoke with notifications; integration tests
+- [x] 4.2 Points calculation, threshold actions (member_restrictions feeding settings merge), the expiry job and acknowledgement gate; tests for the suspension, expiry and acknowledgement scenarios
+- [x] 4.3 Warning history views (member without staff notes, moderator full), with permission-denial tests
 
 ## 5. Filters
 

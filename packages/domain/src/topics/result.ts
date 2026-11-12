@@ -10,6 +10,8 @@ export type TopicMutationCode =
   | "topic_not_found"
   | "post_not_found"
   | "forbidden"
+  | "posting_suspended"
+  | "acknowledgement_required"
   | "locked"
   | "edit_window_expired"
   | "first_post_requires_topic_delete";

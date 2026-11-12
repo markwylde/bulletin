@@ -77,6 +77,14 @@ import {
   topicDeleteResponse,
 } from "./topics.ts";
 import { unsubscribeResponse } from "./unsubscribe.ts";
+import {
+  acknowledgeWarningsResponse,
+  issueWarningResponse,
+  memberWarningHistoryResponse,
+  ownWarningsResponse,
+  revokeWarningResponse,
+  warningReasonsResponse,
+} from "./warnings.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
@@ -616,6 +624,82 @@ await startService({
         }
 
         return queueCountResponse(sql, session);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/me/warnings") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return ownWarningsResponse(sql, session);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/warnings/ack") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return acknowledgeWarningsResponse(sql, session);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/moderation/warnings/reasons") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return warningReasonsResponse(sql);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const warningHistoryMatch = /^\/api\/moderation\/warnings\/(\d+)$/.exec(pathname);
+
+    if (request.method === "GET" && warningHistoryMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return memberWarningHistoryResponse(sql, session, warningHistoryMatch[1] ?? "", request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/moderation/warnings") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return issueWarningResponse(sql, session, request);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const revokeWarningMatch = /^\/api\/warnings\/(\d+)\/revoke$/.exec(pathname);
+
+    if (request.method === "POST" && revokeWarningMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return revokeWarningResponse(sql, session, revokeWarningMatch[1] ?? "", request);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

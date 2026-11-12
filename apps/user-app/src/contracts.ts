@@ -257,6 +257,32 @@ export const attachmentsContract = defineContract<AccountViewModel>({
 });
 
 /** Personal conversation lists and pages are never shared or stored (design). */
+/** The member's own warning history; staff notes are never included. */
+export const warningsContract = defineContract<AccountViewModel>({
+  route: "/account/warnings",
+  templates: {
+    page: "account-warnings",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+/** A moderator's full warning view for one member, including staff notes. */
+export const moderationWarningsContract = defineContract<AccountViewModel>({
+  route: "/moderation/warnings/[memberId]",
+  templates: {
+    page: "moderation-warnings",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 /** The moderator's personal approval queue; never shared or stored (ADR 0006). */
 export const moderationQueueContract = defineContract<AccountViewModel>({
   route: "/moderation/queue",
@@ -365,6 +391,8 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [followsContract.route]: followsContract,
   [attachmentsContract.route]: attachmentsContract,
   [moderationQueueContract.route]: moderationQueueContract,
+  [warningsContract.route]: warningsContract,
+  [moderationWarningsContract.route]: moderationWarningsContract,
   [moderationReportsContract.route]: moderationReportsContract,
   [moderationReportContract.route]: moderationReportContract,
   [conversationsContract.route]: conversationsContract,

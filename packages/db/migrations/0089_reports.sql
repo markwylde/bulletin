@@ -95,7 +95,7 @@ ON CONFLICT (group_id, key) DO NOTHING;
 RESET ROLE;
 
 GRANT SELECT ON core.reports, core.report_reporters, core.report_comments
-  TO user_app, user_api, staff_api;
+  TO user_app, user_api, staff_api, workers;
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.reports TO user_api, staff_api;
 GRANT SELECT, INSERT, DELETE ON core.report_reporters, core.report_comments TO user_api, staff_api;
 GRANT USAGE, SELECT ON SEQUENCE core.reports_id_seq TO user_api, staff_api;

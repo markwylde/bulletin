@@ -25,6 +25,7 @@ export const CAPABILITY_ACTIONS = [
   "custom_title",
   "use_pm",
   "send_pm",
+  "post",
 ] as const;
 
 export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];
@@ -43,6 +44,8 @@ const CAPABILITY_SETTINGS: Readonly<
   use_pm: { key: "restrictions.cannot_pm", allows: false },
   // A posting suspension also stops private-message writes; moderation sets the group setting.
   send_pm: { key: "restrictions.suspended", allows: false },
+  // A warning-imposed posting suspension; `cannot_post` is the group/restriction overlay.
+  post: { key: "restrictions.cannot_post", allows: false },
 };
 
 export function isCapabilityAction(value: string): value is CapabilityAction {

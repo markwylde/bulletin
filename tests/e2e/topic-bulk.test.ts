@@ -19,6 +19,7 @@ integrationDescribe("bulk topic actions at mobile360", () => {
       await loginAs(view, "super-mod");
       await view.navigate(FORUM_URL);
       await waitForSelector(view, "[data-bulk-topics]", 20_000);
+      await waitForSelector(view, 'html[data-moderation-tools-ready="true"]', 20_000);
       await waitForSelector(view, "[data-bulk-topic-check]", 20_000);
       const ids = await view.evaluate<string[]>(
         `[...document.querySelectorAll('[data-bulk-topic-check]')].slice(0, 2).map((element) => element.getAttribute("data-bulk-topic-check") ?? "")`,
@@ -41,16 +42,22 @@ integrationDescribe("bulk topic actions at mobile360", () => {
         )`,
         20_000,
       );
+      await waitForSelector(view, 'html[data-moderation-tools-ready="true"]', 20_000);
       expect(
         await view.evaluate<number>(
           "document.documentElement.scrollWidth - document.documentElement.clientWidth",
         ),
       ).toBeLessThanOrEqual(1);
 
-      // Leave the shared seeded forum as we found it for the rest of the suite.
-      for (const id of ids) {
-        await clickSelector(view, `[data-bulk-topic-check="${id}"]`);
-      }
+      // Leave the shared seeded forum as we found it for the rest of the suite. Chrome may
+      // restore the old checkbox state after the reload, so set it explicitly.
+      await view.evaluate(`(() => {
+        for (const id of ${JSON.stringify(ids)}) {
+          const input = document.querySelector('[data-bulk-topic-check="' + id + '"]');
+          if (input instanceof HTMLInputElement) input.checked = true;
+        }
+        return true;
+      })()`);
 
       await clickSelector(view, '[data-bulk-topic-action="unlock"]');
       await waitForExpression(

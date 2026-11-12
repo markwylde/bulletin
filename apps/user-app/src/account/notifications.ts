@@ -90,6 +90,11 @@ function notificationText(translate: Translator, entry: NotificationEntry): stri
       return translate("notification.text.report.resolved");
     case "report.rejected":
       return translate("notification.text.report.rejected");
+    case "warning.issued":
+      return translate("notification.text.warning.issued", {
+        reason: entry.warningReason ?? "",
+        note: entry.warningNote ?? "",
+      });
     case "post.mention":
       return entry.count > 1
         ? translate("notification.text.post.mentionMany", { count: entry.count, topic })
@@ -190,7 +195,9 @@ export async function buildNotificationsPage(
               entry.topicSlug,
               entry.postId === null ? {} : { postId: entry.postId },
             )
-          : null;
+          : entry.type === "warning.issued"
+            ? "/account/warnings"
+            : null;
 
     sections.get(key)?.push({
       id: entry.id,

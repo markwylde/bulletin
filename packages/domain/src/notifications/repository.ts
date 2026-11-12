@@ -22,6 +22,7 @@ export const NOTIFICATION_TYPES = [
   "post.approved",
   "report.resolved",
   "report.rejected",
+  "warning.issued",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -57,6 +58,7 @@ export interface NotificationRecipient {
   readonly forumId: string | null;
   readonly postId: string | null;
   readonly conversationId?: string | null;
+  readonly warningId?: string | null;
 }
 
 /** Later changes (ignore list, member blocks) drop recipients through this extension point. */
@@ -78,6 +80,7 @@ export interface NotificationWrite {
   readonly forumId?: string | null;
   readonly postId?: string | null;
   readonly conversationId?: string | null;
+  readonly warningId?: string | null;
 }
 
 /**
@@ -210,6 +213,12 @@ export async function createNotification(
     `;
   }
 
+  if (input.warningId !== null && input.warningId !== undefined) {
+    await sql`
+      UPDATE core.notifications SET warning_id = ${input.warningId} WHERE id = ${id}
+    `;
+  }
+
   await sql`
     UPDATE core.notification_events
     SET notification_id = ${id}
@@ -321,6 +330,7 @@ export async function eventRecipients(
     "post.approved": 0,
     "report.resolved": 0,
     "report.rejected": 0,
+    "warning.issued": 0,
   };
   let tree: ForumTree | null = null;
 
@@ -365,6 +375,35 @@ export async function eventRecipients(
         postId: null,
         conversationId: conversationId.toString(),
       }));
+    }
+    case "warning.issued": {
+      const warningId = event.payloadIds.warningId;
+      const memberId = event.payloadIds.memberId;
+
+      if (warningId === undefined || memberId === undefined) {
+        return [];
+      }
+
+      const [warning] = (await sql`
+        SELECT id, member_id FROM core.warnings WHERE id = ${warningId}
+      `) as Array<{ id: string; member_id: string }>;
+
+      if (warning === undefined) {
+        return [];
+      }
+
+      return [
+        {
+          memberId: warning.member_id,
+          type: "warning.issued" as const,
+          source: "moderation" as const,
+          actorId: event.payloadIds.actorId?.toString() ?? null,
+          topicId: null,
+          forumId: null,
+          postId: null,
+          warningId: warningId.toString(),
+        },
+      ];
     }
     case "report.resolved":
     case "report.rejected": {
@@ -669,6 +708,9 @@ export interface NotificationEntry {
   readonly postId: string | null;
   readonly conversationId: string | null;
   readonly conversationTitle: string | null;
+  readonly warningId: string | null;
+  readonly warningReason: string | null;
+  readonly warningNote: string | null;
   readonly count: number;
   readonly read: boolean;
   readonly createdAt: Date;
@@ -687,6 +729,9 @@ interface NotificationListRow {
   readonly post_id: string | null;
   readonly conversation_id: string | null;
   readonly conversation_title: string | null;
+  readonly warning_id: string | null;
+  readonly warning_reason: string | null;
+  readonly warning_note: string | null;
   readonly count: number;
   readonly read_at: Date | string | null;
   readonly created_at: Date | string;
@@ -737,6 +782,15 @@ export async function listNotifications(
         n.post_id::text AS post_id,
         n.conversation_id::text AS conversation_id,
         c.title AS conversation_title,
+        n.warning_id::text AS warning_id,
+        COALESCE(
+          (SELECT wl.label FROM core.warning_reason_labels wl
+           WHERE wl.reason_id = w.reason_id
+             AND wl.locale = COALESCE(me.locale, 'en')),
+          (SELECT wl.label FROM core.warning_reason_labels wl
+           WHERE wl.reason_id = w.reason_id AND wl.locale = 'en')
+        ) AS warning_reason,
+        w.member_note AS warning_note,
         n.count,
         n.read_at,
         n.created_at,
@@ -746,6 +800,8 @@ export async function listNotifications(
       LEFT JOIN core.topics t ON t.id = n.topic_id
       LEFT JOIN core.posts p ON p.id = n.post_id
       LEFT JOIN core.conversations c ON c.id = n.conversation_id
+      LEFT JOIN core.warnings w ON w.id = n.warning_id
+      LEFT JOIN core.members me ON me.id = n.member_id
       WHERE n.member_id = ${memberId}
         AND (n.post_id IS NULL OR p.visibility = 'visible')
         AND (n.topic_id IS NULL OR t.id IS NOT NULL)
@@ -805,6 +861,9 @@ export async function listNotifications(
         postId: row.post_id,
         conversationId: row.conversation_id,
         conversationTitle: row.conversation_title,
+        warningId: row.warning_id,
+        warningReason: row.warning_reason,
+        warningNote: row.warning_note,
         count: row.count,
         read: row.read_at !== null,
         createdAt: new Date(row.created_at),

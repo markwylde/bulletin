@@ -95,6 +95,7 @@ import {
   saveOverrideSet,
   searchOverrideKeys,
 } from "./string-overrides.ts";
+import { mutateWarningSettingResponse, warningSettingsResponse } from "./warnings.ts";
 
 export interface StaffRouteContext {
   readonly request: Request;
@@ -1016,6 +1017,20 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/dashboard/moderation",
     permission: "acp.members",
     handler: async ({ sql, session }) => staffQueueCountResponse(sql, session),
+  },
+  {
+    id: "warnings.settings",
+    method: "GET",
+    path: "/api/staff/warnings",
+    permission: "acp.warnings",
+    handler: async ({ sql }) => warningSettingsResponse(sql),
+  },
+  {
+    id: "warnings.settings.mutate",
+    method: "POST",
+    path: "/api/staff/warnings",
+    permission: "acp.warnings",
+    handler: async ({ sql, request }) => mutateWarningSettingResponse(sql, request),
   },
   {
     id: "moderation.multimod",

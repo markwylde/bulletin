@@ -306,6 +306,8 @@ integrationDescribe("ranks and badges", () => {
           canRestore: false,
           canHardDelete: false,
           canViewHistory: false,
+          canBulk: false,
+          canWarn: false,
         };
         const input = {
           sql: database.sql,
