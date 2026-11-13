@@ -128,6 +128,7 @@ export async function readLeaderboard(
             AND (${start}::timestamptz IS NULL OR p.created_at >= ${start})
             AND m.display_name IS NOT NULL
             AND m.state = 'active'
+            AND m.is_service = false
           GROUP BY p.author_id, m.display_name, m.avatar_hash
           ORDER BY value DESC, lower(m.display_name), p.author_id
           LIMIT ${limit}
@@ -148,6 +149,7 @@ export async function readLeaderboard(
             AND (${start}::timestamptz IS NULL OR pr.created_at >= ${start})
             AND m.display_name IS NOT NULL
             AND m.state = 'active'
+            AND m.is_service = false
           GROUP BY p.author_id, m.display_name, m.avatar_hash
           ORDER BY value DESC, lower(m.display_name), p.author_id
           LIMIT ${limit}
@@ -231,6 +233,7 @@ export async function rebuildLeaderboards(
                 ${period}, 'posts', p.author_id, t.forum_id, count(*)::int, ${now}
               FROM core.posts p
               JOIN core.topics t ON t.id = p.topic_id
+              JOIN core.members m ON m.id = p.author_id AND m.is_service = false
               WHERE p.visibility = 'visible'
                 AND p.author_id IS NOT NULL
                 AND (${start}::timestamptz IS NULL OR p.created_at >= ${start})
@@ -246,6 +249,7 @@ export async function rebuildLeaderboards(
               FROM core.post_reactions pr
               JOIN core.posts p ON p.id = pr.post_id
               JOIN core.topics t ON t.id = p.topic_id
+              JOIN core.members m ON m.id = p.author_id AND m.is_service = false
               WHERE p.visibility = 'visible'
                 AND p.author_id IS NOT NULL
                 AND (${start}::timestamptz IS NULL OR pr.created_at >= ${start})

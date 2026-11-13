@@ -20,6 +20,7 @@ import {
   attemptWebhookDelivery,
   buildWebhookPayload,
   createWebhookDelivery,
+  disableExpiredWebhooks,
   listWebhookDeliveries,
   nextWebhookAttempt,
   pendingWebhookDeliveries,
@@ -770,6 +771,60 @@ integrationDescribe("webhook subscriber and delivery", () => {
         WHERE webhook_id = ${webhook.id} AND event_id = ${failingEvent}
       `) as Array<{ count: number }>;
       expect(attempts?.count).toBe(3);
+    });
+  }, 30_000);
+
+  test("an independent sweep disables a delayed first failure after 24 hours", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const principal = await servicePrincipal(database, "Delayed Bot");
+      const { webhook } = await createWebhook(database, principal, ["post.created"]);
+      await createPublicTopicAndReply(database, forum, author, "Delayed failure topic");
+      const eventId = await latestEvent(database, "post.created");
+      const created = new Date("2026-01-01T00:00:00.000Z");
+      const firstAttempt = new Date(created.getTime() + 23 * 60 * 60 * 1_000);
+      const deliveryId = await createWebhookDelivery(database.sql, {
+        webhookId: webhook.id,
+        eventId: eventId.toString(),
+        attempt: 1,
+        retryDeadline: new Date(created.getTime() + WEBHOOK_FAILURE_WINDOW_MS),
+      });
+
+      if (deliveryId === null) {
+        throw new Error("Could not create the delayed delivery");
+      }
+
+      const failed = await attemptWebhookDelivery(database.sql, deliveryId, {
+        fetch: failingFetch(),
+        now: firstAttempt,
+      });
+      expect(failed?.status).toBe("failed");
+      expect((await readWebhook(database.sql, webhook.id))?.enabled).toBe(true);
+
+      // No manual failure_since backdating: the first attempt itself happened 23 hours late,
+      // so the first sweep only crosses the continuous-failure threshold at +47 hours.
+      const before = await disableExpiredWebhooks(
+        database.sql,
+        new Date(firstAttempt.getTime() + 60 * 60 * 1_000),
+      );
+      expect(before).toBe(0);
+
+      const after = await disableExpiredWebhooks(
+        database.sql,
+        new Date(firstAttempt.getTime() + WEBHOOK_FAILURE_WINDOW_MS + 1_000),
+      );
+      expect(after).toBe(1);
+      const disabled = await readWebhook(database.sql, webhook.id);
+      expect(disabled?.enabled).toBe(false);
+      expect(disabled?.disabledReason).toBe("continuous_failure");
+
+      const [notification] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.notifications
+        WHERE member_id = ${admin} AND type = 'webhook.disabled' AND event_id IS NULL
+      `) as Array<{ count: number }>;
+      expect(notification?.count).toBe(1);
     });
   }, 30_000);
 

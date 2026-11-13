@@ -518,6 +518,85 @@ integrationDescribe("/api/v1 rate limits", () => {
     });
   }, 30_000);
 
+  test("counts invalid keys against the IP limit before authentication", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.board_settings
+        SET api_key_rate_limit_per_minute = 100, api_ip_rate_limit_per_minute = 1
+        WHERE id = 1
+      `;
+      await database.sql`DELETE FROM core.rate_buckets`;
+
+      const handle = router(database, TEST_ROUTES);
+      const first = await handle(
+        request("/api/v1/topics", {
+          headers: {
+            authorization: "Bearer blt_deadbeef_not-a-real-key",
+            "x-forwarded-for": "203.0.113.50",
+          },
+        }),
+      );
+      expect(first?.status).toBe(401);
+      expect(first?.headers.get("ratelimit-limit")).toBe("1");
+
+      const second = await handle(
+        request("/api/v1/topics", {
+          headers: {
+            authorization: "Bearer blt_deadbeef_not-a-real-key",
+            "x-forwarded-for": "203.0.113.50",
+          },
+        }),
+      );
+      expect(second?.status).toBe(429);
+      expect(second?.headers.get("retry-after")).toMatch(/^\d+$/);
+    });
+  }, 30_000);
+
+  test("counts a key before request validation", async () => {
+    await withSeededDb(async (database) => {
+      await database.sql`
+        UPDATE core.board_settings
+        SET api_key_rate_limit_per_minute = 1, api_ip_rate_limit_per_minute = 100
+        WHERE id = 1
+      `;
+      await database.sql`DELETE FROM core.rate_buckets`;
+
+      const member = await memberId(database, "member-1");
+      const created = await createPersonalApiKey(database.sql, {
+        memberId: member,
+        label: "Validation-limited",
+        scopes: ["write:posts"],
+        pepper: PEPPER,
+      });
+      const handle = router(database, TEST_ROUTES);
+      const invalid = await handle(
+        request("/api/v1/test/posts", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${created.key}`,
+            "content-type": "application/json",
+            "x-forwarded-for": "203.0.113.51",
+          },
+          body: JSON.stringify({}),
+        }),
+      );
+      expect(invalid?.status).toBe(400);
+
+      const denied = await handle(
+        request("/api/v1/test/posts", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${created.key}`,
+            "content-type": "application/json",
+            "x-forwarded-for": "203.0.113.52",
+          },
+          body: JSON.stringify({ title: "Valid" }),
+        }),
+      );
+      expect(denied?.status).toBe(429);
+    });
+  }, 30_000);
+
   test("limits guests per IP even without a key", async () => {
     await withSeededDb(async (database) => {
       await database.sql`

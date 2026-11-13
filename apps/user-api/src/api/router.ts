@@ -1,5 +1,7 @@
 import {
-  consumeApiRateLimit,
+  combineApiRateLimits,
+  consumeApiIpRateLimit,
+  consumeApiKeyRateLimit,
   isApiKeyPrincipal,
   markApiKeyUsed,
   missingApiScope,
@@ -254,6 +256,23 @@ export async function handleApiRequest(
   }
 
   const now = options.now?.() ?? new Date();
+  const settings = await readBoardSettings(options.sql);
+  // IP throttling runs before authentication, so a stream of invalid keys is still counted.
+  const ipRate = await consumeApiIpRateLimit(options.sql, {
+    ip: clientIp(request),
+    secret: options.rateLimitSecret,
+    limit: settings.apiIpRateLimitPerMinute,
+    now,
+  });
+
+  if (!ipRate.allowed) {
+    return errorResponse(429, "rate_limited", {
+      ...ipRate.headers,
+      "retry-after": String(ipRate.retryAfterSeconds),
+    });
+  }
+
+  let limitHeaders = ipRate.headers;
   // Bun's Request type and the DOM Request type differ only in header augmentation; the
   // handler gets an unconsumed clone so it can call an app response helper that reads JSON.
   const handlerRequest = request.clone() as unknown as Request;
@@ -263,7 +282,10 @@ export async function handleApiRequest(
   });
 
   if (!auth.ok) {
-    return errorResponse(401, auth.code, { "www-authenticate": "Bearer" });
+    return errorResponse(401, auth.code, {
+      ...limitHeaders,
+      "www-authenticate": "Bearer",
+    });
   }
 
   const { principal, route } = { principal: auth.principal, route: match.route };
@@ -276,18 +298,38 @@ export async function handleApiRequest(
     ));
 
   if (!enabled) {
-    return errorResponse(404, "not_found");
+    return errorResponse(404, "not_found", limitHeaders);
   }
 
   if (route.auth === "required" && !isApiKeyPrincipal(principal)) {
-    return errorResponse(401, "unauthenticated", { "www-authenticate": "Bearer" });
+    return errorResponse(401, "unauthenticated", {
+      ...limitHeaders,
+      "www-authenticate": "Bearer",
+    });
   }
 
   if (isApiKeyPrincipal(principal)) {
+    const keyRate = await consumeApiKeyRateLimit(options.sql, {
+      keyId: principal.keyId,
+      secret: options.rateLimitSecret,
+      limit: settings.apiKeyRateLimitPerMinute,
+      now,
+    });
+
+    limitHeaders = combineApiRateLimits([ipRate, keyRate]).headers;
+
+    if (!keyRate.allowed) {
+      return errorResponse(429, "rate_limited", {
+        ...limitHeaders,
+        "retry-after": String(keyRate.retryAfterSeconds),
+      });
+    }
+
     const missing = missingApiScope(principal, route.scopes);
 
     if (missing !== null) {
       return errorResponse(403, "insufficient_scope", {
+        ...limitHeaders,
         "www-authenticate": `Bearer error="insufficient_scope", scope="${route.scopes.join(" ")}"`,
       });
     }
@@ -295,47 +337,28 @@ export async function handleApiRequest(
     await markApiKeyUsed(options.sql, principal.keyId, now);
   }
 
-  const [settings, params, body] = await Promise.all([
-    readBoardSettings(options.sql),
+  const [params, body] = await Promise.all([
     Promise.resolve(parseWith(route.params, match.params)),
     jsonBody(request),
   ]);
 
   if (!params.ok) {
-    return errorResponse(400, "validation_failed", {}, params.issues);
+    return errorResponse(400, "validation_failed", limitHeaders, params.issues);
   }
 
   if (!body.ok) {
-    return errorResponse(400, "invalid_json");
+    return errorResponse(400, "invalid_json", limitHeaders);
   }
 
   const query = parseWith(route.query, queryValues(url));
   const parsedBody = parseWith(route.body, body.value);
 
   if (!query.ok) {
-    return errorResponse(400, "validation_failed", {}, query.issues);
+    return errorResponse(400, "validation_failed", limitHeaders, query.issues);
   }
 
   if (!parsedBody.ok) {
-    return errorResponse(400, "validation_failed", {}, parsedBody.issues);
-  }
-
-  const rate = await consumeApiRateLimit(options.sql, {
-    keyId: isApiKeyPrincipal(principal) ? principal.keyId : null,
-    ip: clientIp(request),
-    secret: options.rateLimitSecret,
-    limits: {
-      keyPerMinute: settings.apiKeyRateLimitPerMinute,
-      ipPerMinute: settings.apiIpRateLimitPerMinute,
-    },
-    now,
-  });
-
-  if (!rate.allowed) {
-    return errorResponse(429, "rate_limited", {
-      ...rate.headers,
-      "retry-after": String(rate.retryAfterSeconds),
-    });
+    return errorResponse(400, "validation_failed", limitHeaders, parsedBody.issues);
   }
 
   let response: Response;
@@ -352,8 +375,8 @@ export async function handleApiRequest(
       now,
     });
   } catch {
-    return errorResponse(500, "internal_error", rate.headers);
+    return errorResponse(500, "internal_error", limitHeaders);
   }
 
-  return withHeaders(response, rate.headers, route.cacheControl ?? "no-store");
+  return withHeaders(response, limitHeaders, route.cacheControl ?? "no-store");
 }

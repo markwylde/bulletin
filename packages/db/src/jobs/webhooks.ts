@@ -4,6 +4,7 @@ import type { SafeFetch } from "@bulletin/domain/net";
 import {
   attemptWebhookDelivery,
   createWebhookDelivery,
+  disableExpiredWebhooks,
   markWebhookDeliveryEnqueued,
   pendingWebhookDeliveries,
   webhooksForEvent,
@@ -15,6 +16,8 @@ import { ensurePgBossQueue } from "../events/pg-boss.ts";
 export const WEBHOOK_QUEUE = "webhooks";
 export const WEBHOOK_RETENTION_QUEUE = "webhooks.retention";
 export const WEBHOOK_RETENTION_CRON = "23 4 * * *";
+export const WEBHOOK_FAILURE_QUEUE = "webhooks.failure-sweep";
+export const WEBHOOK_FAILURE_CRON = "* * * * *";
 /** Delivery logs are derived records retained for 30 days (ADR 0012). */
 export const WEBHOOK_DELIVERY_RETENTION_DAYS = 30;
 
@@ -112,6 +115,7 @@ export async function createWebhookJobs(options: WebhookJobsOptions): Promise<We
   const now = options.now ?? (() => new Date());
   await ensurePgBossQueue(options.boss, WEBHOOK_QUEUE);
   await ensurePgBossQueue(options.boss, WEBHOOK_RETENTION_QUEUE);
+  await ensurePgBossQueue(options.boss, WEBHOOK_FAILURE_QUEUE);
 
   await options.boss.work<WebhookJobPayload>(WEBHOOK_QUEUE, async (jobs) => {
     for (const job of jobs) {
@@ -152,11 +156,18 @@ export async function createWebhookJobs(options: WebhookJobsOptions): Promise<We
   });
   await options.boss.schedule(WEBHOOK_RETENTION_QUEUE, WEBHOOK_RETENTION_CRON, {});
 
+  await options.boss.work(WEBHOOK_FAILURE_QUEUE, async () => {
+    const disabled = await disableExpiredWebhooks(options.sql, now());
+    options.logger?.info("webhook.failure_sweep.completed", { disabled });
+  });
+  await options.boss.schedule(WEBHOOK_FAILURE_QUEUE, WEBHOOK_FAILURE_CRON, {});
+
   return {
     enqueuePending: enqueue,
     async stop() {
       await options.boss.offWork(WEBHOOK_QUEUE);
       await options.boss.offWork(WEBHOOK_RETENTION_QUEUE);
+      await options.boss.offWork(WEBHOOK_FAILURE_QUEUE);
     },
   };
 }

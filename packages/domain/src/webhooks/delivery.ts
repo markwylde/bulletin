@@ -317,7 +317,7 @@ export function signWebhookPayload(
 async function notifyAdminsDisabled(
   sql: SQL,
   webhook: WebhookRecord,
-  eventId: string,
+  eventId: string | null,
   now: Date,
 ): Promise<void> {
   const admins = (await sql`
@@ -335,7 +335,10 @@ async function notifyAdminsDisabled(
         SELECT 1 FROM core.notifications
         WHERE member_id = ${admin.member_id}
           AND type = 'webhook.disabled'
-          AND event_id = ${eventId}
+          AND (
+            (${eventId}::bigint IS NOT NULL AND event_id = ${eventId}::bigint)
+            OR (${eventId}::bigint IS NULL AND event_id IS NULL AND created_at > ${new Date(now.getTime() - 24 * 60 * 60 * 1_000)})
+          )
       )
     `;
   }
@@ -349,6 +352,36 @@ async function notifyAdminsDisabled(
         updated_at = ${now}
     WHERE id = ${webhook.id}
   `;
+}
+
+/**
+ * Independent failure-window sweep. A delayed first attempt can exhaust its per-chain retries
+ * before `failure_since + 24h`; this job still disables the webhook when that wall-clock
+ * threshold is crossed.
+ */
+export async function disableExpiredWebhooks(sql: SQL, now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - WEBHOOK_FAILURE_WINDOW_MS);
+
+  return sql.begin(async (tx) => {
+    const rows = (await tx`
+      SELECT id::text AS id
+      FROM core.webhooks
+      WHERE enabled = true
+        AND failure_since IS NOT NULL
+        AND failure_since <= ${cutoff}
+      FOR UPDATE
+    `) as Array<{ id: string }>;
+
+    for (const row of rows) {
+      const webhook = await readWebhook(tx, row.id);
+
+      if (webhook !== null) {
+        await notifyAdminsDisabled(tx, webhook, null, now);
+      }
+    }
+
+    return rows.length;
+  });
 }
 
 export interface AttemptWebhookResult {

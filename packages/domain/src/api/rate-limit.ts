@@ -120,11 +120,11 @@ export async function consumeApiRateLimit(
     }),
   );
 
-  await sql`
-    DELETE FROM core.rate_buckets
-    WHERE window_start < ${new Date(now.getTime() - RATE_BUCKET_RETENTION_MS)}
-  `;
+  await cleanup(sql, now);
+  return summarize(results);
+}
 
+function summarize(results: readonly WindowResult[]): ApiRateLimitResult {
   const limiting = results.reduce((strictest, result) =>
     result.remaining < strictest.remaining ? result : strictest,
   );
@@ -142,5 +142,80 @@ export async function consumeApiRateLimit(
       "RateLimit-Remaining": String(limiting.remaining),
       "RateLimit-Reset": String(limiting.resetSeconds),
     },
+  };
+}
+
+async function cleanup(sql: SQL, now: Date): Promise<void> {
+  await sql`
+    DELETE FROM core.rate_buckets
+    WHERE window_start < ${new Date(now.getTime() - RATE_BUCKET_RETENTION_MS)}
+  `;
+}
+
+/** Counts the IP bucket before authentication, so invalid keys cannot bypass throttling. */
+export async function consumeApiIpRateLimit(
+  sql: SQL,
+  input: {
+    readonly ip: string | null;
+    readonly secret: string;
+    readonly limit: number;
+    readonly now?: Date;
+  },
+): Promise<ApiRateLimitResult> {
+  const now = input.now ?? new Date();
+  const result = await consumeWindow(sql, {
+    scope: "api_ip",
+    identity: input.ip ?? "unknown",
+    secret: input.secret,
+    limit: input.limit,
+    now,
+  });
+  await cleanup(sql, now);
+  return summarize([result]);
+}
+
+/** Counts the key bucket before request validation. */
+export async function consumeApiKeyRateLimit(
+  sql: SQL,
+  input: {
+    readonly keyId: string;
+    readonly secret: string;
+    readonly limit: number;
+    readonly now?: Date;
+  },
+): Promise<ApiRateLimitResult> {
+  const now = input.now ?? new Date();
+  const result = await consumeWindow(sql, {
+    scope: "api_key",
+    identity: input.keyId,
+    secret: input.secret,
+    limit: input.limit,
+    now,
+  });
+  await cleanup(sql, now);
+  return summarize([result]);
+}
+
+/** Combines IP and key buckets: the strictest remaining quota supplies the headers. */
+export function combineApiRateLimits(results: readonly ApiRateLimitResult[]): ApiRateLimitResult {
+  if (results.length === 0) {
+    return { allowed: true, retryAfterSeconds: 0, headers: {} };
+  }
+
+  const limiting = results.reduce((strictest, result) =>
+    Number(result.headers["RateLimit-Remaining"] ?? Infinity) <
+    Number(strictest.headers["RateLimit-Remaining"] ?? Infinity)
+      ? result
+      : strictest,
+  );
+  const denied = results.filter((result) => !result.allowed);
+
+  return {
+    allowed: denied.length === 0,
+    retryAfterSeconds:
+      denied.length === 0
+        ? limiting.retryAfterSeconds
+        : Math.max(...denied.map((result) => result.retryAfterSeconds)),
+    headers: limiting.headers,
   };
 }

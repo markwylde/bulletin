@@ -130,6 +130,77 @@ integrationDescribe("personal API keys", () => {
       expect(await authenticateApiKey(database.sql, { key: body.key, pepper: PEPPER })).toBeNull();
     });
   }, 30_000);
+
+  test("denies create and revoke while the group setting is off and scopes revocation", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const other = await memberId(database, "member-2");
+      const [group] = (await database.sql`
+        SELECT id::text AS id FROM core.groups WHERE key = 'members'
+      `) as Array<{ id: string }>;
+
+      const created = await createPersonalApiKeyResponse(
+        database.sql,
+        member,
+        jsonRequest({ label: "Revocation target", scopes: ["read:topics"] }),
+        PEPPER,
+      );
+      const createdBody = (await created.json()) as { metadata: { id: string } };
+      expect(created.status).toBe(200);
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${group?.id ?? ""}, 'api.personal_keys', 'false'::jsonb)
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+
+      const deniedCreate = await createPersonalApiKeyResponse(
+        database.sql,
+        member,
+        jsonRequest({ label: "Denied creation", scopes: ["read:topics"] }),
+        PEPPER,
+      );
+      expect(deniedCreate.status).toBe(404);
+
+      const deniedRevoke = await revokePersonalApiKeyResponse(
+        database.sql,
+        member,
+        jsonRequest({ id: createdBody.metadata.id }),
+      );
+      expect(deniedRevoke.status).toBe(404);
+
+      const [afterDisabled] = (await database.sql`
+        SELECT count(*)::int AS count, count(*) FILTER (WHERE revoked_at IS NOT NULL)::int AS revoked
+        FROM core.api_keys WHERE principal_member_id = ${member}
+      `) as Array<{ count: number; revoked: number }>;
+      expect(afterDisabled).toEqual({ count: 1, revoked: 0 });
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${group?.id ?? ""}, 'api.personal_keys', 'true'::jsonb)
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+
+      const crossMember = await revokePersonalApiKeyResponse(
+        database.sql,
+        other,
+        jsonRequest({ id: createdBody.metadata.id }),
+      );
+      expect(crossMember.status).toBe(404);
+
+      const [stillActive] = (await database.sql`
+        SELECT revoked_at FROM core.api_keys WHERE id = ${createdBody.metadata.id}
+      `) as Array<{ revoked_at: Date | null }>;
+      expect(stillActive?.revoked_at).toBeNull();
+
+      const ownRevoke = await revokePersonalApiKeyResponse(
+        database.sql,
+        member,
+        jsonRequest({ id: createdBody.metadata.id }),
+      );
+      expect(ownRevoke.status).toBe(200);
+    });
+  }, 30_000);
 });
 
 integrationDescribe("integration API keys", () => {

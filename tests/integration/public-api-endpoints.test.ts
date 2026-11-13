@@ -13,7 +13,7 @@ import {
   themesSeedModule,
 } from "@bulletin/db/seed";
 import { createIntegrationApiKey, createPersonalApiKey } from "@bulletin/domain/api";
-import { startTopic } from "@bulletin/domain/topics";
+import { reply, startTopic } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { handleApiRequest } from "../../apps/user-api/src/api/router.ts";
 import { API_ROUTES } from "../../apps/user-api/src/api/routes.ts";
@@ -298,6 +298,77 @@ integrationDescribe("public API read endpoints", () => {
       const body = await json<{ post: { bodyHtml: string } }>(response);
       expect(body.post.bodyHtml).toContain("Still safe");
       expect(body.post.bodyHtml).not.toContain("onerror");
+    });
+  }, 30_000);
+
+  test("clamps out-of-range topic and post pages to the fetched page", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const topic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: forum,
+        title: "Pagination target",
+        bodyMd: "First post.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      const secondTopic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: forum,
+        title: "Pagination second topic",
+        bodyMd: "Second topic body.",
+      });
+
+      if (!secondTopic.ok) {
+        throw new Error("Could not create the second topic");
+      }
+
+      for (const bodyMd of ["Second post.", "Third post."]) {
+        await database.sql`DELETE FROM core.rate_buckets`;
+        const replyResult = await reply(database.sql, {
+          actorId: admin,
+          topicId: topic.result.topicId,
+          bodyMd,
+        });
+        expect(replyResult.ok).toBe(true);
+      }
+
+      const key = await keyFor(database, member, ["read:forums", "read:topics", "read:posts"]);
+      const postsResponse = await api(
+        database,
+        `/api/v1/topics/${topic.result.topicId}/posts?perPage=1&page=999`,
+        key,
+      );
+      const posts = await json<{
+        posts: Array<{ id: string }>;
+        page: number;
+        pageCount: number;
+        total: number;
+      }>(postsResponse);
+      expect(posts.total).toBe(3);
+      expect(posts.page).toBe(posts.pageCount);
+      expect(posts.posts).toHaveLength(1);
+      expect(posts.posts[0]?.id).toMatch(/^\d+$/);
+
+      const topicsResponse = await api(
+        database,
+        `/api/v1/forums/${forum}/topics?perPage=1&page=999`,
+        key,
+      );
+      const topics = await json<{
+        topics: Array<{ id: string }>;
+        page: number;
+        pageCount: number;
+        total: number;
+      }>(topicsResponse);
+      expect(topics.total).toBeGreaterThan(1);
+      expect(topics.page).toBe(topics.pageCount);
+      expect(topics.topics).toHaveLength(1);
     });
   }, 30_000);
 

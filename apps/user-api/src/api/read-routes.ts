@@ -227,7 +227,7 @@ async function topicPageResponse(
   const seeDeleted = permissions.capability.has(forum.id, "see_deleted");
   const prefixId =
     query.prefixId !== undefined && DIGITS.test(query.prefixId) ? query.prefixId : null;
-  const result = await readTopicList(sql, {
+  let result = await readTopicList(sql, {
     forumId: forum.id,
     locale,
     sort: query.sort ?? forum.defaultSort,
@@ -238,6 +238,20 @@ async function topicPageResponse(
     seeDeleted,
   });
   const pageCount = Math.max(1, Math.ceil(result.total / perPage));
+  const resolvedPage = Math.min(page, pageCount);
+
+  if (resolvedPage !== page) {
+    result = await readTopicList(sql, {
+      forumId: forum.id,
+      locale,
+      sort: query.sort ?? forum.defaultSort,
+      prefixId,
+      page: resolvedPage,
+      perPage,
+      seeUnapproved,
+      seeDeleted,
+    });
+  }
 
   return Response.json({
     forum: {
@@ -247,7 +261,7 @@ async function topicPageResponse(
       url: canonicalUrl("forum", forum.id, forum.slug),
     },
     topics: result.rows.map(topicListJson),
-    page: Math.min(page, pageCount),
+    page: resolvedPage,
     pageSize: perPage,
     total: result.total,
     pageCount,
@@ -411,7 +425,7 @@ export const FORUM_ROUTES = [
       const settings = await readBoardSettings(sql);
       const page = pageNumber(query.page);
       const perPage = pageSize(query.perPage, settings.postsPerPage);
-      const result = await readTopicPostPage(sql, {
+      let result = await readTopicPostPage(sql, {
         topicId: visible.topic.id,
         limit: perPage,
         offset: (page - 1) * perPage,
@@ -419,6 +433,18 @@ export const FORUM_ROUTES = [
         seeDeleted: visible.seeDeleted,
       });
       const pageCount = Math.max(1, Math.ceil(result.total / perPage));
+      const resolvedPage = Math.min(page, pageCount);
+
+      if (resolvedPage !== page) {
+        result = await readTopicPostPage(sql, {
+          topicId: visible.topic.id,
+          limit: perPage,
+          offset: (resolvedPage - 1) * perPage,
+          seeUnapproved: visible.seeUnapproved,
+          seeDeleted: visible.seeDeleted,
+        });
+      }
+
       const bodies = await preparedPostBodies(sql, result.rows);
 
       return Response.json({
@@ -437,7 +463,7 @@ export const FORUM_ROUTES = [
             current?.bodyText ?? post.bodyText,
           );
         }),
-        page: Math.min(page, pageCount),
+        page: resolvedPage,
         pageSize: perPage,
         total: result.total,
         pageCount,

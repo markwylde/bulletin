@@ -514,6 +514,89 @@ integrationDescribe("member directory", () => {
     });
   }, 30_000);
 
+  test("service members never rank on post, reaction or top-poster leaderboards", async () => {
+    await withDb(async (database) => {
+      const forum = await forumId(database, "off-topic");
+      const member = await memberId(database, "member-1");
+      const [service] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton, is_service)
+        VALUES ('Leaderboard Bot', 'leaderboard bot', true)
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (service === undefined) {
+        throw new Error("Could not create the service member");
+      }
+
+      const [topic] = (await database.sql`
+        INSERT INTO core.topics (forum_id, title, slug, starter_id)
+        VALUES (${forum}, 'Service leaderboard topic', 'service-leaderboard-topic', ${service.id})
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (topic === undefined) {
+        throw new Error("Could not create the service topic");
+      }
+
+      const postIds: string[] = [];
+
+      for (let position = 1; position <= 5; position += 1) {
+        const [post] = (await database.sql`
+          INSERT INTO core.posts (
+            topic_id, author_id, body_md, body_html, body_text, render_version,
+            sanitiser_version, position
+          )
+          VALUES (
+            ${topic.id}, ${service.id}, 'Service body.', '<p>Service body.</p>',
+            'Service body.', 1, 1, ${position}
+          )
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+
+        if (post !== undefined) {
+          postIds.push(post.id);
+        }
+      }
+
+      const [reaction] = (await database.sql`
+        SELECT id::text AS id FROM core.reactions WHERE key = 'like'
+      `) as Array<{ id: string }>;
+
+      if (postIds[0] !== undefined && reaction !== undefined) {
+        await database.sql`
+          INSERT INTO core.post_reactions (post_id, member_id, reaction_id)
+          VALUES (${postIds[0]}, ${member}, ${reaction.id})
+        `;
+      }
+
+      await recomputeLeaderboards(database.sql);
+      const tree = await loadForumTree(database.sql);
+      const snapshot = await loadPermissionSnapshot(database.sql, GUEST_PRINCIPAL, {
+        tree,
+        sessionId: null,
+      });
+      const posts = await readLeaderboard(database.sql, {
+        period: "all",
+        metric: "posts",
+        tree,
+        snapshot,
+        limit: 50,
+      });
+      const reactions = await readLeaderboard(database.sql, {
+        period: "all",
+        metric: "reactions",
+        tree,
+        snapshot,
+        limit: 50,
+      });
+      const top = await readTodayTopPoster(database.sql, { tree, snapshot });
+
+      expect(posts.some((entry) => entry.memberId === service.id)).toBe(false);
+      expect(reactions.some((entry) => entry.memberId === service.id)).toBe(false);
+      expect(top?.memberId).not.toBe(service.id);
+    });
+  }, 30_000);
+
   test("member list, online and leaderboard routes produce distinct permission variants", async () => {
     await withDb(async (database) => {
       const versions = await createTagVersions({
