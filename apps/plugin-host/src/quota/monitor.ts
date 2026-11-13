@@ -164,6 +164,21 @@ export class PluginQuotaMonitor {
             ON ALL TABLES IN SCHEMA ${quote(this.schema)}
             FROM ${quote(this.#runtimeRole)}
         `);
+        await sql`
+          INSERT INTO core.system_audit_buffer (action, target_type, target_id, summary)
+          VALUES (
+            'plugin.quota_exceeded',
+            'plugin',
+            NULL,
+            jsonb_build_object(
+              'pluginId', ${this.pluginId}::text,
+              'schema', ${this.schema}::text,
+              'usedBytes', ${usedBytes}::bigint,
+              'quotaBytes', ${this.quotaBytes}::bigint,
+              'writesRevoked', true
+            )
+          )
+        `;
         writesRevoked = true;
         this.#logger.error("plugin.storage_quota_exceeded", {
           schema: this.schema,

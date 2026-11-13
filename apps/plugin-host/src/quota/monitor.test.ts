@@ -80,6 +80,18 @@ integrationDescribe("plugin storage quota", () => {
         expect(status.usedBytes).toBeGreaterThan(1);
         expect(status.checkedAt).not.toBeNull();
 
+        const audit = (await database.sql`
+          SELECT action, target_type, summary->>'pluginId' AS plugin_id
+          FROM core.system_audit_buffer
+          WHERE action = 'plugin.quota_exceeded' AND summary->>'pluginId' = ${pluginId}
+        `) as Array<{ action: string; target_type: string; plugin_id: string }>;
+        expect(audit).toHaveLength(1);
+        expect(audit[0]).toMatchObject({
+          action: "plugin.quota_exceeded",
+          target_type: "plugin",
+          plugin_id: pluginId,
+        });
+
         await expect(run("INSERT INTO notes (body) VALUES ('after')")).rejects.toThrow(
           /permission denied/i,
         );

@@ -70,6 +70,7 @@ describe("plugin migration validation", () => {
     ["statement", "CREATE SCHEMA other"],
     ["session", "BEGIN"],
     ["statement", "VACUUM notes"],
+    ["session", "COPY notes FROM PROGRAM 'cat /etc/passwd'"],
     ["statement", "CREATE INDEX CONCURRENTLY idx ON notes (body)"],
     ["statement", "CREATE TEMP TABLE scratch (id int)"],
     [
