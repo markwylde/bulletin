@@ -59,4 +59,9 @@ if (form !== null) {
     event.preventDefault();
     void unlock(form, error, submit);
   });
+  // The template renders the control disabled so a click before this module has run can never
+  // fall back to a native form submission and put the password in the URL (ADR 0018).
+  if (submit !== null) {
+    submit.disabled = false;
+  }
 }

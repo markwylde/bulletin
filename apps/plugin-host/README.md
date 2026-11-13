@@ -173,9 +173,11 @@ Postgres wraps `SELECT`s and DML with `RETURNING` in one query that measures `pg
 and returns either a small JSON envelope of the rows or a `broker_too_large` marker. The
 server-side budget is 1000 rows / 256 KiB of expanded JSON; the broker also refuses a serialised result
 over 512 KiB. A single huge value (`repeat('x', 100 MB)`) therefore never reaches plugin-host.
-Rows are JSON-encoded at this boundary, so big integers arrive as JSON numbers; a typed cursor
-for exact bigint fidelity is a `plugin-platform` follow-up. Database failures return a generic
-error to the plugin; details go to the broker log, without the SQL text or parameters.
+The broker describes the statement first (`PREPARE`, which does not execute it) and serialises
+`int8`/`numeric` columns as decimal strings, so IDs above 2^53 keep their exact value across the
+JSON boundary and RPC encoding; other columns keep JSON number encoding. Database failures
+return a generic error to the plugin; details go to the broker log, without the SQL text or
+parameters.
 
 ### SQL hardening and migrations (task 2.5)
 

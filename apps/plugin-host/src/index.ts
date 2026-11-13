@@ -69,6 +69,7 @@ const database = await PluginDatabase.open({
 const egress = new EgressProxy({
   allowedHosts: manifest.egressHosts,
   logger: logger.child({ component: "egress" }),
+  nodeEnv: config.nodeEnv,
 });
 const core = new CoreApiClient({
   baseUrl: sandboxConfig.coreApiUrl,

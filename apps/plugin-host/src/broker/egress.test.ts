@@ -27,6 +27,7 @@ function createHarness(options: {
   readonly allowedHosts?: readonly string[];
   readonly addresses?: Readonly<Record<string, readonly DnsAddress[]>>;
   readonly respond?: (url: string, init: RequestInit) => Response | Promise<Response>;
+  readonly nodeEnv?: "development" | "test" | "production";
   readonly maxRedirects?: number;
   readonly maxRequestBytes?: number;
   readonly maxResponseBytes?: number;
@@ -51,6 +52,7 @@ function createHarness(options: {
     logger,
     lookup,
     fetch: fetchImpl,
+    ...(options.nodeEnv === undefined ? {} : { nodeEnv: options.nodeEnv }),
     ...(options.maxRedirects === undefined ? {} : { maxRedirects: options.maxRedirects }),
     ...(options.maxRequestBytes === undefined ? {} : { maxRequestBytes: options.maxRequestBytes }),
     ...(options.maxResponseBytes === undefined
@@ -173,6 +175,45 @@ describe("egress allowlist and SSRF rules", () => {
     await denied(proxy.request({ url: "https://example.com:8080/" }), "port");
 
     expect(calls).toHaveLength(0);
+  });
+
+  test("requires HTTPS in production, for the first URL and every redirect hop", async () => {
+    const plaintext = createHarness({ nodeEnv: "production" });
+
+    await denied(plaintext.proxy.request({ url: "http://example.com/collect" }), "scheme");
+    expect(plaintext.calls).toHaveLength(0);
+
+    // An HTTPS endpoint must not be able to downgrade the request (and its credentials)
+    // to plaintext on a redirect hop.
+    const downgrade = createHarness({
+      nodeEnv: "production",
+      respond: (url) =>
+        url.startsWith("https://")
+          ? new Response(null, { status: 307, headers: { location: "http://example.com/next" } })
+          : new Response("unexpected", { status: 200 }),
+    });
+
+    await denied(
+      downgrade.proxy.request({
+        url: "https://example.com/start",
+        method: "POST",
+        body: "secret",
+        headers: { authorization: "Bearer secret" },
+      }),
+      "scheme",
+    );
+    expect(downgrade.calls.map((call) => call.url)).toEqual(["https://example.com/start"]);
+  });
+
+  test("allows plain HTTP in development and test configuration", async () => {
+    for (const nodeEnv of ["development", "test"] as const) {
+      const { proxy, calls } = createHarness({ nodeEnv });
+
+      const response = await proxy.request({ url: "http://example.com/mock" });
+
+      expect(response.status).toBe(200);
+      expect(calls.map((call) => call.url)).toEqual(["http://example.com/mock"]);
+    }
   });
 
   test("rejects IP address literals and private DNS answers", async () => {

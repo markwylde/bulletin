@@ -3,6 +3,7 @@ import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { Readable } from "node:stream";
 import type { Logger } from "@bulletin/config";
+import { checkOutboundScheme, type OutboundNodeEnv } from "@bulletin/domain/net";
 
 export type EgressDenyReason =
   | "host"
@@ -61,6 +62,8 @@ export interface EgressOptions {
   /** Exact lowercase hostnames from the plugin manifest. */
   readonly allowedHosts: readonly string[];
   readonly logger: Logger;
+  /** HTTPS is required in production (ADR 0016); defaults to the process's NODE_ENV. */
+  readonly nodeEnv?: OutboundNodeEnv;
   readonly lookup?: EgressLookup;
   readonly fetch?: EgressFetch;
   readonly timeoutMs?: number;
@@ -513,6 +516,7 @@ async function pinnedFetch(
 export class EgressProxy {
   readonly #allowedHosts: ReadonlySet<string>;
   readonly #logger: Logger;
+  readonly #nodeEnv: OutboundNodeEnv;
   readonly #lookup: EgressLookup;
   readonly #fetch: EgressFetch;
   readonly #timeoutMs: number;
@@ -523,6 +527,8 @@ export class EgressProxy {
   constructor(options: EgressOptions) {
     this.#allowedHosts = new Set(options.allowedHosts.map((host) => host.toLowerCase()));
     this.#logger = options.logger;
+    this.#nodeEnv =
+      options.nodeEnv ?? (Bun.env.NODE_ENV === "production" ? "production" : "development");
     this.#lookup = options.lookup ?? defaultLookup;
     this.#fetch = options.fetch ?? pinnedFetch;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -644,8 +650,17 @@ export class EgressProxy {
       throw new EgressDeniedError("host", "URL is not valid");
     }
 
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new EgressDeniedError("scheme", "Only http and https URLs are allowed");
+    // ADR 0016: production egress is HTTPS-only, on the first URL and on every redirect hop.
+    const scheme = checkOutboundScheme(url.protocol, this.#nodeEnv);
+
+    if (!scheme.allowed) {
+      this.#logger.warn("egress.scheme_denied", { protocol: url.protocol });
+      throw new EgressDeniedError(
+        "scheme",
+        scheme.code === "https_required"
+          ? "HTTPS is required for plugin egress in production"
+          : "Only http and https URLs are allowed",
+      );
     }
 
     if (url.username !== "" || url.password !== "") {

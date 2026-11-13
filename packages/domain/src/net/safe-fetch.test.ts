@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { isBlockedAddress } from "./address.ts";
-import { createSafeFetch, SafeFetchError } from "./safe-fetch.ts";
+import { checkOutboundScheme, createSafeFetch, SafeFetchError } from "./safe-fetch.ts";
 
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
 
@@ -101,6 +101,19 @@ describe("safeFetch", () => {
     const fetch = createSafeFetch({ nodeEnv: "production" });
 
     await expect(fetch("http://example.com")).rejects.toMatchObject({ code: "https_required" });
+  });
+
+  test("shares the production HTTPS-only scheme rule", () => {
+    expect(checkOutboundScheme("https:", "production")).toEqual({ allowed: true });
+    expect(checkOutboundScheme("http:", "production")).toEqual({
+      allowed: false,
+      code: "https_required",
+    });
+    expect(checkOutboundScheme("http:", "development")).toEqual({ allowed: true });
+    expect(checkOutboundScheme("ftp:", "development")).toEqual({
+      allowed: false,
+      code: "invalid_url",
+    });
   });
 
   test("pins the first resolved address and never re-resolves", async () => {

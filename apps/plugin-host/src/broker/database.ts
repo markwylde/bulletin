@@ -20,6 +20,10 @@ import { type AllowedStatement, buildBoundedQuery } from "./sql.ts";
 const DEFAULT_MAX_ROWS = 1_000;
 /** Binary row-size budget enforced by Postgres before rows reach plugin-host. */
 const DEFAULT_MAX_RESULT_BYTES = 256 * 1024;
+/** Postgres type OIDs whose JSON numbers cannot round-trip through a JavaScript number. */
+const INT8_TYPE_OID = 20;
+const NUMERIC_TYPE_OID = 1700;
+let describeCounter = 0;
 
 export type { PluginIdentifiers };
 export { PluginNamespaceCollisionError, pluginIdentifiers };
@@ -30,6 +34,42 @@ function quote(identifier: string): string {
 
 function quoteLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
+}
+
+/**
+ * Describes a validated statement without running it and returns the 1-based positions of
+ * `int8`/`numeric` result columns. `PREPARE` only parses and plans, so an `INSERT ... RETURNING`
+ * is not executed a second time. A statement Postgres cannot describe is left to fail on
+ * execution with its own error, and the wrapper keeps the default numeric encoding.
+ */
+async function largeNumberColumns(connection: SQL, sql: string): Promise<number[]> {
+  describeCounter += 1;
+  const name = `bulletin_broker_describe_${describeCounter}`;
+
+  try {
+    await connection.unsafe(`PREPARE ${quote(name)} AS ${sql}`);
+  } catch {
+    return [];
+  }
+
+  try {
+    const rows = (await connection`
+      SELECT array_to_string(result_types::oid[], ',') AS types
+      FROM pg_prepared_statements
+      WHERE name = ${name}
+    `) as Array<{ types: string | null }>;
+    const types = rows[0]?.types ?? "";
+
+    return types
+      .split(",")
+      .flatMap((type, index) =>
+        Number(type) === INT8_TYPE_OID || Number(type) === NUMERIC_TYPE_OID ? [index + 1] : [],
+      );
+  } catch {
+    return [];
+  } finally {
+    await connection.unsafe(`DEALLOCATE ${quote(name)}`).catch(() => undefined);
+  }
 }
 
 /**
@@ -387,7 +427,13 @@ export class PluginDatabase {
         };
       }
 
-      const text = buildBoundedQuery(trimmed, statement, this.#maxRows, this.#maxBytes);
+      const text = buildBoundedQuery(
+        trimmed,
+        statement,
+        this.#maxRows,
+        this.#maxBytes,
+        await largeNumberColumns(reserved, trimmed),
+      );
       const result = (await reserved.unsafe(text, params as unknown[])) as Array<{
         broker_too_large?: boolean;
         broker_rows?: unknown;

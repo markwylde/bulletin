@@ -444,14 +444,17 @@ export async function assertAllowedSql(sql: string, policy: SqlPolicy): Promise<
  * compressed storage size. A single value such as `repeat('x', 100 MB)` is never sent to
  * plugin-host. DML without `RETURNING` is executed directly because it has no rows.
  *
- * The JSON representation is the price of enforcing a cumulative budget in one execution;
- * `plugin-platform` can replace it with a typed cursor if large bigint precision matters.
+ * `largeNumberColumns` lists the 1-based positions of `int8`/`numeric` result columns. Their
+ * JSON numbers cannot round-trip through a JavaScript number above 2^53, so those values are
+ * emitted as decimal strings instead (ADR 0009). The column positions come from Postgres's
+ * statement description, which keeps the encoding type-accurate without parsing SQL.
  */
 export function buildBoundedQuery(
   sql: string,
   statement: AllowedStatement,
   maxRows: number,
   maxBytes: number,
+  largeNumberColumns: readonly number[] = [],
 ): string {
   const trimmed = sql.trim().replace(/;\s*$/, "");
 
@@ -461,11 +464,31 @@ export function buildBoundedQuery(
 
   const limit = maxRows + 1;
   const tooLarge = `(stats.broker_count > ${maxRows} OR stats.broker_bytes > ${maxBytes})`;
+  const typed = largeNumberColumns.length > 0;
+  const value = typed
+    ? `CASE entry.ord ${largeNumberColumns
+        .map(
+          (position) =>
+            `WHEN ${position} THEN CASE WHEN json_typeof(entry.value) = 'number' ` +
+            "THEN to_json(entry.value::text) ELSE entry.value END",
+        )
+        .join(" ")} ELSE entry.value END`
+    : "entry.value";
+  const jsonRows = typed
+    ? `
+    json_rows AS (
+      SELECT (
+        SELECT json_object_agg(entry.key, ${value})
+        FROM json_each(row_to_json(raw)) WITH ORDINALITY AS entry(key, value, ord)
+      ) AS broker_json
+      FROM raw
+    ),`
+    : `
+    json_rows AS (SELECT to_jsonb(raw) AS broker_json FROM raw),`;
 
   return `
     WITH result_rows AS (${trimmed}),
-    raw AS (SELECT * FROM result_rows LIMIT ${limit}),
-    json_rows AS (SELECT to_jsonb(raw) AS broker_json FROM raw),
+    raw AS (SELECT * FROM result_rows LIMIT ${limit}),${jsonRows}
     measured AS (
       SELECT broker_json, octet_length(broker_json::text) AS broker_size
       FROM json_rows

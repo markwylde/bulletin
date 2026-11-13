@@ -20,108 +20,108 @@ interface Row {
   readonly kind: string;
 }
 
-async function currentGeneration(sql: SQL): Promise<number> {
-  const rows = (await sql`
-    SELECT generation FROM core.plugin_generation WHERE id = true
-  `) as Array<{ generation: number }>;
-
-  return rows[0]?.generation ?? 1;
-}
-
 export async function publishPluginFragments(
   sql: SQL,
   manifest: PluginManifest,
   logger: Logger,
 ): Promise<PublishResult> {
-  const generation = await currentGeneration(sql);
-  const existing = (await sql`
-    SELECT name, body, kind
-    FROM core.hook_fragments
-    WHERE generation = ${generation} AND plugin_id = ${manifest.id}
-  `) as Row[];
   const wanted = manifest.templateFragments.map((fragment) => ({
     name: fragment.name,
     body: fragment.body,
     kind: fragment.kind,
   }));
 
-  if (wanted.length === 0) {
-    return { generation, changed: false };
-  }
+  // The generation bump, the copy of every other plugin's fragments and this plugin's new
+  // fragment set are one transaction: a crash must not leave a generation that silently
+  // loses hooks or keeps removed ones (ADR 0006, 0009).
+  return sql.begin(async (transaction) => {
+    // Serialise concurrent publishers: two plugin hosts must not build the same generation
+    // from different snapshots.
+    const generationRows = (await transaction`
+      SELECT generation FROM core.plugin_generation WHERE id = true FOR UPDATE
+    `) as Array<{ generation: number }>;
+    const generation = generationRows[0]?.generation ?? 1;
+    const existing = (await transaction`
+      SELECT name, body, kind
+      FROM core.hook_fragments
+      WHERE generation = ${generation} AND plugin_id = ${manifest.id}
+    `) as Row[];
 
-  const same =
-    existing.length === wanted.length &&
-    wanted.every((fragment) => {
-      const row = existing.find((candidate) => candidate.name === fragment.name);
-      return row?.body === fragment.body && row.kind === fragment.kind;
-    });
-
-  if (same) {
-    return { generation, changed: false };
-  }
-
-  // First start of a fresh board: sample seed fragments already live at generation 1, so the
-  // demo host joins that generation instead of bumping and hiding them.
-  if (existing.length === 0) {
-    const anyRows = (await sql`
-      SELECT 1 FROM core.hook_fragments WHERE plugin_id = ${manifest.id} LIMIT 1
-    `) as unknown[];
-
-    if (anyRows.length === 0 && generation === 1) {
-      for (const fragment of wanted) {
-        await sql`
-          INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
-          VALUES (${generation}, ${fragment.name}, ${fragment.body}, ${manifest.id}, ${fragment.kind})
-          ON CONFLICT DO NOTHING
-        `;
-      }
-
-      logger.info("plugin.fragments_published", {
-        pluginId: manifest.id,
-        generation,
-        fragments: wanted.length,
+    const same =
+      existing.length === wanted.length &&
+      wanted.every((fragment) => {
+        const row = existing.find((candidate) => candidate.name === fragment.name);
+        return row?.body === fragment.body && row.kind === fragment.kind;
       });
-      return { generation, changed: true };
+
+    if (same) {
+      return { generation, changed: false };
     }
-  }
 
-  const next = generation + 1;
+    // First start of a fresh board: sample seed fragments already live at generation 1, so the
+    // demo host joins that generation instead of bumping and hiding them.
+    if (existing.length === 0 && generation === 1) {
+      const anyRows = (await transaction`
+        SELECT 1 FROM core.hook_fragments WHERE plugin_id = ${manifest.id} LIMIT 1
+      `) as unknown[];
 
-  await sql`
-    UPDATE core.plugin_generation
-    SET generation = ${next}, updated_at = now()
-    WHERE id = true
-  `;
+      if (anyRows.length === 0) {
+        for (const fragment of wanted) {
+          await transaction`
+            INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
+            VALUES (${generation}, ${fragment.name}, ${fragment.body}, ${manifest.id}, ${fragment.kind})
+            ON CONFLICT DO NOTHING
+          `;
+        }
 
-  // Carry every other active plugin's fragments into the new generation before adding the
-  // changed plugin's rows; otherwise bumping one plugin hides unrelated hooks.
-  await sql`
-    INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
-    SELECT ${next}, name, body, plugin_id, kind
-    FROM core.hook_fragments
-    WHERE generation = ${generation}
-    ON CONFLICT DO NOTHING
-  `;
+        logger.info("plugin.fragments_published", {
+          pluginId: manifest.id,
+          generation,
+          fragments: wanted.length,
+        });
+        return { generation, changed: wanted.length > 0 };
+      }
+    }
 
-  for (const fragment of wanted) {
-    await sql`
-      INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
-      VALUES (${next}, ${fragment.name}, ${fragment.body}, ${manifest.id}, ${fragment.kind})
-      ON CONFLICT (generation, name) DO UPDATE
-        SET body = EXCLUDED.body, plugin_id = EXCLUDED.plugin_id, kind = EXCLUDED.kind
+    const next = generation + 1;
+
+    await transaction`
+      UPDATE core.plugin_generation
+      SET generation = ${next}, updated_at = now()
+      WHERE id = true
     `;
-  }
 
-  await sql`
-    DELETE FROM core.hook_fragments WHERE generation < ${next}
-  `;
+    // Carry every other active plugin's fragments into the new generation; otherwise bumping
+    // one plugin hides unrelated hooks. The changed plugin's rows are *not* copied, so a
+    // fragment the manifest no longer declares disappears with this generation.
+    await transaction`
+      INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
+      SELECT ${next}, name, body, plugin_id, kind
+      FROM core.hook_fragments
+      WHERE generation = ${generation} AND plugin_id <> ${manifest.id}
+      ON CONFLICT DO NOTHING
+    `;
 
-  logger.info("plugin.fragments_published", {
-    pluginId: manifest.id,
-    generation: next,
-    fragments: wanted.length,
+    for (const fragment of wanted) {
+      await transaction`
+        INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
+        VALUES (${next}, ${fragment.name}, ${fragment.body}, ${manifest.id}, ${fragment.kind})
+        ON CONFLICT (generation, name) DO UPDATE
+          SET body = EXCLUDED.body, plugin_id = EXCLUDED.plugin_id, kind = EXCLUDED.kind
+      `;
+    }
+
+    await transaction`
+      DELETE FROM core.hook_fragments WHERE generation < ${next}
+    `;
+
+    logger.info("plugin.fragments_published", {
+      pluginId: manifest.id,
+      generation: next,
+      fragments: wanted.length,
+    });
+    return { generation: next, changed: true };
   });
-  return { generation: next, changed: true };
 }
 
 /** Writes registry entries the staff app reads: settings, forum actions, flags, routes, jobs. */

@@ -150,6 +150,23 @@ describe("result budget wrapper", () => {
     expect(wrapped).toContain("broker_bytes > 262144");
   });
 
+  test("serialises int8 and numeric columns as decimal strings", () => {
+    const wrapped = buildBoundedQuery(
+      "SELECT id, body, total FROM notes",
+      { command: "select", hasReturning: false },
+      1000,
+      262_144,
+      [1, 3],
+    );
+
+    expect(wrapped).toContain("json_each(row_to_json(raw)) WITH ORDINALITY");
+    expect(wrapped).not.toContain("to_jsonb(raw)");
+    expect(wrapped).toContain("WHEN 1 THEN");
+    expect(wrapped).toContain("WHEN 3 THEN");
+    expect(wrapped).toContain("json_typeof(entry.value) = 'number'");
+    expect(wrapped).toContain("to_json(entry.value::text)");
+  });
+
   test("wraps DML only when it returns rows", () => {
     expect(
       buildBoundedQuery(

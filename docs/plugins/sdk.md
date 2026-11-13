@@ -52,6 +52,13 @@ await servePlugin(plugin, { socketPath: process.env.PLUGIN_SOCKET! });
 The broker socket is the only I/O channel. Use the SDK client (`db.query`, `core.call`,
 `http.fetch`, `cache.invalidate`, job/kv helpers); never open a socket or read the environment.
 
+`db.query` returns `{ rows, rowCount, command }` (`DbQueryResult` in the SDK). `int8`
+(`bigint`) and `numeric` columns are **decimal strings**, exactly as Postgres printed them,
+because JavaScript numbers cannot hold integers above 2^53: an ID such as
+`9007199254740993` would otherwise arrive as `9007199254740992`. Use `BigInt(value)` or a
+decimal library for arithmetic, and compare IDs as strings or BigInts. `int2`/`int4` and
+`float4`/`float8` stay numbers, as do numbers inside a `json`/`jsonb` column.
+
 ## Versioning
 
 - `SDK_VERSION` is `2.0.0`. A `^1.x` plugin loads through one-major shims and the staff manager

@@ -40,8 +40,34 @@ export interface SafeFetchRequestInit extends Omit<RequestInit, "body" | "redire
   readonly body?: SafeBody | null;
 }
 
+export type OutboundNodeEnv = "development" | "test" | "production";
+
+export type OutboundSchemeDecision =
+  | { readonly allowed: true }
+  | { readonly allowed: false; readonly code: "invalid_url" | "https_required" };
+
+/**
+ * The single scheme rule for outbound HTTP (ADR 0016): only HTTP and HTTPS are supported, and
+ * production permits HTTPS only. Development and test configuration may use plain HTTP so the
+ * local mocks stay reachable; callers apply this to the first URL and to every redirect hop.
+ */
+export function checkOutboundScheme(
+  protocol: string,
+  nodeEnv: OutboundNodeEnv,
+): OutboundSchemeDecision {
+  if (protocol !== "http:" && protocol !== "https:") {
+    return { allowed: false, code: "invalid_url" };
+  }
+
+  if (nodeEnv === "production" && protocol !== "https:") {
+    return { allowed: false, code: "https_required" };
+  }
+
+  return { allowed: true };
+}
+
 export interface SafeFetchConfig {
-  readonly nodeEnv?: "development" | "test" | "production";
+  readonly nodeEnv?: OutboundNodeEnv;
   /** Dev-only hostnames that may resolve to private addresses (ADR 0016). */
   readonly devAllow?: readonly string[];
   readonly maxBytes?: number;
@@ -310,12 +336,15 @@ export function createSafeFetch(config: SafeFetchConfig = {}): SafeFetch {
     init: SafeFetchRequestInit,
     redirectsLeft: number,
   ): Promise<Response> => {
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new SafeFetchError("invalid_url", `Unsupported protocol ${url.protocol}`);
-    }
+    const scheme = checkOutboundScheme(url.protocol, nodeEnv);
 
-    if (nodeEnv === "production" && url.protocol !== "https:") {
-      throw new SafeFetchError("https_required", "HTTPS is required in production");
+    if (!scheme.allowed) {
+      throw new SafeFetchError(
+        scheme.code,
+        scheme.code === "https_required"
+          ? "HTTPS is required in production"
+          : `Unsupported protocol ${url.protocol}`,
+      );
     }
 
     const startedAt = Date.now();

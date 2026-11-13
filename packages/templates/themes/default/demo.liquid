@@ -20,7 +20,7 @@
       <form class="bl-form" data-demo-unlock data-forum-id="{{ forumId }}">
         <label class="bl-label" for="demo-password">{% t "demo.locked.password" %}</label>
         <input class="bl-input" id="demo-password" name="password" type="password" autocomplete="current-password" required />
-        <button class="bl-button" type="submit" data-demo-unlock-submit>{% t "demo.locked.submit" %}</button>
+        <button class="bl-button" type="submit" data-demo-unlock-submit disabled>{% t "demo.locked.submit" %}</button>
         <p class="bl-error-text" data-demo-unlock-error hidden>{% t "demo.locked.wrong" %}</p>
       </form>
     </section>

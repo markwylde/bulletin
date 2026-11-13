@@ -1,3 +1,4 @@
+export * from "./db.ts";
 export * from "./hooks.ts";
 export * from "./manifest.ts";
 export * from "./principal.ts";

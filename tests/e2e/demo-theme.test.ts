@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   clickSelector,
   loginAs,
+  setInputValue,
   VIEWPORTS,
   type ViewportName,
   waitForSelector,
@@ -82,15 +83,26 @@ integrationDescribe("demo theme", () => {
       await view.navigate(`${DEMO_URL}/3`);
       await waitForSelector(view, "[data-demo-locked]");
 
-      await view.evaluate(`(() => {
-        const input = document.querySelector("#demo-password");
-        if (!(input instanceof HTMLInputElement)) return false;
-        input.value = "demo-password";
-        return true;
-      })()`);
+      // The template keeps the control disabled until the demo client has attached its submit
+      // handler, so this click can never fall back to a native GET with the password in the URL.
+      await waitForSelector(view, "[data-demo-unlock-submit]:not([disabled])");
+      await setInputValue(view, "#demo-password", "demo-password");
       await clickSelector(view, "[data-demo-unlock-submit]");
 
-      await waitForSelector(view, "[data-demo-topics]", 20_000);
+      try {
+        await waitForSelector(view, "[data-demo-topics]", 20_000);
+      } catch (error) {
+        const state = await view
+          .evaluate<string>(`JSON.stringify({
+            href: location.href,
+            locked: Boolean(document.querySelector("[data-demo-locked]")),
+            error: Boolean(document.querySelector("[data-demo-unlock-error]:not([hidden])")),
+            text: (document.body?.innerText ?? "").slice(0, 300),
+          })`)
+          .catch(() => "unavailable");
+        throw new Error(`${(error as Error).message}: ${state}`);
+      }
+
       expect(
         await view.evaluate<boolean>("document.querySelector('[data-demo-locked]') === null"),
       ).toBe(true);

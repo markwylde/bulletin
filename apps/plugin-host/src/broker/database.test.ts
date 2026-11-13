@@ -32,6 +32,19 @@ const MIGRATIONS = [
   },
 ];
 
+const PRECISION_MIGRATIONS = [
+  {
+    name: "0001_big_values.sql",
+    sql: `
+      CREATE TABLE IF NOT EXISTS big_values (
+        id bigint PRIMARY KEY,
+        amount numeric NOT NULL,
+        note text
+      );
+    `,
+  },
+];
+
 function uniquePluginId(): string {
   return `broker-db-${randomUUID().replaceAll("-", "").slice(0, 10)}`;
 }
@@ -199,7 +212,8 @@ integrationDescribe("plugin database roles", () => {
 
         const count = await assertAllowedSql("SELECT note_count()", policy);
         expect(await plugin.query("SELECT note_count()", [], count)).toMatchObject({
-          rows: [{ note_count: 1 }],
+          // int8 is returned as a decimal string so no ID loses precision (ADR 0009).
+          rows: [{ note_count: "1" }],
         });
 
         const huge = await assertAllowedSql("SELECT repeat('x', 4194304) AS body", policy);
@@ -254,6 +268,69 @@ integrationDescribe("plugin database roles", () => {
           WHERE schemaname = ${identifiers.schema} AND tablename = 'evil'
         `) as Array<{ count: number }>;
         expect(adminView[0]?.count).toBe(0);
+      } finally {
+        await plugin?.close();
+        await dropPlugin({ adminUrl: database.url, pluginId });
+      }
+    });
+  }, 20_000);
+
+  test("returns int8 and numeric values as decimal strings, including RETURNING", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_precision" }, async (database) => {
+      const pluginId = uniquePluginId();
+      let plugin: PluginDatabase | undefined;
+      // Above Number.MAX_SAFE_INTEGER (2^53 - 1); JS would round this to ...992.
+      const beyondSafe = "9007199254740993";
+      const precise = "123456789012345678901234567890.123456789";
+
+      try {
+        plugin = await PluginDatabase.open({
+          adminUrl: database.url,
+          pluginId,
+          migrations: PRECISION_MIGRATIONS,
+          logger,
+        });
+        const policy = { schema: plugin.schema, pluginFunctions: plugin.functions };
+
+        const select = await assertAllowedSql(
+          `SELECT ${beyondSafe}::bigint AS id, ${precise}::numeric AS amount, 7::int AS small, NULL::bigint AS missing`,
+          policy,
+        );
+        expect(
+          await plugin.query(
+            `SELECT ${beyondSafe}::bigint AS id, ${precise}::numeric AS amount, 7::int AS small, NULL::bigint AS missing`,
+            [],
+            select,
+          ),
+        ).toEqual({
+          rows: [{ id: beyondSafe, amount: precise, small: 7, missing: null }],
+          rowCount: 1,
+          command: "select",
+        });
+
+        const returningSql = `INSERT INTO big_values (id, amount, note) VALUES (${beyondSafe}, ${precise}, 'row') RETURNING id, amount`;
+        const returning = await assertAllowedSql(returningSql, policy);
+        expect(await plugin.query(returningSql, [], returning)).toEqual({
+          rows: [{ id: beyondSafe, amount: precise }],
+          rowCount: 1,
+          command: "insert",
+        });
+
+        const roundTrip = await assertAllowedSql(
+          `SELECT id, amount FROM big_values WHERE id = ${beyondSafe}`,
+          policy,
+        );
+        expect(
+          await plugin.query(
+            `SELECT id, amount FROM big_values WHERE id = ${beyondSafe}`,
+            [],
+            roundTrip,
+          ),
+        ).toMatchObject({ rows: [{ id: beyondSafe, amount: precise }] });
       } finally {
         await plugin?.close();
         await dropPlugin({ adminUrl: database.url, pluginId });
