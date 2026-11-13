@@ -107,6 +107,31 @@ Rows are JSON-encoded at this boundary, so big integers arrive as JSON numbers; 
 for exact bigint fidelity is a `plugin-platform` follow-up. Database failures return a generic
 error to the plugin; details go to the broker log, without the SQL text or parameters.
 
+### SQL hardening and migrations (task 2.5)
+
+Runtime statements are parsed with `libpg-query` and limited to DML on the plugin schema,
+with the pure-builtin/plugin `FuncCall` allowlist. Deadlines are enforced from outside the
+session: the broker reserves the connection, reads `pg_backend_pid()` and cancels the
+statement from its control connection after the deadline (2 s by default), so a plugin cannot
+extend it with `SET LOCAL`.
+
+Migrations run as the dedicated `plugin_migrator` login (`NOINHERIT`, member of only this
+plugin's owner), never from the admin or owner session. `src/broker/migration.ts` rejects
+`SET`/`RESET`/`SET ROLE`, `DO`, `ALTER ROLE`/`ALTER SYSTEM`, extensions, `SECURITY DEFINER`,
+non-transactional DDL and cross-schema objects before any migration runs. plpgsql bodies are
+scanned for side-effecting built-ins and dynamic `EXECUTE`; SQL-standard bodies are parsed.
+Core migration `0001` revokes `EXECUTE` from `PUBLIC` on side-effecting built-ins
+(`set_config`, `pg_notify`, advisory locks, `pg_sleep`, `pg_terminate_backend`,
+`pg_cancel_backend`, `dblob`/`dblink`, `lo_*` and file/admin functions) and grants them only
+to the core roles, so a parser bypass still hits a database permission error.
+
+### Connection budget (task 2.6)
+
+Runtime role pools are opened lazily per plugin, closed after 10 s idle, and bounded by one
+broker-wide semaphore (`PLUGIN_HOST` pool size, default 20 plugins). A plugin waiting for a
+slot fails its own call after the deadline; other plugins keep working. `GET /broker`
+reports `connections` (`open`, `waiting`, `opened`, `closed`, `rejections`).
+
 ### Request budgets and core forwarding
 
 Each plugin has its own token bucket and concurrency gate: at most 2 concurrent database

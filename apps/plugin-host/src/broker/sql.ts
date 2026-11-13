@@ -31,7 +31,7 @@ export class SqlDeniedError extends Error {
  * (`set_config`, `pg_notify`, `pg_sleep`, advisory locks), file or admin access (`pg_read_*`,
  * `lo_*`, `pg_terminate_backend`), and catalog introspection.
  */
-const PURE_FUNCTIONS = new Set([
+export const PURE_FUNCTIONS = new Set([
   "abs",
   "acos",
   "age",
@@ -216,7 +216,7 @@ const PURE_FUNCTIONS = new Set([
   "width_bucket",
 ]);
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -228,7 +228,7 @@ function stringValue(value: unknown): string | undefined {
   return undefined;
 }
 
-function functionParts(funcname: unknown): string[] | undefined {
+export function functionParts(funcname: unknown): string[] | undefined {
   if (!Array.isArray(funcname) || funcname.length === 0) {
     return undefined;
   }
@@ -242,7 +242,7 @@ function functionParts(funcname: unknown): string[] | undefined {
   return (parts as string[]).map((part) => part.toLowerCase());
 }
 
-function assertRangeVar(value: unknown, policy: SqlPolicy): void {
+export function assertRangeVar(value: unknown, policy: SqlPolicy): void {
   if (!isRecord(value)) {
     throw new SqlDeniedError("statement", "Unsupported table reference");
   }
@@ -260,7 +260,7 @@ function assertRangeVar(value: unknown, policy: SqlPolicy): void {
   }
 }
 
-function assertFuncCall(value: unknown, policy: SqlPolicy): void {
+export function assertFuncCall(value: unknown, policy: SqlPolicy): void {
   if (!isRecord(value)) {
     throw new SqlDeniedError("statement", "Unsupported function call");
   }

@@ -1,8 +1,9 @@
 import { join } from "node:path";
-import { createLogger, loadConfig } from "@bulletin/config";
+import { connectionPoolSize, createLogger, loadConfig } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
 import { Broker } from "./broker/broker.ts";
 import { BrokerChannel } from "./broker/channel.ts";
+import { PluginConnectionManager } from "./broker/connections.ts";
 import { CoreApiClient } from "./broker/core.ts";
 import { PluginDatabase } from "./broker/database.ts";
 import { EgressProxy } from "./broker/egress.ts";
@@ -37,11 +38,16 @@ try {
 
 const manifest = await loadPluginManifest(sandboxConfig.bundlePath);
 const migrations = await loadPluginMigrations(sandboxConfig.bundlePath, manifest);
+const connections = new PluginConnectionManager({
+  adminUrl: config.databaseUrl,
+  maxOpenPlugins: connectionPoolSize("plugin-host"),
+});
 const database = await PluginDatabase.open({
   adminUrl: config.databaseUrl,
   pluginId: manifest.id,
   migrations,
   logger,
+  connections,
 });
 const egress = new EgressProxy({
   allowedHosts: manifest.egressHosts,
@@ -110,7 +116,11 @@ await startService({
     }
 
     if (url.pathname === "/broker") {
-      return Response.json({ schema: database.schema, stats: broker.stats() });
+      return Response.json({
+        schema: database.schema,
+        stats: broker.stats(),
+        connections: connections.stats(),
+      });
     }
 
     if (url.pathname === "/quota") {
@@ -128,6 +138,7 @@ await startService({
     await supervisor.stop();
     await channel.close();
     await broker.close();
+    await connections.close();
   },
 });
 

@@ -214,6 +214,30 @@ async function runCase(): Promise<Result> {
       return { ok: true, detail: "fork loop running", spawned: 1, bomberPid: bomber.pid };
     }
 
+    case "sql-side-effects": {
+      const statements = [
+        "SELECT set_config('search_path', 'core', false)",
+        "SELECT pg_notify('session_revoked', '1')",
+        "SELECT pg_advisory_lock(1)",
+        "SELECT pg_sleep(0.1)",
+      ];
+      const results: Array<{ sql: string; denied: boolean; detail: string }> = [];
+
+      for (const sql of statements) {
+        const result = await denial(sql);
+        results.push({ sql, denied: result.denied, detail: result.message });
+      }
+
+      return {
+        ok: results.every((entry) => entry.denied),
+        detail: results
+          .filter((entry) => !entry.denied)
+          .map((entry) => entry.sql)
+          .join(","),
+        results,
+      };
+    }
+
     case "rate-limit": {
       const denials: string[] = [];
       let successes = 0;

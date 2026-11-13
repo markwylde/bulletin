@@ -1,6 +1,8 @@
 import type { Logger } from "@bulletin/config";
 import { SQL } from "bun";
+import type { PluginConnectionManager } from "./connections.ts";
 import type { PluginMigration } from "./manifest.ts";
+import { assertAllowedMigration } from "./migration.ts";
 import { type AllowedStatement, buildBoundedQuery } from "./sql.ts";
 
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}$/;
@@ -22,6 +24,12 @@ export interface PluginDatabaseOptions {
   readonly migrations: readonly PluginMigration[];
   readonly logger: Logger;
   readonly maxRows?: number;
+  /** Login URL for `plugin_migrator`; defaults to the admin URL with that role. */
+  readonly migratorUrl?: string;
+  /** Statement deadline enforced by cancelling from the broker's control connection. */
+  readonly statementTimeoutMs?: number;
+  /** Shared lazy connection budget; when set, no per-plugin pool is opened at provision time. */
+  readonly connections?: PluginConnectionManager;
 }
 
 export interface QueryResult {
@@ -71,23 +79,35 @@ async function ensureRole(sql: SQL, name: string, login: boolean): Promise<void>
  */
 export class PluginDatabase {
   readonly identifiers: PluginIdentifiers;
-  readonly #sql: SQL;
+  readonly #sql: SQL | undefined;
+  readonly #control: SQL;
+  readonly #connections: PluginConnectionManager | undefined;
   readonly #maxRows: number;
   readonly #maxBytes: number;
   readonly #functions: ReadonlySet<string>;
+  readonly #statementTimeoutMs: number;
+  readonly #logger: Logger;
 
   private constructor(
     identifiers: PluginIdentifiers,
-    sql: SQL,
+    sql: SQL | undefined,
+    control: SQL,
+    connections: PluginConnectionManager | undefined,
     functions: ReadonlySet<string>,
     maxRows: number,
     maxBytes: number,
+    statementTimeoutMs: number,
+    logger: Logger,
   ) {
     this.identifiers = identifiers;
     this.#sql = sql;
+    this.#control = control;
+    this.#connections = connections;
     this.#functions = functions;
     this.#maxRows = maxRows;
     this.#maxBytes = maxBytes;
+    this.#statementTimeoutMs = statementTimeoutMs;
+    this.#logger = logger;
   }
 
   get schema(): string {
@@ -104,12 +124,27 @@ export class PluginDatabase {
 
   static async open(options: PluginDatabaseOptions): Promise<PluginDatabase> {
     const identifiers = pluginIdentifiers(options.pluginId);
+
+    // Validate every migration before touching the cluster; a rejected migration changes
+    // nothing (not even an empty schema).
+    for (const migration of options.migrations) {
+      await assertAllowedMigration(migration.sql, {
+        schema: identifiers.schema,
+        pluginFunctions: new Set<string>(),
+        runtimeRole: identifiers.runtimeRole,
+        ownerRole: identifiers.ownerRole,
+      });
+    }
+
     const admin = new SQL(options.adminUrl, { max: 1, connectionTimeout: 5 });
     let runtime: SQL | undefined;
+    let control: SQL | undefined;
+    let migrator: SQL | undefined;
 
     try {
       await ensureRole(admin, identifiers.ownerRole, false);
       await ensureRole(admin, identifiers.runtimeRole, true);
+      await ensureRole(admin, "plugin_migrator", true);
 
       await admin.unsafe(`
         ALTER ROLE ${quote(identifiers.ownerRole)}
@@ -131,6 +166,8 @@ export class PluginDatabase {
           SET search_path = ${quote(identifiers.schema)};
         ALTER ROLE ${quote(identifiers.runtimeRole)}
           SET search_path = ${quote(identifiers.schema)};
+        ALTER ROLE ${quote("plugin_migrator")}
+          LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT;
       `);
 
       await admin.unsafe(`
@@ -142,8 +179,16 @@ export class PluginDatabase {
         GRANT USAGE ON SCHEMA ${quote(identifiers.schema)} TO ${quote(identifiers.runtimeRole)};
       `);
 
+      // Migrations run as plugin_migrator (NOINHERIT, member of this plugin's owner only),
+      // never from the admin or owner session, so a migration cannot `RESET ROLE` upward.
+      await admin.unsafe(`GRANT ${quote(identifiers.ownerRole)} TO ${quote("plugin_migrator")}`);
+
       if (options.migrations.length > 0) {
-        await admin.begin(async (transaction) => {
+        migrator = new SQL(runtimeUrl(options.migratorUrl ?? options.adminUrl, "plugin_migrator"), {
+          max: 1,
+          connectionTimeout: 5,
+        });
+        await migrator.begin(async (transaction) => {
           await transaction.unsafe(`SET LOCAL ROLE ${quote(identifiers.ownerRole)}`);
           await transaction.unsafe(`SET LOCAL search_path = ${quote(identifiers.schema)}`);
 
@@ -198,12 +243,15 @@ export class PluginDatabase {
       `) as Array<{ name: string }>;
       const functions = new Set(functionRows.map((row) => row.name));
 
-      runtime = new SQL(runtimeUrl(options.adminUrl, identifiers.runtimeRole), {
-        max: 2,
-        connectionTimeout: 5,
-      });
+      if (options.connections === undefined) {
+        runtime = new SQL(runtimeUrl(options.adminUrl, identifiers.runtimeRole), {
+          max: 2,
+          connectionTimeout: 5,
+        });
+        await runtime`SELECT 1`;
+      }
 
-      await runtime`SELECT 1`;
+      control = new SQL(options.adminUrl, { max: 1, connectionTimeout: 5, idleTimeout: 0 });
 
       options.logger.info("plugin.database_ready", {
         schema: identifiers.schema,
@@ -213,14 +261,20 @@ export class PluginDatabase {
       return new PluginDatabase(
         identifiers,
         runtime,
+        control,
+        options.connections,
         functions,
         options.maxRows ?? DEFAULT_MAX_ROWS,
         DEFAULT_MAX_RESULT_BYTES,
+        options.statementTimeoutMs ?? 2_000,
+        options.logger,
       );
     } catch (error) {
       await runtime?.close().catch(() => undefined);
+      await control?.close().catch(() => undefined);
       throw error;
     } finally {
+      await migrator?.close().catch(() => undefined);
       await admin.close().catch(() => undefined);
     }
   }
@@ -231,35 +285,84 @@ export class PluginDatabase {
     params: readonly unknown[],
     statement: AllowedStatement,
   ): Promise<QueryResult> {
+    if (this.#connections !== undefined) {
+      return this.#connections.withConnection(this.identifiers.pluginId, (pool) =>
+        this.#execute(pool, sql, params, statement),
+      );
+    }
+
+    if (this.#sql === undefined) {
+      throw new Error("Plugin database has no connection pool");
+    }
+
+    return this.#execute(this.#sql, sql, params, statement);
+  }
+
+  async #execute(
+    pool: SQL,
+    sql: string,
+    params: readonly unknown[],
+    statement: AllowedStatement,
+  ): Promise<QueryResult> {
     const trimmed = sql.trim().replace(/;\s*$/, "");
+    const reserved = await pool.reserve();
+    let deadline: ReturnType<typeof setTimeout> | undefined;
 
-    if (statement.command !== "select" && !statement.hasReturning) {
-      const result = await this.#sql.unsafe(trimmed, params as unknown[]);
-      const meta = result as { count?: number };
-      return {
-        rows: [],
-        rowCount: typeof meta.count === "number" ? meta.count : 0,
-        command: statement.command,
-      };
+    try {
+      const pidRows = (await reserved`SELECT pg_backend_pid() AS pid`) as Array<{ pid: number }>;
+      const pid = pidRows[0]?.pid;
+
+      if (pid !== undefined) {
+        // The role's statement_timeout is the first line; this cancels from a separate
+        // connection so SET LOCAL inside the plugin session cannot extend the deadline.
+        deadline = setTimeout(() => {
+          this.#logger.warn("plugin.statement_deadline", {
+            schema: this.schema,
+            timeoutMs: this.#statementTimeoutMs,
+          });
+          void this.#control
+            .unsafe(`SELECT pg_cancel_backend(${String(pid)})`)
+            .catch((error: unknown) => {
+              this.#logger.error("plugin.statement_cancel_failed", { error });
+            });
+        }, this.#statementTimeoutMs);
+        deadline.unref?.();
+      }
+
+      if (statement.command !== "select" && !statement.hasReturning) {
+        const result = await reserved.unsafe(trimmed, params as unknown[]);
+        const meta = result as { count?: number };
+        return {
+          rows: [],
+          rowCount: typeof meta.count === "number" ? meta.count : 0,
+          command: statement.command,
+        };
+      }
+
+      const text = buildBoundedQuery(trimmed, statement, this.#maxRows, this.#maxBytes);
+      const result = (await reserved.unsafe(text, params as unknown[])) as Array<{
+        broker_too_large?: boolean;
+        broker_rows?: unknown;
+      }>;
+      const row = result[0];
+
+      if (row?.broker_too_large === true) {
+        throw new QueryLimitError();
+      }
+
+      const rows = Array.isArray(row?.broker_rows) ? row.broker_rows : [];
+      return { rows, rowCount: rows.length, command: statement.command };
+    } finally {
+      if (deadline !== undefined) {
+        clearTimeout(deadline);
+      }
+
+      reserved.release();
     }
-
-    const text = buildBoundedQuery(trimmed, statement, this.#maxRows, this.#maxBytes);
-    const result = (await this.#sql.unsafe(text, params as unknown[])) as Array<{
-      broker_too_large?: boolean;
-      broker_rows?: unknown;
-    }>;
-    const row = result[0];
-
-    if (row?.broker_too_large === true) {
-      throw new QueryLimitError();
-    }
-
-    const rows = Array.isArray(row?.broker_rows) ? row.broker_rows : [];
-    return { rows, rowCount: rows.length, command: statement.command };
   }
 
   async close(): Promise<void> {
-    await this.#sql.close();
+    await Promise.all([this.#sql?.close(), this.#control.close()]);
   }
 }
 

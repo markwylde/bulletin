@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { createLogger } from "@bulletin/config";
 import { withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
+import { PluginConnectionManager } from "./connections.ts";
 import { dropPlugin, PluginDatabase, pluginIdentifiers } from "./database.ts";
+import { MigrationDeniedError } from "./migration.ts";
 import { assertAllowedSql } from "./sql.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -241,6 +243,270 @@ integrationDescribe("plugin database roles", () => {
       }
     });
   }, 20_000);
+
+  test("runs migrations through the NOINHERIT plugin_migrator role", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_migrator" }, async (database) => {
+      const pluginId = uniquePluginId();
+      const identifiers = pluginIdentifiers(pluginId);
+      let plugin: PluginDatabase | undefined;
+
+      try {
+        plugin = await PluginDatabase.open({
+          adminUrl: database.url,
+          pluginId,
+          migrations: MIGRATIONS,
+          logger,
+        });
+
+        const rows = (await database.sql`
+          SELECT rolcanlogin, rolinherit, rolsuper, rolcreatedb, rolcreaterole
+          FROM pg_roles WHERE rolname = 'plugin_migrator'
+        `) as Array<{
+          rolcanlogin: boolean;
+          rolinherit: boolean;
+          rolsuper: boolean;
+          rolcreatedb: boolean;
+          rolcreaterole: boolean;
+        }>;
+        expect(rows[0]).toEqual({
+          rolcanlogin: true,
+          rolinherit: false,
+          rolsuper: false,
+          rolcreatedb: false,
+          rolcreaterole: false,
+        });
+
+        const membership = (await database.sql`
+          SELECT count(*)::int AS count
+          FROM pg_auth_members m
+          JOIN pg_roles member ON member.oid = m.member
+          JOIN pg_roles granted ON granted.oid = m.roleid
+          WHERE member.rolname = 'plugin_migrator' AND granted.rolname = ${identifiers.ownerRole}
+        `) as Array<{ count: number }>;
+        expect(membership[0]?.count).toBe(1);
+      } finally {
+        await plugin?.close();
+        await dropPlugin({ adminUrl: database.url, pluginId });
+      }
+    });
+  }, 20_000);
+
+  test("rejects a migration that tries to reset the role", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_bad_migration" }, async (database) => {
+      const pluginId = uniquePluginId();
+      const identifiers = pluginIdentifiers(pluginId);
+
+      await expect(
+        PluginDatabase.open({
+          adminUrl: database.url,
+          pluginId,
+          migrations: [
+            {
+              name: "0001_evil.sql",
+              sql: `
+                CREATE TABLE notes (body text);
+                RESET ROLE;
+                CREATE TABLE core.evil (id int);
+              `,
+            },
+          ],
+          logger,
+        }),
+      ).rejects.toBeInstanceOf(MigrationDeniedError);
+
+      const rows = (await database.sql`
+        SELECT
+          (SELECT count(*)::int FROM pg_namespace WHERE nspname = ${identifiers.schema}) AS schemas,
+          (SELECT count(*)::int FROM pg_roles
+            WHERE rolname IN (${identifiers.runtimeRole}, ${identifiers.ownerRole})) AS roles
+      `) as Array<{ schemas: number; roles: number }>;
+      expect(rows[0]).toEqual({ schemas: 0, roles: 0 });
+
+      await dropPlugin({ adminUrl: database.url, pluginId }).catch(() => undefined);
+    });
+  }, 20_000);
+
+  test("rejects a plpgsql function that calls a revoked built-in", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_bad_function" }, async (database) => {
+      const pluginId = uniquePluginId();
+
+      await expect(
+        PluginDatabase.open({
+          adminUrl: database.url,
+          pluginId,
+          migrations: [
+            {
+              name: "0001_evil.sql",
+              sql: `
+                CREATE FUNCTION notify_evil() RETURNS void
+                LANGUAGE plpgsql AS $$
+                BEGIN
+                  PERFORM pg_notify('session_revoked', '1');
+                END
+                $$;
+              `,
+            },
+          ],
+          logger,
+        }),
+      ).rejects.toThrow(/pg_notify/);
+
+      await dropPlugin({ adminUrl: database.url, pluginId }).catch(() => undefined);
+    });
+  }, 20_000);
+
+  test("revokes side-effecting built-ins from the runtime role", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_revokes" }, async (database) => {
+      const pluginId = uniquePluginId();
+      const identifiers = pluginIdentifiers(pluginId);
+      let plugin: PluginDatabase | undefined;
+
+      try {
+        plugin = await PluginDatabase.open({
+          adminUrl: database.url,
+          pluginId,
+          migrations: MIGRATIONS,
+          logger,
+        });
+
+        const asRuntime = async (sql: string): Promise<unknown> =>
+          database.sql.begin(async (transaction) => {
+            await transaction.unsafe(`SET LOCAL ROLE ${identifiers.runtimeRole}`);
+            return transaction.unsafe(sql);
+          });
+
+        for (const sql of [
+          "SELECT set_config('search_path', 'core', false)",
+          "SELECT pg_notify('session_revoked', '1')",
+          "SELECT pg_advisory_lock(1)",
+          "SELECT pg_sleep(0.1)",
+        ]) {
+          await expect(asRuntime(sql)).rejects.toThrow(/permission denied/i);
+        }
+
+        // The plugin owner is not a core role either: migration functions get no private
+        // back door to the revoked built-ins.
+        await expect(
+          database.sql.begin(async (transaction) => {
+            await transaction.unsafe(`SET LOCAL ROLE ${identifiers.ownerRole}`);
+            return transaction`SELECT pg_advisory_xact_lock(42)`;
+          }),
+        ).rejects.toThrow(/permission denied/i);
+      } finally {
+        await plugin?.close();
+        await dropPlugin({ adminUrl: database.url, pluginId });
+      }
+    });
+  }, 20_000);
+
+  test("cancels a statement past its deadline from the control connection", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_deadline" }, async (database) => {
+      const pluginId = uniquePluginId();
+      let plugin: PluginDatabase | undefined;
+
+      try {
+        plugin = await PluginDatabase.open({
+          adminUrl: database.url,
+          pluginId,
+          migrations: MIGRATIONS,
+          logger,
+          statementTimeoutMs: 150,
+        });
+        const statement = await assertAllowedSql(
+          "SELECT count(*) FROM generate_series(1, 1000000000)",
+          { schema: plugin.schema, pluginFunctions: plugin.functions },
+        );
+        const started = performance.now();
+
+        await expect(
+          plugin.query("SELECT count(*) FROM generate_series(1, 1000000000)", [], statement),
+        ).rejects.toThrow();
+
+        expect(performance.now() - started).toBeLessThan(1_500);
+      } finally {
+        await plugin?.close();
+        await dropPlugin({ adminUrl: database.url, pluginId });
+      }
+    });
+  }, 20_000);
+
+  test("uses the shared lazy connection budget and closes idle plugin pools", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_lazy" }, async (database) => {
+      const ids = [uniquePluginId(), uniquePluginId()];
+      const connections = new PluginConnectionManager({
+        adminUrl: database.url,
+        idleTimeoutMs: 20,
+      });
+      const plugins: PluginDatabase[] = [];
+
+      try {
+        for (const pluginId of ids) {
+          plugins.push(
+            await PluginDatabase.open({
+              adminUrl: database.url,
+              pluginId,
+              migrations: MIGRATIONS,
+              logger,
+              connections,
+            }),
+          );
+        }
+
+        for (const plugin of plugins) {
+          const statement = await assertAllowedSql("SELECT 1 AS ok", {
+            schema: plugin.schema,
+            pluginFunctions: plugin.functions,
+          });
+          expect(await plugin.query("SELECT 1 AS ok", [], statement)).toMatchObject({
+            rows: [{ ok: 1 }],
+          });
+        }
+
+        expect(connections.stats().open).toBe(2);
+        await Bun.sleep(60);
+        expect(connections.stats()).toMatchObject({ open: 0, closed: 2 });
+
+        // The next call reopens lazily and still works.
+        const statement = await assertAllowedSql("SELECT 1 AS ok", {
+          schema: plugins[0]?.schema ?? "",
+          pluginFunctions: plugins[0]?.functions ?? new Set(),
+        });
+        expect(await plugins[0]?.query("SELECT 1 AS ok", [], statement)).toMatchObject({
+          rows: [{ ok: 1 }],
+        });
+      } finally {
+        await Promise.all(plugins.map((plugin) => plugin.close().catch(() => undefined)));
+        await connections.close();
+        for (const pluginId of ids) {
+          await dropPlugin({ adminUrl: database.url, pluginId }).catch(() => undefined);
+        }
+      }
+    });
+  }, 30_000);
 
   test("provisioning the same plugin twice is idempotent", async () => {
     if (adminUrl === undefined) {

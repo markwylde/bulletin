@@ -546,6 +546,14 @@ sandboxDescribe("malicious plugin cases", () => {
     await expectBenignSandbox();
   }, 40_000);
 
+  test("denies session settings, notifications, advisory locks and sleep in SQL", async () => {
+    await withCase("sql-side-effects", {}, async ({ result, supervisor }) => {
+      expect(result?.ok).toBe(true);
+      expect(result?.detail).toBe("");
+      expect(supervisor.ready).toBe(true);
+    });
+  }, 30_000);
+
   test("rate-limits statement abuse and recovers within the plugin", async () => {
     const before = broker?.stats().rateLimited ?? 0;
 
