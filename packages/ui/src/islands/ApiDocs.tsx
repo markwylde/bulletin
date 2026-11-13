@@ -2,15 +2,20 @@ import { useEffect, useRef } from "react";
 import { useFlag } from "../flags.tsx";
 
 export interface ApiDocsProps {
-  readonly url: string;
+  /** The generated OpenAPI document as JSON text, embedded in the page (ADR 0016). */
+  readonly content: string;
 }
 
 /**
- * Scalar mounts only for viewers with the `public_api` flag (ADR 0010, 0016). The server route
- * already returns 404 when the flag is off; this keeps an island rendered from a stale fragment
- * from showing documentation for a feature that is no longer available.
+ * Scalar mounts only for viewers with the `public_api` flag (ADR 0010, 0016). The route already
+ * returns 404 when the flag is off; this keeps an island rendered from a stale fragment from
+ * showing documentation for a feature that is no longer available.
+ *
+ * The document arrives in the props instead of being fetched: `/api/v1` sees a guest request
+ * from the browser, so a rollout that is on for Members and off for Guests would 404 the fetch
+ * even though the page is allowed.
  */
-export function ApiDocs({ url }: ApiDocsProps) {
+export function ApiDocs({ content }: ApiDocsProps) {
   const enabled = useFlag("public_api");
   const target = useRef<HTMLDivElement>(null);
 
@@ -30,7 +35,7 @@ export function ApiDocs({ url }: ApiDocsProps) {
           return;
         }
 
-        createApiReference(target.current, { url, withDefaultFonts: false });
+        createApiReference(target.current, { content, withDefaultFonts: false });
         status?.remove();
       })
       .catch(() => {
@@ -42,7 +47,7 @@ export function ApiDocs({ url }: ApiDocsProps) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, url]);
+  }, [enabled, content]);
 
-  return <div id="api-reference" data-api-reference data-url={url} ref={target} />;
+  return <div id="api-reference" data-api-reference ref={target} />;
 }

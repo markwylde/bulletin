@@ -178,9 +178,12 @@ export const pluginAppSchema = v.strictObject({
   origin: v.optional(pluginOriginSchema),
 });
 
-/** The public API documentation island; its component gates Scalar on `public_api`. */
+/**
+ * The public API documentation island; its component gates Scalar on `public_api` and renders
+ * the embedded OpenAPI document instead of fetching it.
+ */
 export const apiDocsSchema = v.strictObject({
-  url: v.pipe(v.string(), v.maxLength(500)),
+  content: v.pipe(v.string(), v.minLength(1), v.maxLength(200_000)),
 });
 
 /** The canonical island names; the template registry and the client runtime must match. */

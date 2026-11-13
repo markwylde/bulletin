@@ -102,6 +102,8 @@ export function applyPluginOverrides(
       name: override.name,
       body: override.body,
       version: 1,
+      // Plugin code is third-party (ADR 0009): it never gets the trusted render limit.
+      trusted: false,
     };
     const existing = templates.get(override.name) ?? [];
     templates.set(override.name, [pluginTemplate, ...existing]);

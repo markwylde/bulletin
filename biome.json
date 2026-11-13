@@ -18,7 +18,8 @@
       "!**/dist",
       "!**/node_modules",
       "!**/.astro",
-      "!**/*.astro"
+      "!**/*.astro",
+      "!apps/user-app/src/api-docs/openapi.json"
     ]
   },
   "formatter": {

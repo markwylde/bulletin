@@ -15,7 +15,9 @@ export interface RenderTemplateInput {
   /** Exact allowlisted embed origins a content pipeline player may frame (ADR 0007, 0008). */
   readonly trustedFrameOrigins?: readonly string[];
   /** Tightens the engine limits for this render (tests, previews). */
-  readonly limits?: Partial<Pick<TemplateLimits, "renderLimit" | "memoryLimit" | "outputLimit">>;
+  readonly limits?: Partial<
+    Pick<TemplateLimits, "renderLimit" | "trustedRenderLimit" | "memoryLimit" | "outputLimit">
+  >;
 }
 
 export interface RenderedTemplate {
@@ -104,14 +106,20 @@ export async function renderThemeTemplate(input: RenderTemplateInput): Promise<R
   const limits: TemplateLimits = {
     ...input.engine.limits,
     renderLimit: input.limits?.renderLimit ?? input.engine.limits.renderLimit,
+    trustedRenderLimit: input.limits?.trustedRenderLimit ?? input.engine.limits.trustedRenderLimit,
     memoryLimit: input.limits?.memoryLimit ?? input.engine.limits.memoryLimit,
     outputLimit: input.limits?.outputLimit ?? input.engine.limits.outputLimit,
   };
 
   for (const candidate of candidates) {
+    // ADR 0008: the time limit contains third-party themes. The bundled core theme is our own
+    // code, so it renders with the trusted limit; the memory, output and parse limits still
+    // apply to every candidate.
+    const renderLimit = candidate.trusted ? limits.trustedRenderLimit : limits.renderLimit;
+
     try {
       const html = await input.engine.render(candidate.parsed, input.viewModel, input.runtime, {
-        renderLimit: limits.renderLimit,
+        renderLimit,
         memoryLimit: limits.memoryLimit,
         outputLimit: limits.outputLimit,
       });

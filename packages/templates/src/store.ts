@@ -8,6 +8,9 @@ export interface ThemeRecord {
   readonly parentId: string | null;
 }
 
+/** Where a theme came from; only the bundled theme is our code (ADR 0008). */
+export type ThemeSource = "core" | "marketplace" | "upload" | "custom";
+
 /** One template row exactly as stored for a theme (an override, not resolved). */
 export interface StoredThemeTemplate {
   readonly themeId: string;
@@ -15,6 +18,11 @@ export interface StoredThemeTemplate {
   readonly name: string;
   readonly body: string;
   readonly version: number;
+  /**
+   * True when the owning theme has `source = 'core'`: the template is our own code, so it
+   * renders with the trusted time limit instead of the 50 ms budget for third-party themes.
+   */
+  readonly trusted: boolean;
 }
 
 /** A theme plus every template override on its chain (ADR 0008 parent fallback). */
@@ -31,6 +39,7 @@ interface ChainRow {
   readonly name: string;
   readonly version: number;
   readonly parent_id: string | null;
+  readonly source: string;
   readonly depth: number;
 }
 
@@ -48,17 +57,17 @@ interface TemplateRow {
 export async function loadTheme(sql: SQL, theme: string): Promise<LoadedTheme | null> {
   const chain = (await sql`
     WITH RECURSIVE ancestors AS (
-      SELECT id, name, version, parent_id, 0 AS depth, ARRAY[id] AS path
+      SELECT id, name, version, parent_id, source, 0 AS depth, ARRAY[id] AS path
       FROM core.themes
       WHERE name = ${theme} OR id::text = ${theme}
       UNION ALL
-      SELECT child.id, child.name, child.version, child.parent_id, ancestor.depth + 1,
-             ancestor.path || child.id
+      SELECT child.id, child.name, child.version, child.parent_id, child.source,
+             ancestor.depth + 1, ancestor.path || child.id
       FROM core.themes AS child
       JOIN ancestors AS ancestor ON child.id = ancestor.parent_id
       WHERE NOT child.id = ANY(ancestor.path)
     )
-    SELECT id::text AS id, name, version, parent_id::text AS parent_id, depth
+    SELECT id::text AS id, name, version, parent_id::text AS parent_id, source, depth
     FROM ancestors
     ORDER BY depth
   `) as ChainRow[];
@@ -98,6 +107,7 @@ export async function loadTheme(sql: SQL, theme: string): Promise<LoadedTheme | 
       name: row.name,
       body: row.body,
       version: row.version,
+      trusted: owner.source === "core",
     });
     templates.set(row.name, candidates);
   }

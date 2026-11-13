@@ -9,8 +9,14 @@ import { registerTranslationTag } from "./translation-tag.ts";
 export interface TemplateLimits {
   /** Total characters parsed in one `parse()` call (1 MB). */
   readonly parseLimit: number;
-  /** Milliseconds for one `render()` call. */
+  /** Milliseconds for one `render()` call of a third-party template. */
   readonly renderLimit: number;
+  /**
+   * Milliseconds for one `render()` call of a template whose theme has `source = 'core'`.
+   * The 50 ms budget contains untrusted themes; the bundled theme is our own code, so a slow
+   * machine must not turn its pages into a 500 with nothing left to fall back to (ADR 0008).
+   */
+  readonly trustedRenderLimit: number;
   /** New objects created in one render (10 MB). */
   readonly memoryLimit: number;
   /** UTF-8 bytes in one rendered fragment (2 MB). */
@@ -20,6 +26,7 @@ export interface TemplateLimits {
 export const DEFAULT_TEMPLATE_LIMITS: TemplateLimits = {
   parseLimit: 1_000_000,
   renderLimit: 50,
+  trustedRenderLimit: 2_000,
   memoryLimit: 10_000_000,
   outputLimit: 2 * 1024 * 1024,
 };
@@ -31,7 +38,7 @@ export interface TemplateEngineOptions {
 
 /** Per-render overrides; used by tests and by routes that tighten a limit. */
 export type TemplateRenderOverrides = Partial<
-  Pick<TemplateLimits, "renderLimit" | "memoryLimit" | "outputLimit">
+  Pick<TemplateLimits, "renderLimit" | "trustedRenderLimit" | "memoryLimit" | "outputLimit">
 >;
 
 /** Thrown by the counting emitter before the rendered output can exceed the byte budget. */

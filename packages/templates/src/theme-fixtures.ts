@@ -1,8 +1,10 @@
-import type { LoadedTheme, StoredThemeTemplate, ThemeRecord } from "./store.ts";
+import type { LoadedTheme, StoredThemeTemplate, ThemeRecord, ThemeSource } from "./store.ts";
 
 export interface ThemeChainFixture {
   readonly name: string;
   readonly version?: number;
+  /** Where the theme came from; only `core` templates are trusted (ADR 0008). */
+  readonly source?: ThemeSource;
   readonly templates?: Readonly<Record<string, string>>;
 }
 
@@ -38,6 +40,7 @@ export function buildTheme(chain: readonly ThemeChainFixture[]): LoadedTheme {
         name,
         body,
         version: 1,
+        trusted: entry.source === "core",
       });
       templates.set(name, candidates);
     }

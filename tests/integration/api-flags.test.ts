@@ -67,6 +67,18 @@ async function setFlags(
   await bumpFlagTag(database.sql);
 }
 
+/** A member-only rollout: off by default, on for the `members` group (ADR 0010). */
+async function setMembersOnlyRollout(database: TestDatabase, key: string): Promise<void> {
+  await database.sql`
+    UPDATE core.feature_flags
+    SET default_value = false,
+        rules = '[{"type": "group", "groups": ["members"], "value": true}]'::jsonb,
+        updated_at = now()
+    WHERE key = ${key}
+  `;
+  await bumpFlagTag(database.sql);
+}
+
 async function memberSession(database: TestDatabase, sub: string): Promise<UserAppSessionContext> {
   const [row] = (await database.sql`
     SELECT i.member_id::text AS member_id, m.display_name
@@ -239,6 +251,49 @@ integrationDescribe("public API feature flags", () => {
         expect(on.errors).toEqual([]);
         expect(hit.cache).toBe("hit");
         expect(hit.variant).toBe(on.variant);
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("the docs page renders its embedded document for a member-only rollout", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+      const cache = createRenderCache({ tags: versions });
+      const render = (session: UserAppSessionContext | null) =>
+        renderApiDocsRoute({
+          sql: database.sql,
+          locale: "en",
+          translate,
+          session,
+          pluginsGeneration: 1,
+          colourScheme: "system",
+          cache,
+          tagVersions: versions,
+        });
+
+      try {
+        await setMembersOnlyRollout(database, "public_api");
+
+        // The flag is on for Members, so the page renders for them...
+        const page = await render(member);
+        expect(page.status).toBe(200);
+        expect(page.errors).toEqual([]);
+        expect(page.html).toContain('data-name="ApiDocs"');
+        // ...and it carries the generated document instead of fetching `/api/v1` as a guest,
+        // which would 404 under this rollout configuration.
+        expect(page.html).toContain("List forums the principal may read");
+
+        // Guests are still gated.
+        const guest = await render(null);
+        expect(guest.status).toBe(404);
+        expect(guest.variant).toBe("flag-off");
       } finally {
         await versions.close();
       }

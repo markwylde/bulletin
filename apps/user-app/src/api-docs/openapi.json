@@ -1,0 +1,2279 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Bulletin API",
+    "version": "1.0.0",
+    "description": "Read and write board content on behalf of an API key's principal. Authentication is `Authorization: Bearer blt_<prefix>_<secret>`."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/api/v1/forums": {
+      "get": {
+        "operationId": "listForums",
+        "summary": "List forums the principal may read",
+        "tags": [
+          "forums"
+        ],
+        "responses": {
+          "200": {
+            "description": "Visible forums",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "forums": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "parentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "passwordProtected": {
+                            "type": "boolean"
+                          },
+                          "redirectUrl": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "topicCount": {
+                            "type": "number"
+                          },
+                          "postCount": {
+                            "type": "number"
+                          },
+                          "lastPostId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastPostAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastPostMemberName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "parentId",
+                          "type",
+                          "title",
+                          "slug",
+                          "url",
+                          "description",
+                          "passwordProtected",
+                          "redirectUrl",
+                          "topicCount",
+                          "postCount",
+                          "lastPostId",
+                          "lastPostAt",
+                          "lastPostMemberName"
+                        ]
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "forums"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/forums/{id}": {
+      "get": {
+        "operationId": "getForum",
+        "summary": "Read one forum",
+        "tags": [
+          "forums"
+        ],
+        "responses": {
+          "200": {
+            "description": "Forum",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "forum": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "parentId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "type": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "passwordProtected": {
+                          "type": "boolean"
+                        },
+                        "redirectUrl": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "topicCount": {
+                          "type": "number"
+                        },
+                        "postCount": {
+                          "type": "number"
+                        },
+                        "lastPostId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastPostAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastPostMemberName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "parentId",
+                        "type",
+                        "title",
+                        "slug",
+                        "url",
+                        "description",
+                        "passwordProtected",
+                        "redirectUrl",
+                        "topicCount",
+                        "postCount",
+                        "lastPostId",
+                        "lastPostAt",
+                        "lastPostMemberName"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "forum"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/forums/{id}/topics": {
+      "get": {
+        "operationId": "listForumTopics",
+        "summary": "List topics in a forum",
+        "tags": [
+          "forums",
+          "topics"
+        ],
+        "responses": {
+          "200": {
+            "description": "Topic page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "forum": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "title",
+                        "slug",
+                        "url"
+                      ]
+                    },
+                    "topics": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "prefixId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "prefix": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "prefixColour": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "starterId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "starterName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "locked": {
+                            "type": "boolean"
+                          },
+                          "movedTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replyCount": {
+                            "type": "number"
+                          },
+                          "viewCount": {
+                            "type": "number"
+                          },
+                          "lastPostId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastPostAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastPostMemberName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "title",
+                          "slug",
+                          "url",
+                          "prefixId",
+                          "prefix",
+                          "prefixColour",
+                          "starterId",
+                          "starterName",
+                          "pinned",
+                          "locked",
+                          "movedTo",
+                          "replyCount",
+                          "viewCount",
+                          "lastPostId",
+                          "lastPostAt",
+                          "lastPostMemberName"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "number"
+                    },
+                    "pageSize": {
+                      "type": "number"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "pageCount": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "forum",
+                    "topics",
+                    "page",
+                    "pageSize",
+                    "total",
+                    "pageCount"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "last_post",
+                "start_date",
+                "title"
+              ]
+            }
+          },
+          {
+            "name": "prefixId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "createTopic",
+        "summary": "Create a topic",
+        "tags": [
+          "topics"
+        ],
+        "responses": {
+          "200": {
+            "description": "Created topic",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "topicId": {
+                      "type": "string"
+                    },
+                    "postId": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ok",
+                    "topicId",
+                    "postId",
+                    "url"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope or the principal may not do this"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "409": {
+            "description": "Conflict, such as a locked topic"
+          },
+          "422": {
+            "description": "Rejected by a plugin"
+          },
+          "429": {
+            "description": "Rate limited or flood control"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "bodyMd": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "prefixId": {
+                    "type": "string"
+                  },
+                  "poll": {}
+                },
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "bodyMd"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/topics": {
+      "get": {
+        "operationId": "listTopics",
+        "summary": "List topics in a forum",
+        "tags": [
+          "topics"
+        ],
+        "responses": {
+          "200": {
+            "description": "Topic page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "forum": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "title",
+                        "slug",
+                        "url"
+                      ]
+                    },
+                    "topics": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "slug": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "prefixId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "prefix": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "prefixColour": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "starterId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "starterName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "locked": {
+                            "type": "boolean"
+                          },
+                          "movedTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "replyCount": {
+                            "type": "number"
+                          },
+                          "viewCount": {
+                            "type": "number"
+                          },
+                          "lastPostId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastPostAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastPostMemberName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "title",
+                          "slug",
+                          "url",
+                          "prefixId",
+                          "prefix",
+                          "prefixColour",
+                          "starterId",
+                          "starterName",
+                          "pinned",
+                          "locked",
+                          "movedTo",
+                          "replyCount",
+                          "viewCount",
+                          "lastPostId",
+                          "lastPostAt",
+                          "lastPostMemberName"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "number"
+                    },
+                    "pageSize": {
+                      "type": "number"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "pageCount": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "forum",
+                    "topics",
+                    "page",
+                    "pageSize",
+                    "total",
+                    "pageCount"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "forumId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "last_post",
+                "start_date",
+                "title"
+              ]
+            }
+          },
+          {
+            "name": "prefixId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/topics/{id}": {
+      "get": {
+        "operationId": "getTopic",
+        "summary": "Read one topic",
+        "tags": [
+          "topics"
+        ],
+        "responses": {
+          "200": {
+            "description": "Topic",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "topic": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "forumId": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "prefixId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "starterId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "pinned": {
+                          "type": "boolean"
+                        },
+                        "locked": {
+                          "type": "boolean"
+                        },
+                        "replyCount": {
+                          "type": "number"
+                        },
+                        "viewCount": {
+                          "type": "number"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "lastPostId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "lastPostAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "movedTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "forumId",
+                        "title",
+                        "slug",
+                        "url",
+                        "prefixId",
+                        "starterId",
+                        "pinned",
+                        "locked",
+                        "replyCount",
+                        "viewCount",
+                        "createdAt",
+                        "lastPostId",
+                        "lastPostAt",
+                        "movedTo"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "topic"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/topics/{id}/posts": {
+      "get": {
+        "operationId": "listTopicPosts",
+        "summary": "List a topic's posts",
+        "tags": [
+          "topics",
+          "posts"
+        ],
+        "responses": {
+          "200": {
+            "description": "Post page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "topic": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "title": {
+                          "type": "string"
+                        },
+                        "slug": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "title",
+                        "slug",
+                        "url"
+                      ]
+                    },
+                    "posts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "topicId": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "author": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "name": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "name"
+                            ]
+                          },
+                          "bodyHtml": {
+                            "type": "string"
+                          },
+                          "bodyText": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "number"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "editedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "editedByName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "topicId",
+                          "url",
+                          "author",
+                          "bodyHtml",
+                          "bodyText",
+                          "position",
+                          "createdAt",
+                          "editedAt",
+                          "editedByName"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "number"
+                    },
+                    "pageSize": {
+                      "type": "number"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "pageCount": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "topic",
+                    "posts",
+                    "page",
+                    "pageSize",
+                    "total",
+                    "pageCount"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/posts/{id}": {
+      "get": {
+        "operationId": "getPost",
+        "summary": "Read one post",
+        "tags": [
+          "posts"
+        ],
+        "responses": {
+          "200": {
+            "description": "Post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "post": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "topicId": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "author": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "name": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "id",
+                            "name"
+                          ]
+                        },
+                        "bodyHtml": {
+                          "type": "string"
+                        },
+                        "bodyText": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "number"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "editedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "editedByName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "topicId",
+                        "url",
+                        "author",
+                        "bodyHtml",
+                        "bodyText",
+                        "position",
+                        "createdAt",
+                        "editedAt",
+                        "editedByName"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "post"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/members/{id}": {
+      "get": {
+        "operationId": "getMember",
+        "summary": "Read a member's public fields",
+        "tags": [
+          "members"
+        ],
+        "responses": {
+          "200": {
+            "description": "Public member fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "member": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "avatarHash": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "joinedAt": {
+                          "type": "string"
+                        },
+                        "lastActiveAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "postCount": {
+                          "type": "number"
+                        },
+                        "reputation": {
+                          "type": "number"
+                        },
+                        "customTitle": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "groupTitle": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "groupColour": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rank": {
+                          "type": "object",
+                          "properties": {
+                            "title": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "additionalProperties": {
+                                    "type": "string"
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "pips": {
+                              "type": "number"
+                            },
+                            "imageKey": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "title",
+                            "pips",
+                            "imageKey"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "id",
+                        "displayName",
+                        "url",
+                        "avatarHash",
+                        "joinedAt",
+                        "lastActiveAt",
+                        "postCount",
+                        "reputation",
+                        "customTitle",
+                        "groupTitle",
+                        "groupColour",
+                        "rank"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "member"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "operationId": "searchContent",
+        "summary": "Search readable topics and posts",
+        "tags": [
+          "search"
+        ],
+        "responses": {
+          "200": {
+            "description": "Search page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "enum": [
+                              "topic",
+                              "post"
+                            ]
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "url": {
+                            "type": "string"
+                          },
+                          "forumId": {
+                            "type": "string"
+                          },
+                          "forumTitle": {
+                            "type": "string"
+                          },
+                          "authorId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "authorName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "snippet": {
+                            "type": "string"
+                          },
+                          "topicId": {
+                            "type": "string"
+                          },
+                          "position": {
+                            "type": "number"
+                          }
+                        },
+                        "additionalProperties": true,
+                        "required": [
+                          "kind",
+                          "id",
+                          "title",
+                          "url",
+                          "forumId",
+                          "forumTitle",
+                          "authorId",
+                          "authorName",
+                          "createdAt",
+                          "snippet"
+                        ]
+                      }
+                    },
+                    "page": {
+                      "type": "number"
+                    },
+                    "pageSize": {
+                      "type": "number"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "pageCount": {
+                      "type": "number"
+                    },
+                    "capped": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "items",
+                    "page",
+                    "pageSize",
+                    "total",
+                    "pageCount",
+                    "capped"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "topics",
+                "posts"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "relevance",
+                "date"
+              ]
+            }
+          },
+          {
+            "name": "forumId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          },
+          {
+            "name": "authorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/api/v1/topics/{id}/replies": {
+      "post": {
+        "operationId": "replyToTopic",
+        "summary": "Reply to a topic",
+        "tags": [
+          "topics",
+          "posts"
+        ],
+        "responses": {
+          "200": {
+            "description": "Created reply",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "topicId": {
+                      "type": "string"
+                    },
+                    "postId": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ok",
+                    "topicId",
+                    "postId",
+                    "url"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope or the principal may not do this"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "409": {
+            "description": "Conflict, such as a locked topic"
+          },
+          "422": {
+            "description": "Rejected by a plugin"
+          },
+          "429": {
+            "description": "Rate limited or flood control"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bodyMd": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "bodyMd"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/posts/{id}/reactions": {
+      "post": {
+        "operationId": "reactToPost",
+        "summary": "Add or remove a reaction",
+        "tags": [
+          "posts",
+          "reactions"
+        ],
+        "responses": {
+          "200": {
+            "description": "Reaction state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "postId": {
+                      "type": "string"
+                    },
+                    "mine": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "summary": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "number"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ok",
+                    "postId",
+                    "mine",
+                    "summary"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope or the principal may not do this"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "409": {
+            "description": "Conflict, such as a locked topic"
+          },
+          "422": {
+            "description": "Rejected by a plugin"
+          },
+          "429": {
+            "description": "Rate limited or flood control"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reactionId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^\\d+$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "reactionId"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/follows": {
+      "post": {
+        "operationId": "setFollow",
+        "summary": "Follow or unfollow a topic, forum or member",
+        "tags": [
+          "follows"
+        ],
+        "responses": {
+          "200": {
+            "description": "Follow state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "following": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ok",
+                    "following"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "A valid API key is required"
+          },
+          "403": {
+            "description": "The key lacks the required scope or the principal may not do this"
+          },
+          "404": {
+            "description": "Not found or not visible to the principal"
+          },
+          "409": {
+            "description": "Conflict, such as a locked topic"
+          },
+          "422": {
+            "description": "Rejected by a plugin"
+          },
+          "429": {
+            "description": "Rate limited or flood control"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "topic",
+                      "forum",
+                      "member"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^\\d+$"
+                  },
+                  "following": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "kind",
+                  "id",
+                  "following"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "operationId": "getOpenApiDocument",
+        "summary": "OpenAPI 3.1 description of this API",
+        "tags": [
+          "meta"
+        ],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 document",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "blt_<prefix>_<secret>"
+      }
+    }
+  }
+}
