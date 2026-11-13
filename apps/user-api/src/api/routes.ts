@@ -14,7 +14,7 @@ const openApiRoute: ApiRoute = defineApiRoute({
   responses: {
     200: { description: "OpenAPI 3.1 document", schema: v.unknown() },
   },
-  handler: (): Response => Response.json(buildOpenApiDocument(API_ROUTES)),
+  handler: (): Response => Response.json(OPENAPI_DOCUMENT),
 });
 
 /**
@@ -22,3 +22,6 @@ const openApiRoute: ApiRoute = defineApiRoute({
  * routing all read the same definitions.
  */
 export const API_ROUTES: readonly ApiRoute[] = [openApiRoute];
+
+/** Generated once when the service module loads, not on every documentation request. */
+const OPENAPI_DOCUMENT = buildOpenApiDocument(API_ROUTES);
