@@ -16,6 +16,7 @@
     "@bulletin/i18n": "workspace:*",
     "@bulletin/content": "workspace:*",
     "@bulletin/plugin-sdk": "workspace:*",
-    "@bulletin/templates": "workspace:*"
+    "@bulletin/templates": "workspace:*",
+    "valibot": "1.5.0"
   }
 }

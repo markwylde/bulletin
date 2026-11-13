@@ -24,6 +24,7 @@
         "jose": "6.2.16",
         "sharp": "0.35.5",
         "typescript": "5.9.3",
+        "valibot": "1.5.0",
       },
     },
     "apps/plugin-host": {
@@ -86,6 +87,7 @@
         "@bulletin/plugin-sdk": "workspace:*",
         "@bulletin/storage": "workspace:*",
         "@bulletin/templates": "workspace:*",
+        "valibot": "1.5.0",
       },
     },
     "apps/user-app": {

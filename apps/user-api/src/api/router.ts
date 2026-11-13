@@ -1,0 +1,343 @@
+import {
+  consumeApiRateLimit,
+  isApiKeyPrincipal,
+  markApiKeyUsed,
+  missingApiScope,
+  resolveApiPrincipal,
+} from "@bulletin/domain/api";
+import { clientIp } from "@bulletin/domain/auth";
+import { readBoardSettings } from "@bulletin/domain/board";
+import type { SQL } from "bun";
+import { type GenericSchema, safeParse } from "valibot";
+import type { ApiRoute } from "./route.ts";
+
+export interface ApiRouterOptions {
+  readonly sql: SQL;
+  readonly routes: readonly ApiRoute[];
+  /** The server pepper for key hashes (ADR 0016). */
+  readonly pepper: string;
+  /** HMAC key for the rotating per-IP rate-limit identity (ADR 0012). */
+  readonly rateLimitSecret: string;
+  readonly now?: () => Date;
+}
+
+const API_PREFIX = "/api/v1";
+const CORS_HEADERS: Readonly<Record<string, string>> = {
+  "access-control-allow-origin": "*",
+  "access-control-expose-headers":
+    "RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset, Retry-After",
+};
+
+interface RouteMatch {
+  readonly route: ApiRoute;
+  readonly params: Readonly<Record<string, string>>;
+}
+
+interface MethodMismatch {
+  readonly methods: readonly string[];
+}
+
+function pathSegments(pathname: string): readonly string[] {
+  return pathname.split("/").filter((segment) => segment !== "");
+}
+
+function matchPath(pattern: string, pathname: string): Readonly<Record<string, string>> | null {
+  const expected = pathSegments(pattern);
+  const actual = pathSegments(pathname);
+
+  if (expected.length !== actual.length) {
+    return null;
+  }
+
+  const params: Record<string, string> = {};
+
+  for (const [index, part] of expected.entries()) {
+    const value = actual[index] ?? "";
+
+    if (part.startsWith(":")) {
+      if (value === "") {
+        return null;
+      }
+
+      params[part.slice(1)] = decodeURIComponent(value);
+      continue;
+    }
+
+    if (part !== value) {
+      return null;
+    }
+  }
+
+  return params;
+}
+
+function findRoute(
+  routes: readonly ApiRoute[],
+  method: string,
+  pathname: string,
+): RouteMatch | MethodMismatch | null {
+  const allowed = new Set<string>();
+
+  for (const route of routes) {
+    const params = matchPath(route.path, pathname);
+
+    if (params === null) {
+      continue;
+    }
+
+    if (route.method === method) {
+      return { route, params };
+    }
+
+    allowed.add(route.method);
+  }
+
+  return allowed.size === 0 ? null : { methods: [...allowed] };
+}
+
+function queryValues(url: URL): Readonly<Record<string, string | string[]>> {
+  const values: Record<string, string | string[]> = {};
+
+  for (const [key, value] of url.searchParams) {
+    const existing = values[key];
+
+    if (existing === undefined) {
+      values[key] = value;
+    } else if (Array.isArray(existing)) {
+      existing.push(value);
+    } else {
+      values[key] = [existing, value];
+    }
+  }
+
+  return values;
+}
+
+interface ValidationFailure {
+  readonly path: string;
+  readonly message: string;
+}
+
+interface IssueLike {
+  readonly message?: string;
+  readonly path?: readonly ({ readonly key?: unknown } | undefined)[] | undefined;
+}
+
+function validationFailure(error: {
+  readonly issues: readonly IssueLike[];
+}): readonly ValidationFailure[] {
+  return error.issues.map((issue) => ({
+    path: (issue.path ?? [])
+      .map((entry) => (typeof entry?.key === "string" ? entry.key : String(entry?.key ?? "")))
+      .filter((part) => part !== "")
+      .join("."),
+    message: issue.message ?? "invalid",
+  }));
+}
+
+function parseWith(
+  schema: GenericSchema | undefined,
+  value: unknown,
+):
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false; readonly issues: readonly ValidationFailure[] } {
+  if (schema === undefined) {
+    return { ok: true, value };
+  }
+
+  const result = safeParse(schema, value);
+
+  return result.success
+    ? { ok: true, value: result.output }
+    : { ok: false, issues: validationFailure(result) };
+}
+
+async function jsonBody(
+  request: Request,
+): Promise<{ readonly ok: true; readonly value: unknown } | { readonly ok: false }> {
+  const text = await request.text();
+
+  if (text.trim() === "") {
+    return { ok: true, value: undefined };
+  }
+
+  try {
+    return { ok: true, value: JSON.parse(text) as unknown };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function withHeaders(
+  response: Response,
+  headers: Readonly<Record<string, string>>,
+  cacheControl: string,
+): Response {
+  const merged = new Headers(response.headers);
+
+  for (const [name, value] of Object.entries(CORS_HEADERS)) {
+    merged.set(name, value);
+  }
+
+  for (const [name, value] of Object.entries(headers)) {
+    merged.set(name, value);
+  }
+
+  if (!merged.has("cache-control")) {
+    merged.set("cache-control", cacheControl);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: merged,
+  });
+}
+
+function errorResponse(
+  status: number,
+  code: string,
+  headers: Readonly<Record<string, string>> = {},
+  details?: readonly ValidationFailure[],
+): Response {
+  const body = details === undefined ? { code } : { code, issues: details };
+
+  return Response.json(body, {
+    status,
+    headers: { ...CORS_HEADERS, ...headers, "cache-control": "no-store" },
+  });
+}
+
+function preflight(): Response {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      ...CORS_HEADERS,
+      "access-control-allow-methods": "GET, POST, PATCH, DELETE, OPTIONS",
+      "access-control-allow-headers": "Authorization, Content-Type, If-None-Match",
+      "access-control-max-age": "600",
+      "cache-control": "no-store",
+    },
+  });
+}
+
+/**
+ * Serves `/api/v1`. This runs before the app's session middleware so cookies cannot
+ * authenticate here, and it is the only place an API key is accepted (ADR 0016, 0018).
+ */
+export async function handleApiRequest(
+  request: Request,
+  options: ApiRouterOptions,
+): Promise<Response | null> {
+  const url = new URL(request.url);
+
+  if (url.pathname !== API_PREFIX && !url.pathname.startsWith(`${API_PREFIX}/`)) {
+    return null;
+  }
+
+  if (request.method === "OPTIONS") {
+    return preflight();
+  }
+
+  const match = findRoute(options.routes, request.method, url.pathname);
+
+  if (match === null) {
+    return errorResponse(404, "not_found");
+  }
+
+  if ("methods" in match) {
+    return errorResponse(405, "method_not_allowed", {
+      allow: match.methods.join(", "),
+    });
+  }
+
+  const now = options.now?.() ?? new Date();
+  const auth = await resolveApiPrincipal(options.sql, request, {
+    pepper: options.pepper,
+    now,
+  });
+
+  if (!auth.ok) {
+    return errorResponse(401, auth.code, { "www-authenticate": "Bearer" });
+  }
+
+  const { principal, route } = { principal: auth.principal, route: match.route };
+
+  if (route.auth === "required" && !isApiKeyPrincipal(principal)) {
+    return errorResponse(401, "unauthenticated", { "www-authenticate": "Bearer" });
+  }
+
+  if (isApiKeyPrincipal(principal)) {
+    const missing = missingApiScope(principal, route.scopes);
+
+    if (missing !== null) {
+      return errorResponse(403, "insufficient_scope", {
+        "www-authenticate": `Bearer error="insufficient_scope", scope="${route.scopes.join(" ")}"`,
+      });
+    }
+
+    await markApiKeyUsed(options.sql, principal.keyId, now);
+  }
+
+  const [settings, params, body] = await Promise.all([
+    readBoardSettings(options.sql),
+    Promise.resolve(parseWith(route.params, match.params)),
+    jsonBody(request),
+  ]);
+
+  if (!params.ok) {
+    return errorResponse(400, "validation_failed", {}, params.issues);
+  }
+
+  if (!body.ok) {
+    return errorResponse(400, "invalid_json");
+  }
+
+  const query = parseWith(route.query, queryValues(url));
+  const parsedBody = parseWith(route.body, body.value);
+
+  if (!query.ok) {
+    return errorResponse(400, "validation_failed", {}, query.issues);
+  }
+
+  if (!parsedBody.ok) {
+    return errorResponse(400, "validation_failed", {}, parsedBody.issues);
+  }
+
+  const rate = await consumeApiRateLimit(options.sql, {
+    keyId: isApiKeyPrincipal(principal) ? principal.keyId : null,
+    ip: clientIp(request),
+    secret: options.rateLimitSecret,
+    limits: {
+      keyPerMinute: settings.apiKeyRateLimitPerMinute,
+      ipPerMinute: settings.apiIpRateLimitPerMinute,
+    },
+    now,
+  });
+
+  if (!rate.allowed) {
+    return errorResponse(429, "rate_limited", {
+      ...rate.headers,
+      "retry-after": String(rate.retryAfterSeconds),
+    });
+  }
+
+  let response: Response;
+
+  try {
+    response = await route.handler({
+      request,
+      url,
+      sql: options.sql,
+      principal,
+      params: params.value,
+      query: query.value,
+      body: parsedBody.value,
+      now,
+    });
+  } catch {
+    return errorResponse(500, "internal_error", rate.headers);
+  }
+
+  return withHeaders(response, rate.headers, route.cacheControl ?? "no-store");
+}

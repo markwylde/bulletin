@@ -33,6 +33,10 @@ export interface BoardSettings {
   /** The board-wide switch for showing reputation totals and labels. */
   readonly reputationDisplay: boolean;
   readonly reputationLabelScale: readonly ReputationLabel[];
+  /** Requests per minute allowed for one `/api/v1` key (ADR 0016). */
+  readonly apiKeyRateLimitPerMinute: number;
+  /** Requests per minute allowed from one client IP (ADR 0016). */
+  readonly apiIpRateLimitPerMinute: number;
 }
 
 export interface BoardSettingsInput {
@@ -52,6 +56,8 @@ export interface BoardSettingsInput {
   readonly reactionsAffectReputation: boolean;
   readonly reputationDisplay: boolean;
   readonly reputationLabelScale: readonly ReputationLabel[];
+  readonly apiKeyRateLimitPerMinute: number;
+  readonly apiIpRateLimitPerMinute: number;
 }
 
 export const EMPTY_BOARD_SETTINGS: BoardSettings = {
@@ -69,6 +75,8 @@ export const EMPTY_BOARD_SETTINGS: BoardSettings = {
   reactionsAffectReputation: false,
   reputationDisplay: true,
   reputationLabelScale: DEFAULT_REPUTATION_LABEL_SCALE,
+  apiKeyRateLimitPerMinute: 60,
+  apiIpRateLimitPerMinute: 120,
 };
 
 export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
@@ -76,7 +84,7 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     SELECT board_name, board_description, default_locale, offline, offline_message,
       topics_per_page, posts_per_page, public_edit_history, new_member_approval_posts,
       ip_retention_days, attachment_allowed_types, reactions_affect_reputation, reputation_display,
-      reputation_label_scale
+      reputation_label_scale, api_key_rate_limit_per_minute, api_ip_rate_limit_per_minute
     FROM core.board_settings
     WHERE id = 1
   `) as Array<{
@@ -94,6 +102,8 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     reactions_affect_reputation: boolean;
     reputation_display: boolean;
     reputation_label_scale: unknown;
+    api_key_rate_limit_per_minute: number;
+    api_ip_rate_limit_per_minute: number;
   }>;
   const row = rows[0];
 
@@ -115,6 +125,8 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     reactionsAffectReputation: row?.reactions_affect_reputation ?? false,
     reputationDisplay: row?.reputation_display ?? true,
     reputationLabelScale: canonicalReputationLabelScale(row?.reputation_label_scale),
+    apiKeyRateLimitPerMinute: row?.api_key_rate_limit_per_minute ?? 60,
+    apiIpRateLimitPerMinute: row?.api_ip_rate_limit_per_minute ?? 120,
   };
 }
 
@@ -243,6 +255,8 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
         : null;
   const reactionsAffectReputation = value.reactionsAffectReputation === true;
   const reputationDisplay = value.reputationDisplay !== false;
+  const apiKeyRateLimitPerMinute = rateLimit(value.apiKeyRateLimitPerMinute, 60);
+  const apiIpRateLimitPerMinute = rateLimit(value.apiIpRateLimitPerMinute, 120);
   let reputationLabelScale: readonly ReputationLabel[] = DEFAULT_REPUTATION_LABEL_SCALE;
 
   if (value.reputationLabelScale !== undefined) {
@@ -288,6 +302,14 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
     fields.push("ipRetentionDays");
   }
 
+  if (apiKeyRateLimitPerMinute === null) {
+    fields.push("apiKeyRateLimitPerMinute");
+  }
+
+  if (apiIpRateLimitPerMinute === null) {
+    fields.push("apiIpRateLimitPerMinute");
+  }
+
   if (value.defaultLocale !== undefined && !isLocale(String(value.defaultLocale))) {
     fields.push("defaultLocale");
   }
@@ -313,8 +335,21 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
       reactionsAffectReputation,
       reputationDisplay,
       reputationLabelScale,
+      apiKeyRateLimitPerMinute: apiKeyRateLimitPerMinute ?? 60,
+      apiIpRateLimitPerMinute: apiIpRateLimitPerMinute ?? 120,
     },
   };
+}
+
+/** API rate limits default on, so an omitted field keeps the current default. */
+function rateLimit(value: unknown, fallback: number): number | null {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 10_000
+    ? value
+    : null;
 }
 
 /**

@@ -17,6 +17,37 @@ const VALID = {
   publicEditHistory: false,
 } as const;
 
+describe("board API rate settings", () => {
+  test("defaults to 60 per key and 120 per IP when omitted", () => {
+    const parsed = parseBoardSettingsInput(VALID);
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok ? parsed.value.apiKeyRateLimitPerMinute : null).toBe(60);
+    expect(parsed.ok ? parsed.value.apiIpRateLimitPerMinute : null).toBe(120);
+  });
+
+  test("keeps valid limits and rejects out-of-range values", () => {
+    const parsed = parseBoardSettingsInput({
+      ...VALID,
+      apiKeyRateLimitPerMinute: 5,
+      apiIpRateLimitPerMinute: 250,
+    });
+
+    expect(parsed.ok).toBe(true);
+    expect(parsed.ok ? parsed.value.apiKeyRateLimitPerMinute : null).toBe(5);
+    expect(parsed.ok ? parsed.value.apiIpRateLimitPerMinute : null).toBe(250);
+
+    expect(parseBoardSettingsInput({ ...VALID, apiKeyRateLimitPerMinute: 0 })).toEqual({
+      ok: false,
+      fields: ["apiKeyRateLimitPerMinute"],
+    });
+    expect(parseBoardSettingsInput({ ...VALID, apiIpRateLimitPerMinute: 10_001 })).toEqual({
+      ok: false,
+      fields: ["apiIpRateLimitPerMinute"],
+    });
+  });
+});
+
 describe("board attachment settings", () => {
   test("defaults to every shipped content type when the field is omitted", () => {
     const parsed = parseBoardSettingsInput(VALID);

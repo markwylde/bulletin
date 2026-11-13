@@ -5,6 +5,7 @@
   "description": "Framework-free business rules: permissions, posting, moderation and URL conventions.",
   "exports": {
     ".": "./src/index.ts",
+    "./api": "./src/api/index.ts",
     "./audit": "./src/audit/index.ts",
     "./auth": "./src/auth/index.ts",
     "./permissions": "./src/permissions/index.ts",

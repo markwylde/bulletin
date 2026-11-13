@@ -18,6 +18,8 @@ interface BoardSettings {
   readonly reactionsAffectReputation: boolean;
   readonly reputationDisplay: boolean;
   readonly reputationLabelScale: readonly ReputationLabel[];
+  readonly apiKeyRateLimitPerMinute: number;
+  readonly apiIpRateLimitPerMinute: number;
 }
 
 interface ReputationLabel {
@@ -83,6 +85,8 @@ const EMPTY_VALUES: FormValues = {
   attachmentAllowedTypes: ATTACHMENT_TYPE_OPTIONS.map((option) => option.value),
   reactionsAffectReputation: false,
   reputationDisplay: true,
+  apiKeyRateLimitPerMinute: 60,
+  apiIpRateLimitPerMinute: 120,
   ...Object.fromEntries(REPUTATION_LABEL_FIELDS.map((field) => [field.id, field.fallback])),
 };
 
@@ -186,6 +190,29 @@ const BOARD_FORM: FormDefinition = {
       ],
     },
     {
+      id: "api",
+      titleKey: "staff.settings.board.section.api",
+      descriptionKey: "staff.settings.board.section.apiHelp",
+      fields: [
+        {
+          id: "apiKeyRateLimitPerMinute",
+          type: "number",
+          labelKey: "staff.settings.board.apiKeyRateLimit",
+          helpKey: "staff.settings.board.apiKeyRateLimitHelp",
+          min: 1,
+          max: 10_000,
+        },
+        {
+          id: "apiIpRateLimitPerMinute",
+          type: "number",
+          labelKey: "staff.settings.board.apiIpRateLimit",
+          helpKey: "staff.settings.board.apiIpRateLimitHelp",
+          min: 1,
+          max: 10_000,
+        },
+      ],
+    },
+    {
       id: "offline",
       titleKey: "staff.settings.board.section.offline",
       descriptionKey: "staff.settings.board.section.offlineDescription",
@@ -223,6 +250,8 @@ function toValues(settings: BoardSettings): FormValues {
     attachmentAllowedTypes: settings.attachmentAllowedTypes,
     reactionsAffectReputation: settings.reactionsAffectReputation,
     reputationDisplay: settings.reputationDisplay,
+    apiKeyRateLimitPerMinute: settings.apiKeyRateLimitPerMinute,
+    apiIpRateLimitPerMinute: settings.apiIpRateLimitPerMinute,
     ...Object.fromEntries(
       REPUTATION_LABEL_FIELDS.map((field) => [
         field.id,
@@ -256,6 +285,14 @@ function toPayload(values: FormValues): BoardSettings {
       : [],
     reactionsAffectReputation: values.reactionsAffectReputation === true,
     reputationDisplay: values.reputationDisplay !== false,
+    apiKeyRateLimitPerMinute:
+      typeof values.apiKeyRateLimitPerMinute === "number"
+        ? values.apiKeyRateLimitPerMinute
+        : Number(values.apiKeyRateLimitPerMinute ?? 60),
+    apiIpRateLimitPerMinute:
+      typeof values.apiIpRateLimitPerMinute === "number"
+        ? values.apiIpRateLimitPerMinute
+        : Number(values.apiIpRateLimitPerMinute ?? 120),
     reputationLabelScale: REPUTATION_LABEL_FIELDS.map((field) => {
       const raw = values[field.id];
       return {

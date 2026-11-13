@@ -48,7 +48,7 @@ export async function saveBoardSettings(
           id, board_name, board_description, default_locale, offline, offline_message,
           topics_per_page, posts_per_page, public_edit_history, new_member_approval_posts,
           ip_retention_days, attachment_allowed_types, reactions_affect_reputation, reputation_display,
-          reputation_label_scale
+          reputation_label_scale, api_key_rate_limit_per_minute, api_ip_rate_limit_per_minute
         )
         VALUES (
           1, ${input.boardName}, ${input.boardDescription}, ${input.defaultLocale},
@@ -56,7 +56,8 @@ export async function saveBoardSettings(
           ${input.postsPerPage}, ${input.publicEditHistory}, ${input.newMemberApprovalPosts},
           ${input.ipRetentionDays}, ${`{${input.attachmentAllowedTypes.join(",")}}`}::text[],
           ${input.reactionsAffectReputation}, ${input.reputationDisplay},
-          ${JSON.stringify(input.reputationLabelScale)}::jsonb
+          ${JSON.stringify(input.reputationLabelScale)}::jsonb,
+          ${input.apiKeyRateLimitPerMinute}, ${input.apiIpRateLimitPerMinute}
         )
         ON CONFLICT (id) DO UPDATE
         SET board_name = EXCLUDED.board_name,
@@ -72,7 +73,9 @@ export async function saveBoardSettings(
             attachment_allowed_types = EXCLUDED.attachment_allowed_types,
             reactions_affect_reputation = EXCLUDED.reactions_affect_reputation,
             reputation_display = EXCLUDED.reputation_display,
-            reputation_label_scale = EXCLUDED.reputation_label_scale
+            reputation_label_scale = EXCLUDED.reputation_label_scale,
+            api_key_rate_limit_per_minute = EXCLUDED.api_key_rate_limit_per_minute,
+            api_ip_rate_limit_per_minute = EXCLUDED.api_ip_rate_limit_per_minute
       `;
 
       const after = await readBoardSettings(tx);
@@ -108,6 +111,8 @@ export async function saveBoardSettings(
             reactionsAffectReputation: before.reactionsAffectReputation,
             reputationDisplay: before.reputationDisplay,
             reputationLabelScale: before.reputationLabelScale,
+            apiKeyRateLimitPerMinute: before.apiKeyRateLimitPerMinute,
+            apiIpRateLimitPerMinute: before.apiIpRateLimitPerMinute,
           },
           after: {
             boardName: after.boardName,
@@ -124,6 +129,8 @@ export async function saveBoardSettings(
             reactionsAffectReputation: after.reactionsAffectReputation,
             reputationDisplay: after.reputationDisplay,
             reputationLabelScale: after.reputationLabelScale,
+            apiKeyRateLimitPerMinute: after.apiKeyRateLimitPerMinute,
+            apiIpRateLimitPerMinute: after.apiIpRateLimitPerMinute,
           },
         },
       });

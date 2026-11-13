@@ -14,6 +14,8 @@ import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
+import { handleApiRequest } from "./api/router.ts";
+import { API_ROUTES } from "./api/routes.ts";
 import { saveAppearanceResponse, themeOptionsResponse } from "./appearance.ts";
 import {
   attachmentDeleteRoute,
@@ -133,6 +135,19 @@ await startService({
   port,
   async fetch(request) {
     const { pathname } = new URL(request.url);
+
+    // `/api/v1` authenticates from the Authorization header only; running it before the
+    // session middleware is what makes cookies invisible there (ADR 0016, 0018).
+    const apiResponse = await handleApiRequest(request, {
+      sql,
+      routes: API_ROUTES,
+      pepper: config.sessionSecret,
+      rateLimitSecret: config.sessionSecret,
+    });
+
+    if (apiResponse !== null) {
+      return apiResponse;
+    }
 
     if (pathname === "/internal/plugins/core" && request.method === "POST") {
       const brokerToken = Bun.env.PLUGIN_CORE_BROKER_TOKEN;

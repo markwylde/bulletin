@@ -2,10 +2,10 @@
 
 ## 1. API foundation
 
-- [ ] 1.1 `/api/v1` router with key-only auth, CORS without credentials, and schema-driven validation and OpenAPI generation; tests for the cookie-ignored and OpenAPI scenarios
-- [ ] 1.2 API keys (migrations, hashing, prefix lookup, expiry, revocation, last used) and service members; tests for the shown-once and revoked scenarios
-- [ ] 1.3 Scopes and principal enforcement through `can()`, with tests for the scope and principal-limit scenarios
-- [ ] 1.4 Rate limiting with headers and 429, with an integration test
+- [x] 1.1 `/api/v1` router with key-only auth, CORS without credentials, and schema-driven validation and OpenAPI generation; tests for the cookie-ignored and OpenAPI scenarios
+- [x] 1.2 API keys (migrations, hashing, prefix lookup, expiry, revocation, last used) and service members; tests for the shown-once and revoked scenarios
+- [x] 1.3 Scopes and principal enforcement through `can()`, with tests for the scope and principal-limit scenarios
+- [x] 1.4 Rate limiting with headers and 429, with an integration test
 - [ ] 1.5 View-model contracts for the API docs page (CDN-cacheable) and the personal API keys page (`private, no-store`), registered with the harness
 
 ## 2. Endpoints
