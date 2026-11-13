@@ -127,10 +127,22 @@ export async function publishPluginRegistry(
       : [{ kind: "setting", key: manifest.id, definition: manifest.settings }]),
   ];
 
+  // The local demo plugin is visible in the staff manager without a marketplace install.
+  await sql`
+    INSERT INTO core.plugins (
+      plugin_id, name, version, sdk_version, state, enabled, capabilities, timings
+    ) VALUES (
+      ${manifest.id}, ${manifest.name}, ${manifest.version}, ${manifest.sdkVersion},
+      'active', true, (${JSON.stringify(manifest.capabilities)}::text)::jsonb,
+      '{"activationMs":30}'::jsonb
+    )
+    ON CONFLICT (plugin_id) DO NOTHING
+  `;
+
   for (const entry of entries) {
     await sql`
       INSERT INTO core.plugin_registry (plugin_id, kind, key, definition)
-      VALUES (${manifest.id}, ${entry.kind}, ${entry.key}, ${JSON.stringify(entry.definition)}::jsonb)
+      VALUES (${manifest.id}, ${entry.kind}, ${entry.key}, (${JSON.stringify(entry.definition)}::text)::jsonb)
       ON CONFLICT (plugin_id, kind, key) DO UPDATE SET definition = EXCLUDED.definition
     `;
   }

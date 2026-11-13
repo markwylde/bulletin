@@ -10,6 +10,7 @@ import {
   isAcpPermission,
   isStaffScheme,
 } from "@bulletin/domain/permissions";
+import { fetchCatalog } from "@bulletin/domain/plugins";
 import type { StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { listAdminLog, writeAdminLog } from "./admin-log.ts";
@@ -81,6 +82,15 @@ import {
   listServiceMembersForStaff,
   mutateMultimodForStaff,
 } from "./multimod.ts";
+import {
+  disablePlugin,
+  extensionSections,
+  grantPluginAccess,
+  listPlugins,
+  pluginSettings,
+  savePluginSettings,
+  uninstallPlugin,
+} from "./plugin-manager.ts";
 import { deletePrefix, listPrefixesAdmin, type PrefixMutation, savePrefix } from "./prefixes.ts";
 import { listProfileFieldsForStaff, mutateProfileFieldForStaff } from "./profile-fields.ts";
 import { mutateMemberProfileForStaff, readMemberProfileForStaff } from "./profiles.ts";
@@ -444,6 +454,108 @@ async function emoticonsMutate(context: StaffRouteContext): Promise<Response> {
     },
     status,
   );
+}
+
+async function pluginsList(context: StaffRouteContext): Promise<Response> {
+  return json({ plugins: await listPlugins(context.sql) });
+}
+
+async function pluginsCatalog(): Promise<Response> {
+  try {
+    const marketplaceUrl = Bun.env.BULLETIN_MARKETPLACE_URL;
+
+    if (marketplaceUrl === undefined || marketplaceUrl === "") {
+      return json({ code: "marketplace_unavailable" }, 503);
+    }
+
+    const entries = await fetchCatalog({ baseUrl: marketplaceUrl });
+    return json({ packages: entries });
+  } catch {
+    return json({ code: "marketplace_unavailable" }, 503);
+  }
+}
+
+async function pluginsSettingsGet(context: StaffRouteContext): Promise<Response> {
+  const pluginId = context.url.searchParams.get("pluginId") ?? "";
+  const settings = await pluginSettings(context.sql, pluginId);
+  return settings === null ? json({ code: "not_found" }, 404) : json(settings);
+}
+
+async function pluginsSettingsSave(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+
+  if (!isRecord(body) || typeof body.pluginId !== "string" || !isRecord(body.values)) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const result = await savePluginSettings(
+    context.sql,
+    body.pluginId,
+    body.values as never,
+    context.session.memberId,
+  );
+
+  return result.ok
+    ? json({ ok: true })
+    : json({ code: "invalid_settings", errors: result.errors ?? {} }, 422);
+}
+
+async function pluginsDisable(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+
+  if (!isRecord(body) || typeof body.pluginId !== "string") {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  await disablePlugin(context.sql, body.pluginId, context.session.memberId);
+  return json({ ok: true });
+}
+
+async function pluginsUninstall(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const dataAction = isRecord(body) ? body.dataAction : undefined;
+
+  if (
+    !isRecord(body) ||
+    typeof body.pluginId !== "string" ||
+    (dataAction !== "keep" && dataAction !== "drop" && dataAction !== "erase")
+  ) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  await uninstallPlugin(context.sql, body.pluginId, context.session.memberId, dataAction);
+  return json({ ok: true });
+}
+
+async function pluginsGrant(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+
+  if (
+    !isRecord(body) ||
+    typeof body.pluginId !== "string" ||
+    !Array.isArray(body.forumIds) ||
+    body.forumIds.some((id) => typeof id !== "string")
+  ) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  await grantPluginAccess(
+    context.sql,
+    body.pluginId,
+    body.forumIds as string[],
+    context.session.memberId,
+  );
+  return json({ ok: true });
+}
+
+async function pluginsExtensions(context: StaffRouteContext): Promise<Response> {
+  const point = context.url.searchParams.get("point") ?? "";
+
+  if (point === "") {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  return json({ sections: await extensionSections(context.sql, point) });
 }
 
 async function flagList(context: StaffRouteContext): Promise<Response> {
@@ -1268,6 +1380,64 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/preferences/scheme",
     permission: "acp.access",
     handler: saveScheme,
+  },
+  {
+    id: "plugins.list",
+    method: "GET",
+    path: "/api/staff/plugins",
+    permission: "acp.plugins",
+    handler: pluginsList,
+  },
+  {
+    id: "plugins.catalog",
+    method: "GET",
+    path: "/api/staff/plugins/catalog",
+    permission: "acp.plugins",
+    handler: pluginsCatalog,
+  },
+  {
+    id: "plugins.settings.get",
+    method: "GET",
+    path: "/api/staff/plugins/settings",
+    permission: "acp.plugins",
+    handler: pluginsSettingsGet,
+  },
+  {
+    id: "plugins.settings.save",
+    method: "POST",
+    path: "/api/staff/plugins/settings",
+    permission: "acp.plugins",
+    handler: pluginsSettingsSave,
+  },
+  {
+    id: "plugins.disable",
+    method: "POST",
+    path: "/api/staff/plugins/disable",
+    permission: "acp.plugins",
+    handler: pluginsDisable,
+  },
+  {
+    id: "plugins.uninstall",
+    method: "POST",
+    path: "/api/staff/plugins/uninstall",
+    permission: "acp.plugins",
+    requiresStepUp: true,
+    handler: pluginsUninstall,
+  },
+  {
+    id: "plugins.grant",
+    method: "POST",
+    path: "/api/staff/plugins/grants",
+    permission: "acp.plugins",
+    requiresStepUp: true,
+    handler: pluginsGrant,
+  },
+  {
+    id: "plugins.extensions",
+    method: "GET",
+    path: "/api/staff/plugins/extensions",
+    permission: "acp.plugins",
+    handler: pluginsExtensions,
   },
   {
     id: "flags.list",

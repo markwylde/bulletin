@@ -36,8 +36,8 @@
 
 ## 5. Staff integration
 
-- [ ] 5.1 Plugin settings via the form DSL, extension-point sections, and fixed page types in the staff section registry; tests for validation and that core fields are untouched; E2E at 360
-- [ ] 5.2 Plugin manager screen (state, capabilities, grants, timings, errors, actions), with permission-denial tests
+- [x] 5.1 Plugin settings via the form DSL, extension-point sections, and fixed page types in the staff section registry; tests for validation and that core fields are untouched; E2E at 360
+- [x] 5.2 Plugin manager screen (state, capabilities, grants, timings, errors, actions), with permission-denial tests
 
 ## 6. Strings, samples and seed
 

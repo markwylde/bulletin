@@ -328,8 +328,8 @@ export function FormRenderer({
       <div
         key={field.id}
         className="form-field"
-        data-form-field={field.id}
         data-field-type={field.type}
+        data-form-field={field.id}
       >
         {field.type === "toggle" ? (
           <label className="form-toggle" htmlFor={inputId}>

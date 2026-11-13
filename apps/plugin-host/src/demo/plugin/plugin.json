@@ -60,5 +60,24 @@
     }
   },
   "forumActions": ["can_tip"],
-  "flags": ["tip_jar"]
+  "flags": ["tip_jar"],
+  "settings": {
+    "id": "sandbox-demo",
+    "extensionPoint": "acp.groups.settings",
+    "sections": [
+      {
+        "id": "main",
+        "titleKey": "plugin.demo.settings.title",
+        "fields": [
+          {
+            "id": "greeting",
+            "type": "text",
+            "labelKey": "plugin.demo.greeting",
+            "required": true,
+            "maxLength": 40
+          }
+        ]
+      }
+    ]
+  }
 }

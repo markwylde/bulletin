@@ -85,6 +85,7 @@ function SectionIcon({ icon }: { readonly icon: StaffIcon }) {
         </svg>
       );
     case "themes":
+    case "plugins":
       return (
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M4 4h7v7H4zm9 0h7v4h-7zM4 13h7v7H4zm9-3h7v10h-7z" />

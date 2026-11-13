@@ -14,7 +14,9 @@
     "./islands/reputation/store": "./src/islands/reputation/store.ts",
     "./islands/runtime": "./src/islands/runtime.ts",
     "./islands/server": "./src/islands/server.tsx",
-    "./table": "./src/table/index.ts"
+    "./table": "./src/table/index.ts",
+    "./forms/types": "./src/forms/types.ts",
+    "./forms/validate": "./src/forms/validate.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -31,6 +31,20 @@ start or a supervisor-side wall-clock kill schedules an exponential restart
 `PLUGIN_HOST_RESTART_MAX`); readiness is false while a restart is pending, and the status
 reports the attempt count and `restartAt`.
 
+## Staff integration (task 5)
+
+The staff app has a Plugins section (`acp.plugins`) showing each installed plugin's state,
+version, capabilities (with elevated-access markers), service principal, generation, timings,
+circuit-breaker failures and recent failed operations. Fixed page types render the plugin's
+settings form, a health data table and an error log; action buttons disable or uninstall with
+keep-data semantics.
+
+Plugin settings are JSON form definitions rendered by the core `FormRenderer` and validated
+server-side before they are stored in `core.plugin_settings`; core group settings are never
+written by a plugin form. Settings definitions that declare
+`extensionPoint: "acp.groups.settings"` are loaded into the group settings page below every
+core section. Sensitive actions (uninstall, elevated grants) require step-up authentication.
+
 ## Lifecycle (task 4)
 
 `packages/domain/src/plugins` owns the marketplace and lifecycle rules. The signed catalog is

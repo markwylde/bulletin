@@ -275,6 +275,15 @@ const PERMISSION_DEFINITIONS = [
     labelKey: "staff.groups.permission.acpThemes",
   },
   {
+    key: "acp.plugins",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "acp",
+    labelKey: "staff.groups.permission.acpPlugins",
+  },
+  {
     key: "acp.reactions",
     kind: "permission",
     type: "bool",

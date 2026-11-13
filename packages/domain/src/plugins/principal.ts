@@ -78,7 +78,7 @@ export async function grantElevatedAccess(
   await sql.begin(async (tx) => {
     await tx`
       UPDATE core.plugins
-      SET elevated_grants = ${JSON.stringify(grants)}::jsonb, updated_at = now()
+      SET elevated_grants = (${JSON.stringify(grants)}::text)::jsonb, updated_at = now()
       WHERE plugin_id = ${input.pluginId}
     `;
     await queueSystemAudit(tx, {

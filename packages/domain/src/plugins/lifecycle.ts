@@ -224,8 +224,8 @@ export class PluginLifecycle {
         bundle, signature, checksum
       ) VALUES (
         ${input.manifest.id}, ${input.manifest.version}, ${input.manifest.sdkVersion},
-        'installing', false, ${JSON.stringify(input.manifest.capabilities)}::jsonb,
-        ${JSON.stringify(personalData)}::jsonb, ${Buffer.from(input.bundle)},
+        'installing', false, (${JSON.stringify(input.manifest.capabilities)}::text)::jsonb,
+        (${JSON.stringify(personalData)}::text)::jsonb, ${Buffer.from(input.bundle)},
         ${input.signature}, ${input.checksum}
       )
       ON CONFLICT (plugin_id) DO UPDATE SET

@@ -5,6 +5,7 @@ import {
 } from "@bulletin/domain/permissions";
 import { useT } from "@bulletin/ui";
 import { useToast } from "@bulletin/ui/feedback";
+import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui/forms";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
@@ -110,6 +111,13 @@ export function GroupSettingsPage() {
     queryKey: ["staff", "groups", "settings"],
     queryFn: () => apiGet<GroupSettings>("/api/staff/groups/settings"),
   });
+  const extensionQuery = useQuery({
+    queryKey: ["staff", "plugins", "extensions", "acp.groups.settings"],
+    queryFn: () =>
+      apiGet<{ sections: readonly { pluginId: string; definition: FormDefinition }[] }>(
+        "/api/staff/plugins/extensions?point=acp.groups.settings",
+      ),
+  });
   const save = useMutation({
     mutationFn: (body: { groupId: string; key: string; value: unknown }) =>
       apiPost("/api/staff/groups", { action: "setting", ...body }),
@@ -199,6 +207,61 @@ export function GroupSettingsPage() {
             </section>
           ))
         : null}
+
+      {/* Plugin extension sections render below every core section; core fields are untouched. */}
+      {(extensionQuery.data?.sections ?? []).map((section) => (
+        <PluginExtensionForm
+          key={section.pluginId}
+          pluginId={section.pluginId}
+          definition={section.definition}
+        />
+      ))}
     </div>
+  );
+}
+
+function PluginExtensionForm({
+  pluginId,
+  definition,
+}: {
+  readonly pluginId: string;
+  readonly definition: FormDefinition;
+}) {
+  const t = useT();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ["staff", "plugins", pluginId, "settings"],
+    queryFn: () =>
+      apiGet<{ values: FormValues }>(`/api/staff/plugins/settings?pluginId=${pluginId}`),
+  });
+  const [values, setValues] = useState<FormValues>({});
+  const save = useMutation({
+    mutationFn: (next: FormValues) =>
+      apiPost("/api/staff/plugins/settings", { pluginId, values: next }),
+    onSuccess: () => {
+      toast.pushToast({ messageKey: "staff.plugins.saved", tone: "success" });
+      void queryClient.invalidateQueries({ queryKey: ["staff", "groups", "settings"] });
+    },
+    onError: () => toast.pushToast({ messageKey: "staff.plugins.saveFailed", tone: "error" }),
+  });
+
+  useEffect(() => {
+    if (query.data !== undefined) {
+      setValues(query.data.values);
+    }
+  }, [query.data]);
+
+  return (
+    <section className="admin-panel" data-plugin-setting-section={pluginId}>
+      <FormRenderer
+        definition={definition}
+        values={values}
+        onChange={setValues}
+        onSubmit={(next) => save.mutate(next)}
+        submitting={save.isPending}
+      />
+      <p className="bl-muted">{t("staff.plugins.extension.note")}</p>
+    </section>
   );
 }

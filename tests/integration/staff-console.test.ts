@@ -338,7 +338,7 @@ integrationDescribe("staff API permission guard", () => {
         };
 
         const before = await readSession();
-        expect(before.permissions).toEqual(["acp.access", "acp.members"]);
+        expect(before.permissions).toEqual(["acp.access", "acp.members", "acp.plugins"]);
         expect(before.scheme).toBe("system");
 
         const saved = await callRoute(api, route("preferences.scheme"), session, {
@@ -1191,6 +1191,7 @@ integrationDescribe("ACP permission catalog", () => {
       ).toEqual([
         "acp.access",
         "acp.members",
+        "acp.plugins",
         "bans.ip",
         "members.ban",
         "members.view_ips",

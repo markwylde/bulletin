@@ -25,6 +25,7 @@ x-app-environment: &app-environment
   PLUGIN_INTERNAL_TOKEN: bulletin-development-only-internal-token
   PLUGIN_CORE_BROKER_TOKEN: bulletin-development-only-broker-secret
   PLUGIN_CORE_API_URL: "http://user-api:3001"
+  BULLETIN_MARKETPLACE_URL: "http://marketplace:4007"
   # Local-only defaults (ADR 0002). packages/config rejects them in production.
   SESSION_SECRET: bulletin-development-only-session-secret
   SEED: "42"

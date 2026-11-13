@@ -14,7 +14,8 @@ export type StaffIcon =
   | "members"
   | "moderators"
   | "promotions"
-  | "themes";
+  | "themes"
+  | "plugins";
 
 /** Section metadata only; route components are attached in `section-routes.tsx`. */
 export interface StaffSection {
@@ -243,6 +244,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     permission: "acp.reactions",
     icon: "settings",
     labelKey: "staff.nav.reactions",
+  },
+  {
+    id: "plugins",
+    path: "/plugins",
+    navGroup: "configuration",
+    permission: "acp.plugins",
+    icon: "plugins",
+    labelKey: "staff.nav.plugins",
   },
   {
     id: "themes",

@@ -28,6 +28,13 @@ describe("staff section registry", () => {
     ).toEqual(["dashboard", "boardSettings", "settings"]);
   });
 
+  test("shows the plugin manager only with acp.plugins", () => {
+    expect(visibleSections(["acp.access"]).map((section) => section.id)).not.toContain("plugins");
+    expect(visibleSections(["acp.access", "acp.plugins"]).map((section) => section.id)).toContain(
+      "plugins",
+    );
+  });
+
   test("guards a section on its own permission", () => {
     expect(canAccessSection(["acp.access"], settingsSection)).toBe(false);
     expect(canAccessSection(["acp.access", "acp.settings"], settingsSection)).toBe(true);
