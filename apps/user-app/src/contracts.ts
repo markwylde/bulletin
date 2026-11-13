@@ -424,6 +424,35 @@ export const searchNewContract = defineContract({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/**
+ * The API pages are declared before their route files land (tasks 2.3 and 4.1): the
+ * route-contract CI check only requires a registry entry once a page exists.
+ *
+ * The public API documentation (task 2.3). It renders the generated OpenAPI document and is
+ * the same for every guest, so the CDN may cache it; a member sees the same HTML.
+ */
+export const apiDocsContract = defineContract({
+  route: "/api-docs",
+  templates: { page: "api-docs", regions: ["header", "breadcrumbs", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: true,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+/** The member's own API keys (task 4.1): personal metadata, never shared or stored. */
+export const apiKeysContract = defineContract<AccountViewModel>({
+  route: "/account/api-keys",
+  templates: {
+    page: "account-api-keys",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [homeContract.route]: homeContract,
   [loginContract.route]: loginContract,
