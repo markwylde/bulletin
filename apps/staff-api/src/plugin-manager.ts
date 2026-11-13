@@ -1,5 +1,10 @@
 import { queueSystemAudit } from "@bulletin/domain/audit";
-import { grantElevatedAccess, reviewCapabilities } from "@bulletin/domain/plugins";
+import {
+  advancePluginsGeneration,
+  advancePluginsGenerationInTransaction,
+  grantElevatedAccess,
+  reviewCapabilities,
+} from "@bulletin/domain/plugins";
 import type { FormDefinition, FormValues } from "@bulletin/ui/forms/types";
 import { validateForm } from "@bulletin/ui/forms/validate";
 import type { SQL } from "bun";
@@ -26,6 +31,13 @@ export interface PluginPage {
   readonly definition: FormDefinition | null;
 }
 
+export interface DeclaredPluginPage {
+  readonly id: string;
+  readonly kind: string;
+  readonly titleKey: string;
+  readonly definition: Readonly<Record<string, unknown>>;
+}
+
 export interface StaffPlugin {
   readonly id: string;
   readonly name: string;
@@ -43,6 +55,7 @@ export interface StaffPlugin {
   readonly breaker: readonly BreakerRow[];
   readonly errors: readonly PluginOperationRow[];
   readonly pages: readonly PluginPage[];
+  readonly declaredPages: readonly DeclaredPluginPage[];
 }
 
 interface PluginRow {
@@ -146,7 +159,7 @@ async function settingsDefinition(sql: SQL, pluginId: string): Promise<FormDefin
 }
 
 export async function listPlugins(sql: SQL): Promise<readonly StaffPlugin[]> {
-  const [plugins, breakers, errors] = await Promise.all([
+  const [plugins, breakers, errors, declared] = await Promise.all([
     sql`
       SELECT plugin_id, name, version, state, enabled, generation, capabilities,
              service_principal_group, elevated_grants, timings, last_error
@@ -175,6 +188,11 @@ export async function listPlugins(sql: SQL): Promise<readonly StaffPlugin[]> {
         created_at: string;
       }>
     >,
+    sql`
+      SELECT plugin_id, key, definition FROM core.plugin_registry
+      WHERE kind = 'page'
+      ORDER BY plugin_id, key
+    ` as Promise<Array<{ plugin_id: string; key: string; definition: unknown }>>,
   ]);
 
   const result: StaffPlugin[] = [];
@@ -239,6 +257,25 @@ export async function listPlugins(sql: SQL): Promise<readonly StaffPlugin[]> {
           createdAt: entry.created_at,
         })),
       pages,
+      declaredPages: declared
+        .filter((page) => page.plugin_id === row.plugin_id)
+        .map((page) => {
+          const definition =
+            typeof page.definition === "object" &&
+            page.definition !== null &&
+            !Array.isArray(page.definition)
+              ? (page.definition as Record<string, unknown>)
+              : {};
+          return {
+            id: page.key,
+            kind: typeof definition.kind === "string" ? definition.kind : "table",
+            titleKey:
+              typeof definition.titleKey === "string"
+                ? definition.titleKey
+                : "staff.plugins.page.declared",
+            definition,
+          };
+        }),
     });
   }
 
@@ -283,6 +320,7 @@ export async function savePluginSettings(
       targetType: "plugin",
       summary: { pluginId, actorId, keys: Object.keys(values) },
     });
+    await advancePluginsGenerationInTransaction(tx);
   });
 
   return { ok: true };
@@ -347,17 +385,18 @@ export async function extensionSections(
 }
 
 async function bumpGeneration(sql: SQL): Promise<void> {
-  await sql`
-    UPDATE core.plugin_generation
-    SET generation = generation + 1, updated_at = now()
-    WHERE id = true
-  `;
+  await advancePluginsGeneration(sql);
 }
 
 export async function disablePlugin(sql: SQL, pluginId: string, actorId: string): Promise<void> {
   await sql`
     UPDATE core.plugins SET state = 'disabled', enabled = false, updated_at = now()
     WHERE plugin_id = ${pluginId}
+  `;
+  await sql`
+    DELETE FROM core.hook_fragments
+    WHERE plugin_id = ${pluginId}
+      AND generation = (SELECT generation FROM core.plugin_generation WHERE id = true)
   `;
   await bumpGeneration(sql);
   await queueSystemAudit(sql, {
@@ -374,6 +413,16 @@ export async function uninstallPlugin(
   dataAction: "keep" | "drop" | "erase",
 ): Promise<void> {
   await disablePlugin(sql, pluginId, actorId);
+
+  if (dataAction === "drop") {
+    const schema = `plugin_${pluginId.replaceAll("-", "_")}`;
+    const owner = `${schema}_owner`;
+    await sql.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await sql.unsafe(`DROP OWNED BY "${schema}", "${owner}"`);
+    await sql.unsafe(`DROP ROLE IF EXISTS "${schema}"`);
+    await sql.unsafe(`DROP ROLE IF EXISTS "${owner}"`);
+  }
+
   await sql`DELETE FROM core.plugin_registry WHERE plugin_id = ${pluginId}`;
   await sql`DELETE FROM core.plugin_settings WHERE plugin_id = ${pluginId}`;
   await sql`DELETE FROM core.plugin_jobs WHERE plugin_id = ${pluginId}`;

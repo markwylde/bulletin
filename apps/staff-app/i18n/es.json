@@ -698,6 +698,8 @@
   "staff.plugins.health.hook": "Enganche",
   "staff.plugins.intro": "Complementos instalados, sus capacidades y su estado.",
   "staff.plugins.loading": "Cargando…",
+  "staff.plugins.page.declared": "Página declarada del complemento",
+  "staff.plugins.page.empty": "Sin filas",
   "staff.plugins.saveFailed": "No se pudieron guardar los ajustes",
   "staff.plugins.saved": "Ajustes guardados",
   "staff.plugins.tab.errors": "Errores",

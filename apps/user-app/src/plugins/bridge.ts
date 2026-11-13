@@ -123,7 +123,13 @@ async function mount(element: AppElement): Promise<void> {
 
     frame.contentWindow?.postMessage({ type: BRIDGE_INIT, token }, "*", [channel.port2]);
     channel.port1.onmessage = (event) => {
-      void instance.handle(event.data);
+      void instance.handle(event.data).then((result) => {
+        if (result !== undefined) {
+          // Replies travel back on the same private port; the guest's read()/request()
+          // promises resolve only when this response arrives.
+          channel.port1.postMessage(result);
+        }
+      });
     };
   });
 

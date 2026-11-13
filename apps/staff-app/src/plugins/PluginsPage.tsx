@@ -52,6 +52,8 @@ function tabLabel(t: ReturnType<typeof useT>, tab: PluginTab): string {
       return t("staff.plugins.tab.health");
     case "errors":
       return t("staff.plugins.tab.errors");
+    default:
+      return tab.slice("page:".length);
   }
 }
 
@@ -74,6 +76,13 @@ interface PluginError {
   readonly createdAt: string;
 }
 
+interface DeclaredPage {
+  readonly id: string;
+  readonly kind: string;
+  readonly titleKey: string;
+  readonly definition: Readonly<Record<string, unknown>>;
+}
+
 interface StaffPlugin {
   readonly id: string;
   readonly name: string;
@@ -90,6 +99,7 @@ interface StaffPlugin {
   readonly timings: Readonly<Record<string, number>>;
   readonly breaker: readonly BreakerRow[];
   readonly errors: readonly PluginError[];
+  readonly declaredPages: readonly DeclaredPage[];
 }
 
 interface PluginSettings {
@@ -97,7 +107,53 @@ interface PluginSettings {
   readonly values: FormValues;
 }
 
-type PluginTab = "settings" | "health" | "errors";
+type PluginTab = "settings" | "health" | "errors" | `page:${string}`;
+
+function DeclaredPluginPageView({ page }: { readonly page: DeclaredPage }) {
+  const definition = page.definition;
+  const columns = Array.isArray(definition.columns)
+    ? definition.columns.filter(
+        (column): column is { id: string; labelKey: string } =>
+          typeof column === "object" &&
+          column !== null &&
+          typeof (column as { id?: unknown }).id === "string" &&
+          typeof (column as { labelKey?: unknown }).labelKey === "string",
+      )
+    : [];
+  const rows = Array.isArray(definition.rows)
+    ? definition.rows.filter(
+        (row): row is Record<string, string> => typeof row === "object" && row !== null,
+      )
+    : [];
+
+  if (page.kind === "table") {
+    return (
+      <div data-plugin-declared-page={page.id} data-plugin-page-type="table">
+        <DataTable<Record<string, string>>
+          rows={rows}
+          columns={columns.map((column) => ({
+            id: column.id,
+            headerKey: column.labelKey,
+            cell: (row) => row[column.id] ?? "",
+          }))}
+          getRowId={(row) => columns.map((column) => row[column.id] ?? "").join(":")}
+          emptyKey="staff.plugins.page.empty"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div data-plugin-declared-page={page.id} data-plugin-page-type={page.kind}>
+      <ol className="admin-list">
+        {rows.map((row) => {
+          const text = Object.values(row).join(" · ");
+          return <li key={text}>{text}</li>;
+        })}
+      </ol>
+    </div>
+  );
+}
 
 export function PluginsPage() {
   const t = useT();
@@ -259,7 +315,14 @@ export function PluginsPage() {
           <header className="admin-page__header">
             <h2>{active.name}</h2>
             <div className="admin-actions" role="tablist">
-              {(["settings", "health", "errors"] as const).map((value) => (
+              {(
+                [
+                  "settings",
+                  "health",
+                  "errors",
+                  ...active.declaredPages.map((page) => `page:${page.id}` as const),
+                ] as const
+              ).map((value) => (
                 <button
                   key={value}
                   type="button"
@@ -269,7 +332,16 @@ export function PluginsPage() {
                   data-plugin-tab={value}
                   onClick={() => setTab(value)}
                 >
-                  {tabLabel(t, value)}
+                  {value.startsWith("page:")
+                    ? (() => {
+                        const titleKey = active.declaredPages.find(
+                          (page) => `page:${page.id}` === value,
+                        )?.titleKey;
+                        return titleKey === undefined || titleKey === ""
+                          ? t("staff.plugins.page.declared")
+                          : t(titleKey);
+                      })()
+                    : tabLabel(t, value)}
                 </button>
               ))}
             </div>
@@ -298,6 +370,12 @@ export function PluginsPage() {
                 emptyKey="staff.plugins.health.empty"
               />
             </div>
+          ) : null}
+
+          {tab.startsWith("page:") ? (
+            <DeclaredPluginPageView
+              page={active.declaredPages.find((page) => `page:${page.id}` === tab) as DeclaredPage}
+            />
           ) : null}
 
           {tab === "errors" ? (

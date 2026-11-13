@@ -117,6 +117,26 @@ describe("plugin event subscriber", () => {
     ]);
   });
 
+  test("a 200 response listing a plugin delivery failure still retries", async () => {
+    const queue = fakeQueue();
+    const jobs = await createPluginEventJobs({
+      sql: (async () => [{ plugin_id: "welcome", event_type: "topic.created" }]) as never,
+      queue,
+      hostUrl: "http://plugin-host:3004",
+      token: "secret",
+      fetch: async () => Response.json({ delivered: 0, failures: ["welcome"] }),
+    });
+    await jobs.start();
+
+    await expect(
+      queue.run(pluginEventQueue("welcome"), {
+        eventId: "99",
+        type: "topic.created",
+        payloadIds: {},
+      }),
+    ).rejects.toThrow("welcome");
+  });
+
   test("a failed delivery throws so pg-boss retries that plugin only", async () => {
     const queue = fakeQueue();
     const jobs = await createPluginEventJobs({

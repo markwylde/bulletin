@@ -90,7 +90,11 @@ export interface PluginEventJobs {
 
 async function readSubscriptions(sql: SQL): Promise<readonly PluginSubscription[]> {
   const rows = (await sql`
-    SELECT plugin_id, event_type FROM core.plugin_event_subscriptions
+    SELECT s.plugin_id, s.event_type
+    FROM core.plugin_event_subscriptions s
+    JOIN core.plugins p ON p.plugin_id = s.plugin_id
+    JOIN core.feature_flags f ON f.key = 'plugins'
+    WHERE p.enabled AND p.state = 'active' AND f.default_value
   `) as Array<{ plugin_id: string; event_type: string }>;
 
   return rows.map((row) => ({ pluginId: row.plugin_id, eventType: row.event_type }));
@@ -127,6 +131,16 @@ export async function createPluginEventJobs(
 
             if (!response.ok) {
               throw new Error(`Plugin event delivery failed: ${response.status}`);
+            }
+
+            const result = (await response.json().catch(() => null)) as {
+              failures?: unknown;
+            } | null;
+
+            if (Array.isArray(result?.failures) && result.failures.includes(pluginId)) {
+              // The host answered 200 but retained a per-plugin failure: leave the pg-boss
+              // job un-acked so only that plugin's queue retries.
+              throw new Error(`Plugin event delivery failed for ${pluginId}`);
             }
           }
         });

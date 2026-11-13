@@ -45,4 +45,28 @@ describe("plugin write filters", () => {
 
     await expect(client.filter(INPUT)).resolves.toEqual({ content: "teh cat" });
   });
+
+  test("collects content-extension HTML from plugin-host", async () => {
+    const client = createPluginWriteClient({
+      url: "http://plugin-host:3004",
+      fetch: async () => Response.json({ html: '<span class="tip">5</span>' }),
+    });
+
+    await expect(client.extend("hello")).resolves.toEqual(['<span class="tip">5</span>']);
+  });
+
+  test("fail-closed policy rejects when plugin-host is unavailable", async () => {
+    const client = createPluginWriteClient({
+      url: "http://plugin-host:3004",
+      vetoFailMode: "closed",
+      fetch: async () => {
+        throw new Error("down");
+      },
+    });
+
+    await expect(client.filter(INPUT)).resolves.toEqual({
+      content: "teh cat",
+      veto: { reasonKey: "plugin.veto.unavailable", pluginId: "plugin-host" },
+    });
+  });
 });

@@ -84,6 +84,7 @@
         "@bulletin/i18n": "workspace:*",
         "@bulletin/plugin-sdk": "workspace:*",
         "@bulletin/storage": "workspace:*",
+        "@bulletin/templates": "workspace:*",
       },
     },
     "apps/user-app": {

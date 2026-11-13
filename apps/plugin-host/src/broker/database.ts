@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { Logger } from "@bulletin/config";
 import { SQL } from "bun";
 import type { PluginConnectionManager } from "./connections.ts";
@@ -28,6 +29,9 @@ export interface PluginDatabaseOptions {
   readonly migratorUrl?: string;
   /** Statement deadline enforced by cancelling from the broker's control connection. */
   readonly statementTimeoutMs?: number;
+  /** Broker-held runtime password; generated per open when omitted (production credentials). */
+  readonly runtimePassword?: string;
+  readonly migratorPassword?: string;
   /** Shared lazy connection budget; when set, no per-plugin pool is opened at provision time. */
   readonly connections?: PluginConnectionManager;
 }
@@ -136,6 +140,8 @@ export class PluginDatabase {
       });
     }
 
+    const runtimePassword = options.runtimePassword ?? randomBytes(24).toString("base64url");
+    const migratorPassword = options.migratorPassword ?? randomBytes(24).toString("base64url");
     const admin = new SQL(options.adminUrl, { max: 1, connectionTimeout: 5 });
     let runtime: SQL | undefined;
     let control: SQL | undefined;
@@ -167,7 +173,10 @@ export class PluginDatabase {
         ALTER ROLE ${quote(identifiers.runtimeRole)}
           SET search_path = ${quote(identifiers.schema)};
         ALTER ROLE ${quote("plugin_migrator")}
-          LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT;
+          LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOINHERIT
+          PASSWORD '${migratorPassword}';
+        ALTER ROLE ${quote(identifiers.runtimeRole)}
+          PASSWORD '${runtimePassword}';
       `);
 
       await admin.unsafe(`
@@ -184,10 +193,10 @@ export class PluginDatabase {
       await admin.unsafe(`GRANT ${quote(identifiers.ownerRole)} TO ${quote("plugin_migrator")}`);
 
       if (options.migrations.length > 0) {
-        migrator = new SQL(runtimeUrl(options.migratorUrl ?? options.adminUrl, "plugin_migrator"), {
-          max: 1,
-          connectionTimeout: 5,
-        });
+        migrator = new SQL(
+          runtimeUrl(options.migratorUrl ?? options.adminUrl, "plugin_migrator", migratorPassword),
+          { max: 1, connectionTimeout: 5 },
+        );
         await migrator.begin(async (transaction) => {
           await transaction.unsafe(`SET LOCAL ROLE ${quote(identifiers.ownerRole)}`);
           await transaction.unsafe(`SET LOCAL search_path = ${quote(identifiers.schema)}`);
@@ -244,7 +253,7 @@ export class PluginDatabase {
       const functions = new Set(functionRows.map((row) => row.name));
 
       if (options.connections === undefined) {
-        runtime = new SQL(runtimeUrl(options.adminUrl, identifiers.runtimeRole), {
+        runtime = new SQL(runtimeUrl(options.adminUrl, identifiers.runtimeRole, runtimePassword), {
           max: 2,
           connectionTimeout: 5,
         });
@@ -366,12 +375,10 @@ export class PluginDatabase {
   }
 }
 
-function runtimeUrl(adminUrl: string, role: string): string {
+function runtimeUrl(adminUrl: string, role: string, password?: string): string {
   const url = new URL(adminUrl);
   url.username = role;
-  // Local development uses trust authentication. `plugin-platform` supplies broker-held
-  // credentials for production.
-  url.password = "";
+  url.password = password ?? "";
   return url.toString();
 }
 

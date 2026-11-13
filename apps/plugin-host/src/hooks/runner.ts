@@ -69,14 +69,30 @@ export class PluginHookRunner {
   readonly #registry: PluginHookRegistry;
   readonly #logger: Logger;
 
+  readonly #isActive: (pluginId: string) => Promise<boolean>;
+
   constructor(options: {
     readonly transport: HookTransport;
     readonly registry: PluginHookRegistry;
     readonly logger: Logger;
+    /** Runtime state/flag check; disabled plugins never receive a dispatch. */
+    readonly isActive?: (pluginId: string) => Promise<boolean>;
+    readonly onFailure?: (pluginId: string, hook: string, error: unknown) => void;
+    readonly onSuccess?: (pluginId: string, hook: string) => void;
   }) {
     this.#transport = options.transport;
     this.#registry = options.registry;
     this.#logger = options.logger;
+    this.#isActive = options.isActive ?? (async () => true);
+    this.#onFailure = options.onFailure;
+    this.#onSuccess = options.onSuccess;
+  }
+
+  readonly #onFailure: ((pluginId: string, hook: string, error: unknown) => void) | undefined;
+  readonly #onSuccess: ((pluginId: string, hook: string) => void) | undefined;
+
+  async #active(pluginId: string): Promise<boolean> {
+    return this.#isActive(pluginId).catch(() => false);
   }
 
   async enrich(input: EnrichInput): Promise<Enriched> {
@@ -87,6 +103,10 @@ export class PluginHookRunner {
 
     await Promise.all(
       this.#registry.enrichers(input.hook).map(async (entry) => {
+        if (!(await this.#active(entry.pluginId))) {
+          return;
+        }
+
         try {
           const result = await this.#transport.request<{
             fields?: unknown;
@@ -120,7 +140,9 @@ export class PluginHookRunner {
           for (const dep of entry.deps ?? []) {
             tags.add(pluginTag(entry.pluginId, dep));
           }
+          this.#onSuccess?.(entry.pluginId, input.hook);
         } catch (error) {
+          this.#onFailure?.(entry.pluginId, input.hook, error);
           failures.push(entry.pluginId);
           this.#logger.warn("plugin.enricher_failed", {
             pluginId: entry.pluginId,
@@ -144,6 +166,10 @@ export class PluginHookRunner {
     let content = input.content;
 
     for (const entry of filters) {
+      if (!(await this.#active(entry.pluginId))) {
+        continue;
+      }
+
       const left = remaining();
 
       if (left <= 0) {
@@ -166,7 +192,9 @@ export class PluginHookRunner {
         if (isRecord(result) && typeof result.content === "string") {
           content = result.content;
         }
+        this.#onSuccess?.(entry.pluginId, input.hook);
       } catch (error) {
+        this.#onFailure?.(entry.pluginId, input.hook, error);
         failures.push(entry.pluginId);
         this.#logger.warn("plugin.filter_failed", {
           pluginId: entry.pluginId,
@@ -177,6 +205,10 @@ export class PluginHookRunner {
     }
 
     for (const entry of this.#registry.vetoes(input.hook)) {
+      if (!(await this.#active(entry.pluginId))) {
+        continue;
+      }
+
       const outcome = await this.#veto(
         entry.pluginId,
         entry.failMode ?? "open",
@@ -225,6 +257,8 @@ export class PluginHookRunner {
         timeoutMs,
       );
 
+      this.#onSuccess?.(pluginId, input.hook);
+
       if (isRecord(result) && result.allow === false) {
         return {
           allow: false,
@@ -235,6 +269,7 @@ export class PluginHookRunner {
 
       return { allow: true, pluginId };
     } catch (error) {
+      this.#onFailure?.(pluginId, input.hook, error);
       this.#logger.warn("plugin.veto_failed", {
         pluginId,
         hook: input.hook,

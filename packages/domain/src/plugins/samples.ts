@@ -26,6 +26,12 @@ export interface SamplePlugin {
   }[];
   readonly personalData: readonly { readonly table: string; readonly memberColumn: string }[];
   readonly settings: Readonly<Record<string, unknown>> | null;
+  readonly adminPages?: readonly {
+    readonly id: string;
+    readonly kind: "table" | "log" | "form";
+    readonly titleKey: string;
+    readonly definition: Readonly<Record<string, unknown>>;
+  }[];
 }
 
 const SETTINGS = (
@@ -115,6 +121,20 @@ export const SAMPLE_PLUGINS: readonly SamplePlugin[] = [
       },
     ],
     personalData: [{ table: "tips", memberColumn: "member_id" }],
+    adminPages: [
+      {
+        id: "recent-tips",
+        kind: "table",
+        titleKey: "plugin.tips.page.recent",
+        definition: {
+          columns: [
+            { id: "postId", labelKey: "plugin.tips.column.post" },
+            { id: "amount", labelKey: "plugin.tips.column.amount" },
+          ],
+          rows: [{ postId: "1", amount: "5.00" }],
+        },
+      },
+    ],
     settings: SETTINGS("tip-jar", "plugin.tips.settings.title", [
       {
         id: "currency",

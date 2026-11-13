@@ -93,6 +93,16 @@ export async function publishPluginFragments(
     WHERE id = true
   `;
 
+  // Carry every other active plugin's fragments into the new generation before adding the
+  // changed plugin's rows; otherwise bumping one plugin hides unrelated hooks.
+  await sql`
+    INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
+    SELECT ${next}, name, body, plugin_id, kind
+    FROM core.hook_fragments
+    WHERE generation = ${generation}
+    ON CONFLICT DO NOTHING
+  `;
+
   for (const fragment of wanted) {
     await sql`
       INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
@@ -103,8 +113,7 @@ export async function publishPluginFragments(
   }
 
   await sql`
-    DELETE FROM core.hook_fragments
-    WHERE plugin_id = ${manifest.id} AND generation < ${next}
+    DELETE FROM core.hook_fragments WHERE generation < ${next}
   `;
 
   logger.info("plugin.fragments_published", {

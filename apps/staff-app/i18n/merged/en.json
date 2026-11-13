@@ -736,6 +736,8 @@
   "staff.plugins.health.hook": "Hook",
   "staff.plugins.intro": "Installed plugins, their capabilities and health.",
   "staff.plugins.loading": "Loading…",
+  "staff.plugins.page.declared": "Declared plugin page",
+  "staff.plugins.page.empty": "No rows",
   "staff.plugins.saved": "Settings saved",
   "staff.plugins.saveFailed": "Settings could not be saved",
   "staff.plugins.tab.errors": "Errors",

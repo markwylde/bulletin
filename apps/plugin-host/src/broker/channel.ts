@@ -49,6 +49,8 @@ export interface BrokerChannelOptions {
   readonly maxQueuedBytes?: number;
   /** Unwritten response bytes queued for a slow reader. */
   readonly maxOutboundBytes?: number;
+  /** Host-selected identity; a sandbox may never claim another plugin's id. */
+  readonly expectedPluginId?: string;
 }
 
 const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}$/;
@@ -122,6 +124,7 @@ export class BrokerChannel {
   readonly #maxPendingRequests: number;
   readonly #maxQueuedBytes: number;
   readonly #maxOutboundBytes: number;
+  readonly #expectedPluginId: string | undefined;
   #listener: { stop(closeActiveConnections?: boolean): void } | undefined;
   readonly #connections = new WeakMap<BrokerSocket, Connection>();
   readonly #sockets = new Set<BrokerSocket>();
@@ -156,6 +159,7 @@ export class BrokerChannel {
       options.maxOutboundBytes ?? DEFAULT_MAX_OUTBOUND_BYTES,
       "maxOutboundBytes",
     );
+    this.#expectedPluginId = options.expectedPluginId;
   }
 
   get listening(): boolean {
@@ -457,6 +461,27 @@ export class BrokerChannel {
         this.#send(socket, connection, failure(id, JSON_RPC_ERRORS.invalidParams, "Invalid hello"));
       }
       this.#fail(new Error("Sandbox sent an invalid broker handshake"));
+      return;
+    }
+
+    if (
+      (this.#expectedPluginId !== undefined && hello.pluginId !== this.#expectedPluginId) ||
+      (this.#active !== undefined && this.#active !== socket) ||
+      (this.#hello === undefined && connection.pluginId !== null)
+    ) {
+      this.#logger.warn("broker.identity_rejected", {
+        announced: hello.pluginId,
+        expected: this.#expectedPluginId,
+      });
+      if (id !== null) {
+        this.#send(
+          socket,
+          connection,
+          failure(id, JSON_RPC_ERRORS.denied, "Plugin identity is not accepted"),
+        );
+      }
+      this.#fail(new Error("Sandbox announced an unexpected plugin identity"));
+      socket.end();
       return;
     }
 

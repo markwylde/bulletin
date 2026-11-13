@@ -286,6 +286,31 @@ integrationDescribe("plugin lifecycle", () => {
     );
   }, 20_000);
 
+  test("a later interrupted upgrade never reuses a previous upgrade's migration step", async () => {
+    await withTestDatabase(
+      { adminUrl: adminUrl as string, prefix: "plugin_resume_target" },
+      async (db) => {
+        const runtime = new FakeRuntime();
+        const service = new PluginLifecycle({ sql: db.sql, runtime });
+        await service.install(installInput());
+        await service.upgrade("welcome-bot", installInput(manifest({ version: "2.0.0" })));
+
+        await db.sql`
+        UPDATE core.plugins SET state = 'upgrading', enabled = false WHERE plugin_id = 'welcome-bot'
+      `;
+        await db.sql`
+        INSERT INTO core.plugin_operations (plugin_id, kind, step, state, target_version)
+        VALUES ('welcome-bot', 'upgrade', 'migrate', 'completed', '2.0.0')
+      `;
+        runtime.calls.length = 0;
+
+        const resumed = await service.resume("welcome-bot", manifest({ version: "3.0.0" }));
+        expect(resumed).toMatchObject({ state: "active", version: "3.0.0" });
+        expect(runtime.calls).toContain("migrate:3.0.0");
+      },
+    );
+  }, 30_000);
+
   test("GDPR uses the active sandbox or a maintenance sandbox and keeps failures open", async () => {
     await withTestDatabase({ adminUrl: adminUrl as string, prefix: "plugin_gdpr" }, async (db) => {
       const runtime = new FakeRuntime();

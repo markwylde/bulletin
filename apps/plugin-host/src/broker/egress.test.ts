@@ -16,7 +16,11 @@ const PUBLIC_CDN = [{ address: "2606:4700:4700::1111", family: 6 }] as const;
 
 interface Harness {
   readonly proxy: EgressProxy;
-  readonly calls: Array<{ readonly url: string; readonly init: RequestInit }>;
+  readonly calls: Array<{
+    readonly url: string;
+    readonly init: RequestInit;
+    readonly addresses: readonly DnsAddress[] | undefined;
+  }>;
 }
 
 function createHarness(options: {
@@ -27,10 +31,14 @@ function createHarness(options: {
   readonly maxRequestBytes?: number;
   readonly maxResponseBytes?: number;
 }): Harness {
-  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const calls: Array<{
+    url: string;
+    init: RequestInit;
+    addresses: readonly DnsAddress[] | undefined;
+  }> = [];
   const lookup: EgressLookup = async (host) => options.addresses?.[host] ?? PUBLIC;
-  const fetchImpl: EgressFetch = async (url, init) => {
-    calls.push({ url, init });
+  const fetchImpl: EgressFetch = async (url, init, addresses) => {
+    calls.push({ url, init, addresses });
 
     if (options.respond !== undefined) {
       return options.respond(url, init);
@@ -368,6 +376,28 @@ describe("egress request and response limits", () => {
       accept: "text/plain",
       "x-request-id": "123",
     });
+  });
+
+  test("pins the validated address across a second DNS answer", async () => {
+    let lookups = 0;
+    let pinned: readonly DnsAddress[] | undefined;
+    const proxy = new EgressProxy({
+      allowedHosts: ["example.com"],
+      logger,
+      lookup: async () => {
+        lookups += 1;
+        return lookups === 1 ? PUBLIC : [{ address: "127.0.0.1", family: 4 }];
+      },
+      fetch: async (_url, _init, addresses) => {
+        pinned = addresses;
+        return new Response("ok");
+      },
+    });
+
+    await proxy.request({ url: "https://example.com/" });
+
+    expect(lookups).toBe(1);
+    expect(pinned).toEqual(PUBLIC);
   });
 
   test("maps fetch failures to a denial", async () => {

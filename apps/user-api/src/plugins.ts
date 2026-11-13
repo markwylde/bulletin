@@ -25,6 +25,8 @@ export interface PluginWriteResult {
 
 export interface PluginWriteClient {
   filter(input: PluginWriteInput): Promise<PluginWriteResult>;
+  /** HTML from every plugin content extension, still to be core-sanitised at render time. */
+  extend(content: string): Promise<readonly string[]>;
 }
 
 export interface PluginWriteClientOptions {
@@ -33,6 +35,8 @@ export interface PluginWriteClientOptions {
   readonly fetch?: (url: string, init: RequestInit) => Promise<Response>;
   readonly timeoutMs?: number;
   readonly logger?: Logger;
+  /** Policy when the host cannot answer; fail-closed preserves the admin's veto choice. */
+  readonly vetoFailMode?: "open" | "closed";
 }
 
 const DEFAULT_TOKEN = "bulletin-development-only-internal-token";
@@ -45,6 +49,9 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
       async filter(input) {
         return { content: input.content };
       },
+      async extend() {
+        return [];
+      },
     };
   }
 
@@ -52,6 +59,16 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
   const token = options.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
   const request = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
   const timeoutMs = options.timeoutMs ?? 1_000;
+  const vetoFailMode =
+    options.vetoFailMode ?? (Bun.env.PLUGIN_VETO_FAIL_MODE === "closed" ? "closed" : "open");
+
+  const unavailable = (content: string): PluginWriteResult =>
+    vetoFailMode === "closed"
+      ? {
+          content,
+          veto: { reasonKey: "plugin.veto.unavailable", pluginId: "plugin-host" },
+        }
+      : { content };
 
   return {
     async filter(input) {
@@ -68,7 +85,7 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
 
         if (!response.ok) {
           options.logger?.warn("plugin.write_hook_failed", { status: response.status });
-          return { content: input.content };
+          return unavailable(input.content);
         }
 
         const body = (await response.json()) as {
@@ -86,7 +103,30 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
         // A plugin-host that is down must not take posting down; the host applies fail-open
         // itself, and this is the outer safety net.
         options.logger?.warn("plugin.write_hook_unreachable", { error });
-        return { content: input.content };
+        return unavailable(input.content);
+      }
+    },
+
+    async extend(content) {
+      try {
+        const response = await request(`${url}/internal/content-extend`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ syntax: "*", source: content, viewer: { memberId: null } }),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+
+        if (!response.ok) {
+          return [];
+        }
+
+        const body = (await response.json()) as { html?: unknown };
+        return typeof body.html === "string" && body.html !== "" ? [body.html] : [];
+      } catch {
+        return [];
       }
     },
   };

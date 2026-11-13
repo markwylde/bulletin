@@ -135,6 +135,29 @@ describe("view-model enrichers", () => {
     expect(fake.calls[0]).toMatchObject({ method: "hook.enrich", timeoutMs: 100 });
   });
 
+  test("does not dispatch to a disabled plugin", async () => {
+    const hooks = registry(
+      plugin("tips", { enrichers: [{ hook: "topic.view", fields: ["tipTotal"] }] }),
+    );
+    const fake = transport(() => ({ fields: { tipTotal: 1 } }));
+    const disabled = new PluginHookRunner({
+      transport: fake,
+      registry: hooks,
+      logger,
+      isActive: async () => false,
+    });
+
+    const result = await disabled.enrich({
+      hook: "topic.view",
+      route: "topic",
+      view: {},
+      viewer: { memberId: "1" },
+    });
+
+    expect(result.fields).toEqual({});
+    expect(fake.calls).toEqual([]);
+  });
+
   test("leaves the field empty when an enricher times out or fails", async () => {
     const hooks = registry(
       plugin("slow", {

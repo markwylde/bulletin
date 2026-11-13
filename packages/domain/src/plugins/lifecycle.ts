@@ -157,10 +157,11 @@ async function journal(
   step: string,
   state: "running" | "completed" | "failed",
   error?: string,
+  targetVersion?: string,
 ): Promise<void> {
   await sql`
-    INSERT INTO core.plugin_operations (plugin_id, kind, step, state, error)
-    VALUES (${pluginId}, ${kind}, ${step}, ${state}, ${error ?? null})
+    INSERT INTO core.plugin_operations (plugin_id, kind, step, state, error, target_version)
+    VALUES (${pluginId}, ${kind}, ${step}, ${state}, ${error ?? null}, ${targetVersion ?? null})
   `;
 }
 
@@ -337,9 +338,25 @@ export class PluginLifecycle {
     }
 
     await setState(this.#sql, pluginId, "upgrading", { enabled: false });
-    await journal(this.#sql, pluginId, "upgrade", "quiesce", "running");
+    await journal(
+      this.#sql,
+      pluginId,
+      "upgrade",
+      "quiesce",
+      "running",
+      undefined,
+      input.manifest.version,
+    );
     await this.#runtime.quiesce(current);
-    await journal(this.#sql, pluginId, "upgrade", "quiesce", "completed");
+    await journal(
+      this.#sql,
+      pluginId,
+      "upgrade",
+      "quiesce",
+      "completed",
+      undefined,
+      input.manifest.version,
+    );
 
     const upgrading: PluginRecord = {
       ...current,
@@ -349,9 +366,25 @@ export class PluginLifecycle {
     };
 
     try {
-      await journal(this.#sql, pluginId, "upgrade", "migrate", "running");
+      await journal(
+        this.#sql,
+        pluginId,
+        "upgrade",
+        "migrate",
+        "running",
+        undefined,
+        input.manifest.version,
+      );
       await this.#runtime.migrate(upgrading, input.manifest);
-      await journal(this.#sql, pluginId, "upgrade", "migrate", "completed");
+      await journal(
+        this.#sql,
+        pluginId,
+        "upgrade",
+        "migrate",
+        "completed",
+        undefined,
+        input.manifest.version,
+      );
     } catch (error) {
       // The migration transaction rolled back; restore the old code and version.
       await this.#runtime.activate(current, input.manifest);
@@ -363,6 +396,7 @@ export class PluginLifecycle {
         "migrate",
         "failed",
         error instanceof Error ? error.message : String(error),
+        input.manifest.version,
       );
       throw new LifecycleError(
         "migration",
@@ -377,7 +411,15 @@ export class PluginLifecycle {
         error: "The new version failed its health check",
         version: input.manifest.version,
       });
-      await journal(this.#sql, pluginId, "upgrade", "activate", "failed", "health check failed");
+      await journal(
+        this.#sql,
+        pluginId,
+        "upgrade",
+        "activate",
+        "failed",
+        "health check failed",
+        input.manifest.version,
+      );
       await this.#audit(pluginId, "plugin.upgrade_failed", {
         version: input.manifest.version,
       });
@@ -385,7 +427,15 @@ export class PluginLifecycle {
     }
 
     const generation = await this.#runtime.refreshGeneration(upgrading, input.manifest);
-    await journal(this.#sql, pluginId, "upgrade", "activate", "completed");
+    await journal(
+      this.#sql,
+      pluginId,
+      "upgrade",
+      "activate",
+      "completed",
+      undefined,
+      input.manifest.version,
+    );
     await setState(this.#sql, pluginId, "active", {
       enabled: true,
       version: input.manifest.version,
@@ -549,20 +599,40 @@ export class PluginLifecycle {
       throw new LifecycleError("state", "Plugin is not installed");
     }
 
+    const targetRows = (await this.#sql`
+      SELECT target_version FROM core.plugin_operations
+      WHERE plugin_id = ${pluginId} AND kind = 'upgrade' AND target_version IS NOT NULL
+      ORDER BY id DESC LIMIT 1
+    `) as Array<{ target_version: string }>;
+    const targetVersion = targetRows[0]?.target_version ?? manifest.version;
     const steps = (await this.#sql`
-      SELECT step, state FROM core.plugin_operations
+      SELECT step FROM core.plugin_operations
       WHERE plugin_id = ${pluginId} AND kind = 'upgrade' AND state = 'completed'
+        AND target_version = ${targetVersion}
       ORDER BY id DESC
-    `) as Array<{ step: string; state: string }>;
+    `) as Array<{ step: string }>;
     const done = new Set(steps.map((step) => step.step));
 
     if (current.state !== "upgrading") {
       return current;
     }
 
+    if (targetVersion !== manifest.version) {
+      // The journal belongs to an older target; restart the new upgrade at migration time.
+      done.clear();
+    }
+
     if (!done.has("migrate")) {
       await this.#runtime.migrate(current, manifest);
-      await journal(this.#sql, pluginId, "upgrade", "migrate", "completed");
+      await journal(
+        this.#sql,
+        pluginId,
+        "upgrade",
+        "migrate",
+        "completed",
+        undefined,
+        manifest.version,
+      );
     }
 
     const healthy = await this.#runtime.activate(current, manifest);
@@ -582,7 +652,15 @@ export class PluginLifecycle {
       UPDATE core.plugins SET generation = ${generation}, updated_at = now()
       WHERE plugin_id = ${pluginId}
     `;
-    await journal(this.#sql, pluginId, "upgrade", "activate", "completed");
+    await journal(
+      this.#sql,
+      pluginId,
+      "upgrade",
+      "activate",
+      "completed",
+      undefined,
+      manifest.version,
+    );
     return (await loadPlugin(this.#sql, pluginId)) as PluginRecord;
   }
 

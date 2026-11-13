@@ -50,7 +50,11 @@ export interface PluginJobs {
 
 async function readJobs(sql: SQL): Promise<readonly PluginJob[]> {
   const rows = (await sql`
-    SELECT plugin_id, name, schedule FROM core.plugin_jobs
+    SELECT j.plugin_id, j.name, j.schedule
+    FROM core.plugin_jobs j
+    JOIN core.plugins p ON p.plugin_id = j.plugin_id
+    JOIN core.feature_flags f ON f.key = 'plugins'
+    WHERE p.enabled AND p.state = 'active' AND f.default_value
   `) as Array<{ plugin_id: string; name: string; schedule: string | null }>;
 
   return rows.map((row) => ({ pluginId: row.plugin_id, name: row.name, schedule: row.schedule }));

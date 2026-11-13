@@ -42,9 +42,13 @@ async function forward(
   const token = options.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
   const fetcher = options.fetch ?? ((target, init) => globalThis.fetch(target, init));
   const url = new URL(request.url);
-  const body = request.method === "GET" || request.method === "HEAD" ? null : await request.text();
+  const requestBody =
+    request.method === "GET" || request.method === "HEAD" ? null : await request.text();
   const path = options.path ?? url.searchParams.get("path") ?? "";
-  const method = url.searchParams.get("method") ?? request.method;
+  // Only the bridge may choose a method; the outer POST already passed CSRF/Origin checks.
+  // API routes keep the method the browser actually sent, so a GET cannot become a mutation.
+  const method =
+    endpoint === "/internal/bridge" ? (url.searchParams.get("method") ?? "GET") : request.method;
   const query = Object.fromEntries(url.searchParams.entries());
 
   try {
@@ -59,7 +63,7 @@ async function forward(
         path,
         method,
         query,
-        body,
+        body: requestBody,
         viewer,
       }),
       signal: AbortSignal.timeout(options.timeoutMs ?? 3_000),
@@ -75,21 +79,32 @@ async function forward(
       headers?: unknown;
     };
     const status = typeof value.status === "number" ? value.status : 200;
-    const headers = new Headers({ "cache-control": "no-store" });
+    const upstream =
+      typeof value.headers === "object" && value.headers !== null && !Array.isArray(value.headers)
+        ? (value.headers as Record<string, unknown>)
+        : {};
+    const upstreamType =
+      typeof upstream["content-type"] === "string" ? upstream["content-type"] : "";
+    const responseBody = typeof value.body === "string" ? value.body : "";
+    const headers = new Headers({
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+    });
 
-    if (
-      typeof value.headers === "object" &&
-      value.headers !== null &&
-      !Array.isArray(value.headers)
-    ) {
-      for (const [name, header] of Object.entries(value.headers)) {
-        if (typeof header === "string" && !/^content-length$/i.test(name)) {
-          headers.set(name, header);
-        }
-      }
+    // Never execute plugin output on the forum origin, and never let it set cookies or cache.
+    headers.set(
+      "content-type",
+      /^application\/json\b/i.test(upstreamType)
+        ? "application/json; charset=utf-8"
+        : "text/plain; charset=utf-8",
+    );
+
+    if (typeof upstream["content-language"] === "string") {
+      headers.set("content-language", upstream["content-language"]);
     }
 
-    return new Response(typeof value.body === "string" ? value.body : "", { status, headers });
+    return new Response(responseBody.slice(0, 512 * 1024), { status, headers });
   } catch {
     return Response.json({ code: "plugin_unavailable" }, { status: 503 });
   }

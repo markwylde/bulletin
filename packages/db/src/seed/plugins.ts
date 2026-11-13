@@ -66,6 +66,17 @@ export const pluginSeedModule: SeedModule = {
         `;
       }
 
+      for (const page of plugin.adminPages ?? []) {
+        await sql`
+          INSERT INTO core.plugin_registry (plugin_id, kind, key, definition)
+          VALUES (
+            ${plugin.id}, 'page', ${page.id},
+            (${JSON.stringify({ kind: page.kind, titleKey: page.titleKey, ...page.definition })}::text)::jsonb
+          )
+          ON CONFLICT DO NOTHING
+        `;
+      }
+
       for (const action of plugin.forumActions) {
         await sql`
           INSERT INTO core.plugin_registry (plugin_id, kind, key, definition)

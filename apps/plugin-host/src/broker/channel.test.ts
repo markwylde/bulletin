@@ -122,6 +122,28 @@ afterEach(async () => {
 });
 
 describe("broker channel", () => {
+  test("rejects a sandbox that announces a different plugin identity", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "bulletin-broker-"));
+    directories.push(directory);
+    const channel = new BrokerChannel({
+      socketPath: join(directory, "broker.sock"),
+      logger,
+      expectedPluginId: "sandbox-demo",
+    });
+    await channel.start();
+    channels.push(channel);
+
+    const client = await connect(channel.socketPath);
+    client.write({
+      jsonrpc: "2.0",
+      method: "hello",
+      params: { pluginId: "other", sdkVersion: "2" },
+    });
+    await Bun.sleep(50);
+    await expect(channel.request("hook.enrich", {})).rejects.toThrow("No plugin is connected");
+    client.socket.end();
+  });
+
   test("sends a broker-to-plugin request and resolves with the reply", async () => {
     const channel = await createChannel();
     const client = await connect(channel.socketPath);

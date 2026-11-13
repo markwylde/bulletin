@@ -1,4 +1,7 @@
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
+import { Readable } from "node:stream";
 import type { Logger } from "@bulletin/config";
 
 export type EgressDenyReason =
@@ -43,7 +46,11 @@ export interface DnsAddress {
 }
 
 export type EgressLookup = (hostname: string) => Promise<readonly DnsAddress[]>;
-export type EgressFetch = (url: string, init: RequestInit) => Promise<Response>;
+export type EgressFetch = (
+  url: string,
+  init: RequestInit,
+  addresses?: readonly DnsAddress[],
+) => Promise<Response>;
 
 export interface EgressOptions {
   /** Exact lowercase hostnames from the plugin manifest. */
@@ -410,6 +417,69 @@ function defaultLookup(hostname: string): Promise<readonly DnsAddress[]> {
 }
 
 /**
+ * Fetches the already-validated address rather than letting the runtime resolve the name a
+ * second time. The TLS SNI and Host header stay the manifest host, so certificate
+ * verification is unchanged; only the connection destination is pinned.
+ */
+async function pinnedFetch(
+  url: string,
+  init: RequestInit,
+  addresses?: readonly DnsAddress[],
+): Promise<Response> {
+  if (addresses === undefined || addresses.length === 0) {
+    return globalThis.fetch(url, init);
+  }
+
+  const target = new URL(url);
+  const address = addresses[0]?.address;
+  const family = addresses[0]?.family;
+
+  if (address === undefined) {
+    throw new Error("No validated address");
+  }
+
+  const secure = target.protocol === "https:";
+  const hostname = target.hostname.replace(/^\[|\]$/g, "");
+  const connectHost = family === 6 ? `[${address}]` : address;
+  const options = {
+    hostname: connectHost,
+    port: target.port === "" ? (secure ? 443 : 80) : Number(target.port),
+    path: `${target.pathname}${target.search}`,
+    method: init.method ?? "GET",
+    headers: {
+      ...(init.headers as Record<string, string>),
+      host: target.host,
+    },
+    ...(secure ? { servername: hostname } : {}),
+  };
+
+  return new Promise<Response>((resolve, reject) => {
+    const request = (secure ? httpsRequest : httpRequest)(options, (response) => {
+      const headers = new Headers();
+
+      for (const [name, value] of Object.entries(response.headers)) {
+        if (value !== undefined) {
+          headers.set(name, Array.isArray(value) ? value.join(", ") : value);
+        }
+      }
+
+      resolve(
+        new Response(Readable.toWeb(response) as ReadableStream, {
+          status: response.statusCode ?? 502,
+          headers,
+        }),
+      );
+    });
+    request.on("error", reject);
+    init.signal?.addEventListener("abort", () => request.destroy(new Error("Request aborted")));
+    if (typeof init.body === "string") {
+      request.write(init.body);
+    }
+    request.end();
+  });
+}
+
+/**
  * The broker's egress proxy. Every URL (including every redirect hop) must pass the
  * manifest allowlist, scheme/port checks and a DNS check that rejects loopback, private,
  * link-local, metadata and other non-public addresses.
@@ -428,7 +498,7 @@ export class EgressProxy {
     this.#allowedHosts = new Set(options.allowedHosts.map((host) => host.toLowerCase()));
     this.#logger = options.logger;
     this.#lookup = options.lookup ?? defaultLookup;
-    this.#fetch = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
+    this.#fetch = options.fetch ?? pinnedFetch;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.#maxRedirects = options.maxRedirects ?? DEFAULT_MAX_REDIRECTS;
     this.#maxRequestBytes = options.maxRequestBytes ?? DEFAULT_MAX_REQUEST_BYTES;
@@ -464,16 +534,20 @@ export class EgressProxy {
       let response: Response;
 
       try {
-        response = await this.#fetch(target.toString(), {
-          method: currentMethod,
-          headers,
-          ...(body === undefined ? {} : { body }),
-          redirect: "manual",
-          credentials: "omit",
-          signal: AbortSignal.timeout(this.#timeoutMs),
-        });
+        response = await this.#fetch(
+          target.url.toString(),
+          {
+            method: currentMethod,
+            headers,
+            ...(body === undefined ? {} : { body }),
+            redirect: "manual",
+            credentials: "omit",
+            signal: AbortSignal.timeout(this.#timeoutMs),
+          },
+          target.addresses,
+        );
       } catch (error) {
-        this.#logger.warn("egress.request_failed", { host: target.hostname });
+        this.#logger.warn("egress.request_failed", { host: target.url.hostname });
         throw new EgressDeniedError(
           "request",
           error instanceof Error ? "Request failed" : String(error),
@@ -490,7 +564,7 @@ export class EgressProxy {
         let next: URL;
 
         try {
-          next = new URL(location, target);
+          next = new URL(location, target.url);
         } catch {
           throw new EgressDeniedError("redirect", "Redirect target is not a valid URL");
         }
@@ -508,7 +582,7 @@ export class EgressProxy {
       }
 
       return {
-        url: target.toString(),
+        url: target.url.toString(),
         status: response.status,
         headers: responseHeaders(response),
         body: await readBodyCapped(response, this.#maxResponseBytes),
@@ -516,7 +590,7 @@ export class EgressProxy {
     }
   }
 
-  async #validate(input: string): Promise<URL> {
+  async #validate(input: string): Promise<{ url: URL; addresses: readonly DnsAddress[] }> {
     let url: URL;
 
     try {
@@ -572,6 +646,6 @@ export class EgressProxy {
       );
     }
 
-    return url;
+    return { url, addresses };
   }
 }

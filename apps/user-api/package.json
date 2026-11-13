@@ -15,6 +15,7 @@
     "@bulletin/storage": "workspace:*",
     "@bulletin/i18n": "workspace:*",
     "@bulletin/content": "workspace:*",
-    "@bulletin/plugin-sdk": "workspace:*"
+    "@bulletin/plugin-sdk": "workspace:*",
+    "@bulletin/templates": "workspace:*"
   }
 }

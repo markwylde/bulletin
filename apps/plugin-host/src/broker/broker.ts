@@ -35,6 +35,8 @@ export interface BrokerOptions {
   readonly core?: CoreForwarder;
   readonly cache?: CacheInvalidator;
   readonly limits?: BrokerLimitOptions;
+  /** Runtime state/flag check; a disabled plugin cannot use the broker. */
+  readonly isActive?: (pluginId: string) => Promise<boolean>;
 }
 
 export interface BrokerStats {
@@ -147,6 +149,7 @@ export class Broker implements BrokerHandler {
   readonly #core: CoreForwarder | undefined;
   readonly #cache: CacheInvalidator | undefined;
   readonly #budgets: BrokerBudgets;
+  readonly #isActive: (pluginId: string) => Promise<boolean>;
   readonly #logger: Logger;
   #stats = {
     queries: 0,
@@ -165,6 +168,7 @@ export class Broker implements BrokerHandler {
     this.#core = options.core;
     this.#cache = options.cache;
     this.#budgets = createBrokerBudgets(options.limits);
+    this.#isActive = options.isActive ?? (async () => true);
     this.#logger = options.logger.child({ schema: options.database.schema });
   }
 
@@ -181,6 +185,10 @@ export class Broker implements BrokerHandler {
   }
 
   async handle(request: BrokerRequest): Promise<unknown> {
+    if (!(await this.#isActive(request.pluginId).catch(() => false))) {
+      throw new RpcError(JSON_RPC_ERRORS.denied, "Plugin is disabled", { reason: "disabled" });
+    }
+
     try {
       switch (request.method) {
         case "db.query":

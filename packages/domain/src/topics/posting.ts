@@ -81,6 +81,8 @@ export interface PostWriteOptions {
   readonly mentions?: boolean;
   /** The board's replace-word list; folded into `render_version` (ADR 0007). */
   readonly replaceWords?: ReplaceWords;
+  /** Sanitised HTML produced by plugin content extensions (ADR 0009). */
+  readonly pluginHtml?: readonly string[];
 }
 
 export interface StartTopicInput {
@@ -155,6 +157,7 @@ async function savePostContent(
     embeds: dependencies.embeds,
     quotes: createPostQuotePipeline(tx, input.tree, input.sessionId),
     replaceWords: overrideReplace,
+    ...(input.options.pluginHtml === undefined ? {} : { pluginHtml: input.options.pluginHtml }),
     keepUnfilteredHtml: true,
     checks: {
       blockedWords: blocked.whole,

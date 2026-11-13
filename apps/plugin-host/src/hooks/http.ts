@@ -205,29 +205,38 @@ async function readInternal(
       }
 
       const html: string[] = [];
+      const syntaxes =
+        input.syntax === "*"
+          ? [
+              ...new Set(
+                options.registry.plugins().flatMap((plugin) => plugin.manifest.contentExtensions),
+              ),
+            ]
+          : [input.syntax];
 
-      for (const pluginId of options.registry.contentExtensions(input.syntax)) {
-        try {
-          const result = await options.transport.request<{ html?: unknown }>(
-            "content.extend",
-            { syntax: input.syntax, source: input.source, viewer: viewer(input.viewer) },
-            200,
-          );
-          const rendered = isRecord(result) && typeof result.html === "string" ? result.html : "";
+      for (const syntax of syntaxes)
+        for (const pluginId of options.registry.contentExtensions(syntax)) {
+          try {
+            const result = await options.transport.request<{ html?: unknown }>(
+              "content.extend",
+              { syntax, source: input.source, viewer: viewer(input.viewer) },
+              200,
+            );
+            const rendered = isRecord(result) && typeof result.html === "string" ? result.html : "";
 
-          if (rendered !== "") {
-            html.push(rendered);
+            if (rendered !== "") {
+              html.push(rendered);
+            }
+          } catch (error) {
+            options.logger.warn("plugin.content_extension_failed", { pluginId, error });
           }
-        } catch (error) {
-          options.logger.warn("plugin.content_extension_failed", { pluginId, error });
         }
-      }
 
       return json({ html: html.join("") });
     }
 
     case "/internal/routes":
-    case "/internal/bridge": {
+    case "/internal/bridge":
       if (typeof input.pluginId !== "string" || typeof input.path !== "string") {
         return json({ code: "invalid_request" }, 400);
       }
@@ -249,7 +258,6 @@ async function readInternal(
         options.logger.warn("plugin.route_failed", { pluginId: input.pluginId, error });
         return json({ status: 503, body: "Plugin unavailable" }, 200);
       }
-    }
 
     default:
       return json({ code: "not_found" }, 404);

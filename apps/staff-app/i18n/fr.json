@@ -698,6 +698,8 @@
   "staff.plugins.health.hook": "Point d’accroche",
   "staff.plugins.intro": "Extensions installées, leurs capacités et leur santé.",
   "staff.plugins.loading": "Chargement…",
+  "staff.plugins.page.declared": "Page déclarée de l’extension",
+  "staff.plugins.page.empty": "Aucune ligne",
   "staff.plugins.saveFailed": "Impossible d’enregistrer les paramètres",
   "staff.plugins.saved": "Paramètres enregistrés",
   "staff.plugins.tab.errors": "Erreurs",

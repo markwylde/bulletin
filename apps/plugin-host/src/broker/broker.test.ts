@@ -84,7 +84,12 @@ function createEgress(): FakeEgress {
 }
 
 function createBroker(
-  options: { limits?: BrokerLimitOptions; core?: CoreForwarder; cache?: CacheInvalidator } = {},
+  options: {
+    limits?: BrokerLimitOptions;
+    core?: CoreForwarder;
+    cache?: CacheInvalidator;
+    isActive?: (pluginId: string) => Promise<boolean>;
+  } = {},
 ): {
   broker: Broker;
   database: FakeDatabase;
@@ -107,6 +112,7 @@ function createBroker(
       ...(options.core === undefined ? {} : { core: options.core }),
       ...(options.cache === undefined ? {} : { cache: options.cache }),
       ...(options.limits === undefined ? {} : { limits: options.limits }),
+      ...(options.isActive === undefined ? {} : { isActive: options.isActive }),
     }),
     database,
     egress,
@@ -558,6 +564,14 @@ describe("broker dispatch", () => {
       }),
       -32602,
     );
+  });
+
+  test("rejects every request from a disabled plugin", async () => {
+    const { broker } = createBroker({ isActive: async () => false });
+
+    await expect(
+      broker.handle({ method: "db.query", pluginId: "sandbox-demo", params: { sql: "SELECT 1" } }),
+    ).rejects.toMatchObject({ code: -32000 });
   });
 
   test("rejects unknown methods and closes the database", async () => {

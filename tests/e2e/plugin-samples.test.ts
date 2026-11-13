@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { loginAs, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
+import { clickSelector, loginAs, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
 import { stackOrigin, staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 
 // The three seeded sample plugins work after `docker compose up --watch` (task 6.2).
@@ -30,6 +30,22 @@ integrationDescribe("sample plugins", () => {
           'Boolean(document.querySelector("[data-plugin-grant-warning]"))',
         ),
       ).toBe(false);
+    });
+  }, 120_000);
+
+  test("a plugin-declared table page renders in the manager", async () => {
+    await withPage({ url: `${STAFF_URL}/plugins`, viewport: "mobile360" }, async (view) => {
+      await loginAs(view, "admin");
+      await waitForSelector(view, '[data-plugin-configure="tip-jar"]:not([disabled])', 20_000);
+      await clickSelector(view, '[data-plugin-configure="tip-jar"]');
+      await waitForSelector(view, '[data-plugin-tab="page:recent-tips"]', 10_000);
+      await clickSelector(view, '[data-plugin-tab="page:recent-tips"]');
+      await waitForSelector(view, '[data-plugin-declared-page="recent-tips"]', 10_000);
+      expect(
+        await view.evaluate<string>(
+          "document.querySelector('[data-plugin-declared-page=\"recent-tips\"]').innerText",
+        ),
+      ).toContain("5.00");
     });
   }, 120_000);
 

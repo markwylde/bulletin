@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { bumpCacheTags } from "@bulletin/cache";
 import { connectionPoolSize, createLogger, loadConfig } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
+import { advancePluginsGeneration, PluginCircuitBreaker } from "@bulletin/domain/plugins";
 import { SQL } from "bun";
 import { Broker } from "./broker/broker.ts";
 import { CacheInvalidator } from "./broker/cache.ts";
@@ -47,12 +48,13 @@ try {
 
 const manifest = await loadPluginManifest(sandboxConfig.bundlePath);
 const migrations = await loadPluginMigrations(sandboxConfig.bundlePath, manifest);
+const pluginDatabaseUrl = sandboxConfig.pluginDatabaseUrl ?? config.databaseUrl;
 const connections = new PluginConnectionManager({
-  adminUrl: config.databaseUrl,
+  adminUrl: pluginDatabaseUrl,
   maxOpenPlugins: connectionPoolSize("plugin-host"),
 });
 const database = await PluginDatabase.open({
-  adminUrl: config.databaseUrl,
+  adminUrl: pluginDatabaseUrl,
   pluginId: manifest.id,
   migrations,
   logger,
@@ -73,7 +75,18 @@ const cache = new CacheInvalidator({
   },
   logger: logger.child({ component: "cache" }),
 });
-const broker = new Broker({ database, egress, core, cache, logger });
+const pluginActive = async (pluginId: string): Promise<boolean> => {
+  const rows = (await cacheSql`
+    SELECT p.enabled, p.state, f.default_value
+    FROM core.plugins p
+    LEFT JOIN core.feature_flags f ON f.key = 'plugins'
+    WHERE p.plugin_id = ${pluginId}
+  `) as Array<{ enabled: boolean; state: string; default_value: boolean | null }>;
+  const row = rows[0];
+  return !!row?.enabled && row.state === "active" && row.default_value !== false;
+};
+
+const broker = new Broker({ database, egress, core, cache, logger, isActive: pluginActive });
 const hooks = new PluginHookRegistry();
 hooks.install(manifest, { generation: 1 });
 const bundles = new Map([[manifest.id, { manifest, path: sandboxConfig.bundlePath }]]);
@@ -93,13 +106,37 @@ const channel = new BrokerChannel({
   socketPath: join(sandboxConfig.stateDir, "broker.sock"),
   logger,
   handler: broker,
+  expectedPluginId: manifest.id,
 });
 await channel.start();
 
+const breaker = new PluginCircuitBreaker({
+  sql: cacheSql,
+  disable: async (pluginId, reason) => {
+    await cacheSql`
+      UPDATE core.plugins SET state = 'disabled', enabled = false, updated_at = now()
+      WHERE plugin_id = ${pluginId}
+    `;
+    await cacheSql`
+      DELETE FROM core.hook_fragments
+      WHERE plugin_id = ${pluginId}
+        AND generation = (SELECT generation FROM core.plugin_generation WHERE id = true)
+    `;
+    await advancePluginsGeneration(cacheSql);
+    logger.error("plugin.auto_disabled", { pluginId, reason });
+  },
+});
 const hookRunner = new PluginHookRunner({
   transport: channel,
   registry: hooks,
   logger: logger.child({ component: "hooks" }),
+  isActive: pluginActive,
+  onFailure: (pluginId, hook, error) => {
+    void breaker.recordFailure(pluginId, hook, error);
+  },
+  onSuccess: (pluginId, hook) => {
+    void breaker.recordSuccess(pluginId, hook);
+  },
 });
 const hookHttp = {
   runner: hookRunner,
@@ -127,7 +164,7 @@ if (sharedCluster) {
 }
 
 const quota = new PluginQuotaMonitor({
-  adminUrl: config.databaseUrl,
+  adminUrl: pluginDatabaseUrl,
   pluginId: manifest.id,
   logger: logger.child({ component: "quota" }),
   quotaBytes: sandboxConfig.storageQuotaBytes,

@@ -187,6 +187,7 @@ export async function createTopicResponse(
     );
   }
 
+  const pluginHtml = await pluginWriteClient.extend(filtered.content);
   const result = await withPostFloodLock(sql, session.memberId, async (locked) => {
     const wait = await postFloodWait(locked, session.memberId);
 
@@ -194,17 +195,21 @@ export async function createTopicResponse(
       return json({ code: "flood_control", retryAfterSeconds: wait }, 429);
     }
 
-    const created = await startTopic(locked, {
-      actorId: session.memberId,
-      forumId,
-      sessionId: session.id ?? session.sessionId ?? null,
-      title: typeof body.title === "string" ? body.title : "",
-      bodyMd: filtered.content,
-      ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
-      ...(poll === null || poll === undefined ? {} : { poll }),
-      ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
-      ip: clientIp(request),
-    });
+    const created = await startTopic(
+      locked,
+      {
+        actorId: session.memberId,
+        forumId,
+        sessionId: session.id ?? session.sessionId ?? null,
+        title: typeof body.title === "string" ? body.title : "",
+        bodyMd: filtered.content,
+        ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
+        ...(poll === null || poll === undefined ? {} : { poll }),
+        ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
+        ip: clientIp(request),
+      },
+      pluginHtml.length === 0 ? {} : { pluginHtml },
+    );
 
     if (!created.ok) {
       return failure(created.code);
@@ -266,6 +271,7 @@ export async function replyResponse(
 
   const bodyMd = filtered.content;
 
+  const pluginHtml = await pluginWriteClient.extend(filtered.content);
   const result = await withPostFloodLock(sql, session.memberId, async (locked) => {
     const wait = await postFloodWait(locked, session.memberId);
 
@@ -273,14 +279,18 @@ export async function replyResponse(
       return json({ code: "flood_control", retryAfterSeconds: wait }, 429);
     }
 
-    const created = await reply(locked, {
-      actorId: session.memberId,
-      topicId,
-      sessionId: session.id ?? session.sessionId ?? null,
-      bodyMd,
-      ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
-      ip: clientIp(request),
-    });
+    const created = await reply(
+      locked,
+      {
+        actorId: session.memberId,
+        topicId,
+        sessionId: session.id ?? session.sessionId ?? null,
+        bodyMd,
+        ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
+        ip: clientIp(request),
+      },
+      pluginHtml.length === 0 ? {} : { pluginHtml },
+    );
 
     if (!created.ok) {
       return failure(created.code);
@@ -318,13 +328,18 @@ export async function editPostResponse(
     return json({ code: "invalid_request" }, 400);
   }
 
-  const result = await editPost(sql, {
-    actorId: session.memberId,
-    postId,
-    sessionId: session.id ?? session.sessionId ?? null,
-    bodyMd: body.bodyMd,
-    ...(typeof body.redact === "boolean" ? { redact: body.redact } : {}),
-  });
+  const pluginHtml = await pluginWriteClient.extend(body.bodyMd);
+  const result = await editPost(
+    sql,
+    {
+      actorId: session.memberId,
+      postId,
+      sessionId: session.id ?? session.sessionId ?? null,
+      bodyMd: body.bodyMd,
+      ...(typeof body.redact === "boolean" ? { redact: body.redact } : {}),
+    },
+    pluginHtml.length === 0 ? {} : { pluginHtml },
+  );
 
   if (!result.ok) {
     return failure(result.code);

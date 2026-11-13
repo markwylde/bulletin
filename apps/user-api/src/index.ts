@@ -47,6 +47,7 @@ import {
   notificationPreferencesResponse,
   notificationReadResponse,
 } from "./notifications.ts";
+import { pluginCoreResponse } from "./plugin-core.ts";
 import { pluginApiResponse, pluginBridgeResponse } from "./plugin-routes.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
 import { profileSaveResponse } from "./profile.ts";
@@ -132,6 +133,12 @@ await startService({
   port,
   async fetch(request) {
     const { pathname } = new URL(request.url);
+
+    if (pathname === "/internal/plugins/core" && request.method === "POST") {
+      return pluginCoreResponse(sql, request, {
+        token: Bun.env.PLUGIN_CORE_BROKER_TOKEN ?? "bulletin-development-only-broker-secret",
+      });
+    }
 
     if (pathname === "/api/stream") {
       if (request.method !== "GET") {
