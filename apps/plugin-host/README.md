@@ -190,17 +190,21 @@ plugin's owner), never from the admin or owner session. `src/broker/migration.ts
 `SET`/`RESET`/`SET ROLE`, `DO`, `ALTER ROLE`/`ALTER SYSTEM`, extensions, `SECURITY DEFINER`,
 non-transactional DDL and cross-schema objects before any migration runs. plpgsql bodies are
 scanned for side-effecting built-ins and dynamic `EXECUTE`; SQL-standard bodies are parsed.
-Core migration `0001` revokes `EXECUTE` from `PUBLIC` on side-effecting built-ins
+Core migration `0115` revokes `EXECUTE` from `PUBLIC` on side-effecting built-ins
 (`set_config`, `pg_notify`, advisory locks, `pg_sleep`, `pg_terminate_backend`,
-`pg_cancel_backend`, `dblob`/`dblink`, `lo_*` and file/admin functions) and grants them only
-to the core roles, so a parser bypass still hits a database permission error.
+`pg_cancel_backend`, `dblink`, `lo_*` and file/admin functions). Migration `0122` also revokes
+the file, large-object, backend-control and replication built-ins from every application role;
+they keep only `set_config`, `pg_notify` and the advisory-lock family, so a parser bypass still
+hits a database permission error even through a core role.
 
 ### Connection budget (task 2.6)
 
 Runtime role pools are opened lazily per plugin, closed after 10 s idle, and bounded by one
-broker-wide semaphore (`PLUGIN_HOST` pool size, default 20 plugins). A plugin waiting for a
-slot fails its own call after the deadline; other plugins keep working. `GET /broker`
-reports `connections` (`open`, `waiting`, `opened`, `closed`, `rejections`).
+broker-wide semaphore over **connections**, not pools: each pool holds exactly one Postgres
+connection and the `PLUGIN_HOST` share (ADR 0020, default 20) is the number of pools that may
+be open at once. A plugin waiting for a slot fails its own call after the deadline; other
+plugins keep working. `GET /broker` reports `connections` (`open`, `maxConnections`, `waiting`,
+`opened`, `closed`, `rejections`).
 
 ### Request budgets and core forwarding
 

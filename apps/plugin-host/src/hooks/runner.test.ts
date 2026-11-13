@@ -262,6 +262,24 @@ describe("write filters and vetoes", () => {
     expect(result.veto).toEqual({ reasonKey: "plugin.spam.reason", pluginId: "spam" });
   });
 
+  test("falls back to the manifest reason when the handler omits one", async () => {
+    const hooks = registry(
+      plugin("spam", {
+        vetoes: [{ hook: "post.write", reasonKey: "plugin.spam.reason" }],
+      }),
+    );
+    const fake = transport(() => ({ allow: false }));
+
+    const result = await runner(hooks, fake).filter({
+      hook: "post.write",
+      content: "buy now",
+      context: { authorId: "1" },
+      viewer: { memberId: "1" },
+    });
+
+    expect(result.veto).toEqual({ reasonKey: "plugin.spam.reason", pluginId: "spam" });
+  });
+
   test("a fail-open veto that is down allows the write", async () => {
     const hooks = registry(
       plugin("spam", {

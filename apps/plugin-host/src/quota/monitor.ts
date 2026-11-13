@@ -1,12 +1,15 @@
 import type { Logger } from "@bulletin/config";
 import { SQL } from "bun";
 import { pluginIdentifiers } from "../broker/database.ts";
+import { readWritesRevoked, saveWritesRevoked } from "./state.ts";
 
 /**
  * Bounds plugin schema growth (ADR 0009). Postgres has no per-schema quota, so a monitor
  * measures the schema every minute and, once over quota, revokes INSERT/UPDATE from the
  * runtime role. The role is not the owner, so the revoke sticks; reads and DELETEs keep
- * working so an admin can inspect or clean up. Writes stay off until an admin restores them.
+ * working so an admin can inspect or clean up. The revoked state is persisted in
+ * `core.plugin_quota`, so a broker restart never re-grants writes, and writes stay off until
+ * an admin restores them.
  */
 
 export const DEFAULT_STORAGE_QUOTA_BYTES = 1024 * 1024 * 1024;
@@ -135,6 +138,7 @@ export class PluginQuotaMonitor {
           ON ALL TABLES IN SCHEMA ${quote(this.schema)}
           TO ${quote(this.#runtimeRole)}
       `);
+      await saveWritesRevoked(sql, this.pluginId, false);
       this.#status = { ...this.#status, writesRevoked: false };
       this.#logger.info("plugin.quota_writes_restored", { schema: this.schema });
       return this.status();
@@ -156,7 +160,10 @@ export class PluginQuotaMonitor {
       `) as Array<{ bytes: number | string }>;
       const usedBytes = Number(rows[0]?.bytes ?? 0);
       const exceeded = usedBytes > this.quotaBytes;
-      let writesRevoked = this.#status.writesRevoked;
+      // The persisted flag is authoritative: a restarted monitor must not grant anything and
+      // must not repeat the revocation or its audit entry.
+      const persisted = await readWritesRevoked(sql, this.pluginId);
+      let writesRevoked = persisted || this.#status.writesRevoked;
 
       if (exceeded && !writesRevoked) {
         await sql.unsafe(`
@@ -179,6 +186,7 @@ export class PluginQuotaMonitor {
             )
           )
         `;
+        await saveWritesRevoked(sql, this.pluginId, true);
         writesRevoked = true;
         this.#logger.error("plugin.storage_quota_exceeded", {
           schema: this.schema,

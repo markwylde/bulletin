@@ -45,20 +45,18 @@ export interface PluginWriteClientOptions {
 const DEFAULT_TOKEN = "bulletin-development-only-internal-token";
 
 export function createPluginWriteClient(options: PluginWriteClientOptions = {}): PluginWriteClient {
-  const configured = options.url ?? Bun.env.PLUGIN_HOST_INTERNAL_URL;
+  // Resolved per call so tests and deployments can configure the host after import; an
+  // unconfigured host means "no plugin write hooks", which is the local default.
+  const target = (): string | undefined => {
+    const configured = options.url ?? Bun.env.PLUGIN_HOST_INTERNAL_URL;
 
-  if (configured === undefined || configured === "") {
-    return {
-      async filter(input) {
-        return { content: input.content };
-      },
-      async extend() {
-        return [];
-      },
-    };
-  }
+    if (configured === undefined || configured === "") {
+      return undefined;
+    }
 
-  const url = configured.replace(/\/+$/, "");
+    return configured.replace(/\/+$/, "");
+  };
+
   const token = options.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
   const request = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
   const timeoutMs = options.timeoutMs ?? 1_000;
@@ -75,6 +73,12 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
 
   return {
     async filter(input, callOptions) {
+      const url = target();
+
+      if (url === undefined) {
+        return { content: input.content };
+      }
+
       try {
         const response = await request(`${url}/internal/filter`, {
           method: "POST",
@@ -111,6 +115,12 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
     },
 
     async extend(content, context) {
+      const url = target();
+
+      if (url === undefined) {
+        return [];
+      }
+
       try {
         const response = await request(`${url}/internal/content-extend`, {
           method: "POST",

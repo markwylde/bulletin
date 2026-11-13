@@ -250,6 +250,7 @@ export class PluginHookRunner {
       const outcome = await this.#veto(
         entry.pluginId,
         entry.failMode ?? "open",
+        entry.reasonKey,
         input,
         remaining(),
       );
@@ -276,6 +277,8 @@ export class PluginHookRunner {
   async #veto(
     pluginId: string,
     failMode: "open" | "closed",
+    /** The manifest's declared reason; the SDK lets a handler answer `{ allow: false }`. */
+    fallbackReasonKey: string,
     input: FilterInput,
     timeoutMs: number,
   ): Promise<VetoOutcome> {
@@ -299,11 +302,12 @@ export class PluginHookRunner {
       this.#onSuccess?.(pluginId, input.hook);
 
       if (isRecord(result) && result.allow === false) {
-        return {
-          allow: false,
-          ...(typeof result.reasonKey === "string" ? { reasonKey: result.reasonKey } : {}),
-          pluginId,
-        };
+        const reasonKey =
+          typeof result.reasonKey === "string" && result.reasonKey !== ""
+            ? result.reasonKey
+            : fallbackReasonKey;
+
+        return { allow: false, reasonKey, pluginId };
       }
 
       return { allow: true, pluginId };

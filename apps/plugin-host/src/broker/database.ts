@@ -11,6 +11,7 @@ import {
   PluginNamespaceCollisionError,
 } from "@bulletin/domain/plugins/namespace";
 import { SQL } from "bun";
+import { readWritesRevoked } from "../quota/state.ts";
 import type { PluginConnectionManager } from "./connections.ts";
 import type { PluginMigration } from "./manifest.ts";
 import { assertAllowedMigration } from "./migration.ts";
@@ -232,8 +233,13 @@ export class PluginDatabase {
         });
       }
 
+      // A storage-quota revocation is durable (ADR 0009): a restart must not grant writes
+      // back. The quota monitor writes the flag; provisioning reads it before granting DML.
+      const writesRevoked = await readWritesRevoked(admin, options.pluginId);
+      const tablePrivileges = writesRevoked ? "SELECT, DELETE" : "SELECT, INSERT, UPDATE, DELETE";
+
       await admin.unsafe(`
-        GRANT SELECT, INSERT, UPDATE, DELETE
+        GRANT ${tablePrivileges}
           ON ALL TABLES IN SCHEMA ${quote(identifiers.schema)}
           TO ${quote(identifiers.runtimeRole)};
         GRANT USAGE, SELECT
@@ -244,13 +250,19 @@ export class PluginDatabase {
           TO ${quote(identifiers.runtimeRole)};
         ALTER DEFAULT PRIVILEGES FOR ROLE ${quote(identifiers.ownerRole)}
           IN SCHEMA ${quote(identifiers.schema)}
-          GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${quote(identifiers.runtimeRole)};
+          GRANT ${tablePrivileges} ON TABLES TO ${quote(identifiers.runtimeRole)};
         ALTER DEFAULT PRIVILEGES FOR ROLE ${quote(identifiers.ownerRole)}
           IN SCHEMA ${quote(identifiers.schema)}
           GRANT USAGE, SELECT ON SEQUENCES TO ${quote(identifiers.runtimeRole)};
         ALTER DEFAULT PRIVILEGES FOR ROLE ${quote(identifiers.ownerRole)}
           IN SCHEMA ${quote(identifiers.schema)}
           GRANT EXECUTE ON FUNCTIONS TO ${quote(identifiers.runtimeRole)};
+        ${
+          writesRevoked
+            ? `REVOKE INSERT, UPDATE ON ALL TABLES IN SCHEMA ${quote(identifiers.schema)}
+                 FROM ${quote(identifiers.runtimeRole)};`
+            : ""
+        }
       `);
 
       // Revoke PUBLIC's default reachability from the plugin role. On a fresh volume the

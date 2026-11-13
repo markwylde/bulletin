@@ -57,7 +57,7 @@ const migrations = await loadPluginMigrations(sandboxConfig.bundlePath, manifest
 const pluginDatabaseUrl = sandboxConfig.pluginDatabaseUrl ?? config.databaseUrl;
 const connections = new PluginConnectionManager({
   adminUrl: pluginDatabaseUrl,
-  maxOpenPlugins: connectionPoolSize("plugin-host"),
+  maxConnections: connectionPoolSize("plugin-host"),
 });
 const database = await PluginDatabase.open({
   adminUrl: pluginDatabaseUrl,

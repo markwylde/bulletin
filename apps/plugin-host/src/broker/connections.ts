@@ -5,13 +5,16 @@ import { pluginIdentifiers } from "./database.ts";
  * Broker-wide connection budget (ADR 0009, ADR 0020).
  *
  * Plugin roles are opened lazily on their first statement, closed after 10 s idle, and
- * bounded by one semaphore for the whole plugin-host. When every permit is held, a waiting
- * plugin's call fails after its own deadline; other plugins keep working. Enabling more
- * plugins than the budget can therefore never break startup.
+ * bounded by one semaphore for the whole plugin-host. Every pool holds exactly one Postgres
+ * connection, so the number of open pools is the number of connections: the budget from
+ * ADR 0020 can never be exceeded by opening one more pool per plugin. When every slot is
+ * held, a waiting plugin's call fails after its own deadline; other plugins keep working.
+ * Enabling more plugins than the budget can therefore never break startup.
  */
 
 export const DEFAULT_IDLE_TIMEOUT_MS = 10_000;
-export const DEFAULT_OPEN_PLUGIN_BUDGET = 20;
+/** ADR 0020's plugin-host connection share, per replica. */
+export const DEFAULT_MAX_CONNECTIONS = 20;
 export const DEFAULT_WAIT_TIMEOUT_MS = 2_000;
 
 export class ConnectionBudgetError extends Error {
@@ -32,8 +35,8 @@ interface OpenConnection {
 
 export interface PluginConnectionManagerOptions {
   readonly adminUrl: string;
-  /** Maximum plugin pools open at once (the broker-wide semaphore). */
-  readonly maxOpenPlugins?: number;
+  /** Maximum Postgres connections open at once across every plugin (ADR 0020). */
+  readonly maxConnections?: number;
   /** Close an idle plugin pool after this long. */
   readonly idleTimeoutMs?: number;
   /** How long a plugin waits for a free budget slot before failing its own call. */
@@ -43,8 +46,9 @@ export interface PluginConnectionManagerOptions {
 }
 
 export interface ConnectionManagerStats {
+  /** Open pools; every pool holds one Postgres connection. */
   readonly open: number;
-  readonly maxOpen: number;
+  readonly maxConnections: number;
   readonly waiting: number;
   readonly opened: number;
   readonly closed: number;
@@ -67,7 +71,7 @@ function runtimeUrl(adminUrl: string, role: string): string {
 
 export class PluginConnectionManager {
   readonly #adminUrl: string;
-  readonly #maxOpen: number;
+  readonly #maxConnections: number;
   readonly #idleTimeoutMs: number;
   readonly #waitTimeoutMs: number;
   readonly #createPool: ConnectionFactory;
@@ -79,7 +83,7 @@ export class PluginConnectionManager {
 
   constructor(options: PluginConnectionManagerOptions) {
     this.#adminUrl = options.adminUrl;
-    this.#maxOpen = options.maxOpenPlugins ?? DEFAULT_OPEN_PLUGIN_BUDGET;
+    this.#maxConnections = options.maxConnections ?? DEFAULT_MAX_CONNECTIONS;
     this.#idleTimeoutMs = options.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.#waitTimeoutMs = options.waitTimeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
     this.#createPool =
@@ -87,7 +91,8 @@ export class PluginConnectionManager {
       ((pluginId) => {
         const role = pluginIdentifiers(pluginId).runtimeRole;
         return new SQL(runtimeUrl(this.#adminUrl, role), {
-          max: 2,
+          // One connection per open pool keeps the pool count equal to the connection count.
+          max: 1,
           connectionTimeout: 5,
         });
       });
@@ -96,7 +101,7 @@ export class PluginConnectionManager {
   stats(): ConnectionManagerStats {
     return {
       open: this.#connections.size,
-      maxOpen: this.#maxOpen,
+      maxConnections: this.#maxConnections,
       waiting: this.#waiters.length,
       opened: this.#opened,
       closed: this.#closed,
@@ -141,7 +146,7 @@ export class PluginConnectionManager {
       return existing;
     }
 
-    if (this.#connections.size < this.#maxOpen) {
+    if (this.#connections.size < this.#maxConnections) {
       return this.#open(pluginId);
     }
 
@@ -156,7 +161,7 @@ export class PluginConnectionManager {
         this.#rejections += 1;
         reject(
           new ConnectionBudgetError(
-            `The plugin-host connection budget (${this.#maxOpen} plugins) is exhausted`,
+            `The plugin-host connection budget (${this.#maxConnections} connections) is exhausted`,
           ),
         );
       }, this.#waitTimeoutMs);
@@ -235,7 +240,7 @@ export class PluginConnectionManager {
 
     clearTimeout(waiter.timer);
 
-    if (this.#connections.size >= this.#maxOpen) {
+    if (this.#connections.size >= this.#maxConnections) {
       // Another waiter was handed the slot first; stay queued.
       this.#waiters.unshift(waiter);
       return;

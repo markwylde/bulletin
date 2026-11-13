@@ -116,4 +116,92 @@ integrationDescribe("plugin storage quota", () => {
       }
     });
   }, 30_000);
+
+  test("keeps writes revoked after a broker restart", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_quota_restart" }, async (database) => {
+      const pluginId = uniquePluginId();
+      let plugin = await PluginDatabase.open({
+        adminUrl: database.url,
+        pluginId,
+        migrations: MIGRATIONS,
+        logger,
+      });
+      let restarted: PluginDatabase | undefined;
+
+      const run = async (target: PluginDatabase, sql: string) => {
+        const statement = await assertAllowedSql(sql, {
+          schema: target.schema,
+          pluginFunctions: target.functions,
+        });
+        return target.query(sql, [], statement);
+      };
+
+      try {
+        await run(plugin, "INSERT INTO notes (body) VALUES ('before')");
+
+        const monitor = new PluginQuotaMonitor({
+          adminUrl: database.url,
+          pluginId,
+          logger,
+          quotaBytes: 1,
+          intervalMs: 60_000,
+        });
+        expect((await monitor.check()).writesRevoked).toBe(true);
+
+        const persisted = (await database.sql`
+          SELECT writes_revoked FROM core.plugin_quota WHERE plugin_id = ${pluginId}
+        `) as Array<{ writes_revoked: boolean }>;
+        expect(persisted[0]?.writes_revoked).toBe(true);
+
+        // Restart: provisioning must honour the persisted revocation instead of re-granting
+        // INSERT/UPDATE on startup.
+        await plugin.close();
+        restarted = await PluginDatabase.open({
+          adminUrl: database.url,
+          pluginId,
+          migrations: MIGRATIONS,
+          logger,
+        });
+
+        await expect(run(restarted, "INSERT INTO notes (body) VALUES ('after')")).rejects.toThrow(
+          /permission denied/i,
+        );
+        await expect(run(restarted, "UPDATE notes SET body = 'changed'")).rejects.toThrow(
+          /permission denied/i,
+        );
+        expect((await run(restarted, "SELECT count(*)::int AS count FROM notes")).rows[0]).toEqual({
+          count: 1,
+        });
+
+        // A restarted monitor reports the persisted state without repeating the revocation.
+        const restartedMonitor = new PluginQuotaMonitor({
+          adminUrl: database.url,
+          pluginId,
+          logger,
+          quotaBytes: 1,
+          intervalMs: 60_000,
+        });
+        const status = await restartedMonitor.check();
+        expect(status.writesRevoked).toBe(true);
+
+        const audits = (await database.sql`
+          SELECT count(*)::int AS count
+          FROM core.system_audit_buffer
+          WHERE action = 'plugin.quota_exceeded' AND summary->>'pluginId' = ${pluginId}
+        `) as Array<{ count: number }>;
+        expect(audits[0]?.count).toBe(1);
+
+        await restartedMonitor.restoreWrites();
+        await run(restarted, "INSERT INTO notes (body) VALUES ('restored')");
+      } finally {
+        await plugin.close().catch(() => undefined);
+        await restarted?.close().catch(() => undefined);
+        await dropPlugin({ adminUrl: database.url, pluginId }).catch(() => undefined);
+      }
+    });
+  }, 30_000);
 });
