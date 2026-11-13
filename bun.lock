@@ -144,6 +144,7 @@
       "dependencies": {
         "@bulletin/domain": "workspace:*",
         "@bulletin/mock-ui": "workspace:*",
+        "@bulletin/plugin-sdk": "workspace:*",
         "@bulletin/templates": "workspace:*",
         "jose": "6.2.16",
       },
@@ -222,6 +223,7 @@
         "@bulletin/cache": "workspace:*",
         "@bulletin/content": "workspace:*",
         "@bulletin/i18n": "workspace:*",
+        "@bulletin/plugin-sdk": "workspace:*",
         "@bulletin/storage": "workspace:*",
         "@darkauth/client": "1.32.0",
         "file-type": "21.0.0",

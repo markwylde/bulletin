@@ -28,11 +28,11 @@
 
 ## 4. Lifecycle
 
-- [ ] 4.1 Marketplace catalog browsing, compatibility, signature/checksum verification and the capability review with step-up auth; tests for the tampered-bundle scenario
-- [ ] 4.2 Install, upgrade (quiesce, single-transaction migrate, activate, resumable journal), disable and uninstall (export/erase hooks, keep or drop schema); tests for every lifecycle scenario
-- [ ] 4.3 Circuit breaker and auto-disable with admin notification, with a test
-- [ ] 4.4 Service principal defaulting to Guests, and elevated grants with a warning and admin log entry; tests
-- [ ] 4.5 Personal-data registry from manifests kept after disable/uninstall, and the maintenance sandbox that runs only GDPR handlers; tests that export and erasure reach a disabled plugin's retained data and that a failing handler keeps the request open
+- [x] 4.1 Marketplace catalog browsing, compatibility, signature/checksum verification and the capability review with step-up auth; tests for the tampered-bundle scenario
+- [x] 4.2 Install, upgrade (quiesce, single-transaction migrate, activate, resumable journal), disable and uninstall (export/erase hooks, keep or drop schema); tests for every lifecycle scenario
+- [x] 4.3 Circuit breaker and auto-disable with admin notification, with a test
+- [x] 4.4 Service principal defaulting to Guests, and elevated grants with a warning and admin log entry; tests
+- [x] 4.5 Personal-data registry from manifests kept after disable/uninstall, and the maintenance sandbox that runs only GDPR handlers; tests that export and erasure reach a disabled plugin's retained data and that a failing handler keeps the request open
 
 ## 5. Staff integration
 

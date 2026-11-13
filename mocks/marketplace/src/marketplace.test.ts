@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { verifyThemeBundle } from "@bulletin/domain/themes";
+import { createHash } from "node:crypto";
+import { DEV_THEME_PUBLIC_KEY, decodeThemeTar, verifyThemeBundle } from "@bulletin/domain/themes";
+import { parsePluginManifest } from "@bulletin/plugin-sdk/manifest";
 import { compactVerify, importJWK, type JWK } from "jose";
 import { type Catalog, createMarketplaceHandler, signCatalog } from "./app.ts";
-import { buildThemePackages } from "./packages.ts";
+import { buildPluginPackages, buildThemePackages } from "./packages.ts";
 
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
 
@@ -85,5 +87,36 @@ describe("marketplace mock", () => {
 
       expect(verifyThemeBundle(bundle, signature.trim(), keys.keys[0] as JWK)).toBe(true);
     }
+  });
+});
+
+describe("marketplace plugin package", () => {
+  test("serves a signed plugin bundle whose checksum and manifest are valid", async () => {
+    const packages = await buildPluginPackages();
+    const entry = packages[0];
+
+    if (entry === undefined) {
+      throw new Error("missing plugin package");
+    }
+
+    expect(entry.package).toMatchObject({ id: "welcome-bot", type: "plugin", sdkMajor: 2 });
+    expect(verifyThemeBundle(entry.bundle, entry.signature, DEV_THEME_PUBLIC_KEY)).toBe(true);
+
+    if (entry.package.type === "plugin") {
+      expect(createHash("sha256").update(entry.bundle).digest("hex")).toBe(entry.package.sha256);
+    }
+
+    const files = decodeThemeTar(entry.bundle);
+
+    if (files === null) {
+      throw new Error("bundle is not a valid tar");
+    }
+
+    const manifest = JSON.parse(new TextDecoder().decode(files.get("plugin.json")));
+    expect(parsePluginManifest(manifest)).toMatchObject({
+      id: "welcome-bot",
+      capabilities: ["events", "jobs", "core.read"],
+    });
+    expect(files.has("server.ts")).toBe(true);
   });
 });

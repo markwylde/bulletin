@@ -31,6 +31,30 @@ start or a supervisor-side wall-clock kill schedules an exponential restart
 `PLUGIN_HOST_RESTART_MAX`); readiness is false while a restart is pending, and the status
 reports the attempt count and `restartAt`.
 
+## Lifecycle (task 4)
+
+`packages/domain/src/plugins` owns the marketplace and lifecycle rules. The signed catalog is
+verified with the development Ed25519 key, every package's SDK range is checked against the
+installed SDK, and capability review lists elevated data access and egress hosts. Installs
+require explicit approval plus step-up authentication within five minutes; the bundle checksum
+and detached signature are verified before any row is written.
+
+`PluginLifecycle` implements `installing → active → disabled → uninstalled` plus `upgrading`
+and `failed`. Every step is journaled in `core.plugin_operations`; upgrades quiesce first, run
+all migrations in one transaction, and restore the old version if migration fails. An
+activation failure leaves the plugin failed/disabled and writes an admin-log entry. Disable
+stops hooks/routes/jobs and bumps `pluginsGeneration`; uninstall can keep, erase or drop the
+schema while the personal-data registry (`core.plugin_personal_data`) remains for GDPR.
+
+`PluginCircuitBreaker` disables a plugin after 50 consecutive failures on the same hook and
+queues a `plugin.auto_disabled` admin notification. Service principals default to Guests;
+elevated forum grants write the warning key and an admin-log entry. GDPR requests use the
+active sandbox or a maintenance sandbox and stay open when the handler fails.
+
+The concrete nsjail/provisioning adapter is wired by the staff plugin integration (task 5.2);
+the domain orchestrator is exercised with a failure-injecting runtime in the DB integration
+suite.
+
 ## SDK, hooks and plugin apps
 
 `packages/plugin-sdk` is the public, versioned plugin surface: manifest parsing, semver and
