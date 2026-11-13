@@ -54,8 +54,9 @@ export async function renderApiKeysRoute(input: ApiKeysRouteInput): Promise<{
 
   const rendered = await renderCachedPage({
     tags: contractTags(apiKeysContract, { memberId: input.session.memberId }),
-    cache: enabled && input.preview !== true ? input.cache : null,
-    tagVersions: input.tagVersions ?? null,
+    // Personal key metadata is never stored in the shared fragment cache (ADR 0006).
+    cache: null,
+    tagVersions: null,
     shell: { visitor: "member", authState: "authenticated" },
     prepare: async () => {
       const [settings, latest] = await Promise.all([

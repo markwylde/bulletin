@@ -11,7 +11,6 @@ import {
   readTopicPostById,
   readTopicPostPage,
   type TopicListSort,
-  type TopicPostVisibility,
   type TopicRecord,
 } from "@bulletin/domain/topics";
 import { canonicalUrl } from "@bulletin/domain/urls";
@@ -23,6 +22,8 @@ import {
   forumJson,
   memberJson,
   postJson,
+  preparedPostBodies,
+  preparedPostJson,
   searchHitJson,
   topicJson,
   topicListJson,
@@ -410,6 +411,7 @@ export const FORUM_ROUTES = [
         seeDeleted: visible.seeDeleted,
       });
       const pageCount = Math.max(1, Math.ceil(result.total / perPage));
+      const bodies = await preparedPostBodies(sql, result.rows);
 
       return Response.json({
         topic: {
@@ -418,7 +420,15 @@ export const FORUM_ROUTES = [
           slug: visible.topic.slug,
           url: canonicalUrl("topic", visible.topic.id, visible.topic.slug),
         },
-        posts: result.rows.map((post) => postJson(post, visible.topic)),
+        posts: result.rows.map((post) => {
+          const current = bodies.get(post.id);
+          return postJson(
+            post,
+            visible.topic,
+            current?.bodyHtml ?? post.bodyHtml,
+            current?.bodyText ?? post.bodyText,
+          );
+        }),
         page: Math.min(page, pageCount),
         pageSize: perPage,
         total: result.total,
@@ -447,41 +457,36 @@ export const FORUM_ROUTES = [
         return Response.json({ code: "not_found" }, { status: 404 });
       }
 
-      const permissions = await loadApiPermissions(sql, principal);
-      const scope = {
-        forumId: context.forumId,
-        tree: permissions.tree,
-        sessionId: null,
-        snapshot: permissions.snapshot,
-      };
+      // The topic is the parent resource: a hidden topic hides every post it contains, even
+      // when the post row itself is still `visible`.
+      const visible = await readVisibleTopic(sql, principal, context.topicId);
 
-      if (!(await can(sql, permissions.viewer, "read", scope))) {
+      if (visible === null) {
         return Response.json({ code: "not_found" }, { status: 404 });
       }
 
-      const visibility: TopicPostVisibility = context.visibility;
-      const seeUnapproved = await can(sql, permissions.viewer, "see_unapproved", scope);
-      const seeDeleted = await can(sql, permissions.viewer, "see_deleted", scope);
-
-      if (!topicVisibility({ visibility }, seeUnapproved, seeDeleted)) {
+      if (
+        !topicVisibility(
+          { visibility: context.visibility },
+          visible.seeUnapproved,
+          visible.seeDeleted,
+        )
+      ) {
         return Response.json({ code: "not_found" }, { status: 404 });
       }
 
-      const [topic, post] = await Promise.all([
-        readTopic(sql, context.topicId),
-        readTopicPostById(sql, {
-          topicId: context.topicId,
-          postId: params.id,
-          seeUnapproved,
-          seeDeleted,
-        }),
-      ]);
+      const post = await readTopicPostById(sql, {
+        topicId: context.topicId,
+        postId: params.id,
+        seeUnapproved: visible.seeUnapproved,
+        seeDeleted: visible.seeDeleted,
+      });
 
-      if (topic === null || post === null) {
+      if (post === null) {
         return Response.json({ code: "not_found" }, { status: 404 });
       }
 
-      return Response.json({ post: postJson(post, topic) });
+      return Response.json({ post: await preparedPostJson(sql, post, visible.topic) });
     },
   }),
 

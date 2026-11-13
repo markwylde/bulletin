@@ -369,6 +369,8 @@ export interface CreateDeliveryInput {
   readonly webhookId: string;
   readonly eventId: string;
   readonly attempt: number;
+  /** When the worker may enqueue this attempt; defaults to immediately. */
+  readonly scheduledAt?: Date;
 }
 
 /** Inserts one pending attempt; a relay replay cannot duplicate the same attempt. */
@@ -377,8 +379,11 @@ export async function createWebhookDelivery(
   input: CreateDeliveryInput,
 ): Promise<string | null> {
   const rows = (await sql`
-    INSERT INTO core.webhook_deliveries (webhook_id, event_id, attempt, status)
-    VALUES (${input.webhookId}, ${input.eventId}, ${input.attempt}, 'pending')
+    INSERT INTO core.webhook_deliveries (webhook_id, event_id, attempt, status, scheduled_at)
+    VALUES (
+      ${input.webhookId}, ${input.eventId}, ${input.attempt}, 'pending',
+      ${input.scheduledAt ?? new Date()}
+    )
     ON CONFLICT (webhook_id, event_id, attempt) DO NOTHING
     RETURNING id::text AS id
   `) as Array<{ id: string }>;
@@ -420,12 +425,13 @@ export async function markWebhookDeliveryEnqueued(
 export async function pendingWebhookDeliveries(
   sql: SQL,
   limit = 100,
+  now: Date = new Date(),
 ): Promise<readonly { readonly id: string; readonly webhookId: string }[]> {
   const rows = (await sql`
     SELECT id::text AS id, webhook_id::text AS webhook_id
     FROM core.webhook_deliveries
-    WHERE status = 'pending' AND enqueued_at IS NULL
-    ORDER BY created_at, id
+    WHERE status = 'pending' AND enqueued_at IS NULL AND scheduled_at <= ${now}
+    ORDER BY scheduled_at, created_at, id
     LIMIT ${limit}
   `) as Array<{ id: string; webhook_id: string }>;
 

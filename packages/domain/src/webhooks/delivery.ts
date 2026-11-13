@@ -1,6 +1,9 @@
 import { createHmac } from "node:crypto";
+import { ensureCurrentRendering } from "@bulletin/content";
 import type { SQL } from "bun";
+import { listEmbedProviders } from "../content/embeds.ts";
 import { loadEvent, type StoredEvent } from "../events/index.ts";
+import { loadReplaceWords } from "../filters/repository.ts";
 import { type SafeFetch, safeFetch } from "../net/index.ts";
 import { can, loadForumTree, loadPermissionSnapshot } from "../permissions/index.ts";
 import { readReactionTarget } from "../reactions/index.ts";
@@ -8,12 +11,18 @@ import {
   readPostContext,
   readTopic,
   readTopicPostById,
+  type TopicPostRow,
   type TopicPostVisibility,
 } from "../topics/index.ts";
 import { canonicalUrl } from "../urls/index.ts";
 import type { WebhookContentField } from "./events.ts";
 import type { WebhookRecord } from "./repository.ts";
-import { completeWebhookDelivery, readWebhook, readWebhookDelivery } from "./repository.ts";
+import {
+  completeWebhookDelivery,
+  createWebhookDelivery,
+  readWebhook,
+  readWebhookDelivery,
+} from "./repository.ts";
 
 /** A webhook that keeps failing for this long is disabled (webhooks spec). */
 export const WEBHOOK_FAILURE_WINDOW_MS = 24 * 60 * 60 * 1_000;
@@ -115,6 +124,32 @@ function contentFrom(
   return content;
 }
 
+/** Re-sanitises stale stored HTML before a webhook may include it (ADR 0007). */
+async function currentWebhookBody(
+  sql: SQL,
+  post: TopicPostRow,
+): Promise<{
+  readonly bodyMd: string;
+  readonly bodyHtml: string;
+  readonly bodyText: string;
+}> {
+  const [replaceWords, embedProviders] = await Promise.all([
+    loadReplaceWords(sql),
+    listEmbedProviders(sql),
+  ]);
+  const current = await ensureCurrentRendering(
+    {
+      bodyHtml: post.bodyHtml,
+      bodyText: post.bodyText,
+      renderVersion: post.renderVersion,
+      sanitiserVersion: post.sanitiserVersion,
+    },
+    { profile: "post", replaceWords, embedProviders },
+  );
+
+  return { bodyMd: post.bodyMd, bodyHtml: current.bodyHtml, bodyText: current.bodyText };
+}
+
 /**
  * Builds the delivery payload at send time. Restricted PII never enters; content fields are
  * opt-in and the principal must still be able to read the resource now (ADR 0016, 0011).
@@ -161,7 +196,10 @@ export async function buildWebhookPayload(
       return null;
     }
 
-    const content = contentFrom(webhook.contentFields, topic.title, post);
+    const body = webhook.contentFields.some((field) => field !== "title")
+      ? await currentWebhookBody(sql, post)
+      : post;
+    const content = contentFrom(webhook.contentFields, topic.title, body);
 
     return {
       id: event.id.toString(),
@@ -203,7 +241,7 @@ export async function buildWebhookPayload(
       });
 
       if (post !== null) {
-        body = post;
+        body = await currentWebhookBody(sql, post);
       }
     }
 
@@ -325,6 +363,8 @@ export interface AttemptWebhookResult {
 export interface AttemptWebhookOptions {
   readonly fetch?: SafeFetch;
   readonly now?: Date;
+  /** Gates queued deliveries after the `webhooks` flag is turned off. */
+  readonly isEnabled?: (key: string, memberId: string | null) => Promise<boolean>;
 }
 
 /**
@@ -345,8 +385,12 @@ export async function attemptWebhookDelivery(
 
   const webhook = await readWebhook(sql, delivery.webhookId);
   const event = await loadEvent(sql, BigInt(delivery.eventId));
+  const featureEnabled =
+    webhook === null ||
+    options.isEnabled === undefined ||
+    (await options.isEnabled("webhooks", webhook.principalMemberId));
 
-  if (webhook === null || event === null || !webhook.enabled) {
+  if (webhook === null || event === null || !webhook.enabled || !featureEnabled) {
     const result: AttemptWebhookResult = {
       status: "skipped",
       httpStatus: null,
@@ -356,7 +400,9 @@ export async function attemptWebhookDelivery(
           ? "webhook_missing"
           : event === null
             ? "event_missing"
-            : "webhook_disabled",
+            : !featureEnabled
+              ? "feature_disabled"
+              : "webhook_disabled",
       retryAt: null,
       disabled: webhook !== null && !webhook.enabled,
     };
@@ -458,44 +504,67 @@ export async function attemptWebhookDelivery(
     };
   }
 
-  await completeWebhookDelivery(
-    sql,
-    deliveryId,
-    {
-      status: "failed",
-      httpStatus,
-      responseMs,
-      error: error ?? `http_${httpStatus ?? 0}`,
-      signatureTimestamp: new Date(Number(signed.timestamp) * 1_000),
-    },
-    now,
-  );
+  const failureError = error ?? `http_${httpStatus ?? 0}`;
+  const outcome = await sql.begin(async (tx) => {
+    const [fresh] = (await tx`
+      SELECT failure_since, enabled
+      FROM core.webhooks
+      WHERE id = ${webhook.id}
+      FOR UPDATE
+    `) as Array<{ failure_since: Date | null; enabled: boolean }>;
 
-  const failureSince = webhook.failureSince ?? now;
-  const windowEnd = failureSince.getTime() + WEBHOOK_FAILURE_WINDOW_MS;
-  const desired = now.getTime() + webhookRetryDelayMs(delivery.attempt);
-  const retryAtMs = Math.min(desired, windowEnd);
-  let retryAt: Date | null = retryAtMs > now.getTime() ? new Date(retryAtMs) : null;
-  let disabled = false;
+    await completeWebhookDelivery(
+      tx,
+      deliveryId,
+      {
+        status: "failed",
+        httpStatus,
+        responseMs,
+        error: failureError,
+        signatureTimestamp: new Date(Number(signed.timestamp) * 1_000),
+      },
+      now,
+    );
 
-  if (retryAt === null || now.getTime() >= windowEnd) {
-    retryAt = null;
-    disabled = true;
-    await notifyAdminsDisabled(sql, webhook, delivery.eventId, now);
-  } else {
-    await sql`
+    if (fresh === undefined || !fresh.enabled) {
+      return { retryAt: null, disabled: true };
+    }
+
+    const failureSince = fresh.failure_since === null ? now : new Date(fresh.failure_since);
+    const windowEnd = failureSince.getTime() + WEBHOOK_FAILURE_WINDOW_MS;
+    const desired = now.getTime() + webhookRetryDelayMs(delivery.attempt);
+    const retryAtMs = Math.min(desired, windowEnd);
+    const retryAt = retryAtMs > now.getTime() ? new Date(retryAtMs) : null;
+
+    if (retryAt === null || now.getTime() >= windowEnd) {
+      await notifyAdminsDisabled(tx, webhook, delivery.eventId, now);
+      return { retryAt: null, disabled: true };
+    }
+
+    await tx`
       UPDATE core.webhooks
       SET failure_since = coalesce(failure_since, ${now}), updated_at = ${now}
       WHERE id = ${webhook.id}
     `;
-  }
+
+    // The failure and its retry intent commit together. A worker crash before enqueueing the
+    // successor leaves this pending row for the sweep to find at its deadline.
+    await createWebhookDelivery(tx, {
+      webhookId: webhook.id,
+      eventId: delivery.eventId,
+      attempt: delivery.attempt + 1,
+      scheduledAt: retryAt,
+    });
+
+    return { retryAt, disabled: false };
+  });
 
   return {
     status: "failed",
     httpStatus,
     responseMs,
-    error: error ?? `http_${httpStatus ?? 0}`,
-    retryAt,
-    disabled,
+    error: failureError,
+    retryAt: outcome.retryAt,
+    disabled: outcome.disabled,
   };
 }

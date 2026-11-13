@@ -255,6 +255,67 @@ integrationDescribe("public API read endpoints", () => {
     });
   }, 30_000);
 
+  test("re-sanitises stale post HTML before returning it", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const topic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: forum,
+        title: "Sanitiser upgrade topic",
+        bodyMd: "Safe body.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await database.sql`
+        UPDATE core.posts
+        SET body_html = '<p>Still safe</p><img src=x onerror="alert(1)">',
+            render_version = 1,
+            sanitiser_version = 1
+        WHERE id = ${topic.result.postId}
+      `;
+      const key = await keyFor(database, member, ["read:forums", "read:topics", "read:posts"]);
+      const response = await api(database, `/api/v1/posts/${topic.result.postId}`, key);
+      expect(response?.status).toBe(200);
+      const body = await json<{ post: { bodyHtml: string } }>(response);
+      expect(body.post.bodyHtml).toContain("Still safe");
+      expect(body.post.bodyHtml).not.toContain("onerror");
+    });
+  }, 30_000);
+
+  test("hides posts whose parent topic is soft-deleted", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const topic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: forum,
+        title: "Hidden parent topic",
+        bodyMd: "The post stays visible while the topic is hidden.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await database.sql`
+        UPDATE core.topics SET visibility = 'soft_deleted' WHERE id = ${topic.result.topicId}
+      `;
+      const key = await keyFor(database, member, ["read:forums", "read:topics", "read:posts"]);
+      const memberRead = await api(database, `/api/v1/posts/${topic.result.postId}`, key);
+      const guestRead = await api(database, `/api/v1/posts/${topic.result.postId}`);
+
+      expect(memberRead?.status).toBe(404);
+      expect(guestRead?.status).toBe(404);
+      expect(await memberRead?.json()).toEqual({ code: "not_found" });
+    });
+  }, 30_000);
+
   test("does not expose service members through the public member endpoint", async () => {
     await withSeededDb(async (database) => {
       const [membersGroup] = (await database.sql`
@@ -419,6 +480,163 @@ integrationDescribe("public API write endpoints", () => {
       const retry = await json<{ code: string; retryAfterSeconds: number }>(tooFast);
       expect(retry.code).toBe("flood_control");
       expect(retry.retryAfterSeconds).toBeGreaterThan(0);
+    });
+  }, 30_000);
+
+  test("blocks topic and reply writes from a banned IP", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const topic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: forum,
+        title: "IP ban reply target",
+        bodyMd: "Body.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await database.sql`
+        INSERT INTO core.ip_bans (cidr, reason, created_by)
+        VALUES ('198.51.100.77/32', 'API denial test', ${admin})
+      `;
+      const key = await keyFor(database, member, ["read:forums", "read:topics", "write:posts"]);
+
+      const createDenied = await api(database, `/api/v1/forums/${forum}/topics`, key, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "Banned topic", bodyMd: "Denied." }),
+      });
+      const replyDenied = await api(
+        database,
+        `/api/v1/topics/${topic.result.topicId}/replies`,
+        key,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ bodyMd: "Denied." }),
+        },
+      );
+
+      expect(createDenied?.status).toBe(403);
+      expect(replyDenied?.status).toBe(403);
+      expect(await createDenied?.json()).toEqual({ code: "ip_banned" });
+      expect(await replyDenied?.json()).toEqual({ code: "ip_banned" });
+
+      const [count] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.posts WHERE topic_id = ${topic.result.topicId}
+      `) as Array<{ count: number }>;
+      expect(count?.count).toBe(1);
+    });
+  }, 30_000);
+
+  test("denies replies and reactions by scope and principal without mutating", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const publicForum = await forumId(database, "off-topic");
+      const staffForum = await forumId(database, "staff-room");
+      const publicTopic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: publicForum,
+        title: "Reply denial target",
+        bodyMd: "Reply here.",
+      });
+      const staffTopic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: staffForum,
+        title: "Private reply target",
+        bodyMd: "Staff only.",
+      });
+
+      if (!publicTopic.ok || !staffTopic.ok) {
+        throw new Error("Could not create denial targets");
+      }
+
+      const replyScopeKey = await keyFor(database, member, [
+        "read:forums",
+        "read:topics",
+        "write:reactions",
+      ]);
+      const replyScopeDenied = await api(
+        database,
+        `/api/v1/topics/${publicTopic.result.topicId}/replies`,
+        replyScopeKey,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ bodyMd: "Should not exist." }),
+        },
+      );
+      expect(replyScopeDenied?.status).toBe(403);
+
+      const replyKey = await keyFor(database, member, [
+        "read:forums",
+        "read:topics",
+        "write:posts",
+      ]);
+      const replyPrincipalDenied = await api(
+        database,
+        `/api/v1/topics/${staffTopic.result.topicId}/replies`,
+        replyKey,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ bodyMd: "Should not exist." }),
+        },
+      );
+      expect(replyPrincipalDenied?.status).toBe(403);
+
+      const [posts] = (await database.sql`
+        SELECT
+          count(*) FILTER (WHERE topic_id = ${publicTopic.result.topicId})::int AS public_count,
+          count(*) FILTER (WHERE topic_id = ${staffTopic.result.topicId})::int AS staff_count
+        FROM core.posts
+      `) as Array<{ public_count: number; staff_count: number }>;
+      expect(posts).toEqual({ public_count: 1, staff_count: 1 });
+
+      const [reaction] = (await database.sql`
+        SELECT id::text AS id FROM core.reactions WHERE key = 'like'
+      `) as Array<{ id: string }>;
+      const reactionScopeKey = await keyFor(database, member, ["read:posts", "write:posts"]);
+      const reactionScopeDenied = await api(
+        database,
+        `/api/v1/posts/${publicTopic.result.postId}/reactions`,
+        reactionScopeKey,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reactionId: reaction?.id ?? "" }),
+        },
+      );
+      expect(reactionScopeDenied?.status).toBe(403);
+
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'posting.can_react', 'false'::jsonb
+        FROM core.groups WHERE key = 'members'
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      const reactionKey = await keyFor(database, member, ["read:posts", "write:reactions"]);
+      const reactionPrincipalDenied = await api(
+        database,
+        `/api/v1/posts/${publicTopic.result.postId}/reactions`,
+        reactionKey,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reactionId: reaction?.id ?? "" }),
+        },
+      );
+      expect(reactionPrincipalDenied?.status).toBe(403);
+
+      const [reactions] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.post_reactions
+      `) as Array<{ count: number }>;
+      expect(reactions?.count).toBe(0);
     });
   }, 30_000);
 

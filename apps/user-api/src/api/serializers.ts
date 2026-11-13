@@ -1,8 +1,12 @@
+import { ensureCurrentRendering } from "@bulletin/content";
+import { listEmbedProviders } from "@bulletin/domain/content";
+import { loadReplaceWords } from "@bulletin/domain/filters";
 import type { ForumRecord } from "@bulletin/domain/forums";
 import type { ProfileRecord } from "@bulletin/domain/profiles";
 import type { SearchHit } from "@bulletin/domain/search";
 import type { TopicListRow, TopicPostRow, TopicRecord } from "@bulletin/domain/topics";
 import { canonicalUrl } from "@bulletin/domain/urls";
+import type { SQL } from "bun";
 
 /** JSON-safe shapes for `/api/v1`: IDs and public URLs, never internal security fields. */
 export function forumJson(forum: ForumRecord): Readonly<Record<string, unknown>> {
@@ -66,19 +70,66 @@ export function topicListJson(row: TopicListRow): Readonly<Record<string, unknow
   };
 }
 
-export function postJson(row: TopicPostRow, topic: TopicRecord): Readonly<Record<string, unknown>> {
+export function postJson(
+  row: TopicPostRow,
+  topic: TopicRecord,
+  bodyHtml: string = row.bodyHtml,
+  bodyText: string = row.bodyText,
+): Readonly<Record<string, unknown>> {
   return {
     id: row.id,
     topicId: topic.id,
     url: `${canonicalUrl("topic", topic.id, topic.slug, { postId: row.id })}`,
     author: { id: row.authorId, name: row.authorName },
-    bodyHtml: row.bodyHtml,
-    bodyText: row.bodyText,
+    bodyHtml,
+    bodyText,
     position: row.position,
     createdAt: row.createdAt,
     editedAt: row.editedAt,
     editedByName: row.editedByName,
   };
+}
+
+/** Applies the read-path sanitiser/rendering guard before API HTML leaves the process. */
+export async function preparedPostBodies(
+  sql: SQL,
+  rows: readonly TopicPostRow[],
+): Promise<ReadonlyMap<string, { readonly bodyHtml: string; readonly bodyText: string }>> {
+  if (rows.length === 0) {
+    return new Map();
+  }
+
+  const [replaceWords, embedProviders] = await Promise.all([
+    loadReplaceWords(sql),
+    listEmbedProviders(sql),
+  ]);
+  const prepared = await Promise.all(
+    rows.map(async (row) => {
+      const current = await ensureCurrentRendering(
+        {
+          bodyHtml: row.bodyHtml,
+          bodyText: row.bodyText,
+          renderVersion: row.renderVersion,
+          sanitiserVersion: row.sanitiserVersion,
+        },
+        { profile: "post", replaceWords, embedProviders },
+      );
+
+      return [row.id, { bodyHtml: current.bodyHtml, bodyText: current.bodyText }] as const;
+    }),
+  );
+
+  return new Map(prepared);
+}
+
+export async function preparedPostJson(
+  sql: SQL,
+  row: TopicPostRow,
+  topic: TopicRecord,
+): Promise<Readonly<Record<string, unknown>>> {
+  const bodies = await preparedPostBodies(sql, [row]);
+  const current = bodies.get(row.id);
+  return postJson(row, topic, current?.bodyHtml ?? row.bodyHtml, current?.bodyText ?? row.bodyText);
 }
 
 export function memberJson(member: ProfileRecord): Readonly<Record<string, unknown>> {

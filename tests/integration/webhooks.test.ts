@@ -22,6 +22,7 @@ import {
   createWebhookDelivery,
   listWebhookDeliveries,
   nextWebhookAttempt,
+  pendingWebhookDeliveries,
   readWebhook,
   saveWebhook,
   validateWebhookTarget,
@@ -410,6 +411,59 @@ integrationDescribe("webhook subscriber and delivery", () => {
     });
   }, 30_000);
 
+  test("stops fanout and queued deliveries when the webhooks flag is off", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const principal = await servicePrincipal(database, "Flagged Bot");
+      const { webhook, secret } = await createWebhook(database, principal, ["post.created"]);
+      await createPublicTopicAndReply(database, forum, author, "Flagged webhook topic");
+      const event = await loadEvent(database.sql, await latestEvent(database, "post.created"));
+
+      if (event === null) {
+        throw new Error("Missing event");
+      }
+
+      const sent: string[] = [];
+      const boss = {
+        send: async (_queue: string, payload: { readonly deliveryId: string }): Promise<string> => {
+          sent.push(payload.deliveryId);
+          return "job";
+        },
+      } as unknown as import("pg-boss").PgBoss;
+      const offHandler = createWebhookEventHandler({
+        boss,
+        sql: database.sql,
+        isEnabled: async () => false,
+      });
+      await offHandler(event);
+      expect(sent).toHaveLength(0);
+      expect(await listWebhookDeliveries(database.sql, { webhookId: webhook.id })).toHaveLength(0);
+
+      const onHandler = createWebhookEventHandler({
+        boss,
+        sql: database.sql,
+        isEnabled: async () => true,
+      });
+      await onHandler(event);
+      expect(sent).toHaveLength(1);
+
+      const deliveryId = sent[0];
+      const mock = mockFetch(secret);
+      const skipped = await attemptWebhookDelivery(database.sql, deliveryId ?? "", {
+        fetch: mock.fetch,
+        isEnabled: async () => false,
+      });
+
+      expect(skipped?.status).toBe("skipped");
+      expect(skipped?.error).toBe("feature_disabled");
+      expect(mock.store.list()).toHaveLength(0);
+      expect(
+        (await listWebhookDeliveries(database.sql, { webhookId: webhook.id }))[0],
+      ).toMatchObject({ status: "skipped", httpStatus: null });
+    });
+  }, 30_000);
+
   test("does not deliver a staff-forum event to a principal that cannot read it", async () => {
     await withSeededDb(async (database) => {
       const admin = await memberId(database, "admin");
@@ -492,6 +546,43 @@ integrationDescribe("webhook subscriber and delivery", () => {
     });
   }, 30_000);
 
+  test("re-sanitises stale HTML before including it in a webhook", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const principal = await servicePrincipal(database, "Sanitiser Bot");
+      const { webhook } = await createWebhook(database, principal, ["topic.created"], ["bodyHtml"]);
+      const created = await startTopic(database.sql, {
+        actorId: author,
+        forumId: forum,
+        title: "Stale webhook topic",
+        bodyMd: "Safe topic body.",
+      });
+
+      if (!created.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      await database.sql`
+        UPDATE core.posts
+        SET body_html = '<p>Safe</p><img src=x onerror="alert(1)">',
+            render_version = 1,
+            sanitiser_version = 1
+        WHERE id = ${created.result.postId}
+      `;
+      const event = await loadEvent(database.sql, await latestEvent(database, "topic.created"));
+
+      if (event === null) {
+        throw new Error("Missing event");
+      }
+
+      const payload = await buildWebhookPayload(database.sql, webhook, event);
+      const html = (payload?.content as { readonly bodyHtml?: string } | undefined)?.bodyHtml;
+      expect(html).toContain("Safe");
+      expect(html).not.toContain("onerror");
+    });
+  }, 30_000);
+
   test("logs retries, redelivers with a fresh signature and auto-disables after 24 hours", async () => {
     await withSeededDb(async (database) => {
       const admin = await memberId(database, "admin");
@@ -523,10 +614,33 @@ integrationDescribe("webhook subscriber and delivery", () => {
       expect(stored?.failureSince?.toISOString()).toBe(started.toISOString());
 
       const log = await listWebhookDeliveries(database.sql, { webhookId: webhook.id });
-      expect(log[0]).toMatchObject({ status: "failed", httpStatus: 500, attempt: 1 });
+      expect(log.find((entry) => entry.attempt === 1)).toMatchObject({
+        status: "failed",
+        httpStatus: 500,
+        attempt: 1,
+      });
 
-      const attempt = await nextWebhookAttempt(database.sql, webhook.id, eventId.toString());
-      expect(attempt).toBe(2);
+      // The failure and its successor retry were committed together; an interrupted worker
+      // leaves this row waiting for the sweep at its deadline.
+      const [successor] = (await database.sql`
+        SELECT id::text AS id, attempt, status, enqueued_at, scheduled_at
+        FROM core.webhook_deliveries
+        WHERE webhook_id = ${webhook.id} AND event_id = ${eventId.toString()} AND attempt = 2
+      `) as Array<{
+        id: string;
+        attempt: number;
+        status: string;
+        enqueued_at: Date | null;
+        scheduled_at: Date;
+      }>;
+      expect(successor).toMatchObject({ attempt: 2, status: "pending", enqueued_at: null });
+      expect(successor?.scheduled_at.toISOString()).toBe(failed.retryAt?.toISOString());
+
+      const tooEarly = await pendingWebhookDeliveries(database.sql, 100, started);
+      expect(tooEarly.map((entry) => entry.id)).not.toContain(successor?.id);
+      const due = await pendingWebhookDeliveries(database.sql, 100, failed.retryAt ?? started);
+      expect(due.map((entry) => entry.id)).toContain(successor?.id);
+
       const redeliveryResponse = await mutateWebhookForStaff(
         database.sql,
         admin,

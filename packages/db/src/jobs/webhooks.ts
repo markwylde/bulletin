@@ -5,7 +5,6 @@ import {
   attemptWebhookDelivery,
   createWebhookDelivery,
   markWebhookDeliveryEnqueued,
-  nextWebhookAttempt,
   pendingWebhookDeliveries,
   webhooksForEvent,
 } from "@bulletin/domain/webhooks";
@@ -32,6 +31,8 @@ export interface WebhookJobsOptions {
   readonly logger?: Logger;
   readonly fetch?: SafeFetch;
   readonly now?: () => Date;
+  /** Worker-side flag evaluation; the webhook flag gates fanout and delivery. */
+  readonly isEnabled?: (key: string, memberId: string | null) => Promise<boolean>;
 }
 
 async function sendDelivery(boss: PgBoss, deliveryId: string, startAfter?: Date): Promise<void> {
@@ -59,6 +60,13 @@ export function createWebhookEventHandler(
     const webhooks = await webhooksForEvent(options.sql, event.type);
 
     for (const webhook of webhooks) {
+      if (
+        options.isEnabled !== undefined &&
+        !(await options.isEnabled("webhooks", webhook.principalMemberId))
+      ) {
+        continue;
+      }
+
       const deliveryId = await createWebhookDelivery(options.sql, {
         webhookId: webhook.id,
         eventId: event.id.toString(),
@@ -83,7 +91,7 @@ export function createWebhookEventHandler(
   };
 }
 
-/** Registers the delivery worker and a minute sweep for pending/redelivered attempts. */
+/** Registers the delivery worker; the relay tick sweeps pending/redelivered attempts. */
 export async function createWebhookJobs(options: WebhookJobsOptions): Promise<WebhookJobs> {
   const now = options.now ?? (() => new Date());
   await ensurePgBossQueue(options.boss, WEBHOOK_QUEUE);
@@ -94,6 +102,7 @@ export async function createWebhookJobs(options: WebhookJobsOptions): Promise<We
         const result = await attemptWebhookDelivery(options.sql, job.data.deliveryId, {
           now: now(),
           ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+          ...(options.isEnabled === undefined ? {} : { isEnabled: options.isEnabled }),
         });
 
         if (result === null) {
@@ -106,30 +115,6 @@ export async function createWebhookJobs(options: WebhookJobsOptions): Promise<We
           httpStatus: result.httpStatus,
           responseMs: result.responseMs,
         });
-
-        if (result.status === "failed" && result.retryAt !== null) {
-          const delivery = (await options.sql`
-            SELECT webhook_id::text AS webhook_id, event_id::text AS event_id
-            FROM core.webhook_deliveries WHERE id = ${job.data.deliveryId}
-          `) as Array<{ webhook_id: string; event_id: string }>;
-          const row = delivery[0];
-
-          if (row === undefined) {
-            continue;
-          }
-
-          const attempt = await nextWebhookAttempt(options.sql, row.webhook_id, row.event_id);
-          const nextId = await createWebhookDelivery(options.sql, {
-            webhookId: row.webhook_id,
-            eventId: row.event_id,
-            attempt,
-          });
-
-          if (nextId !== null) {
-            await sendDelivery(options.boss, nextId, result.retryAt);
-            await markWebhookDeliveryEnqueued(options.sql, nextId);
-          }
-        }
       } catch (error) {
         options.logger?.error("webhook.delivery.failed", {
           deliveryId: job.data.deliveryId,

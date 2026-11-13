@@ -102,15 +102,18 @@ const pluginJobs = await createPluginJobs({
 });
 await pluginJobs.start();
 
+const workerFlags = createWorkerFlags(sql);
 const webhookJobs = await createWebhookJobs({
   boss: boss.boss,
   sql,
   logger: logger.child({ component: "webhooks" }),
+  isEnabled: (key, memberId) => workerFlags.enabled(key, memberId),
 });
 const webhookEventHandler = createWebhookEventHandler({
   boss: boss.boss,
   sql,
   logger: logger.child({ component: "webhooks" }),
+  isEnabled: (key, memberId) => workerFlags.enabled(key, memberId),
 });
 
 // The core subscriber handles cache invalidation; notifications reacts to content and member
@@ -155,7 +158,6 @@ const enqueueFanout = async (job: {
     singletonKey: `fanout:${job.eventId}:${job.throughMemberId}`,
   });
 };
-const workerFlags = createWorkerFlags(sql);
 const notificationFilters: readonly NotificationRecipientFilter[] = [
   async (context) =>
     !(await workerFlags.enabled("ignore_list", context.recipient.memberId)) ||

@@ -2,6 +2,7 @@ import { isApiKeyPrincipal } from "@bulletin/domain/api";
 import { follow, unfollow } from "@bulletin/domain/follows";
 import * as v from "valibot";
 import { createUserApiFlags } from "../flag-guard.ts";
+import { blockedPostingResponse } from "../posting-guard.ts";
 import { reactionSetResponse } from "../reactions.ts";
 import { createTopicResponse, replyResponse } from "../topics.ts";
 import { type ApiResponseDefinition, defineApiRoute } from "./route.ts";
@@ -52,6 +53,12 @@ export const WRITE_ROUTES = [
         return Response.json({ code: "unauthenticated" }, { status: 401 });
       }
 
+      const blocked = await blockedPostingResponse(sql, request);
+
+      if (blocked !== null) {
+        return blocked;
+      }
+
       const flags = createUserApiFlags(sql);
       const [pollsEnabled, followsEnabled] = await Promise.all([
         flags.enabled("polls", principal.memberId),
@@ -79,6 +86,12 @@ export const WRITE_ROUTES = [
     handler: async ({ sql, principal, params, request }) => {
       if (!isApiKeyPrincipal(principal)) {
         return Response.json({ code: "unauthenticated" }, { status: 401 });
+      }
+
+      const blocked = await blockedPostingResponse(sql, request);
+
+      if (blocked !== null) {
+        return blocked;
       }
 
       const flags = createUserApiFlags(sql);
