@@ -24,6 +24,7 @@
     "./notifications": "./src/notifications/index.ts",
     "./mutations": "./src/mutations/index.ts",
     "./visits": "./src/visits/index.ts",
+    "./webhooks": "./src/webhooks/index.ts",
     "./content": "./src/content/index.ts",
     "./conversations": "./src/conversations/index.ts",
     "./search": "./src/search/index.ts",

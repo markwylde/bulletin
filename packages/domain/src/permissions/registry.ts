@@ -311,6 +311,15 @@ const PERMISSION_DEFINITIONS = [
     labelKey: "staff.groups.permission.acpWarnings",
   },
   {
+    key: "acp.webhooks",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "acp",
+    labelKey: "staff.groups.permission.acpWebhooks",
+  },
+  {
     key: "reports.members",
     kind: "permission",
     type: "bool",

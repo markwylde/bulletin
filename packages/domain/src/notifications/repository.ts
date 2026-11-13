@@ -23,6 +23,7 @@ export const NOTIFICATION_TYPES = [
   "report.resolved",
   "report.rejected",
   "warning.issued",
+  "webhook.disabled",
 ] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -331,6 +332,7 @@ export async function eventRecipients(
     "report.resolved": 0,
     "report.rejected": 0,
     "warning.issued": 0,
+    "webhook.disabled": 0,
   };
   let tree: ForumTree | null = null;
 

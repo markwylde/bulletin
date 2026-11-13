@@ -85,6 +85,8 @@ function subjectFor(translate: Translator, type: NotificationType, topic: string
       return translate("email.subject.report.rejected");
     case "warning.issued":
       return translate("email.subject.warning.issued");
+    case "webhook.disabled":
+      return translate("email.subject.webhook.disabled");
   }
 }
 
@@ -123,6 +125,8 @@ function bodyFor(
       return translate("email.body.report.rejected");
     case "warning.issued":
       return translate("email.body.warning.issued", { actor });
+    case "webhook.disabled":
+      return translate("email.body.webhook.disabled");
   }
 }
 

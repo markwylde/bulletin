@@ -134,6 +134,7 @@ import {
   uploadAssetResponse,
 } from "./themes.ts";
 import { mutateWarningSettingResponse, warningSettingsResponse } from "./warnings.ts";
+import { mutateWebhookForStaff, webhooksResponse } from "./webhooks.ts";
 
 export interface StaffRouteContext {
   readonly request: Request;
@@ -1245,6 +1246,21 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     permission: "acp.members",
     requiresStepUp: true,
     handler: async ({ sql, request }) => readIpAccessResponse(sql, request),
+  },
+  {
+    id: "webhooks.list",
+    method: "GET",
+    path: "/api/staff/webhooks",
+    permission: "acp.webhooks",
+    handler: async ({ sql }) => webhooksResponse(sql),
+  },
+  {
+    id: "webhooks.mutate",
+    method: "POST",
+    path: "/api/staff/webhooks",
+    permission: "acp.webhooks",
+    handler: async ({ sql, session, request }) =>
+      mutateWebhookForStaff(sql, session.memberId, request),
   },
   {
     id: "filters.settings",

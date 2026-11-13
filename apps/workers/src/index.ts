@@ -28,11 +28,14 @@ import {
   createSearchJobs,
   createUnfurlJobs,
   createWarningJobs,
+  createWebhookEventHandler,
+  createWebhookJobs,
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import type { NotificationRecipientFilter } from "@bulletin/domain/notifications";
 import { ignoreRecipientFilter } from "@bulletin/domain/relationships";
+import { WEBHOOK_EVENTS } from "@bulletin/domain/webhooks";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { createBadgeEventHandler } from "./badges.ts";
@@ -99,6 +102,17 @@ const pluginJobs = await createPluginJobs({
 });
 await pluginJobs.start();
 
+const webhookJobs = await createWebhookJobs({
+  boss: boss.boss,
+  sql,
+  logger: logger.child({ component: "webhooks" }),
+});
+const webhookEventHandler = createWebhookEventHandler({
+  boss: boss.boss,
+  sql,
+  logger: logger.child({ component: "webhooks" }),
+});
+
 // The core subscriber handles cache invalidation; notifications reacts to content and member
 // facts. Plugins receive their events through their own queues (ADR 0009, 0011).
 const subscribers: EventSubscriber[] = [
@@ -125,6 +139,7 @@ const subscribers: EventSubscriber[] = [
     types: ["post.approved", "post.created", "topic.created", "reaction.added", "reputation.given"],
   },
   { name: "reputation", types: ["reputation.recount.requested"] },
+  { name: "webhooks", types: WEBHOOK_EVENTS },
   { name: "plugins", types: "*" },
 ];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
@@ -185,6 +200,7 @@ const eventWorker = await createEventWorker({
       enqueueFanout,
     }),
     badges: createBadgeEventHandler({ sql, logger }),
+    webhooks: webhookEventHandler,
     plugins: (event) => pluginEvents.dispatch(event).then(() => undefined),
   },
   logger,
@@ -229,6 +245,7 @@ const relayTimer = setInterval(() => {
 
   relayInFlight = relay
     .runOnce()
+    .then(() => webhookJobs.enqueuePending())
     .then(() => undefined)
     .catch((error: unknown) => {
       logger.error("domain-event relay failed", { error });
@@ -276,6 +293,7 @@ await startService({
     await reputationJobs.stop();
     await searchJobs.stop();
     await eventWorker.stop();
+    await webhookJobs.stop();
     await pluginEvents.stop();
     await pluginJobs.stop();
     await boss.stop();
@@ -298,6 +316,7 @@ await startService({
   await promotionJobs.stop();
   await reputationJobs.stop();
   await searchJobs.stop();
+  await webhookJobs.stop();
   await boss.stop();
   throw error;
 });

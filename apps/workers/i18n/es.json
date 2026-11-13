@@ -22,6 +22,7 @@
   "email.body.topic.created": "{actor} inició «{topic}».",
   "email.body.topic.reply": "{actor} respondió en «{topic}».",
   "email.body.warning.issued": "{actor} te emitió una advertencia. Abre tu página de advertencias para ver el motivo y la nota.",
+  "email.body.webhook.disabled": "Se desactivó un webhook tras fallar de forma continua durante 24 horas.",
   "email.fallbackActor": "Alguien",
   "email.fallbackName": "hola",
   "email.greeting": "Hola {name}:",
@@ -40,5 +41,6 @@
   "email.subject.topic.created": "Tema nuevo en un foro que sigues",
   "email.subject.topic.reply": "Respuesta nueva en {topic}",
   "email.subject.warning.issued": "Recibiste una advertencia",
+  "email.subject.webhook.disabled": "Webhook desactivado",
   "email.unsubscribe": "Cancela la suscripción a estos correos: {url}"
 }

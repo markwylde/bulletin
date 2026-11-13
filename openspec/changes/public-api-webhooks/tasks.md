@@ -16,9 +16,9 @@
 
 ## 3. Webhooks
 
-- [ ] 3.1 Webhook configuration (staff screen, SSRF check, principal, content fields), with tests for the private-target scenario and permission denial
-- [ ] 3.2 Webhook subscriber in the relay (delivery-time visibility, minimal payloads, HMAC signing), with tests against `mocks/webhooks` for the staff-forum, default-payload and signature scenarios
-- [ ] 3.3 Retries, delivery log, redelivery and auto-disable, with integration tests
+- [x] 3.1 Webhook configuration (staff screen, SSRF check, principal, content fields), with tests for the private-target scenario and permission denial
+- [x] 3.2 Webhook subscriber in the relay (delivery-time visibility, minimal payloads, HMAC signing), with tests against `mocks/webhooks` for the staff-forum, default-payload and signature scenarios
+- [x] 3.3 Retries, delivery log, redelivery and auto-disable, with integration tests
 
 ## 4. Key management UI
 

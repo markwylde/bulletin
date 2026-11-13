@@ -95,6 +95,8 @@ function notificationText(translate: Translator, entry: NotificationEntry): stri
         reason: entry.warningReason ?? "",
         note: entry.warningNote ?? "",
       });
+    case "webhook.disabled":
+      return translate("notification.text.webhook.disabled");
     case "post.mention":
       return entry.count > 1
         ? translate("notification.text.post.mentionMany", { count: entry.count, topic })

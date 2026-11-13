@@ -22,6 +22,7 @@
   "email.body.topic.created": "{actor} started \"{topic}\".",
   "email.body.topic.reply": "{actor} replied in \"{topic}\".",
   "email.body.warning.issued": "{actor} issued you a warning. Open your warnings page for the reason and note.",
+  "email.body.webhook.disabled": "A webhook was disabled after failing continuously for 24 hours.",
   "email.fallbackActor": "Someone",
   "email.fallbackName": "there",
   "email.greeting": "Hi {name},",
@@ -40,5 +41,6 @@
   "email.subject.topic.created": "New topic in a forum you follow",
   "email.subject.topic.reply": "New reply in {topic}",
   "email.subject.warning.issued": "You received a warning",
+  "email.subject.webhook.disabled": "Webhook disabled",
   "email.unsubscribe": "Unsubscribe from these emails: {url}"
 }

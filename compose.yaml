@@ -717,8 +717,9 @@ services:
       S3_ACCESS_KEY_ID: bulletin
       S3_SECRET_ACCESS_KEY: bulletin-secret
       S3_REGION: us-east-1
-      # Local-only: the unfurl worker must reach the oEmbed mock (ADR 0002, 0016).
-      SAFE_FETCH_DEV_ALLOW: oembed
+      # Local-only: the unfurl worker reaches the oEmbed mock and webhook deliveries reach
+      # the webhook mock (ADR 0002, 0016).
+      SAFE_FETCH_DEV_ALLOW: oembed,webhooks
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres
