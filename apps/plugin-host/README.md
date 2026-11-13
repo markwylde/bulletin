@@ -252,8 +252,12 @@ docker compose exec -T -e BULLETIN_SANDBOX_TESTS=1 plugin-host \
 ```
 
 Cases: read `core`, read `pii`, runtime DDL, `LISTEN`, TCP connect, sibling bundle/host paths,
-environment secrets, `/proc`, output flood, fork bomb and memory exhaustion. The fork and memory cases use
-tighter limits (`pids/nproc=32`, memory 128 MiB) and also verify the cgroup pids count.
+environment secrets, `/proc`, output flood, fork bomb, memory exhaustion, statement-rate abuse,
+storage-quota abuse (writes revoked, reads kept) and egress SSRF variants (IP literals,
+metadata/private DNS answers, rebinding, redirects, credentials). A wall-clock-kill case
+proves the supervisor restarts the sandbox. The fork and memory cases use tighter limits
+(`pids/nproc=32`, memory 128 MiB) and also verify the cgroup pids count. The iframe-bridge
+escape case arrives with the client bridge (tasks 3.8/3.10), which owns the host page side.
 
 The suite is skipped in the normal test image (no nsjail/capabilities). CI runs it on Docker
 and rootless Podman after the E2E stack is healthy.

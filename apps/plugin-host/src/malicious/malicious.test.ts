@@ -9,9 +9,10 @@ import { dropPlugin, PluginDatabase } from "../broker/database.ts";
 import { EgressProxy } from "../broker/egress.ts";
 import { loadPluginManifest, loadPluginMigrations } from "../broker/manifest.ts";
 import { loadPluginHostConfig, type PluginHostConfig } from "../config.ts";
+import { PluginQuotaMonitor } from "../quota/monitor.ts";
 import { resolveSandboxCgroupRoot } from "../sandbox/cgroup.ts";
 import { buildSeccompPolicy, sandboxArch } from "../sandbox/seccomp.ts";
-import { SandboxSupervisor } from "../sandbox/supervisor.ts";
+import { type SandboxRestartPolicy, SandboxSupervisor } from "../sandbox/supervisor.ts";
 import type { SandboxLimits } from "../sandbox/types.ts";
 
 const MALICIOUS_BUNDLE = fileURLToPath(new URL("./plugin", import.meta.url));
@@ -28,6 +29,10 @@ interface CaseOptions {
   readonly resultTimeoutMs?: number;
   /** Extra arguments after the case name, e.g. the controlled TCP listener port. */
   readonly commandArgs?: readonly string[];
+  /** Override the broker (for a case-specific egress allowlist or mock). */
+  readonly broker?: Broker;
+  readonly restart?: SandboxRestartPolicy;
+  readonly maxLifetimeMs?: number;
 }
 
 interface CgroupEvents {
@@ -239,7 +244,7 @@ async function withCase(
   const channel = new BrokerChannel({
     socketPath: join(config.stateDir, `malicious-${randomUUID()}.sock`),
     logger,
-    handler: broker,
+    handler: options.broker ?? broker,
   });
   await channel.start();
 
@@ -256,6 +261,8 @@ async function withCase(
     logger,
     readyTimeoutMs: 10_000,
     command: ["/bin/bun", "/plugin/server.ts", caseName, ...(options.commandArgs ?? [])],
+    ...(options.restart === undefined ? {} : { restart: options.restart }),
+    ...(options.maxLifetimeMs === undefined ? {} : { maxLifetimeMs: options.maxLifetimeMs }),
   });
 
   let monitor: CgroupMonitor | undefined;
@@ -538,6 +545,96 @@ sandboxDescribe("malicious plugin cases", () => {
 
     await expectBenignSandbox();
   }, 40_000);
+
+  test("rate-limits statement abuse and recovers within the plugin", async () => {
+    const before = broker?.stats().rateLimited ?? 0;
+
+    await withCase("rate-limit", {}, async ({ result }) => {
+      expect(result?.ok).toBe(true);
+      expect(Number(result?.denials)).toBeGreaterThan(0);
+      expect(Number(result?.successes)).toBeGreaterThan(0);
+      expect(result?.recovered).toBe(true);
+    });
+
+    expect((broker?.stats().rateLimited ?? 0) - before).toBeGreaterThan(0);
+  }, 40_000);
+
+  test("revokes writes over the storage quota and keeps reads working", async () => {
+    if (adminUrl === undefined) {
+      throw new Error("The quota case needs a database");
+    }
+
+    const monitor = new PluginQuotaMonitor({
+      adminUrl,
+      pluginId,
+      logger,
+      quotaBytes: 64 * 1024,
+      intervalMs: 50,
+    });
+    monitor.start();
+
+    try {
+      await withCase("quota-abuse", {}, async ({ result }) => {
+        expect(result?.ok).toBe(true);
+        expect(String(result?.detail)).not.toBe("");
+        expect(result?.readOk).toBe(true);
+
+        const status = monitor.status();
+        expect(status.exceeded).toBe(true);
+        expect(status.writesRevoked).toBe(true);
+      });
+    } finally {
+      monitor.stop();
+      await monitor.restoreWrites().catch(() => undefined);
+    }
+  }, 40_000);
+
+  test("denies egress SSRF variants including DNS rebinding and redirects", async () => {
+    const egress = new EgressProxy({
+      allowedHosts: ["example.com", "metadata.test", "rebind.test", "redirect.test"],
+      logger: logger.child({ component: "egress-ssrf" }),
+      lookup: async (hostname) => {
+        if (hostname === "metadata.test") {
+          return [{ address: "169.254.169.254", family: 4 }];
+        }
+
+        if (hostname === "rebind.test") {
+          return [{ address: "127.0.0.1", family: 4 }];
+        }
+
+        return [{ address: "93.184.216.34", family: 4 }];
+      },
+      fetch: async (url) =>
+        url.startsWith("http://redirect.test")
+          ? new Response(null, {
+              status: 302,
+              headers: { location: "http://169.254.169.254/latest/meta-data/" },
+            })
+          : new Response("ok"),
+    });
+    const ssrfBroker = new Broker({ database: database as PluginDatabase, egress, logger });
+
+    await withCase("egress-ssrf", { broker: ssrfBroker }, async ({ result, supervisor }) => {
+      expect(result?.ok).toBe(true);
+      expect(result?.detail).toBe("");
+      expect(supervisor.ready).toBe(true);
+    });
+  }, 40_000);
+
+  test("kills a sandbox at its wall-clock limit and restarts it", async () => {
+    await withCase(
+      "idle",
+      {
+        maxLifetimeMs: 300,
+        restart: { initialDelayMs: 20, maxDelayMs: 20, maxRestarts: 2 },
+      },
+      async ({ supervisor }) => {
+        await Bun.sleep(800);
+        expect(supervisor.status().restarts).toBeGreaterThan(0);
+        expect(supervisor.ready).toBe(true);
+      },
+    );
+  }, 30_000);
 
   test("hits the memory cgroup limit and keeps the supervisor healthy", async () => {
     const limits = { ...config.limits, memoryBytes: 128 * 1024 * 1024 };

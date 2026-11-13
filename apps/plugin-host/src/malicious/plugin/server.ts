@@ -214,6 +214,129 @@ async function runCase(): Promise<Result> {
       return { ok: true, detail: "fork loop running", spawned: 1, bomberPid: bomber.pid };
     }
 
+    case "rate-limit": {
+      const denials: string[] = [];
+      let successes = 0;
+
+      for (let index = 0; index < 80; index += 1) {
+        try {
+          await client.call("db.query", { sql: "SELECT 1 AS ok" });
+          successes += 1;
+        } catch (error) {
+          denials.push(errorMessage(error));
+        }
+      }
+
+      // Wait out the one-second bucket, then prove the plugin's own calls recover.
+      await Bun.sleep(1_100);
+      let recovered = false;
+
+      try {
+        const result = await client.call<{ rows: unknown[] }>("db.query", {
+          sql: "SELECT 1 AS ok",
+        });
+        recovered = result.rows.length === 1;
+      } catch {
+        recovered = false;
+      }
+
+      return {
+        ok: denials.length > 0 && successes > 0 && recovered,
+        detail: `${String(denials.length)} denied, ${String(successes)} succeeded`,
+        denials: denials.length,
+        successes,
+        recovered,
+      };
+    }
+
+    case "quota-abuse": {
+      // Keep writing until the quota monitor revokes INSERT/UPDATE, then prove reads still
+      // work (the sandbox and broker stay healthy).
+      let denied = "";
+      let inserted = 0;
+      const body = "x".repeat(8 * 1024);
+
+      for (let index = 0; index < 300 && denied === ""; index += 1) {
+        try {
+          await client.call("db.query", {
+            sql: "INSERT INTO notes (body) VALUES ($1)",
+            params: [body],
+          });
+          inserted += 1;
+        } catch (error) {
+          const message = errorMessage(error);
+
+          // Stay under the statement rate so this case measures the quota, not the limiter.
+          if (/Too many database statements/.test(message)) {
+            await Bun.sleep(100);
+            continue;
+          }
+
+          denied = message;
+        }
+
+        await Bun.sleep(60);
+      }
+
+      // Let the one-second statement bucket refill before proving reads still work.
+      await Bun.sleep(1_100);
+      let readOk = false;
+
+      try {
+        const result = await client.call<{ rows: unknown[] }>("db.query", {
+          sql: "SELECT count(*) AS count FROM notes",
+        });
+        readOk = result.rows.length === 1;
+      } catch {
+        readOk = false;
+      }
+
+      return {
+        ok: denied !== "" && readOk,
+        detail: denied === "" ? "quota never revoked writes" : denied,
+        inserted,
+        readOk,
+      };
+    }
+
+    case "egress-ssrf": {
+      const urls = [
+        "http://127.0.0.1/",
+        "http://[::1]/",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://100.100.100.200/latest/meta-data/",
+        "http://localhost/",
+        "http://user:pass@example.com/",
+        "http://example.com:22/",
+        "http://metadata.test/",
+        "http://rebind.test/",
+        "http://redirect.test/",
+      ];
+      const results: Array<{ url: string; denied: boolean; detail?: string }> = [];
+
+      for (const url of urls) {
+        try {
+          await client.call("http.fetch", { url });
+          results.push({ url, denied: false });
+        } catch (error) {
+          results.push({ url, denied: true, detail: errorMessage(error) });
+        }
+      }
+
+      return {
+        ok: results.every((entry) => entry.denied),
+        detail: results
+          .filter((entry) => !entry.denied)
+          .map((entry) => entry.url)
+          .join(","),
+        results,
+      };
+    }
+
+    case "idle": {
+      return { ok: true, detail: "idle" };
+    }
+
     case "output-flood": {
       const chunk = "x".repeat(1024 * 1024);
 

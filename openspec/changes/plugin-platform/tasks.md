@@ -9,7 +9,7 @@
 - [x] 2.1 Implement the supervisor (spawn, health, restart with backoff, kill on limits) with integration tests for the fork-bomb and memory scenarios
 - [x] 2.2 Implement the broker (JSON-RPC, DB allowlist, role connections, rate and concurrency limits, egress proxy with SSRF rules, core API forwarding with viewer context) with tests for the network, core-read, runtime-DDL and undeclared-host scenarios
 - [x] 2.3 Implement the storage quota monitor and write revocation, plus the shared-cluster warning, with an integration test
-- [ ] 2.4 Extend the malicious-plugin suite from `plugin-sandbox-spike` (iframe bridge escape, rate-limit and quota abuse, egress SSRF variants) and keep it running in CI on Docker and Podman
+- [x] 2.4 Extend the malicious-plugin suite from `plugin-sandbox-spike` (iframe bridge escape, rate-limit and quota abuse, egress SSRF variants) and keep it running in CI on Docker and Podman
 - [ ] 2.5 SQL hardening: `plugin_migrator` NOINHERIT role, migration AST rules (no SET/RESET/SET ROLE/DO/SECURITY DEFINER/ALTER ROLE), `PUBLIC` revokes on side-effecting built-ins in migration `0001`, the broker `FuncCall` allowlist, and out-of-session deadline cancellation; malicious tests for `set_config`, `pg_notify`, advisory locks, `pg_sleep`, `RESET ROLE` in a migration and a plpgsql function calling a revoked built-in
 - [ ] 2.6 Lazy per-plugin connections with a 10 s idle close and the broker-wide semaphore; a test that 15 enabled plugins start and work under the default budget, and that exhaustion fails only the waiting plugin
 
