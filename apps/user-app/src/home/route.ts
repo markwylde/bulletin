@@ -8,6 +8,7 @@ import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import { type BoardIndexData, buildBoardIndex } from "../forums/index.ts";
 import type { ShellVariant } from "../http/cache.ts";
 import { enrichView } from "../plugins/enrich.ts";
+import { loadEnricherTags } from "../plugins/enricher-tags.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { type CachedPageResult, pageVariant, renderCachedPage } from "../theme/cached-route.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
@@ -44,20 +45,16 @@ interface HomeData {
   readonly boardDescription: string;
   readonly index: BoardIndexData;
   readonly flags: ViewerFlags;
+  readonly enrichment: Readonly<Record<string, unknown>>;
 }
 
 /** The board index at `/` through the shared variant/cache/ETag pipeline (ADR 0006). */
 export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteResult> {
   let title = "";
-  const enrichment = await enrichView({
-    hook: "home.view",
-    route: "home",
-    view: { route: "home" },
-    viewer: { memberId: input.session?.memberId ?? null },
-  });
+  const pluginTags = await loadEnricherTags(input.sql, "home.view");
 
   const rendered = await renderCachedPage<HomeData>({
-    tags: [...contractTags(homeContract, {}), ...enrichment.tags],
+    tags: [...contractTags(homeContract, {}), ...pluginTags],
     contentValidator: true,
     cache: input.preview === true ? null : input.cache,
     tagVersions: input.tagVersions ?? null,
@@ -84,6 +81,12 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
         settings.boardDescription.trim() || input.translate("user.placeholder.body");
 
       title = boardName;
+      const enrichment = await enrichView({
+        hook: "home.view",
+        route: "home",
+        view: { route: "home" },
+        viewer: { memberId: input.session?.memberId ?? null },
+      });
 
       return {
         variant: pageVariant({
@@ -98,11 +101,11 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
           colourScheme: input.colourScheme,
           renderFlagsHash: flags.hash,
         }),
-        data: { theme, boardName, boardDescription, index, flags },
+        data: { theme, boardName, boardDescription, index, flags, enrichment: enrichment.fields },
         ...(index.ttlMs === null ? {} : { ttlMs: index.ttlMs }),
       };
     },
-    render: async ({ theme, boardName, boardDescription, index, flags }) => {
+    render: async ({ theme, boardName, boardDescription, index, flags, enrichment }) => {
       const page = await renderThemedPage({
         sql: input.sql,
         themeId: input.themeId,
@@ -114,7 +117,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
           boardName,
           boardDescription,
           ...index.viewModel,
-          ...enrichment.fields,
+          ...enrichment,
           flags: { ...index.viewModel.flags, ...flags.values },
         },
         breadcrumbs: [],

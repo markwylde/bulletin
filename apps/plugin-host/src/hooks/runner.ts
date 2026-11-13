@@ -5,6 +5,12 @@ import { type PluginHookRegistry, pluginTag } from "./registry.ts";
 /** The transport the host uses to reach one plugin sandbox (the broker channel). */
 export interface HookTransport {
   request<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T>;
+  requestWithContext?<T = unknown>(
+    method: string,
+    params: unknown,
+    viewer: ViewerContext,
+    timeoutMs?: number,
+  ): Promise<T>;
 }
 
 export interface EnrichInput {
@@ -91,6 +97,17 @@ export class PluginHookRunner {
   readonly #onFailure: ((pluginId: string, hook: string, error: unknown) => void) | undefined;
   readonly #onSuccess: ((pluginId: string, hook: string) => void) | undefined;
 
+  #request<T>(
+    method: string,
+    params: unknown,
+    timeoutMs: number,
+    viewer: ViewerContext,
+  ): Promise<T> {
+    return this.#transport.requestWithContext === undefined
+      ? this.#transport.request<T>(method, params, timeoutMs)
+      : this.#transport.requestWithContext<T>(method, params, viewer, timeoutMs);
+  }
+
   async #active(pluginId: string): Promise<boolean> {
     return this.#isActive(pluginId).catch(() => false);
   }
@@ -108,7 +125,7 @@ export class PluginHookRunner {
         }
 
         try {
-          const result = await this.#transport.request<{
+          const result = await this.#request<{
             fields?: unknown;
             tags?: unknown;
           }>(
@@ -120,6 +137,7 @@ export class PluginHookRunner {
               viewer: input.viewer,
             },
             deadline,
+            input.viewer,
           );
 
           const returned = isRecord(result) && isRecord(result.fields) ? result.fields : {};
@@ -178,7 +196,7 @@ export class PluginHookRunner {
       }
 
       try {
-        const result = await this.#transport.request<{ content?: unknown }>(
+        const result = await this.#request<{ content?: unknown }>(
           "hook.filter",
           {
             hook: input.hook,
@@ -187,6 +205,7 @@ export class PluginHookRunner {
             viewer: input.viewer,
           },
           left,
+          input.viewer,
         );
 
         if (isRecord(result) && typeof result.content === "string") {
@@ -246,7 +265,7 @@ export class PluginHookRunner {
     }
 
     try {
-      const result = await this.#transport.request<{ allow?: unknown; reasonKey?: unknown }>(
+      const result = await this.#request<{ allow?: unknown; reasonKey?: unknown }>(
         "hook.veto",
         {
           hook: input.hook,
@@ -255,6 +274,7 @@ export class PluginHookRunner {
           viewer: input.viewer,
         },
         timeoutMs,
+        input.viewer,
       );
 
       this.#onSuccess?.(pluginId, input.hook);

@@ -170,15 +170,29 @@ export async function pluginCoreResponse(
                 tree,
                 snapshot: viewerSnapshot,
               }))));
-        const guestAllowed = await can(sql, GUEST_PRINCIPAL, "read", {
-          forumId: post.forumId,
-          tree,
-          snapshot: guestSnapshot,
-        });
+        const guestCanSee =
+          (await can(sql, GUEST_PRINCIPAL, "read", {
+            forumId: post.forumId,
+            tree,
+            snapshot: guestSnapshot,
+          })) &&
+          (post.visibility === "visible" ||
+            (post.visibility === "unapproved" &&
+              (await can(sql, GUEST_PRINCIPAL, "see_unapproved", {
+                forumId: post.forumId,
+                tree,
+                snapshot: guestSnapshot,
+              }))) ||
+            (post.visibility === "soft_deleted" &&
+              (await can(sql, GUEST_PRINCIPAL, "see_deleted", {
+                forumId: post.forumId,
+                tree,
+                snapshot: guestSnapshot,
+              }))));
+        // An explicit elevated grant may read visible content in the named forum; it is not a
+        // moderator grant, so unapproved/deleted posts still require the guest-level powers.
         const serviceAllowed =
-          guestAllowed ||
-          plugin.service_principal_group !== "Guests" ||
-          grants.includes(post.forumId);
+          guestCanSee || (grants.includes(post.forumId) && post.visibility === "visible");
 
         if (!viewerAllowed || !serviceAllowed) {
           return denied("The viewer and plugin principal may not read this post");

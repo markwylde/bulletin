@@ -135,8 +135,14 @@ await startService({
     const { pathname } = new URL(request.url);
 
     if (pathname === "/internal/plugins/core" && request.method === "POST") {
+      const brokerToken = Bun.env.PLUGIN_CORE_BROKER_TOKEN;
+
+      if (config.nodeEnv === "production" && (brokerToken === undefined || brokerToken === "")) {
+        return Response.json({ code: "not_found" }, { status: 404 });
+      }
+
       return pluginCoreResponse(sql, request, {
-        token: Bun.env.PLUGIN_CORE_BROKER_TOKEN ?? "bulletin-development-only-broker-secret",
+        token: brokerToken ?? "bulletin-development-only-broker-secret",
       });
     }
 

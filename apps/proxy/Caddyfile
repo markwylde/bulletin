@@ -105,9 +105,20 @@ http://files.bulletin.localhost:{$BULLETIN_HTTP_PORT:8080} {
 	}
 }
 
-# Plugin iframe apps (ADR 0009) are served by the sandbox host.
+# Plugin iframe apps (ADR 0009) are served by the sandbox host. The admin/internal hook API
+# is not routable from the public plugin origin.
 http://plugins.bulletin.localhost:{$BULLETIN_HTTP_PORT:8080} {
-	reverse_proxy plugin-host:3004
+	handle /apps/* {
+		reverse_proxy plugin-host:3004
+	}
+
+	handle /health/* {
+		reverse_proxy plugin-host:3004
+	}
+
+	handle {
+		respond "Not found" 404
+	}
 }
 
 # DarkAuth issuer (ADR 0004); backed by darkauth-mock locally.

@@ -12,6 +12,15 @@ export const pluginSeedModule: SeedModule = {
     `) as Array<{ generation: number }>;
     const generation = generationRow?.generation ?? 1;
 
+    const usedBits = new Set(
+      (
+        (await sql`
+        SELECT (definition->>'bit')::int AS bit FROM core.plugin_registry
+        WHERE kind = 'forum_action' AND definition ? 'bit'
+      `) as Array<{ bit: number }>
+      ).map((row) => Number(row.bit)),
+    );
+
     for (const plugin of SAMPLE_PLUGINS) {
       await sql`
         INSERT INTO core.plugins (
@@ -78,11 +87,25 @@ export const pluginSeedModule: SeedModule = {
       }
 
       for (const action of plugin.forumActions) {
+        let bit: number | undefined;
+
+        for (let candidate = 23; candidate <= 30; candidate += 1) {
+          if (!usedBits.has(candidate)) {
+            bit = candidate;
+            usedBits.add(candidate);
+            break;
+          }
+        }
+
+        if (bit === undefined) {
+          throw new Error(`No stable permission bit is available for ${action}`);
+        }
+
         await sql`
           INSERT INTO core.plugin_registry (plugin_id, kind, key, definition)
           VALUES (
             ${plugin.id}, 'forum_action', ${action},
-            (${JSON.stringify({ labelKey: `${SETTING_LABEL(plugin.id)}.${action}` })}::text)::jsonb
+            (${JSON.stringify({ labelKey: `${SETTING_LABEL(plugin.id)}.${action}`, bit })}::text)::jsonb
           )
           ON CONFLICT DO NOTHING
         `;

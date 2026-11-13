@@ -1,6 +1,7 @@
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Logger } from "@bulletin/config";
+import type { ViewerContext } from "@bulletin/plugin-sdk/hooks";
 import {
   DEFAULT_MAX_FRAME_BYTES,
   type DecodedFrame,
@@ -32,6 +33,7 @@ export interface BrokerHandler {
     readonly method: string;
     readonly params: unknown;
     readonly pluginId: string;
+    readonly viewer?: ViewerContext;
   }): Promise<unknown>;
 }
 
@@ -130,6 +132,8 @@ export class BrokerChannel {
   readonly #sockets = new Set<BrokerSocket>();
   #active: BrokerSocket | undefined;
   #nextCallId = 0;
+  #invocationViewer: ViewerContext | undefined;
+  #invocationQueue: Promise<unknown> = Promise.resolve();
   #hello:
     | {
         resolve(hello: PluginHello): void;
@@ -412,6 +416,7 @@ export class BrokerChannel {
         method: message.method,
         params: message.params,
         pluginId: connection.pluginId,
+        ...(this.#invocationViewer === undefined ? {} : { viewer: this.#invocationViewer }),
       });
 
       if (isRequest(message)) {
@@ -510,6 +515,33 @@ export class BrokerChannel {
    * target; a missing or closed connection fails the call and the caller applies its
    * hook failure policy.
    */
+  /**
+   * Sends a hook request with the trusted viewer context. Broker calls the plugin makes while
+   * handling it (core.*) see that viewer; requests are serialized so contexts cannot mix.
+   */
+  requestWithContext<T = unknown>(
+    method: string,
+    params: unknown,
+    viewer: ViewerContext,
+    timeoutMs = 1_000,
+  ): Promise<T> {
+    const run = async (): Promise<T> => {
+      this.#invocationViewer = viewer;
+
+      try {
+        return await this.request<T>(method, params, timeoutMs);
+      } finally {
+        this.#invocationViewer = undefined;
+      }
+    };
+    const result = this.#invocationQueue.then(run, run);
+    this.#invocationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
   request<T = unknown>(method: string, params: unknown, timeoutMs = 1_000): Promise<T> {
     const socket = this.#active;
     const connection = socket === undefined ? undefined : this.#connections.get(socket);

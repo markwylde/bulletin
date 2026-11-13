@@ -328,14 +328,31 @@ export async function editPostResponse(
     return json({ code: "invalid_request" }, 400);
   }
 
-  const pluginHtml = await pluginWriteClient.extend(body.bodyMd);
+  const filtered = await pluginWriteClient.filter({
+    hook: "post.write",
+    content: body.bodyMd,
+    context: { authorId: session.memberId, postId },
+    viewer: { memberId: session.memberId },
+  });
+
+  if (filtered.veto !== undefined) {
+    return json(
+      {
+        code: "plugin_veto",
+        reason: apiTranslator(session.locale ?? "en")(filtered.veto.reasonKey),
+      },
+      422,
+    );
+  }
+
+  const pluginHtml = await pluginWriteClient.extend(filtered.content);
   const result = await editPost(
     sql,
     {
       actorId: session.memberId,
       postId,
       sessionId: session.id ?? session.sessionId ?? null,
-      bodyMd: body.bodyMd,
+      bodyMd: filtered.content,
       ...(typeof body.redact === "boolean" ? { redact: body.redact } : {}),
     },
     pluginHtml.length === 0 ? {} : { pluginHtml },

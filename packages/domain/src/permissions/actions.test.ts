@@ -17,6 +17,7 @@ describe("plugin forum actions", () => {
     registerPluginForumAction({
       key: "plugin.tips.can_tip",
       labelKey: "plugin.tips.action.canTip",
+      bit: 23,
     });
 
     expect(matrixForumActions()).toContain("plugin.tips.can_tip");
@@ -31,6 +32,7 @@ describe("plugin forum actions", () => {
     registerPluginForumAction({
       key: "plugin.tips.can_tip",
       labelKey: "plugin.tips.action.canTip",
+      bit: 23,
     });
     const mask = forumActionMask(["show", "read", "plugin.tips.can_tip"]);
 
@@ -47,7 +49,28 @@ describe("plugin forum actions", () => {
     expect(pluginForumActionDefinitions()).toContainEqual({
       key: "plugin.tips.can_tip",
       labelKey: "plugin.tips.action.canTip",
+      bit: 23,
     });
+  });
+
+  test("allocates stable bits and never wraps into core actions", () => {
+    registerPluginForumAction({ key: "plugin.extra.one", labelKey: "x", bit: 24 });
+
+    expect(capabilityBitIndex("plugin.extra.one")).toBe(24);
+    expect(capabilityBitIndex("plugin.tips.can_tip")).toBe(23);
+    expect(capabilityBitIndex("show")).toBe(0);
+    expect(capabilityBitIndex("read")).toBe(1);
+
+    for (const definition of pluginForumActionDefinitions()) {
+      expect(definition.bit).toBeGreaterThanOrEqual(23);
+      expect(definition.bit).toBeLessThanOrEqual(30);
+    }
+  });
+
+  test("refuses to allocate the same stable bit twice", () => {
+    expect(() =>
+      registerPluginForumAction({ key: "plugin.extra.two", labelKey: "x", bit: 24 }),
+    ).toThrow("No stable permission bit");
   });
 
   test("rejects malformed plugin action keys", () => {

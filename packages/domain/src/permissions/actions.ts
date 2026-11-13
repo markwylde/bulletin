@@ -58,6 +58,8 @@ export type CapabilityBit = ForumAction | ModeratorPower | PluginForumAction;
 export interface PluginForumActionDefinition {
   readonly key: `plugin.${string}`;
   readonly labelKey: string;
+  /** Stable persisted bit, allocated once at install time (23..30). */
+  readonly bit?: number;
 }
 
 export type PluginForumAction = `plugin.${string}`;
@@ -70,11 +72,17 @@ export async function loadPluginForumActions(
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>,
 ): Promise<void> {
   const rows = (await sql`
-    SELECT plugin_id, key, definition->>'labelKey' AS label_key
+    SELECT plugin_id, key, definition->>'labelKey' AS label_key,
+           (definition->>'bit') AS bit
     FROM core.plugin_registry
     WHERE kind = 'forum_action'
     ORDER BY plugin_id, key
-  `) as Array<{ plugin_id: string; key: string; label_key: string | null }>;
+  `) as Array<{
+    plugin_id: string;
+    key: string;
+    label_key: string | null;
+    bit: string | null;
+  }>;
 
   for (const row of rows) {
     const key = row.key.startsWith("plugin.") ? row.key : `plugin.${row.plugin_id}.${row.key}`;
@@ -82,6 +90,7 @@ export async function loadPluginForumActions(
     registerPluginForumAction({
       key: key as PluginForumAction,
       labelKey: row.label_key ?? `plugin.${row.plugin_id}.forumAction.${row.key}`,
+      ...(row.bit === null ? {} : { bit: Number(row.bit) }),
     });
   }
 }
@@ -89,16 +98,37 @@ export async function loadPluginForumActions(
 const pluginForumActions: PluginForumActionDefinition[] = [];
 export const PLUGIN_FORUM_ACTION_BASE = FORUM_ACTIONS.length + MODERATOR_POWERS.length;
 
+const MIN_PLUGIN_BIT = PLUGIN_FORUM_ACTION_BASE;
+const MAX_PLUGIN_BIT = 30;
+
 export function registerPluginForumAction(definition: PluginForumActionDefinition): void {
   if (!/^plugin\.[a-z0-9][a-z0-9-]*\.[a-z][a-z0-9_]*$/.test(definition.key)) {
     throw new TypeError(`Invalid plugin forum action: ${definition.key}`);
   }
 
-  if (pluginForumActions.some((entry) => entry.key === definition.key)) {
+  const existing = pluginForumActions.find((entry) => entry.key === definition.key);
+
+  if (existing !== undefined) {
     return;
   }
 
-  pluginForumActions.push(definition);
+  const used = new Set(pluginForumActions.map((entry) => entry.bit));
+  let bit = definition.bit;
+
+  if (bit === undefined) {
+    for (let candidate = MIN_PLUGIN_BIT; candidate <= MAX_PLUGIN_BIT; candidate += 1) {
+      if (!used.has(candidate)) {
+        bit = candidate;
+        break;
+      }
+    }
+  }
+
+  if (bit === undefined || bit < MIN_PLUGIN_BIT || bit > MAX_PLUGIN_BIT || used.has(bit)) {
+    throw new TypeError(`No stable permission bit is available for ${definition.key}`);
+  }
+
+  pluginForumActions.push({ ...definition, bit });
 }
 
 export function pluginForumActionDefinitions(): readonly PluginForumActionDefinition[] {
@@ -111,8 +141,7 @@ export function matrixForumActions(): readonly (ForumAction | PluginForumAction)
 }
 
 export function pluginForumActionIndex(action: PluginForumAction): number | undefined {
-  const index = pluginForumActions.findIndex((entry) => entry.key === action);
-  return index === -1 ? undefined : PLUGIN_FORUM_ACTION_BASE + index;
+  return pluginForumActions.find((entry) => entry.key === action)?.bit;
 }
 
 export function isModeratorPower(value: string): value is ModeratorPower {

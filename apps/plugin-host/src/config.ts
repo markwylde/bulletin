@@ -175,6 +175,25 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     throw new ConfigError(issues);
   }
 
+  const nodeEnv = env.NODE_ENV ?? "development";
+  const internalToken =
+    read(env, "PLUGIN_INTERNAL_TOKEN") ?? "bulletin-development-only-internal-token";
+  const coreBrokerToken =
+    read(env, "PLUGIN_CORE_BROKER_TOKEN") ?? "bulletin-development-only-broker-secret";
+
+  if (nodeEnv === "production") {
+    if (internalToken === "bulletin-development-only-internal-token") {
+      issues.push("PLUGIN_INTERNAL_TOKEN must be set to a non-default value in production");
+    }
+    if (coreBrokerToken === "bulletin-development-only-broker-secret") {
+      issues.push("PLUGIN_CORE_BROKER_TOKEN must be set to a non-default value in production");
+    }
+  }
+
+  if (issues.length > 0) {
+    throw new ConfigError(issues);
+  }
+
   return {
     nsjailPath: read(env, "PLUGIN_HOST_NSJAIL") ?? "/usr/bin/nsjail",
     rootfsPath: read(env, "PLUGIN_HOST_ROOTFS") ?? "/opt/plugin-rootfs",

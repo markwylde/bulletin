@@ -122,6 +122,29 @@ afterEach(async () => {
 });
 
 describe("broker channel", () => {
+  test("binds core calls made during a hook to the trusted viewer", async () => {
+    const seen: Array<unknown> = [];
+    const channel = await createChannel({
+      async handle(request) {
+        seen.push(request.viewer);
+        return null;
+      },
+    });
+    const client = await connect(channel.socketPath);
+    client.write(helloNotification());
+    await channel.waitForHello(500);
+
+    const hook = channel.requestWithContext("hook.enrich", {}, { memberId: "7" }, 500);
+    const request = (await client.next()) as { id: unknown };
+    client.write({ jsonrpc: "2.0", id: 2, method: "db.query", params: { sql: "SELECT 1" } });
+    await client.next();
+    client.write({ jsonrpc: "2.0", id: request.id, result: {} });
+    await hook;
+
+    expect(seen).toEqual([{ memberId: "7" }]);
+    client.socket.end();
+  });
+
   test("rejects a sandbox that announces a different plugin identity", async () => {
     const directory = await mkdtemp(join(tmpdir(), "bulletin-broker-"));
     directories.push(directory);

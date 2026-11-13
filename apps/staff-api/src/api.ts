@@ -88,6 +88,7 @@ import {
   grantPluginAccess,
   listPlugins,
   pluginSettings,
+  pluginsEnabled,
   savePluginSettings,
   uninstallPlugin,
 } from "./plugin-manager.ts";
@@ -456,11 +457,23 @@ async function emoticonsMutate(context: StaffRouteContext): Promise<Response> {
   );
 }
 
+async function pluginApiDisabled(context: StaffRouteContext): Promise<Response | null> {
+  return (await pluginsEnabled(context.sql)) ? null : json({ code: "not_found" }, 404);
+}
+
 async function pluginsList(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
   return json({ plugins: await listPlugins(context.sql) });
 }
 
 async function pluginsCatalog(): Promise<Response> {
+  // The caller checks the flag through pluginApiDisabled before reaching the catalog.
+
   try {
     const marketplaceUrl = Bun.env.BULLETIN_MARKETPLACE_URL;
 
@@ -476,12 +489,24 @@ async function pluginsCatalog(): Promise<Response> {
 }
 
 async function pluginsSettingsGet(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
   const pluginId = context.url.searchParams.get("pluginId") ?? "";
   const settings = await pluginSettings(context.sql, pluginId);
   return settings === null ? json({ code: "not_found" }, 404) : json(settings);
 }
 
 async function pluginsSettingsSave(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
   const body: unknown = await context.request.json().catch(() => null);
 
   if (!isRecord(body) || typeof body.pluginId !== "string" || !isRecord(body.values)) {
@@ -501,6 +526,12 @@ async function pluginsSettingsSave(context: StaffRouteContext): Promise<Response
 }
 
 async function pluginsDisable(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
   const body: unknown = await context.request.json().catch(() => null);
 
   if (!isRecord(body) || typeof body.pluginId !== "string") {
@@ -512,6 +543,12 @@ async function pluginsDisable(context: StaffRouteContext): Promise<Response> {
 }
 
 async function pluginsUninstall(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
   const body: unknown = await context.request.json().catch(() => null);
   const dataAction = isRecord(body) ? body.dataAction : undefined;
 
@@ -528,6 +565,12 @@ async function pluginsUninstall(context: StaffRouteContext): Promise<Response> {
 }
 
 async function pluginsGrant(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
   const body: unknown = await context.request.json().catch(() => null);
 
   if (
@@ -549,6 +592,12 @@ async function pluginsGrant(context: StaffRouteContext): Promise<Response> {
 }
 
 async function pluginsExtensions(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
   const point = context.url.searchParams.get("point") ?? "";
 
   if (point === "") {

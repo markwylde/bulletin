@@ -5,6 +5,7 @@ import {
   capabilityBitMask,
   type ForumMatrixRow,
   isForumAction,
+  isPluginForumAction,
   loadForumTree,
   loadPluginForumActions,
   matrixForumActions,
@@ -384,7 +385,9 @@ export async function saveMatrixCell(
     return { ok: false, code: "invalid_request" };
   }
 
-  if (!isForumAction(input.permissionAction)) {
+  await loadPluginForumActions(sql);
+
+  if (!isForumAction(input.permissionAction) && !isPluginForumAction(input.permissionAction)) {
     return { ok: false, code: "invalid_action" };
   }
 
@@ -450,7 +453,9 @@ export async function bulkToggleMatrix(
     return { ok: false, code: "invalid_request" };
   }
 
-  if (!isForumAction(input.permissionAction)) {
+  await loadPluginForumActions(sql);
+
+  if (!isForumAction(input.permissionAction) && !isPluginForumAction(input.permissionAction)) {
     return { ok: false, code: "invalid_action" };
   }
 

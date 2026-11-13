@@ -15,6 +15,8 @@ export interface HookHttpOptions {
   readonly runner: PluginHookRunner;
   readonly registry: PluginHookRegistry;
   readonly transport: HookTransport;
+  /** Per-plugin authenticated transport; the single transport is a test-only fallback. */
+  readonly transports?: ReadonlyMap<string, HookTransport>;
   readonly token: string;
   readonly frameAncestors: readonly string[];
   readonly logger: Logger;
@@ -90,6 +92,9 @@ async function readInternal(
     });
   }
 
+  const transportFor = (pluginId: string): HookTransport | undefined =>
+    options.transports === undefined ? options.transport : options.transports.get(pluginId);
+
   if (request.method !== "POST") {
     return json({ code: "method_not_allowed" }, 405);
   }
@@ -162,7 +167,13 @@ async function readInternal(
       await Promise.all(
         pluginIds.map(async (pluginId) => {
           try {
-            await options.transport.request(
+            const transport = transportFor(pluginId);
+
+            if (transport === undefined) {
+              throw new Error("No sandbox for plugin");
+            }
+
+            await transport.request(
               "event.deliver",
               {
                 type: input.type,
@@ -187,7 +198,13 @@ async function readInternal(
       }
 
       try {
-        await options.transport.request(
+        const transport = transportFor(input.pluginId);
+
+        if (transport === undefined) {
+          return json({ ok: false, code: "not_found" }, 404);
+        }
+
+        await transport.request(
           "job.run",
           { name: input.name, payload: isRecord(input.payload) ? input.payload : {} },
           5_000,

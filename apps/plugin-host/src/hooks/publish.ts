@@ -141,6 +141,11 @@ export async function publishPluginRegistry(
       key: `plugin.${manifest.id}.${key}`,
       definition: { affectsRender: true },
     })),
+    ...manifest.enrichers.map((enricher) => ({
+      kind: "enricher",
+      key: enricher.hook,
+      definition: { fields: enricher.fields, deps: enricher.deps ?? [] },
+    })),
     ...manifest.templateFragments.map((fragment) => ({
       kind: "fragment",
       key: fragment.name,
@@ -173,10 +178,46 @@ export async function publishPluginRegistry(
     ON CONFLICT (plugin_id) DO NOTHING
   `;
 
+  const usedBits = new Set(
+    (
+      (await sql`
+      SELECT (definition->>'bit')::int AS bit FROM core.plugin_registry
+      WHERE kind = 'forum_action' AND definition ? 'bit'
+    `) as Array<{ bit: number }>
+    ).map((row) => Number(row.bit)),
+  );
+
   for (const entry of entries) {
+    let definition = entry.definition;
+
+    if (entry.kind === "forum_action") {
+      const existing = (await sql`
+        SELECT definition FROM core.plugin_registry
+        WHERE plugin_id = ${manifest.id} AND kind = 'forum_action' AND key = ${entry.key}
+      `) as Array<{ definition: Record<string, unknown> }>;
+      let bit =
+        typeof existing[0]?.definition.bit === "number" ? existing[0].definition.bit : undefined;
+
+      if (bit === undefined) {
+        for (let candidate = 23; candidate <= 30; candidate += 1) {
+          if (!usedBits.has(candidate)) {
+            bit = candidate;
+            usedBits.add(candidate);
+            break;
+          }
+        }
+      }
+
+      if (bit === undefined) {
+        throw new Error(`No stable permission bit is available for ${entry.key}`);
+      }
+
+      definition = { ...(entry.definition as object), bit };
+    }
+
     await sql`
       INSERT INTO core.plugin_registry (plugin_id, kind, key, definition)
-      VALUES (${manifest.id}, ${entry.kind}, ${entry.key}, (${JSON.stringify(entry.definition)}::text)::jsonb)
+      VALUES (${manifest.id}, ${entry.kind}, ${entry.key}, (${JSON.stringify(definition)}::text)::jsonb)
       ON CONFLICT (plugin_id, kind, key) DO UPDATE SET definition = EXCLUDED.definition
     `;
   }

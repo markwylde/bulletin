@@ -3,7 +3,9 @@ import {
   type ForumAction,
   isForumAction,
   isModeratorPower,
+  isPluginForumAction,
   type ModeratorPower,
+  type PluginForumAction,
 } from "./actions.ts";
 import { memberBanned } from "./moderator.ts";
 import { isGuestPrincipal, type ViewerPrincipal } from "./principal.ts";
@@ -56,7 +58,12 @@ export function isCapabilityAction(value: string): value is CapabilityAction {
   return (CAPABILITY_ACTIONS as readonly string[]).includes(value);
 }
 
-export type PermissionAction = PermissionKey | ModeratorPower | ForumAction | CapabilityAction;
+export type PermissionAction =
+  | PermissionKey
+  | ModeratorPower
+  | ForumAction
+  | PluginForumAction
+  | CapabilityAction;
 
 export interface PermissionScope {
   readonly forumId: string;
@@ -288,7 +295,7 @@ export async function can(
     return capabilityAnswer(snapshot, forumScope.forumId, action);
   }
 
-  if (isForumAction(action)) {
+  if (isForumAction(action) || isPluginForumAction(action)) {
     if (forumScope === undefined) {
       return false;
     }

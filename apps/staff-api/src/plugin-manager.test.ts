@@ -6,7 +6,9 @@ import {
   extensionSections,
   listPlugins,
   pluginSettings,
+  pluginsEnabled,
   savePluginSettings,
+  uninstallPlugin,
 } from "./plugin-manager.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -56,7 +58,35 @@ async function seed(sql: SQL): Promise<void> {
   `;
 }
 
+describe("uninstall identifier validation", () => {
+  test("rejects a malicious plugin id before building DDL", async () => {
+    await expect(
+      uninstallPlugin(
+        (async () => []) as never,
+        'x"; DROP TABLE core.members; --',
+        "admin",
+        "drop",
+      ),
+    ).rejects.toThrow("Invalid plugin id");
+  });
+});
+
 integrationDescribe("staff plugin manager", () => {
+  test("the global plugins flag gates the staff plugin API", async () => {
+    await withTestDatabase(
+      { adminUrl: adminUrl as string, prefix: "staff_plugin_flag" },
+      async (db) => {
+        await db.sql`
+        INSERT INTO core.feature_flags (key, description, owner, default_value)
+        VALUES ('plugins', 'test', 'test', false)
+      `;
+        expect(await pluginsEnabled(db.sql)).toBe(false);
+        await db.sql`UPDATE core.feature_flags SET default_value = true WHERE key = 'plugins'`;
+        expect(await pluginsEnabled(db.sql)).toBe(true);
+      },
+    );
+  }, 20_000);
+
   test("lists state, capabilities, timings, breaker, errors and fixed page types", async () => {
     await withTestDatabase(
       { adminUrl: adminUrl as string, prefix: "staff_plugins" },

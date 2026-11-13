@@ -158,6 +158,14 @@ async function settingsDefinition(sql: SQL, pluginId: string): Promise<FormDefin
   return isFormDefinition(value) ? value : null;
 }
 
+/** The global plugin switch also gates the staff plugin API, not just its navigation. */
+export async function pluginsEnabled(sql: SQL): Promise<boolean> {
+  const rows = (await sql`
+    SELECT default_value FROM core.feature_flags WHERE key = 'plugins'
+  `) as Array<{ default_value: boolean }>;
+  return rows[0]?.default_value === true;
+}
+
 export async function listPlugins(sql: SQL): Promise<readonly StaffPlugin[]> {
   const [plugins, breakers, errors, declared] = await Promise.all([
     sql`
@@ -167,11 +175,17 @@ export async function listPlugins(sql: SQL): Promise<readonly StaffPlugin[]> {
       ORDER BY plugin_id
     ` as Promise<PluginRow[]>,
     sql`
-      SELECT plugin_id, hook, failures, disabled_at::text AS disabled_at
+      SELECT plugin_id, hook, failures, last_error, disabled_at::text AS disabled_at
       FROM core.plugin_breaker
       ORDER BY plugin_id, hook
     ` as Promise<
-      Array<{ plugin_id: string; hook: string; failures: number; disabled_at: string | null }>
+      Array<{
+        plugin_id: string;
+        hook: string;
+        failures: number;
+        last_error: string | null;
+        disabled_at: string | null;
+      }>
     >,
     sql`
       SELECT plugin_id, step, state, error, created_at::text AS created_at
@@ -248,14 +262,24 @@ export async function listPlugins(sql: SQL): Promise<readonly StaffPlugin[]> {
           failures: entry.failures,
           disabledAt: entry.disabled_at,
         })),
-      errors: errors
-        .filter((entry) => entry.plugin_id === row.plugin_id)
-        .map((entry) => ({
-          step: entry.step,
-          state: entry.state,
-          error: entry.error,
-          createdAt: entry.created_at,
-        })),
+      errors: [
+        ...errors
+          .filter((entry) => entry.plugin_id === row.plugin_id)
+          .map((entry) => ({
+            step: entry.step,
+            state: entry.state,
+            error: entry.error,
+            createdAt: entry.created_at,
+          })),
+        ...breakers
+          .filter((entry) => entry.plugin_id === row.plugin_id && entry.last_error !== null)
+          .map((entry) => ({
+            step: `hook:${entry.hook}`,
+            state: "failed",
+            error: entry.last_error,
+            createdAt: entry.disabled_at ?? "",
+          })),
+      ],
       pages,
       declaredPages: declared
         .filter((page) => page.plugin_id === row.plugin_id)
@@ -412,6 +436,20 @@ export async function uninstallPlugin(
   actorId: string,
   dataAction: "keep" | "drop" | "erase",
 ): Promise<void> {
+  // Identifiers below are interpolated into DDL, so accept only the installed plugin's
+  // validated id shape before any unsafe SQL is built.
+  if (!/^[a-z0-9][a-z0-9-]{0,48}$/.test(pluginId)) {
+    throw new TypeError("Invalid plugin id");
+  }
+
+  const existing = (await sql`
+    SELECT 1 FROM core.plugins WHERE plugin_id = ${pluginId} LIMIT 1
+  `) as unknown[];
+
+  if (existing.length === 0) {
+    throw new Error("Plugin is not installed");
+  }
+
   await disablePlugin(sql, pluginId, actorId);
 
   if (dataAction !== "keep") {

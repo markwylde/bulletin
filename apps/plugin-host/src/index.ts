@@ -142,6 +142,7 @@ const hookHttp = {
   runner: hookRunner,
   registry: hooks,
   transport: channel,
+  transports: new Map([[manifest.id, channel]]),
   token: sandboxConfig.internalToken,
   frameAncestors: [config.userOrigin, config.staffOrigin],
   logger: logger.child({ component: "hooks" }),
