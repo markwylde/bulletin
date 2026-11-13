@@ -355,6 +355,27 @@ function validateHeaders(
   return result;
 }
 
+const CREDENTIAL_HEADERS = new Set(["authorization", "cookie", "proxy-authorization"]);
+
+/** A cross-host redirect must not carry the original host's credentials (ADR 0009). */
+function withoutCredentials(
+  headers: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
+  let dropped = false;
+  const result: Record<string, string> = {};
+
+  for (const [name, value] of Object.entries(headers)) {
+    if (CREDENTIAL_HEADERS.has(name.toLowerCase())) {
+      dropped = true;
+      continue;
+    }
+
+    result[name] = value;
+  }
+
+  return dropped ? result : headers;
+}
+
 async function readBodyCapped(response: Response, maxBytes: number): Promise<string> {
   if (response.body === null) {
     return "";
@@ -536,9 +557,21 @@ export class EgressProxy {
     let url = input.url;
     let currentMethod = method;
     let body = input.body;
+    let previousHost: string | undefined;
+    let credentialsAllowed = true;
 
     for (let hop = 0; ; hop += 1) {
       const target = await this.#validate(url, approvedHosts);
+      const targetHost = normalizeHost(target.url.hostname);
+      // Credentials belong to the host they were written for. Once a redirect leaves that
+      // host they are dropped for every later hop, so a compromised endpoint cannot bounce
+      // the request onward and collect them (ADR 0009).
+      if (previousHost !== undefined && targetHost !== previousHost) {
+        credentialsAllowed = false;
+      }
+
+      const hopHeaders = credentialsAllowed ? headers : withoutCredentials(headers);
+      previousHost = targetHost;
 
       let response: Response;
 
@@ -547,7 +580,7 @@ export class EgressProxy {
           target.url.toString(),
           {
             method: currentMethod,
-            headers,
+            headers: hopHeaders,
             ...(body === undefined ? {} : { body }),
             redirect: "manual",
             credentials: "omit",

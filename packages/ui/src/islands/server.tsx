@@ -61,3 +61,27 @@ export const SERVER_ISLANDS: ServerIslandRegistry = {
   ThemeChooser: defineServerIsland("ThemeChooser", themeChooserSchema, ThemeChooser),
   PluginApp: defineServerIsland("PluginApp", pluginAppSchema, PluginApp),
 };
+
+/**
+ * The PluginApp island with the host's configured frame origin (ADR 0018). The origin is
+ * injected here, after the template props are read, so neither a theme nor a plugin fragment
+ * can point its frame at another origin.
+ */
+export function pluginAppIsland(origin: string): ServerIslandDefinition {
+  const base = SERVER_ISLANDS.PluginApp;
+
+  if (base === undefined) {
+    throw new Error("The PluginApp island is not registered");
+  }
+
+  return {
+    parse(input) {
+      if (typeof input !== "object" || input === null || Array.isArray(input)) {
+        return base.parse(input);
+      }
+
+      return base.parse({ ...input, origin });
+    },
+    render: base.render,
+  };
+}

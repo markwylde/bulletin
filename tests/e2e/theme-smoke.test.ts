@@ -102,6 +102,19 @@ integrationDescribe("seed theme smoke renders", () => {
       expect(sunset).toContain("max-age=0");
       expect(sunset).toContain("border-block-start-color");
       expect(sunset).not.toBe(defaultCss);
+      // The page reloads into the sunset variant; its stylesheet may still be loading when the
+      // attribute appears, so wait for the applied colour rather than sampling once.
+      await waitForExpression(
+        view,
+        `(() => {
+          const footer = document.querySelector("[data-theme-footer]");
+          if (!(footer instanceof HTMLElement)) return false;
+          return /^rgb\\(91, 63, 168\\)|rgb\\(196, 181, 253\\)$/.test(
+            getComputedStyle(footer).borderTopColor
+          );
+        })()`,
+        20_000,
+      );
       expect(
         await view.evaluate<string>(
           'getComputedStyle(document.querySelector("[data-theme-footer]")).borderTopColor',

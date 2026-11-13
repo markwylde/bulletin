@@ -8,6 +8,8 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { restorePostingFlood, setPostingFloodSeconds } from "./support/group-settings.ts";
+import { createPagedTopic } from "./support/paged-topic.ts";
 
 // Carried-over moderation finding: the split and bulk post handlers both read
 // `[data-bulk-post-check]`, so the default theme must render selectable posts for
@@ -20,22 +22,13 @@ const integrationDescribe = ENABLED ? describe : describe.skip;
 const USER_URL = userBaseUrl();
 const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 
-/** The seeded long topic's last page, so the first post (which cannot be split) is absent. */
-async function openLongTopicLastPage(view: Bun.WebView): Promise<void> {
-  await view.navigate(FORUM_URL);
-  await waitForSelector(view, "[data-topic-list] [data-topic-link]", 20_000);
-  const href = await view.evaluate<string | null>(`(() => {
-    const link = [...document.querySelectorAll('[data-topic-list] [data-topic-link]')].find(
-      (element) => element.textContent?.includes("Long running discussion")
-    );
-    return link?.getAttribute("href") ?? null;
-  })()`);
-
-  if (href === null) {
-    throw new Error("Missing the seeded long-running topic");
-  }
-
-  await view.navigate(new URL(`${href}/page/99`, USER_URL).toString());
+/**
+ * Creates a topic owned by this journey and opens its last page, so earlier runs' splits can
+ * never shrink the fixture below the page the split/bulk controls need.
+ */
+async function openLongTopicLastPage(view: Bun.WebView, title: string): Promise<void> {
+  const fixture = await createPagedTopic(view, { forumId: "5", title, replies: 21 });
+  await view.navigate(new URL(`${fixture.url}/page/99`, USER_URL).toString());
   await waitForSelector(view, "[data-post-list]", 20_000);
   await waitForExpression(view, 'document.readyState === "complete"', 20_000);
 }
@@ -66,96 +59,111 @@ function selectPostExpression(id: string): string {
 integrationDescribe("post moderation selections at mobile360", () => {
   test("splits a selected post into a new topic", async () => {
     const splitTitle = `Split from the long topic ${Date.now()}`;
+    await setPostingFloodSeconds(0);
 
-    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
-      await loginAs(view, "super-mod");
-      await openLongTopicLastPage(view);
+    try {
+      await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "super-mod");
+        await openLongTopicLastPage(view, `Split fixture ${Date.now()}`);
 
-      const ids = await selectablePostIds(view);
-      const selected = ids[ids.length - 1];
+        const ids = await selectablePostIds(view);
+        const selected = ids[ids.length - 1];
 
-      if (selected === undefined) {
-        throw new Error("The last page has no selectable post");
-      }
+        if (selected === undefined) {
+          throw new Error("The last page has no selectable post");
+        }
 
-      const body = await view.evaluate<string | null>(
-        `document.querySelector('[data-post="${selected}"] [data-post-body]')?.textContent ?? null`,
-      );
+        const body = await view.evaluate<string | null>(
+          `document.querySelector('[data-post="${selected}"] [data-post-body]')?.textContent ?? null`,
+        );
 
-      if (body === null || body.trim() === "") {
-        throw new Error("Missing the selected post's body");
-      }
+        if (body === null || body.trim() === "") {
+          throw new Error("Missing the selected post's body");
+        }
 
-      await view.evaluate(selectPostExpression(selected));
-      await clickSelector(view, "[data-topic-tools] summary");
-      await waitForSelector(view, "#topic-split-title", 20_000);
-      await setInputValue(view, "#topic-split-title", splitTitle);
-      await waitForSelector(view, "[data-topic-split-submit]:not([disabled])", 20_000);
-      await clickSelector(view, "[data-topic-split-submit]");
+        await view.evaluate(selectPostExpression(selected));
+        await clickSelector(view, "[data-topic-tools] summary");
+        await waitForSelector(view, "#topic-split-title", 20_000);
+        await setInputValue(view, "#topic-split-title", splitTitle);
+        await waitForSelector(view, "[data-topic-split-submit]:not([disabled])", 20_000);
+        await clickSelector(view, "[data-topic-split-submit]");
 
-      await waitForExpression(
-        view,
-        `document.querySelector('[data-post="${selected}"]') === null`,
-        30_000,
-      );
+        await waitForExpression(
+          view,
+          `document.querySelector('[data-post="${selected}"]') === null`,
+          30_000,
+        );
 
-      // The new topic carries the moved post and is linked from the forum list.
-      await view.navigate(FORUM_URL);
-      await waitForSelector(view, "[data-topic-list]", 20_000);
-      const href = await view.evaluate<string | null>(`(() => {
+        // The new topic carries the moved post and is linked from the forum list.
+        await view.navigate(FORUM_URL);
+        await waitForSelector(view, "[data-topic-list]", 20_000);
+        const href = await view.evaluate<string | null>(`(() => {
         const link = [...document.querySelectorAll('[data-topic-list] [data-topic-link]')].find(
           (element) => element.textContent?.includes(${JSON.stringify(splitTitle)})
         );
         return link?.getAttribute("href") ?? null;
       })()`);
 
-      if (href === null) {
-        throw new Error("The split topic is missing from the forum list");
-      }
+        if (href === null) {
+          throw new Error("The split topic is missing from the forum list");
+        }
 
-      await view.navigate(new URL(href, USER_URL).toString());
-      await waitForSelector(view, "[data-post-list]", 20_000);
-      await waitForExpression(
-        view,
-        `document.querySelector('[data-post-list]')?.textContent?.includes(${JSON.stringify(body.trim())}) === true`,
-        20_000,
-      );
-    });
-  }, 120_000);
+        await view.navigate(new URL(href, USER_URL).toString());
+        await waitForSelector(view, "[data-post-list]", 20_000);
+        await waitForExpression(
+          view,
+          `document.querySelector('[data-post-list]')?.textContent?.includes(${JSON.stringify(body.trim())}) === true`,
+          20_000,
+        );
+      });
+    } finally {
+      await restorePostingFlood();
+    }
+  }, 180_000);
 
   test("soft-deletes and restores selected posts in bulk", async () => {
-    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
-      await loginAs(view, "super-mod");
-      await openLongTopicLastPage(view);
+    await setPostingFloodSeconds(0);
 
-      const ids = await selectablePostIds(view);
-      const selected = ids[ids.length - 1];
+    try {
+      await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "super-mod");
+        await openLongTopicLastPage(view, `Bulk fixture ${Date.now()}`);
 
-      if (selected === undefined) {
-        throw new Error("The last page has no selectable post");
-      }
+        const ids = await selectablePostIds(view);
+        const selected = ids[ids.length - 1];
 
-      await view.evaluate(selectPostExpression(selected));
-      await waitForSelector(view, '[data-bulk-post-action="soft_delete"]:not([disabled])', 20_000);
-      await clickSelector(view, '[data-bulk-post-action="soft_delete"]');
-      await waitForSelector(view, `[data-post="${selected}"] [data-post-deleted]`, 30_000);
-      await waitForExpression(view, 'document.readyState === "complete"', 20_000);
+        if (selected === undefined) {
+          throw new Error("The last page has no selectable post");
+        }
 
-      // Chrome may restore the old checkbox state after the reload; set it explicitly.
-      await view.evaluate(selectPostExpression(selected));
-      await waitForSelector(view, '[data-bulk-post-action="restore"]:not([disabled])', 20_000);
-      await clickSelector(view, '[data-bulk-post-action="restore"]');
-      await waitForExpression(
-        view,
-        `document.querySelector('[data-post="${selected}"] [data-post-deleted]') === null`,
-        30_000,
-      );
+        await view.evaluate(selectPostExpression(selected));
+        await waitForSelector(
+          view,
+          '[data-bulk-post-action="soft_delete"]:not([disabled])',
+          20_000,
+        );
+        await clickSelector(view, '[data-bulk-post-action="soft_delete"]');
+        await waitForSelector(view, `[data-post="${selected}"] [data-post-deleted]`, 30_000);
+        await waitForExpression(view, 'document.readyState === "complete"', 20_000);
 
-      expect(
-        await view.evaluate<number>(
-          "document.documentElement.scrollWidth - document.documentElement.clientWidth",
-        ),
-      ).toBeLessThanOrEqual(1);
-    });
-  }, 120_000);
+        // Chrome may restore the old checkbox state after the reload; set it explicitly.
+        await view.evaluate(selectPostExpression(selected));
+        await waitForSelector(view, '[data-bulk-post-action="restore"]:not([disabled])', 20_000);
+        await clickSelector(view, '[data-bulk-post-action="restore"]');
+        await waitForExpression(
+          view,
+          `document.querySelector('[data-post="${selected}"] [data-post-deleted]') === null`,
+          30_000,
+        );
+
+        expect(
+          await view.evaluate<number>(
+            "document.documentElement.scrollWidth - document.documentElement.clientWidth",
+          ),
+        ).toBeLessThanOrEqual(1);
+      });
+    } finally {
+      await restorePostingFlood();
+    }
+  }, 180_000);
 });

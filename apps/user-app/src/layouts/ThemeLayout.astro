@@ -1,5 +1,6 @@
 ---
 import "../theme/default.css";
+import { configuredPluginOrigin } from "../plugins/config.ts";
 
 interface Props {
   readonly title: string;
@@ -45,6 +46,7 @@ const flagsJson =
   data-locale-source={localeSource}
   data-client-flags={flagsJson}
   data-scheme={colourScheme}
+  data-plugins-origin={configuredPluginOrigin()}
 >
   <head>
     <meta charset="utf-8" />

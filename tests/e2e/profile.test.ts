@@ -11,6 +11,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { findTopicHref } from "./support/topic-links.ts";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -19,7 +20,6 @@ import { userBaseUrl } from "@bulletin/test-utils/urls";
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
 const USER_URL = userBaseUrl();
-const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 const TOPIC_TITLE = "What are you reading this month?";
 const MEMBER_NAME = "Regular Member One";
 const VIEWPORT_NAMES = Object.keys(VIEWPORTS) as ViewportName[];
@@ -33,15 +33,7 @@ function withinWidth(view: Bun.WebView): Promise<boolean> {
 
 /** Finds a member's profile link on one of their posts, without a member-only API. */
 async function seededProfilePath(view: Bun.WebView): Promise<string> {
-  await view.navigate(FORUM_URL);
-  await waitForSelector(view, "[data-topic-list]", 20_000);
-
-  const topicHref = await view.evaluate<string | null>(`(() => {
-    const link = [...document.querySelectorAll("[data-topic-list] [data-topic-link]")].find(
-      (element) => element.textContent?.includes(${JSON.stringify(TOPIC_TITLE)})
-    );
-    return link?.getAttribute("href") ?? null;
-  })()`);
+  const topicHref = await findTopicHref(view, "/forum/5-off-topic", TOPIC_TITLE);
 
   if (topicHref === null) {
     throw new Error("The seeded profile topic is missing");

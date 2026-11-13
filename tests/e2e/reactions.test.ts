@@ -9,6 +9,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
+import { findTopicHref as findTopicByTitle } from "./support/topic-links.ts";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -22,35 +23,15 @@ const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 const TOPIC_TITLE = "Show us your desk setup";
 const VIEWPORTS: readonly ViewportName[] = ["mobile360", "desktop"];
 
-/** Finds the seeded topic by title even after earlier runs pushed it onto a later page. */
+/** Finds the seeded topic even after earlier runs pushed it onto a later page. */
 async function findTopicHref(view: Bun.WebView): Promise<string> {
-  for (let page = 0; page < 20; page += 1) {
-    await waitForSelector(view, "[data-topic-list]", 20_000);
-    const href = await view.evaluate<string | null>(
-      `(() => {
-        const link = [...document.querySelectorAll('[data-topic-list] [data-topic-link]')].find(
-          (element) => element.textContent?.includes(${JSON.stringify(TOPIC_TITLE)})
-        );
-        return link?.getAttribute('href') ?? null;
-      })()`,
-    );
+  const href = await findTopicByTitle(view, "/forum/5-off-topic", TOPIC_TITLE);
 
-    if (href !== null) {
-      return href;
-    }
-
-    const next = await view.evaluate<string | null>(
-      'document.querySelector("[data-page-next]")?.getAttribute("href") ?? null',
-    );
-
-    if (next === null) {
-      break;
-    }
-
-    await view.navigate(new URL(next, USER_URL).toString());
+  if (href === null) {
+    throw new Error("Missing the seeded reactions topic");
   }
 
-  throw new Error("Missing the seeded reaction topic");
+  return href;
 }
 
 function selectedCount(view: Bun.WebView): Promise<number> {

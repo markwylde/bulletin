@@ -258,31 +258,64 @@ describe("egress redirects", () => {
     expect(calls).toHaveLength(0);
   });
 
-  test("re-validates and follows a redirect to another allowlisted host", async () => {
+  test("revalidates and follows a redirect to another allowlisted host without credentials", async () => {
     const { proxy, calls } = createHarness({
       allowedHosts: ["example.com", "cdn.example"],
       addresses: { "example.com": PUBLIC, "cdn.example": PUBLIC_CDN },
-      respond: (url) =>
-        url.includes("cdn.example")
-          ? new Response("final", { status: 200, headers: { "content-type": "text/plain" } })
-          : new Response(null, {
-              status: 301,
-              headers: { location: "https://cdn.example/file" },
-            }),
+      respond: (url) => {
+        if (url.endsWith("/final")) {
+          return new Response("final", { status: 200, headers: { "content-type": "text/plain" } });
+        }
+
+        return new Response(null, {
+          status: 301,
+          headers: {
+            location: url.includes("cdn.example") ? "/final" : "https://cdn.example/redirect",
+          },
+        });
+      },
     });
 
-    const response = await proxy.request({ url: "https://example.com/start" });
+    const response = await proxy.request({
+      url: "https://example.com/start",
+      headers: { authorization: "Bearer secret", accept: "text/plain" },
+    });
 
     expect(response).toEqual({
-      url: "https://cdn.example/file",
+      url: "https://cdn.example/final",
       status: 200,
       headers: { "content-type": "text/plain" },
       body: "final",
     });
     expect(calls.map((call) => call.url)).toEqual([
       "https://example.com/start",
-      "https://cdn.example/file",
+      "https://cdn.example/redirect",
+      "https://cdn.example/final",
     ]);
+    expect(calls[0]?.init.headers).toEqual({
+      authorization: "Bearer secret",
+      accept: "text/plain",
+    });
+    // A redirect to a different host must not carry the original host's credentials, and the
+    // later same-host hop must not bring them back.
+    expect(calls[1]?.init.headers).toEqual({ accept: "text/plain" });
+    expect(calls[2]?.init.headers).toEqual({ accept: "text/plain" });
+  });
+
+  test("keeps credentials on a same-host redirect", async () => {
+    const { proxy, calls } = createHarness({
+      respond: (url) =>
+        url.endsWith("/next")
+          ? new Response("done", { status: 200 })
+          : new Response(null, { status: 302, headers: { location: "/next" } }),
+    });
+
+    await proxy.request({
+      url: "https://example.com/start",
+      headers: { authorization: "Bearer secret" },
+    });
+
+    expect(calls[1]?.init.headers).toEqual({ authorization: "Bearer secret" });
   });
 
   test("rejects a redirect whose allowlisted host resolves to a private address", async () => {

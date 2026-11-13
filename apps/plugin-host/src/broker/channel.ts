@@ -89,6 +89,17 @@ interface InvocationContext {
   readonly timer: ReturnType<typeof setTimeout>;
 }
 
+/**
+ * An invocation token is only valid for the plugin it was minted for: a sandbox that presents
+ * another plugin's token is rejected (ADR 0009).
+ */
+export function invocationMatchesPlugin(
+  connectionPluginId: string,
+  context: { readonly pluginId: string } | undefined,
+): boolean {
+  return context !== undefined && context.pluginId === connectionPluginId;
+}
+
 interface QueuedInvocation {
   readonly method: string;
   readonly params: unknown;
@@ -451,7 +462,7 @@ export class BrokerChannel {
     const context =
       message.invocation === undefined ? undefined : this.#contexts.get(message.invocation);
 
-    if (context === undefined || context.pluginId !== connection.pluginId) {
+    if (context === undefined || !invocationMatchesPlugin(connection.pluginId, context)) {
       this.#logger.warn("broker.invocation_rejected", {
         pluginId: connection.pluginId,
         method: message.method,

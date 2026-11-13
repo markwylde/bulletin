@@ -6,6 +6,7 @@ import {
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
 import { readPostContext } from "@bulletin/domain/topics";
+import { coreMethodScope } from "@bulletin/plugin-sdk/core";
 import type { SQL } from "bun";
 
 /** Authenticated broker→core forwarding endpoint (ADR 0009, task 2.2/3.9). */
@@ -96,10 +97,10 @@ export async function pluginCoreResponse(
   }
 
   const pluginRows = (await sql`
-    SELECT capabilities, enabled, state, service_principal_group, elevated_grants
+    SELECT approved_capabilities, enabled, state, service_principal_group, elevated_grants
     FROM core.plugins WHERE plugin_id = ${pluginId}
   `) as Array<{
-    capabilities: unknown;
+    approved_capabilities: unknown;
     enabled: boolean;
     state: string;
     service_principal_group: string;
@@ -115,12 +116,19 @@ export async function pluginCoreResponse(
     return denied("Plugin is disabled");
   }
 
-  const capabilities = Array.isArray(plugin.capabilities)
-    ? plugin.capabilities.filter((value): value is string => typeof value === "string")
+  // Runtime access follows the grants an admin approved, never the capabilities the bundle
+  // merely declares (ADR 0009): replacing a bundle cannot widen a running plugin's access.
+  const capabilities = Array.isArray(plugin.approved_capabilities)
+    ? plugin.approved_capabilities.filter((value): value is string => typeof value === "string")
     : [];
+  const scope = coreMethodScope(input.method);
 
-  if (!capabilities.includes("core.read") && !capabilities.includes("core.write")) {
-    return denied("Plugin has no core-data capability");
+  if (scope === undefined) {
+    return Response.json({ code: "not_implemented" }, { status: 501 });
+  }
+
+  if (!capabilities.includes(scope)) {
+    return denied(`Plugin has not been approved for the ${scope} capability`);
   }
 
   const viewerInput = isRecord(input.viewer) ? (input.viewer as ViewerInput) : {};

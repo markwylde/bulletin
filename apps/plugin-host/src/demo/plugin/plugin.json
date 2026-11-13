@@ -22,7 +22,7 @@
     {
       "name": "post.userbar",
       "kind": "hook",
-      "body": "<span class=\"bl-demo-userbar\" data-demo-userbar><bl-plugin-app data-plugin-id=\"sandbox-demo\" data-version=\"1\" data-app=\"client/index.html\" data-view=\"{}\"></bl-plugin-app></span>"
+      "body": "<span class=\"bl-demo-userbar\" data-demo-userbar>{% island \"PluginApp\", pluginId: \"sandbox-demo\", version: \"1\", app: \"client/index.html\", viewJson: \"{}\" %}</span>"
     }
   ],
   "enrichers": [

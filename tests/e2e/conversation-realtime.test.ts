@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { loginAs, waitForExpression, waitForSelector, withPage } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { restorePmDailyStarts, setPmDailyStarts } from "./support/group-settings.ts";
 
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
@@ -79,6 +80,14 @@ async function replyAsMemberTwo(conversationId: string, body: string): Promise<v
 }
 
 integrationDescribe("live conversation replies", () => {
+  // The member's daily start limit is shared with earlier runs of the suite.
+  beforeAll(async () => {
+    await setPmDailyStarts(0);
+  }, 120_000);
+  afterAll(async () => {
+    await restorePmDailyStarts();
+  }, 120_000);
+
   test("a reply appears in the open conversation without a reload", async () => {
     const title = `Live conversation ${Date.now()}`;
     const replyText = `Live reply ${Date.now()}`;

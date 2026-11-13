@@ -8,6 +8,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { findTopicHref } from "./support/topic-links.ts";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -16,7 +17,6 @@ import { userBaseUrl } from "@bulletin/test-utils/urls";
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
 const USER_URL = userBaseUrl();
-const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 const NOTIFICATIONS_URL = new URL("/account/notifications", USER_URL).toString();
 const VIEWPORTS: readonly ViewportName[] = ["mobile360", "mobile390", "desktop"];
 
@@ -25,21 +25,16 @@ interface TopicTarget {
   readonly url: string;
 }
 
-/** Opens the first topic in Off Topic as member-1 and makes sure they follow it. */
+/** Opens the seeded long topic as member-1 and makes sure they follow it. */
 async function followedTopic(): Promise<TopicTarget> {
   let target: TopicTarget | null = null;
 
   await withPage({ url: USER_URL, viewport: "desktop" }, async (view) => {
     await loginAs(view, "member-1");
-    await view.navigate(FORUM_URL);
-    await waitForSelector(view, "[data-topic-list] [data-topic-link]");
-
-    const href = await view.evaluate<string | null>(
-      'document.querySelector("[data-topic-list] [data-topic-link]")?.getAttribute("href") ?? null',
-    );
+    const href = await findTopicHref(view, "/forum/5-off-topic", "Long running discussion");
 
     if (href === null) {
-      throw new Error("Missing topic link");
+      throw new Error("Missing the seeded long-running topic");
     }
 
     await view.navigate(new URL(href, USER_URL).toString());
@@ -159,6 +154,8 @@ async function waitForBellCount(view: Bun.WebView): Promise<void> {
 
 /** Waits until the member's overlay reports an unread notification (relay + subscriber). */
 async function waitForUnreadOverlay(view: Bun.WebView): Promise<void> {
+  // Notification rows are written by the queued event worker. A stack reused across runs can
+  // have a backlog, so allow the delivery time rather than assuming an idle queue.
   await waitForExpression(
     view,
     `(async () => {
@@ -171,7 +168,7 @@ async function waitForUnreadOverlay(view: Bun.WebView): Promise<void> {
       const payload = await response.json();
       return (payload.counts?.notifications ?? 0) > 0;
     })()`,
-    30_000,
+    120_000,
   );
 }
 
@@ -210,7 +207,8 @@ integrationDescribe("notification centre", () => {
         const secondPage = await ids();
 
         expect(secondPage.length).toBeGreaterThan(0);
-        expect(secondPage.length).toBeLessThan(firstPage.length);
+        // A used stack can have more than two full pages; a full second page is still valid.
+        expect(secondPage.length).toBeLessThanOrEqual(firstPage.length);
         expect(secondPage.some((id) => firstPage.includes(id))).toBe(false);
         await waitForSelector(view, "[data-page-prev]:not([disabled])");
         await clickSelector(view, "[data-page-prev]");
@@ -252,16 +250,36 @@ integrationDescribe("notification centre", () => {
             ),
           ).toBe(true);
 
-          // Badge and friend entries are notifications without a link; opening one cannot mark
-          // it read or navigate. Pick the newest unread entry that can actually be opened.
-          openedRow = await view.evaluate<string | null>(
-            `document.querySelector(
-              '[data-notification-row][data-unread="true"] [data-notification-link]'
-            )?.closest("[data-notification-row]")?.getAttribute("data-notification-row") ?? null`,
-          );
+          // Badge, friend and conversation entries are notifications too; this journey expects
+          // the reply it just made, so pick the unread row that links to that topic. Delivery
+          // happens after the reply commits, so reload until that row exists.
+          const findOpenedRow = `(() => {
+            const topicId = ${JSON.stringify(topic.id)};
+            const prefix = "/topic/" + topicId + "-";
+            const link = [
+              ...document.querySelectorAll(
+                '[data-notification-row][data-unread="true"] [data-notification-link]'
+              ),
+            ].find((element) => (element.getAttribute("href") ?? "").startsWith(prefix));
+            return (
+              link?.closest("[data-notification-row]")?.getAttribute("data-notification-row") ??
+              null
+            );
+          })()`;
+
+          for (let attempt = 0; attempt < 60 && openedRow === null; attempt += 1) {
+            openedRow = await view.evaluate<string | null>(findOpenedRow);
+
+            if (openedRow === null) {
+              await Bun.sleep(1_000);
+              await view.navigate(NOTIFICATIONS_URL);
+              await waitForSelector(view, "[data-notifications-page]");
+              await waitForSelector(view, "[data-notification-row]");
+            }
+          }
 
           if (openedRow === null) {
-            throw new Error("Missing unread notification with a link");
+            throw new Error("Missing the unread reply notification for the followed topic");
           }
 
           // Opening an unread entry marks it read and navigates to the topic.
@@ -315,6 +333,6 @@ integrationDescribe("notification centre", () => {
           ).toBe(true);
         },
       );
-    }, 300_000);
+    }, 600_000);
   }
 });

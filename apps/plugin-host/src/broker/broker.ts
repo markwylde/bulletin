@@ -296,9 +296,11 @@ export class Broker implements BrokerHandler {
 
     const scope = coreMethodScope(method);
 
-    if (scope !== undefined) {
-      this.#requireCapability(grants, scope);
+    if (scope === undefined) {
+      this.#deny(`Core API method ${method} is not available to plugins`, "capability");
     }
+
+    this.#requireCapability(grants, scope);
 
     try {
       return await this.#core.call({

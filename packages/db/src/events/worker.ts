@@ -26,7 +26,10 @@ export interface EventWorker {
 export async function createEventWorker(options: EventWorkerOptions): Promise<EventWorker> {
   const queueName = options.queueName ?? "domain-events";
 
-  await options.boss.work<EventJob>(queueName, async (jobs) => {
+  // Notify is off for the queue, so polling is the only fetch path. Polling every second
+  // (rather than the default two) keeps notification delivery close to the write that caused
+  // it when a run has just produced a burst of events.
+  await options.boss.work<EventJob>(queueName, { pollingIntervalSeconds: 1 }, async (jobs) => {
     for (const job of jobs) {
       const handler = options.handlers[job.data.subscriber];
       const jobLogger = options.logger?.child({

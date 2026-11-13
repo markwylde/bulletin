@@ -5,7 +5,9 @@
   "description": "Public, versioned SDK that plugins compile against.",
   "exports": {
     ".": "./src/index.ts",
+    "./core": "./src/core.ts",
     "./manifest": "./src/manifest.ts",
+    "./origin": "./src/origin.ts",
     "./semver": "./src/semver.ts",
     "./principal": "./src/principal.ts",
     "./hooks": "./src/hooks.ts",

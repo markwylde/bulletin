@@ -279,6 +279,7 @@
       "name": "@bulletin/ui",
       "dependencies": {
         "@bulletin/i18n": "workspace:*",
+        "@bulletin/plugin-sdk": "workspace:*",
         "@bulletin/templates": "workspace:*",
         "@milkdown/kit": "7.23.0",
         "react": "19.3.1",

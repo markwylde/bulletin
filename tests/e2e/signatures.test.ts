@@ -9,6 +9,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { findTopicHref } from "./support/topic-links.ts";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -17,19 +18,11 @@ import { userBaseUrl } from "@bulletin/test-utils/urls";
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
 const USER_URL = userBaseUrl();
-const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 const TOPIC_TITLE = "What are you reading this month?";
 const SIGNATURE = "E2E *signature* text";
 
 async function topicHref(view: Bun.WebView): Promise<string> {
-  await waitForSelector(view, "[data-topic-list]", 20_000);
-
-  const href = await view.evaluate<string | null>(`(() => {
-    const link = [...document.querySelectorAll("[data-topic-list] [data-topic-link]")].find(
-      (element) => element.textContent?.includes(${JSON.stringify(TOPIC_TITLE)})
-    );
-    return link?.getAttribute("href") ?? null;
-  })()`);
+  const href = await findTopicHref(view, "/forum/5-off-topic", TOPIC_TITLE);
 
   if (href === null) {
     throw new Error("The seeded signature topic is missing");
@@ -75,7 +68,6 @@ integrationDescribe("signatures", () => {
 
           await save(view);
 
-          await view.navigate(FORUM_URL);
           const topic = await topicHref(view);
           await view.navigate(topic);
           await waitForSelector(view, "[data-topic-page]", 20_000);

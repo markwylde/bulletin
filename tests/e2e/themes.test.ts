@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_THEME_NAME } from "@bulletin/templates";
 import {
   clickSelector,
   loginAs,
@@ -28,10 +29,22 @@ async function createChild(
 ): Promise<void> {
   await view.navigate(THEMES_URL);
   await waitForSelector(view, "[data-theme-create]", 20_000);
+  // The form renders before the theme list request resolves, and a stack reused across runs
+  // has more themes to load, so wait for the seeded parent option instead of reading the
+  // dropdown once.
+  await waitForExpression(
+    view,
+    `(() => {
+      const select = document.querySelector("[data-theme-create-parent]");
+      return select instanceof HTMLSelectElement &&
+        [...select.options].some((option) => option.textContent?.trim() === ${JSON.stringify(DEFAULT_THEME_NAME)});
+    })()`,
+    20_000,
+  );
   const parent = await view.evaluate<string | null>(`(() => {
     const select = document.querySelector("[data-theme-create-parent]");
     if (!(select instanceof HTMLSelectElement)) return null;
-    const option = [...select.options].find((entry) => entry.textContent?.trim() === "default");
+    const option = [...select.options].find((entry) => entry.textContent?.trim() === ${JSON.stringify(DEFAULT_THEME_NAME)});
     if (!option) return null;
     select.value = option.value;
     select.dispatchEvent(new Event("change", { bubbles: true }));

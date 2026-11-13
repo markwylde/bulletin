@@ -30,6 +30,25 @@ const CALL = {
   viewer: { memberId: null },
 };
 
+const WRITE_CALL = {
+  pluginId: "tips",
+  method: "members.addBadge",
+  params: {},
+  viewer: { memberId: null },
+};
+
+function pluginRow(overrides: Record<string, unknown> = {}) {
+  return {
+    approved_capabilities: ["core.read"],
+    capabilities: ["core.read"],
+    enabled: true,
+    state: "active",
+    service_principal_group: "Guests",
+    elevated_grants: [],
+    ...overrides,
+  };
+}
+
 function sql(rows: readonly unknown[]) {
   return (async () => rows) as never;
 }
@@ -55,15 +74,7 @@ describe("broker core forwarding", () => {
 
   test("denies a plugin without the core-read capability", async () => {
     const response = await pluginCoreResponse(
-      sql([
-        {
-          capabilities: ["events"],
-          enabled: true,
-          state: "active",
-          service_principal_group: "Guests",
-          elevated_grants: [],
-        },
-      ]),
+      sql([pluginRow({ approved_capabilities: ["events"] })]),
       request(CALL),
       { token: TOKEN, now: () => NOW },
     );
@@ -71,17 +82,39 @@ describe("broker core forwarding", () => {
     expect(response.status).toBe(403);
   });
 
+  test("checks the admin-approved grants, never the bundle's declared capabilities", async () => {
+    const response = await pluginCoreResponse(
+      sql([pluginRow({ capabilities: ["core.read"], approved_capabilities: [] })]),
+      request(CALL),
+      { token: TOKEN, now: () => NOW },
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  test("requires core.write for a write method even when core.read is approved", async () => {
+    const response = await pluginCoreResponse(
+      sql([pluginRow({ approved_capabilities: ["core.read"] })]),
+      request(WRITE_CALL),
+      { token: TOKEN, now: () => NOW },
+    );
+
+    expect(response.status).toBe(403);
+  });
+
+  test("lets an approved write capability reach the method, even before it is implemented", async () => {
+    const response = await pluginCoreResponse(
+      sql([pluginRow({ approved_capabilities: ["core.write"] })]),
+      request(WRITE_CALL),
+      { token: TOKEN, now: () => NOW },
+    );
+
+    expect(response.status).toBe(501);
+  });
+
   test("denies a disabled plugin", async () => {
     const response = await pluginCoreResponse(
-      sql([
-        {
-          capabilities: ["core.read"],
-          enabled: false,
-          state: "disabled",
-          service_principal_group: "Guests",
-          elevated_grants: [],
-        },
-      ]),
+      sql([pluginRow({ enabled: false, state: "disabled" })]),
       request(CALL),
       { token: TOKEN, now: () => NOW },
     );

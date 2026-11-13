@@ -109,8 +109,15 @@ export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
     const module = await import("./ThemeChooser.tsx");
     return module.ThemeChooser;
   }),
-  PluginApp: defineClientIsland(pluginAppSchema, async () => {
-    const module = await import("./PluginApp.tsx");
-    return module.PluginApp;
-  }),
+  // The plugin bridge owns the frame inside this island. React must not reconcile that DOM,
+  // so the island validates its props and leaves the server markup untouched.
+  PluginApp: {
+    prepare(input) {
+      const parsed = v.safeParse(pluginAppSchema, input);
+
+      return parsed.success
+        ? { ok: true, hydrate: async () => undefined }
+        : { ok: false, reason: `PluginApp: ${v.summarize(parsed.issues)}` };
+    },
+  },
 };

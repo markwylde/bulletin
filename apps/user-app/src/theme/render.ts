@@ -20,8 +20,9 @@ import {
   type TemplateViolation,
   type ThemeRegion,
 } from "@bulletin/templates";
-import { SERVER_ISLANDS } from "@bulletin/ui/islands/server";
+import { pluginAppIsland, SERVER_ISLANDS } from "@bulletin/ui/islands/server";
 import type { SQL } from "bun";
+import { configuredPluginOrigin } from "../plugins/config.ts";
 
 /** The active theme; `themes` adds member and guest theme choice. */
 export const THEME_NAME = "default";
@@ -31,7 +32,9 @@ export { loadPluginsGeneration } from "@bulletin/templates";
 /** Legacy default for tests and callers that do not pass a generation. */
 export const PLUGIN_GENERATION = 1;
 
-const engine = createTemplateEngine({ islands: SERVER_ISLANDS });
+const engine = createTemplateEngine({
+  islands: { ...SERVER_ISLANDS, PluginApp: pluginAppIsland(configuredPluginOrigin()) },
+});
 const compiledThemes = createCompileCache(engine);
 
 export interface RouteDeclaration {

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   clickSelector,
   loginAs,
@@ -9,6 +9,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { restorePmDailyStarts, setPmDailyStarts } from "./support/group-settings.ts";
 
 // Run against the full stack:
 //   docker compose up -d --build --wait
@@ -74,10 +75,45 @@ async function openReplyEditor(view: Bun.WebView): Promise<void> {
   await waitForSelector(view, "[data-conversation-reply-form] [data-editor-source]", 20_000);
 }
 
+/**
+ * Sends a reply and waits for it to render. The composer reloads the page itself; if that
+ * reload races a slow connection, re-open the conversation once rather than timing out.
+ */
+async function sendReply(view: Bun.WebView, conversationId: string, body: string): Promise<void> {
+  await openReplyEditor(view);
+  await setInputValue(view, "[data-conversation-reply-form] [data-editor-source]", body);
+  await waitForSelector(view, "[data-reply-submit]:not([disabled])", 20_000);
+  await clickSelector(view, "[data-reply-submit]:not([disabled])");
+  const rendered = `[...document.querySelectorAll("[data-conversation-message]")].some(
+    (message) => message.textContent?.includes(${JSON.stringify(body)}) === true
+  )`;
+
+  try {
+    await waitForExpression(view, rendered, 10_000);
+    return;
+  } catch {
+    // The reply may already be committed; reading it again is idempotent.
+  }
+
+  await view.navigate(new URL(`/conversations/${conversationId}`, USER_URL).toString());
+  await waitForSelector(view, '[data-conversation-page][data-conversation-ready="true"]', 20_000);
+  await waitForExpression(view, rendered, 20_000);
+}
+
 integrationDescribe("conversation inbox and folders", () => {
+  // Earlier runs count against the member's daily start limit; this journey starts a new
+  // conversation once per viewport, so lift the limit for the file and restore it after.
+  beforeAll(async () => {
+    await setPmDailyStarts(0);
+  }, 120_000);
+  afterAll(async () => {
+    await restorePmDailyStarts();
+  }, 120_000);
+
   for (const viewport of VIEWPORTS) {
     test(`archives, replies and tracks unread at ${viewport}`, async () => {
       const title = `E2E conversation ${viewport} ${Date.now()}`;
+      const replyBody = `Reply from member two ${Date.now()}.`;
       let conversationId = "";
 
       await withPage(
@@ -158,19 +194,7 @@ integrationDescribe("conversation inbox and folders", () => {
             '[data-conversation-page][data-conversation-ready="true"]',
             20_000,
           );
-          await openReplyEditor(view);
-          await setInputValue(
-            view,
-            "[data-conversation-reply-form] [data-editor-source]",
-            "Reply from member two.",
-          );
-          await waitForSelector(view, "[data-reply-submit]:not([disabled])", 20_000);
-          await clickSelector(view, "[data-reply-submit]:not([disabled])");
-          await waitForExpression(
-            view,
-            `document.body.innerText.includes("Reply from member two.")`,
-            20_000,
-          );
+          await sendReply(view, conversationId, replyBody);
         },
       );
 

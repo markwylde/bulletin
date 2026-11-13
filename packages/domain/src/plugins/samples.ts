@@ -116,7 +116,7 @@ export const SAMPLE_PLUGINS: readonly SamplePlugin[] = [
       {
         name: "post.after.body",
         kind: "hook",
-        body: '<bl-plugin-app data-plugin-id="tip-jar" data-version="1" data-app="client/index.html" data-view="{}"></bl-plugin-app>',
+        body: '{% island "PluginApp", pluginId: "tip-jar", version: "1", app: "client/index.html", viewJson: "{}" %}',
         deps: ["tips"],
       },
     ],

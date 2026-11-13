@@ -671,6 +671,27 @@ describe("broker dispatch", () => {
     expect(calls).toEqual([]);
   });
 
+  test("denies a core method with no declared capability even when every grant is approved", async () => {
+    const calls: CoreCall[] = [];
+    const { broker } = createBroker({
+      core: {
+        async call(call) {
+          calls.push(call);
+          return null;
+        },
+      },
+    });
+
+    await expect(
+      broker.handle({
+        method: "core.call",
+        pluginId: "sandbox-demo",
+        params: { method: "posts.delete", params: {} },
+      }),
+    ).rejects.toMatchObject({ code: -32000, data: { reason: "capability" } });
+    expect(calls).toEqual([]);
+  });
+
   test("fails closed when the approved grants cannot be loaded", async () => {
     const { broker } = createBroker({
       grants: async () => {

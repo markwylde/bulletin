@@ -7,6 +7,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { findTopicHref } from "./support/topic-links.ts";
 
 const ENABLED = Bun.env.BULLETIN_E2E === "1";
 const integrationDescribe = ENABLED ? describe : describe.skip;
@@ -14,35 +15,15 @@ const USER_URL = userBaseUrl();
 const FORUM_URL = new URL("/forum/5-off-topic", USER_URL).toString();
 const POLL_TITLE = "Poll: what should we read next?";
 
-/** Finds the seeded poll topic even after earlier runs pushed it onto a later page. */
+/** Finds the seeded topic even after earlier runs pushed it onto a later page. */
 async function findPollHref(view: Bun.WebView): Promise<string> {
-  for (let page = 0; page < 20; page += 1) {
-    await waitForSelector(view, "[data-topic-list]", 20_000);
-    const href = await view.evaluate<string | null>(
-      `(() => {
-        const link = [...document.querySelectorAll('[data-topic-list] [data-topic-link]')].find(
-          (element) => element.textContent?.includes(${JSON.stringify(POLL_TITLE)})
-        );
-        return link?.getAttribute('href') ?? null;
-      })()`,
-    );
+  const href = await findTopicHref(view, "/forum/5-off-topic", POLL_TITLE);
 
-    if (href !== null) {
-      return href;
-    }
-
-    const next = await view.evaluate<string | null>(
-      'document.querySelector("[data-page-next]")?.getAttribute("href") ?? null',
-    );
-
-    if (next === null) {
-      break;
-    }
-
-    await view.navigate(new URL(next, USER_URL).toString());
+  if (href === null) {
+    throw new Error("Missing the seeded poll topic");
   }
 
-  throw new Error("Missing the seeded poll topic");
+  return href;
 }
 
 integrationDescribe("poll voting", () => {

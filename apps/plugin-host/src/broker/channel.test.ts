@@ -3,7 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLogger } from "@bulletin/config";
-import { BrokerChannel, type BrokerChannelOptions, type BrokerHandler } from "./channel.ts";
+import {
+  BrokerChannel,
+  type BrokerChannelOptions,
+  type BrokerHandler,
+  invocationMatchesPlugin,
+} from "./channel.ts";
 import { encodeFrame, FrameDecoder, RpcError } from "./protocol.ts";
 
 const logger = createLogger({ service: "broker-test", level: "error", sink: () => {} });
@@ -152,6 +157,12 @@ afterEach(async () => {
 });
 
 describe("broker channel", () => {
+  test("a token minted for one plugin is not valid for another", () => {
+    expect(invocationMatchesPlugin("alpha", { pluginId: "beta" })).toBe(false);
+    expect(invocationMatchesPlugin("alpha", undefined)).toBe(false);
+    expect(invocationMatchesPlugin("alpha", { pluginId: "alpha" })).toBe(true);
+  });
+
   test("binds core calls made during a hook to the trusted viewer", async () => {
     const seen: Array<unknown> = [];
     const channel = await createChannel({

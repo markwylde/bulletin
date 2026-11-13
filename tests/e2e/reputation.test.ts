@@ -9,6 +9,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
+import { findTopicHref } from "./support/topic-links.ts";
 
 // Run against the full stack:
 //   docker compose up -d
@@ -25,35 +26,13 @@ const TOPIC_TITLE = "Show us your desk setup";
 
 /** Finds a seeded topic by title across the off-topic pages. */
 async function findTopicHrefByTitle(view: Bun.WebView, title: string): Promise<string> {
-  await view.navigate(FORUM_URL);
+  const href = await findTopicHref(view, "/forum/5-off-topic", title);
 
-  for (let page = 0; page < 10; page += 1) {
-    await waitForSelector(view, "[data-topic-list]", 20_000);
-    const href = await view.evaluate<string | null>(
-      `(() => {
-        const link = [...document.querySelectorAll('[data-topic-list] [data-topic-link]')].find(
-          (element) => element.textContent?.includes(${JSON.stringify(title)})
-        );
-        return link?.getAttribute('href') ?? null;
-      })()`,
-    );
-
-    if (href !== null) {
-      return href;
-    }
-
-    const next = await view.evaluate<string | null>(
-      'document.querySelector("[data-page-next]")?.getAttribute("href") ?? null',
-    );
-
-    if (next === null) {
-      break;
-    }
-
-    await view.navigate(new URL(next, USER_URL).toString());
+  if (href === null) {
+    throw new Error(`Missing the topic ${title}`);
   }
 
-  throw new Error(`Missing the topic ${title}`);
+  return href;
 }
 
 interface FirstPost {

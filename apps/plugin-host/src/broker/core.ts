@@ -70,18 +70,7 @@ export const DEFAULT_CORE_METHODS: readonly string[] = [
 ];
 
 /** The capability each core API method needs. Unknown methods have no scope, so are denied. */
-export const CORE_METHOD_SCOPES: Readonly<Record<string, "core.read" | "core.write">> = {
-  "forums.get": "core.read",
-  "forums.list": "core.read",
-  "members.addBadge": "core.write",
-  "members.get": "core.read",
-  "posts.get": "core.read",
-  "topics.get": "core.read",
-};
-
-export function coreMethodScope(method: string): "core.read" | "core.write" | undefined {
-  return CORE_METHOD_SCOPES[method];
-}
+export { CORE_METHOD_SCOPES, coreMethodScope } from "@bulletin/plugin-sdk/core";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

@@ -16,6 +16,7 @@ import { closeCacheRuntime } from "./cache-runtime.ts";
 import { readSql } from "./db.ts";
 import { loadViewerFlags } from "./flags.ts";
 import { offlinePage } from "./offline.ts";
+import { configuredPluginOrigin } from "./plugins/config.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
 import { resolveRequestTheme } from "./theme/request-theme.ts";
 
@@ -133,8 +134,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       frameSrc = [
         ...embedProviderOrigins(await listEmbedProviders(readSql()).catch(() => [])),
         // Plugin client apps are framed from the separate plugin origin (ADR 0009, 0018).
-        Bun.env.BULLETIN_PLUGINS_ORIGIN ??
-          `http://plugins.bulletin.localhost:${Bun.env.BULLETIN_HTTP_PORT ?? "8080"}`,
+        configuredPluginOrigin(),
       ];
 
       if (sessionContext !== null) {

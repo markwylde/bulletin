@@ -1,3 +1,4 @@
+import { parsePluginOrigin } from "@bulletin/plugin-sdk/origin";
 import * as v from "valibot";
 
 /**
@@ -158,12 +159,23 @@ export const postReputationSchema = v.strictObject({
   flags: v.strictObject({ reputation: v.boolean() }),
 });
 
+/** An exact http(s) origin; http is only a loopback development allowance (ADR 0018). */
+const pluginOriginSchema = v.pipe(
+  v.string(),
+  v.maxLength(300),
+  v.check(
+    (value) => parsePluginOrigin(value) !== undefined,
+    "must be an exact http(s) origin without a path; http is only allowed for loopback hosts",
+  ),
+);
+
 /** A plugin client app slot; the `plugins` flag gates it in the island component. */
 export const pluginAppSchema = v.strictObject({
   pluginId: v.pipe(v.string(), v.minLength(1), v.maxLength(49)),
   version: v.pipe(v.string(), v.minLength(1), v.maxLength(20)),
   app: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
   viewJson: v.optional(v.pipe(v.string(), v.maxLength(20_000)), "{}"),
+  origin: v.optional(pluginOriginSchema),
 });
 
 /** The canonical island names; the template registry and the client runtime must match. */
