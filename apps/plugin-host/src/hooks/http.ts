@@ -17,6 +17,8 @@ export interface HookHttpOptions {
   readonly transport: HookTransport;
   /** Per-plugin authenticated transport; the single transport is a test-only fallback. */
   readonly transports?: ReadonlyMap<string, HookTransport>;
+  readonly canReadContent?: (pluginId: string, forumId: string) => Promise<boolean>;
+  readonly isPluginActive?: (pluginId: string) => Promise<boolean>;
   readonly token: string;
   readonly frameAncestors: readonly string[];
   readonly logger: Logger;
@@ -231,8 +233,31 @@ async function readInternal(
             ]
           : [input.syntax];
 
-      for (const syntax of syntaxes)
+      const forumId =
+        isRecord(input.context) && typeof input.context.forumId === "string"
+          ? input.context.forumId
+          : undefined;
+
+      for (const syntax of syntaxes) {
         for (const pluginId of options.registry.contentExtensions(syntax)) {
+          const plugin = options.registry.get(pluginId);
+
+          if (
+            plugin === undefined ||
+            !plugin.enabled ||
+            (options.isPluginActive !== undefined && !(await options.isPluginActive(pluginId)))
+          ) {
+            continue;
+          }
+
+          if (
+            forumId !== undefined &&
+            options.canReadContent !== undefined &&
+            !(await options.canReadContent(pluginId, forumId))
+          ) {
+            continue;
+          }
+
           try {
             const result = await options.transport.request<{ html?: unknown }>(
               "content.extend",
@@ -248,33 +273,57 @@ async function readInternal(
             options.logger.warn("plugin.content_extension_failed", { pluginId, error });
           }
         }
+      }
 
       return json({ html: html.join("") });
     }
 
     case "/internal/routes":
-    case "/internal/bridge":
+    case "/internal/bridge": {
       if (typeof input.pluginId !== "string" || typeof input.path !== "string") {
         return json({ code: "invalid_request" }, 400);
       }
 
+      const plugin = options.registry.get(input.pluginId);
+      const transport = transportFor(input.pluginId);
+
+      if (
+        plugin === undefined ||
+        !plugin.enabled ||
+        transport === undefined ||
+        (options.isPluginActive !== undefined && !(await options.isPluginActive(input.pluginId)))
+      ) {
+        return json({ code: "not_found" }, 404);
+      }
+
+      if (!plugin.manifest.routes.some((route) => route.path === input.path)) {
+        return json({ code: "not_found" }, 404);
+      }
+
       try {
-        const result = await options.transport.request(
-          url.pathname === "/internal/bridge" ? "bridge.request" : "route.request",
-          {
-            method: typeof input.method === "string" ? input.method : "GET",
-            path: input.path,
-            query: isRecord(input.query) ? input.query : {},
-            body: typeof input.body === "string" ? input.body : null,
-            viewer: viewer(input.viewer),
-          },
-          3_000,
-        );
+        const requestPayload = {
+          method: typeof input.method === "string" ? input.method : "GET",
+          path: input.path,
+          query: isRecord(input.query) ? input.query : {},
+          body: typeof input.body === "string" ? input.body : null,
+          viewer: viewer(input.viewer),
+        };
+        const method = url.pathname === "/internal/bridge" ? "bridge.request" : "route.request";
+        const result =
+          transport.requestWithContext === undefined
+            ? await transport.request(method, requestPayload, 3_000)
+            : await transport.requestWithContext(
+                method,
+                requestPayload,
+                viewer(input.viewer),
+                3_000,
+              );
         return json(result);
       } catch (error) {
         options.logger.warn("plugin.route_failed", { pluginId: input.pluginId, error });
         return json({ status: 503, body: "Plugin unavailable" }, 200);
       }
+    }
 
     default:
       return json({ code: "not_found" }, 404);

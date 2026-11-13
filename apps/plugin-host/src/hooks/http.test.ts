@@ -138,6 +138,57 @@ describe("plugin-host internal hook API", () => {
     expect(body.generation).toBe(3);
   });
 
+  test("refuses route dispatch for unknown or disabled plugins", async () => {
+    const noTransport = options();
+    (noTransport as { transports?: Map<string, HookTransport> }).transports = new Map();
+    const unknown = await readInternal(
+      request("/internal/routes", { pluginId: "tips", path: "tip", method: "GET", viewer: {} }),
+      noTransport,
+    );
+    expect(unknown?.status).toBe(404);
+
+    const disabled = options();
+    disabled.registry.setEnabled("tips", false);
+    const disabledResponse = await readInternal(
+      request("/internal/routes", { pluginId: "tips", path: "tip", method: "GET", viewer: {} }),
+      disabled,
+    );
+    expect(disabledResponse?.status).toBe(404);
+  });
+
+  test("passes the trusted viewer into route dispatch", async () => {
+    const seen: unknown[] = [];
+    const opts = options();
+    (
+      opts as {
+        transports?: Map<string, HookTransport>;
+      }
+    ).transports = new Map([
+      [
+        "tips",
+        {
+          request: async () => ({ status: 200, body: "", headers: {} }),
+          requestWithContext: async (_method: string, _params: unknown, value: unknown) => {
+            seen.push(value);
+            return { status: 200, body: "", headers: {} };
+          },
+        },
+      ],
+    ]) as unknown as Map<string, HookTransport>;
+
+    await readInternal(
+      request("/internal/routes", {
+        pluginId: "tips",
+        path: "tip",
+        method: "GET",
+        viewer: { memberId: "7" },
+      }),
+      opts,
+    );
+
+    expect(seen).toEqual([{ memberId: "7" }]);
+  });
+
   test("rejects malformed filter input", async () => {
     const response = await readInternal(
       request("/internal/filter", { hook: "post.write" }),

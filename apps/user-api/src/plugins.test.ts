@@ -68,5 +68,9 @@ describe("plugin write filters", () => {
       content: "teh cat",
       veto: { reasonKey: "plugin.veto.unavailable", pluginId: "plugin-host" },
     });
+
+    await expect(client.filter(INPUT, { failClosed: true })).resolves.toMatchObject({
+      veto: { reasonKey: "plugin.veto.unavailable" },
+    });
   });
 });

@@ -21,7 +21,7 @@ import {
 } from "@bulletin/domain/topics";
 import { canonicalUrl, parseResourcePath, resolveResourceUrl } from "@bulletin/domain/urls";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
-import { contractTags, type LoadedTheme } from "@bulletin/templates";
+import { contractTags, type LoadedTheme, loadPluginFragmentTags } from "@bulletin/templates";
 import type { SQL } from "bun";
 import { topicContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
@@ -338,13 +338,17 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       ...[...quoteSources.values()].map((source) => source.forumId),
     ]),
   ];
-  const tags = contractTags(topicContract, {
-    topicId: topic.id,
-    forumIds: [...tree.ancestors(forum.id).map((node) => node.id), forum.id],
-    quoteTopicIds,
-    quotePostIds: quoteRefs.postIds,
-    quotedForumIds,
-  });
+  const fragmentTags = await loadPluginFragmentTags(input.sql, input.pluginsGeneration);
+  const tags = [
+    ...contractTags(topicContract, {
+      topicId: topic.id,
+      forumIds: [...tree.ancestors(forum.id).map((node) => node.id), forum.id],
+      quoteTopicIds,
+      quotePostIds: quoteRefs.postIds,
+      quotedForumIds,
+    }),
+    ...fragmentTags,
+  ];
   let latest: TopicRenderData | undefined;
 
   const rendered = await renderCachedPage<TopicRenderData>({

@@ -11,6 +11,7 @@ import {
   createPgBossQueue,
   createRelay,
   type EventSubscriber,
+  ensurePgBossQueue,
 } from "@bulletin/db/events";
 import { syncFlagDefinitions } from "@bulletin/db/flags";
 import {
@@ -81,6 +82,7 @@ const purger = purgeUrl === undefined ? undefined : createCdnPurger({ url: purge
 const pluginEvents = await createPluginEventJobs({
   sql,
   queue: boss.boss as unknown as PluginJobQueue,
+  ensureQueue: (name) => ensurePgBossQueue(boss.boss, name),
   hostUrl: Bun.env.PLUGIN_HOST_INTERNAL_URL ?? "http://plugin-host:3004",
   token: Bun.env.PLUGIN_INTERNAL_TOKEN ?? "bulletin-development-only-internal-token",
   logger: logger.child({ component: "plugin-events" }),
@@ -90,6 +92,7 @@ await pluginEvents.start();
 const pluginJobs = await createPluginJobs({
   sql,
   queue: boss.boss as unknown as PluginJobsQueue,
+  ensureQueue: (name) => ensurePgBossQueue(boss.boss, name),
   hostUrl: Bun.env.PLUGIN_HOST_INTERNAL_URL ?? "http://plugin-host:3004",
   token: Bun.env.PLUGIN_INTERNAL_TOKEN ?? "bulletin-development-only-internal-token",
   logger: logger.child({ component: "plugin-jobs" }),

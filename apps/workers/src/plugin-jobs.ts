@@ -1,4 +1,5 @@
 import type { Logger } from "@bulletin/config";
+import { advancePluginsGeneration, PluginCircuitBreaker } from "@bulletin/domain/plugins";
 import type { SQL } from "bun";
 
 /** Scheduled and queued plugin jobs, one pg-boss queue per `plugin.<id>.<name>` (ADR 0009). */
@@ -31,10 +32,12 @@ export interface PluginJobQueue {
   ): Promise<void>;
   offWork(queue: string): Promise<void>;
   schedule(queue: string, cron: string, data: PluginJobPayload): Promise<void>;
+  ensureQueue?(queue: string): Promise<void>;
 }
 
 export interface PluginJobOptions {
   readonly sql: SQL;
+  readonly ensureQueue?: (queue: string) => Promise<void>;
   readonly queue: PluginJobQueue;
   readonly hostUrl: string;
   readonly token: string;
@@ -64,6 +67,21 @@ export async function createPluginJobs(options: PluginJobOptions): Promise<Plugi
   const request = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
   const jobs: PluginJob[] = [];
   const started: string[] = [];
+  const breaker = new PluginCircuitBreaker({
+    sql: options.sql,
+    disable: async (pluginId) => {
+      await options.sql`
+        UPDATE core.plugins SET state = 'disabled', enabled = false, updated_at = now()
+        WHERE plugin_id = ${pluginId}
+      `;
+      await options.sql`
+        DELETE FROM core.hook_fragments
+        WHERE plugin_id = ${pluginId}
+          AND generation = (SELECT generation FROM core.plugin_generation WHERE id = true)
+      `;
+      await advancePluginsGeneration(options.sql);
+    },
+  });
 
   return {
     async start() {
@@ -73,6 +91,7 @@ export async function createPluginJobs(options: PluginJobOptions): Promise<Plugi
 
       for (const job of jobs) {
         const queue = pluginJobQueue(job.pluginId, job.name);
+        await options.ensureQueue?.(queue);
 
         if (job.schedule !== null) {
           await options.queue.schedule(queue, job.schedule, { payload: {} });
@@ -94,8 +113,15 @@ export async function createPluginJobs(options: PluginJobOptions): Promise<Plugi
             });
 
             if (!response.ok) {
+              await breaker.recordFailure(
+                job.pluginId,
+                `job:${job.name}`,
+                `status ${String(response.status)}`,
+              );
               throw new Error(`Plugin job ${queue} failed with ${String(response.status)}`);
             }
+
+            await breaker.recordSuccess(job.pluginId, `job:${job.name}`);
           }
         });
         started.push(queue);

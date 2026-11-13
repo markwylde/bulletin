@@ -60,6 +60,15 @@ export class PluginCircuitBreaker {
       targetType: "plugin",
       summary: { pluginId, hook, failures },
     });
+    // Durable in-app notification for every administrator; the audit entry remains the
+    // staff-log record, this is the bell/notification-centre delivery.
+    await this.#sql`
+      INSERT INTO core.notifications (member_id, type)
+      SELECT DISTINCT mg.member_id, 'plugin.auto_disabled'
+      FROM core.member_groups mg
+      JOIN core.groups g ON g.id = mg.group_id
+      WHERE g.key = 'administrators'
+    `;
     return { failures, disabled: true };
   }
 

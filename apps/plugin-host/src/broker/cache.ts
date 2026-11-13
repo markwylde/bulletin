@@ -25,6 +25,13 @@ const DEFAULT_COALESCE_MS = 5;
 const MAX_TAGS = 100;
 const MAX_TAG_LENGTH = 128;
 
+export class CacheRateLimitError extends Error {
+  constructor() {
+    super("Plugin cache invalidation rate limit exceeded");
+    this.name = "CacheRateLimitError";
+  }
+}
+
 export class CacheInvalidator {
   readonly #bump: BumpTags;
   readonly #logger: Logger;
@@ -34,6 +41,7 @@ export class CacheInvalidator {
   #flushTimer: ReturnType<typeof setTimeout> | undefined;
   #flushing: Promise<void> | undefined;
   #resolveFlush: (() => void) | undefined;
+  #rejectFlush: ((error: Error) => void) | undefined;
   #coalesced = 0;
 
   constructor(options: CacheInvalidatorOptions) {
@@ -72,8 +80,8 @@ export class CacheInvalidator {
     }
 
     if (!this.#bucket.take()) {
-      this.#coalesced += 1;
-      this.#logger.warn("plugin.cache_invalidate_coalesced", { pluginId });
+      this.#logger.warn("plugin.cache_invalidate_rate_limited", { pluginId });
+      throw new CacheRateLimitError();
     }
 
     for (const tag of namespaced) {
@@ -103,12 +111,19 @@ export class CacheInvalidator {
 
     try {
       await this.#bump(tags);
+      this.#resolveFlush?.();
     } catch (error) {
+      // Keep the tags for the next attempt and fail the caller instead of acknowledging.
+      for (const tag of tags) {
+        this.#pending.add(tag);
+      }
+
       this.#logger.error("plugin.cache_invalidate_failed", { tags, error });
+      this.#rejectFlush?.(error instanceof Error ? error : new Error(String(error)));
+      throw error;
     } finally {
-      const resolve = this.#resolveFlush;
       this.#resolveFlush = undefined;
-      resolve?.();
+      this.#rejectFlush = undefined;
     }
   }
 
@@ -117,12 +132,13 @@ export class CacheInvalidator {
       return;
     }
 
-    this.#flushing = new Promise<void>((resolve) => {
+    this.#flushing = new Promise<void>((resolve, reject) => {
       this.#resolveFlush = resolve;
+      this.#rejectFlush = reject;
     });
     this.#flushTimer = setTimeout(() => {
       this.#flushTimer = undefined;
-      void this.flush();
+      void this.flush().catch(() => undefined);
     }, this.#coalesceMs);
     this.#flushTimer.unref?.();
   }

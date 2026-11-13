@@ -62,7 +62,7 @@ export const SAMPLE_PLUGINS: readonly SamplePlugin[] = [
       {
         name: "post.userbar",
         kind: "override",
-        body: '<span class="bl-post-userbar" data-post-userbar></span>',
+        body: '<style>.bl-author-card__posts{display:none!important}</style><span class="bl-post-userbar" data-post-userbar></span>',
         deps: [],
       },
     ],

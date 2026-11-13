@@ -1,5 +1,5 @@
 import { LOG_LEVELS, type Logger, type LogLevel } from "@bulletin/config";
-import type { CacheInvalidator } from "./cache.ts";
+import { type CacheInvalidator, CacheRateLimitError } from "./cache.ts";
 import type { BrokerHandler } from "./channel.ts";
 import { CoreDeniedError, type CoreForwarder, GUEST_VIEWER, type ViewerContext } from "./core.ts";
 import { QueryLimitError, type QueryResult } from "./database.ts";
@@ -265,7 +265,18 @@ export class Broker implements BrokerHandler {
       throw new RpcError(JSON_RPC_ERRORS.invalidParams, "tags must be an array of strings");
     }
 
-    const namespaced = await this.#cache.invalidate(request.pluginId, tags as string[]);
+    let namespaced: readonly string[];
+
+    try {
+      namespaced = await this.#cache.invalidate(request.pluginId, tags as string[]);
+    } catch (error) {
+      if (error instanceof CacheRateLimitError) {
+        this.#stats = { ...this.#stats, denials: this.#stats.denials + 1 };
+        throw new RpcError(JSON_RPC_ERRORS.denied, error.message, { reason: "rate" });
+      }
+
+      throw error;
+    }
     this.#stats = { ...this.#stats, invalidations: this.#stats.invalidations + 1 };
     return { tags: namespaced };
   }

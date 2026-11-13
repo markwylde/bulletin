@@ -11,7 +11,7 @@
     {
       "name": "post.userbar",
       "kind": "override",
-      "body": "<span class=\"bl-post-userbar\" data-post-userbar></span>",
+      "body": "<style>.bl-author-card__posts{display:none!important}</style><span class=\"bl-post-userbar\" data-post-userbar></span>",
       "deps": []
     }
   ]

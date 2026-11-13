@@ -40,6 +40,8 @@ export interface MigrationPolicy extends SqlPolicy {
 /** Statements and nodes that must never appear in a plugin migration. */
 const DENIED_NODES = new Set([
   "AlterDatabaseStmt",
+  "AlterFunctionStmt",
+  "AlterOwnerStmt",
   "AlterRoleSetStmt",
   "AlterRoleStmt",
   "AlterSystemStmt",
@@ -96,7 +98,7 @@ const ALLOWED_LANGUAGES = new Set(["sql", "plpgsql"]);
  * parser never sees, so it is rejected rather than guessed at.
  */
 const FORBIDDEN_BODY =
-  /\b(?:set_config|current_setting|pg_notify|pg_sleep(?:_for|_until)?|pg_(?:try_)?advisory_\w+|pg_terminate_backend|pg_cancel_backend|pg_read_(?:binary_)?file\w*|pg_ls_dir|pg_stat_file|pg_reload_conf|pg_rotate_logfile|lo_\w+|dblink\w*|execute)\b/i;
+  /\b(?:create|alter|drop|grant|revoke|truncate|set|reset|execute|set_config|current_setting|pg_notify|pg_sleep(?:_for|_until)?|pg_(?:try_)?advisory_\w+|pg_terminate_backend|pg_cancel_backend|pg_read_(?:binary_)?file\w*|pg_ls_dir|pg_stat_file|pg_reload_conf|pg_rotate_logfile|lo_\w+|dblink\w*)\b/i;
 
 function stringValue(value: unknown): string | undefined {
   if (isRecord(value) && isRecord(value.String) && typeof value.String.sval === "string") {
@@ -194,7 +196,29 @@ function declareFunction(
   defined.add(name);
 }
 
+const SAFE_PRIVILEGES = new Set(["select", "insert", "update", "delete", "usage", "execute"]);
+
 function assertGrant(body: Record<string, unknown>, policy: MigrationPolicy): void {
+  if (!Array.isArray(body.privileges)) {
+    throw new MigrationDeniedError("statement", "GRANT ALL is not allowed in plugin migrations");
+  }
+
+  if (Array.isArray(body.privileges)) {
+    for (const privilege of body.privileges) {
+      const name =
+        isRecord(privilege) && isRecord(privilege.AccessPriv)
+          ? privilege.AccessPriv.priv_name
+          : undefined;
+
+      if (typeof name !== "string" || !SAFE_PRIVILEGES.has(name.toLowerCase())) {
+        throw new MigrationDeniedError(
+          "statement",
+          `GRANT ${String(name ?? "ALL")} is not allowed in plugin migrations`,
+        );
+      }
+    }
+  }
+
   const grantees = body.grantees;
 
   if (Array.isArray(grantees)) {
@@ -252,6 +276,10 @@ function walk(node: unknown, policy: MigrationPolicy, defined: Set<string>): voi
 
     if (!isRecord(current)) {
       continue;
+    }
+
+    if (current.subtype === "AT_ChangeOwner") {
+      throw new MigrationDeniedError("statement", "Changing ownership is not allowed");
     }
 
     // Some nodes embed a RangeVar inline, e.g. `CreateStmt.relation` and trigger targets.

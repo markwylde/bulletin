@@ -141,6 +141,11 @@ export async function publishPluginRegistry(
       key: `plugin.${manifest.id}.${key}`,
       definition: { affectsRender: true },
     })),
+    ...manifest.vetoes.map((veto) => ({
+      kind: "veto",
+      key: veto.hook,
+      definition: { failMode: veto.failMode ?? "open", reasonKey: veto.reasonKey },
+    })),
     ...manifest.enrichers.map((enricher) => ({
       kind: "enricher",
       key: enricher.hook,

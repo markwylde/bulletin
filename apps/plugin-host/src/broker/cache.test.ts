@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@bulletin/config";
-import { CacheInvalidator } from "./cache.ts";
+import { CacheInvalidator, CacheRateLimitError } from "./cache.ts";
 
 const logger = createLogger({ service: "cache-test", level: "error", sink: () => {} });
 
@@ -49,18 +49,36 @@ describe("plugin cache invalidation", () => {
     expect(bumps[0]?.sort()).toEqual(["plugin:tips:leaderboard", "plugin:tips:totals"]);
   });
 
-  test("rate-limits excess calls by coalescing rather than failing", async () => {
+  test("enforces the sustained invalidation rate", async () => {
     const { invalidator, bumps } = create(2, 1);
-    const calls = [];
+    await invalidator.invalidate("tips", ["one"]);
+    await invalidator.invalidate("tips", ["two"]);
 
-    for (let index = 0; index < 10; index += 1) {
-      calls.push(invalidator.invalidate("tips", [`tag${String(index)}`]));
-    }
+    await expect(invalidator.invalidate("tips", ["three"])).rejects.toBeInstanceOf(
+      CacheRateLimitError,
+    );
+    expect(bumps).toHaveLength(2);
+  });
 
-    await Promise.all(calls);
-    expect(invalidator.coalesced).toBeGreaterThan(0);
-    expect(bumps.length).toBeLessThan(10);
-    expect(bumps.flat()).toHaveLength(10);
+  test("rejects a failed bump and retries the pending tags next time", async () => {
+    let fail = true;
+    const bumps: string[][] = [];
+    const invalidator = new CacheInvalidator({
+      bump: async (tags) => {
+        if (fail) {
+          throw new Error("database down");
+        }
+
+        bumps.push([...tags]);
+      },
+      logger,
+      coalesceMs: 1,
+    });
+
+    await expect(invalidator.invalidate("tips", ["leaderboard"])).rejects.toThrow("database down");
+    fail = false;
+    await invalidator.flush();
+    expect(bumps).toEqual([["plugin:tips:leaderboard"]]);
   });
 
   test("drops invalid and oversized tags without bumping", async () => {

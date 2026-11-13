@@ -109,3 +109,34 @@ export function applyPluginOverrides(
 
   return { ...theme, templates };
 }
+
+/** Dependency tags declared by plugin fragments active at this generation. */
+export async function loadPluginFragmentTags(
+  sql: SQL,
+  generation: number,
+): Promise<readonly string[]> {
+  const rows = (await sql`
+    SELECT plugin_id, definition->'deps' AS deps
+    FROM core.plugin_registry
+    WHERE kind = 'fragment'
+      AND EXISTS (
+        SELECT 1 FROM core.hook_fragments f
+        WHERE f.name = core.plugin_registry.key
+          AND f.generation = ${generation}
+          AND f.plugin_id = core.plugin_registry.plugin_id
+      )
+  `) as Array<{ plugin_id: string; deps: unknown }>;
+  const tags = new Set<string>();
+
+  for (const row of rows) {
+    if (Array.isArray(row.deps)) {
+      for (const dep of row.deps) {
+        if (typeof dep === "string" && dep !== "") {
+          tags.add(`plugin:${row.plugin_id}:${dep}`);
+        }
+      }
+    }
+  }
+
+  return [...tags].sort();
+}

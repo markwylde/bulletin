@@ -309,7 +309,14 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
   }
 
   const generation = input.pluginsGeneration ?? PLUGIN_GENERATION;
-  const fragments = await loadPluginFragments(input.sql, generation);
+  const requestedFlags = (input.viewModel as { readonly flags?: unknown }).flags;
+  const pluginsEnabled =
+    typeof requestedFlags === "object" &&
+    requestedFlags !== null &&
+    (requestedFlags as { readonly plugins?: unknown }).plugins === true;
+  const fragments = pluginsEnabled
+    ? await loadPluginFragments(input.sql, generation)
+    : { hooks: {}, overrides: [] };
   const activeTheme = applyPluginOverrides(theme, fragments.overrides);
   const errors: string[] = [];
   const failures: FailureReport[] = [];

@@ -32,6 +32,7 @@ export interface PluginJobQueue {
     ) => Promise<void>,
   ): Promise<void>;
   offWork(queue: string): Promise<void>;
+  ensureQueue?(queue: string): Promise<void>;
 }
 
 export function pluginEventQueue(pluginId: string): string {
@@ -74,6 +75,7 @@ export async function dispatchPluginEvent(options: {
 
 export interface PluginEventJobsOptions {
   readonly sql: SQL;
+  readonly ensureQueue?: (queue: string) => Promise<void>;
   readonly queue: PluginJobQueue;
   readonly hostUrl: string;
   readonly token: string;
@@ -115,6 +117,7 @@ export async function createPluginEventJobs(
 
       for (const pluginId of pluginIds) {
         const queue = pluginEventQueue(pluginId);
+        await options.ensureQueue?.(queue);
         await options.queue.work(queue, async (jobs) => {
           for (const job of jobs) {
             const response = await request(`${options.hostUrl}/internal/events`, {

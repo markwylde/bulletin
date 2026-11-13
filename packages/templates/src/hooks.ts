@@ -3,6 +3,7 @@ export {
   bumpPluginsGeneration,
   loadHookFragments,
   loadPluginFragments,
+  loadPluginFragmentTags,
   loadPluginsGeneration,
   type PluginFragment,
   type PluginFragments,

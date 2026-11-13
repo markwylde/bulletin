@@ -361,7 +361,41 @@ function parseI18n(
       continue;
     }
 
+    for (const [key, text] of Object.entries(catalog)) {
+      if (typeof text !== "string" || text.trim() === "") {
+        issues.push({ path: `${path}.${locale}.${key}`, message: "must be a non-empty string" });
+      }
+
+      if (/\{[^}]*$/.test(String(text)) || /\{[^}]*\s[^}]*\}/.test(String(text))) {
+        issues.push({ path: `${path}.${locale}.${key}`, message: "has a malformed placeholder" });
+      }
+    }
+
     catalogs[locale] = catalog as Record<string, string>;
+  }
+
+  if (Object.keys(catalogs).length > 0) {
+    const base = catalogs.en;
+
+    if (base === undefined) {
+      issues.push({ path, message: "an en catalog is required when i18n is declared" });
+    } else {
+      const placeholders = (value: string): string[] =>
+        [...value.matchAll(/\{([a-z][a-zA-Z0-9_]*)\}/g)].map((match) => match[1] ?? "").sort();
+
+      for (const [locale, catalog] of Object.entries(catalogs)) {
+        for (const [key, value] of Object.entries(base)) {
+          if (catalog[key] === undefined) {
+            issues.push({ path: `${path}.${locale}.${key}`, message: "is missing" });
+          } else if (placeholders(catalog[key] ?? "").join(",") !== placeholders(value).join(",")) {
+            issues.push({
+              path: `${path}.${locale}.${key}`,
+              message: "must use the same placeholders as en",
+            });
+          }
+        }
+      }
+    }
   }
 
   return catalogs;

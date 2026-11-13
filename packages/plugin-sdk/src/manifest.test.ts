@@ -100,6 +100,25 @@ describe("plugin manifest", () => {
     expect(paths).toContain("$.capabilities");
   });
 
+  test("requires en and matching placeholders across plugin catalogs", () => {
+    expect(() =>
+      parsePluginManifest({
+        ...BASE,
+        i18n: { es: { "plugin.tip": "Propina" } },
+      }),
+    ).toThrow("an en catalog is required");
+
+    expect(() =>
+      parsePluginManifest({
+        ...BASE,
+        i18n: {
+          en: { "plugin.tip": "Tip {name}" },
+          fr: { "plugin.tip": "Pourboire" },
+        },
+      }),
+    ).toThrow("same placeholders");
+  });
+
   test("rejects a non-object and invalid JSON errors are wrapped", async () => {
     expect(() => parsePluginManifest([])).toThrow(ManifestError);
   });

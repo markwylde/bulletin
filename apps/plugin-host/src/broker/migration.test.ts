@@ -85,6 +85,13 @@ describe("plugin migration validation", () => {
       "function",
       "CREATE FUNCTION evil() RETURNS void LANGUAGE plpgsql AS $$ BEGIN EXECUTE 'SELECT 1'; END $$",
     ],
+    ["statement", "GRANT CREATE ON SCHEMA plugin_test TO plugin_test"],
+    ["statement", "GRANT ALL ON notes TO plugin_test"],
+    ["statement", "ALTER TABLE notes OWNER TO plugin_test"],
+    [
+      "function",
+      "CREATE FUNCTION evil() RETURNS void LANGUAGE plpgsql AS $$ BEGIN CREATE TABLE x (id int); END $$",
+    ],
   ])("rejects %s: %s", async (reason, sql) => {
     await expect(denial(sql)).resolves.toMatchObject({ reason });
   });

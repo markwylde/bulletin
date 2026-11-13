@@ -128,7 +128,14 @@ describe("sample plugin catalogs", () => {
 
     for (const id of ids) {
       const value = await Bun.file(new URL(`${id}/plugin.json`, root)).json();
-      expect(() => parsePluginManifest(value)).not.toThrow();
+      const manifest = parsePluginManifest(value);
+      expect(manifest.id).toBe(id);
+
+      if (id === "hide-post-count") {
+        expect(manifest.templateFragments[0]?.body).toContain(
+          ".bl-author-card__posts{display:none",
+        );
+      }
     }
   });
 });

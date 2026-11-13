@@ -4,6 +4,12 @@ import { fileURLToPath } from "node:url";
 import { bumpCacheTags } from "@bulletin/cache";
 import { connectionPoolSize, createLogger, loadConfig } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
+import {
+  can,
+  GUEST_PRINCIPAL,
+  loadForumTree,
+  loadPermissionSnapshot,
+} from "@bulletin/domain/permissions";
 import { advancePluginsGeneration, PluginCircuitBreaker } from "@bulletin/domain/plugins";
 import { SQL } from "bun";
 import { Broker } from "./broker/broker.ts";
@@ -110,6 +116,41 @@ const channel = new BrokerChannel({
 });
 await channel.start();
 
+const canReadContent = async (pluginId: string, forumId: string): Promise<boolean> => {
+  const rows = (await cacheSql`
+      SELECT enabled, state, service_principal_group, elevated_grants
+      FROM core.plugins WHERE plugin_id = ${pluginId}
+    `) as Array<{
+    enabled: boolean;
+    state: string;
+    service_principal_group: string;
+    elevated_grants: unknown;
+  }>;
+  const plugin = rows[0];
+
+  if (plugin === undefined || !plugin.enabled || plugin.state !== "active") {
+    return false;
+  }
+
+  const grants = Array.isArray(plugin.elevated_grants)
+    ? plugin.elevated_grants
+        .map((entry) =>
+          typeof entry === "object" && entry !== null
+            ? String((entry as { forumId?: unknown }).forumId ?? "")
+            : "",
+        )
+        .filter((id) => id !== "")
+    : [];
+
+  if (grants.includes(forumId)) {
+    return true;
+  }
+
+  const tree = await loadForumTree(cacheSql);
+  const snapshot = await loadPermissionSnapshot(cacheSql, GUEST_PRINCIPAL, { tree });
+  return can(cacheSql, GUEST_PRINCIPAL, "read", { forumId, tree, snapshot });
+};
+
 const breaker = new PluginCircuitBreaker({
   sql: cacheSql,
   disable: async (pluginId, reason) => {
@@ -137,12 +178,15 @@ const hookRunner = new PluginHookRunner({
   onSuccess: (pluginId, hook) => {
     void breaker.recordSuccess(pluginId, hook);
   },
+  canReadContent,
 });
 const hookHttp = {
   runner: hookRunner,
   registry: hooks,
   transport: channel,
   transports: new Map([[manifest.id, channel]]),
+  canReadContent,
+  isPluginActive: pluginActive,
   token: sandboxConfig.internalToken,
   frameAncestors: [config.userOrigin, config.staffOrigin],
   logger: logger.child({ component: "hooks" }),

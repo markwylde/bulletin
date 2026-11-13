@@ -85,6 +85,8 @@ export class PluginHookRunner {
     readonly isActive?: (pluginId: string) => Promise<boolean>;
     readonly onFailure?: (pluginId: string, hook: string, error: unknown) => void;
     readonly onSuccess?: (pluginId: string, hook: string) => void;
+    /** Service-principal forum access for write content. */
+    readonly canReadContent?: (pluginId: string, forumId: string) => Promise<boolean>;
   }) {
     this.#transport = options.transport;
     this.#registry = options.registry;
@@ -92,7 +94,10 @@ export class PluginHookRunner {
     this.#isActive = options.isActive ?? (async () => true);
     this.#onFailure = options.onFailure;
     this.#onSuccess = options.onSuccess;
+    this.#canReadContent = options.canReadContent;
   }
+
+  readonly #canReadContent: ((pluginId: string, forumId: string) => Promise<boolean>) | undefined;
 
   readonly #onFailure: ((pluginId: string, hook: string, error: unknown) => void) | undefined;
   readonly #onSuccess: ((pluginId: string, hook: string) => void) | undefined;
@@ -110,6 +115,14 @@ export class PluginHookRunner {
 
   async #active(pluginId: string): Promise<boolean> {
     return this.#isActive(pluginId).catch(() => false);
+  }
+
+  async #maySeeContent(pluginId: string, forumId: string | undefined): Promise<boolean> {
+    if (forumId === undefined) {
+      return true;
+    }
+
+    return this.#canReadContent?.(pluginId, forumId).catch(() => false) ?? true;
   }
 
   async enrich(input: EnrichInput): Promise<Enriched> {
@@ -184,7 +197,10 @@ export class PluginHookRunner {
     let content = input.content;
 
     for (const entry of filters) {
-      if (!(await this.#active(entry.pluginId))) {
+      if (
+        !(await this.#active(entry.pluginId)) ||
+        !(await this.#maySeeContent(entry.pluginId, input.context.forumId))
+      ) {
         continue;
       }
 
@@ -224,7 +240,10 @@ export class PluginHookRunner {
     }
 
     for (const entry of this.#registry.vetoes(input.hook)) {
-      if (!(await this.#active(entry.pluginId))) {
+      if (
+        !(await this.#active(entry.pluginId)) ||
+        !(await this.#maySeeContent(entry.pluginId, input.context.forumId))
+      ) {
         continue;
       }
 

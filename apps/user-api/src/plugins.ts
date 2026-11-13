@@ -24,9 +24,12 @@ export interface PluginWriteResult {
 }
 
 export interface PluginWriteClient {
-  filter(input: PluginWriteInput): Promise<PluginWriteResult>;
+  filter(
+    input: PluginWriteInput,
+    options?: { readonly failClosed?: boolean },
+  ): Promise<PluginWriteResult>;
   /** HTML from every plugin content extension, still to be core-sanitised at render time. */
-  extend(content: string): Promise<readonly string[]>;
+  extend(content: string, context?: { readonly forumId?: string }): Promise<readonly string[]>;
 }
 
 export interface PluginWriteClientOptions {
@@ -59,11 +62,11 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
   const token = options.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
   const request = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
   const timeoutMs = options.timeoutMs ?? 1_000;
-  const vetoFailMode =
-    options.vetoFailMode ?? (Bun.env.PLUGIN_VETO_FAIL_MODE === "closed" ? "closed" : "open");
+  const defaultFailClosed =
+    options.vetoFailMode === "closed" || Bun.env.PLUGIN_VETO_FAIL_MODE === "closed";
 
-  const unavailable = (content: string): PluginWriteResult =>
-    vetoFailMode === "closed"
+  const unavailable = (content: string, failClosed: boolean): PluginWriteResult =>
+    failClosed
       ? {
           content,
           veto: { reasonKey: "plugin.veto.unavailable", pluginId: "plugin-host" },
@@ -71,7 +74,7 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
       : { content };
 
   return {
-    async filter(input) {
+    async filter(input, callOptions) {
       try {
         const response = await request(`${url}/internal/filter`, {
           method: "POST",
@@ -85,7 +88,7 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
 
         if (!response.ok) {
           options.logger?.warn("plugin.write_hook_failed", { status: response.status });
-          return unavailable(input.content);
+          return unavailable(input.content, callOptions?.failClosed ?? defaultFailClosed);
         }
 
         const body = (await response.json()) as {
@@ -103,11 +106,11 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
         // A plugin-host that is down must not take posting down; the host applies fail-open
         // itself, and this is the outer safety net.
         options.logger?.warn("plugin.write_hook_unreachable", { error });
-        return unavailable(input.content);
+        return unavailable(input.content, callOptions?.failClosed ?? defaultFailClosed);
       }
     },
 
-    async extend(content) {
+    async extend(content, context) {
       try {
         const response = await request(`${url}/internal/content-extend`, {
           method: "POST",
@@ -115,7 +118,12 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
             "content-type": "application/json",
             authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ syntax: "*", source: content, viewer: { memberId: null } }),
+          body: JSON.stringify({
+            syntax: "*",
+            source: content,
+            viewer: { memberId: null },
+            context: context ?? {},
+          }),
           signal: AbortSignal.timeout(timeoutMs),
         });
 
@@ -133,3 +141,22 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
 }
 
 export const pluginWriteClient = createPluginWriteClient();
+
+/** Installed, active plugin vetoes configured fail-closed for a hook. */
+export async function hasFailClosedVeto(
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>,
+  hook: string,
+): Promise<boolean> {
+  const rows = (await sql`
+    SELECT 1
+    FROM core.plugin_registry r
+    JOIN core.plugins p ON p.plugin_id = r.plugin_id
+    JOIN core.feature_flags f ON f.key = 'plugins'
+    WHERE r.kind = 'veto' AND r.key = ${hook}
+      AND r.definition->>'failMode' = 'closed'
+      AND p.enabled AND p.state = 'active' AND f.default_value
+    LIMIT 1
+  `) as unknown[];
+
+  return rows.length > 0;
+}

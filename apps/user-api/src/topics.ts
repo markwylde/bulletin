@@ -29,7 +29,7 @@ import {
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
 import { apiTranslator } from "./catalogs.ts";
-import { pluginWriteClient } from "./plugins.ts";
+import { hasFailClosedVeto, pluginWriteClient } from "./plugins.ts";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
@@ -170,12 +170,16 @@ export async function createTopicResponse(
   }
 
   const bodyMd = typeof body.bodyMd === "string" ? body.bodyMd : "";
-  const filtered = await pluginWriteClient.filter({
-    hook: "post.write",
-    content: bodyMd,
-    context: { authorId: session.memberId, forumId },
-    viewer: { memberId: session.memberId },
-  });
+  const failClosedVeto = await hasFailClosedVeto(sql, "post.write");
+  const filtered = await pluginWriteClient.filter(
+    {
+      hook: "post.write",
+      content: bodyMd,
+      context: { authorId: session.memberId, forumId },
+      viewer: { memberId: session.memberId },
+    },
+    { failClosed: failClosedVeto },
+  );
 
   if (filtered.veto !== undefined) {
     return json(
@@ -187,7 +191,7 @@ export async function createTopicResponse(
     );
   }
 
-  const pluginHtml = await pluginWriteClient.extend(filtered.content);
+  const pluginHtml = await pluginWriteClient.extend(filtered.content, { forumId });
   const result = await withPostFloodLock(sql, session.memberId, async (locked) => {
     const wait = await postFloodWait(locked, session.memberId);
 
@@ -252,12 +256,16 @@ export async function replyResponse(
     return json({ code: "invalid_request" }, 400);
   }
 
-  const filtered = await pluginWriteClient.filter({
-    hook: "post.write",
-    content: body.bodyMd,
-    context: { authorId: session.memberId, topicId },
-    viewer: { memberId: session.memberId },
-  });
+  const failClosedVeto = await hasFailClosedVeto(sql, "post.write");
+  const filtered = await pluginWriteClient.filter(
+    {
+      hook: "post.write",
+      content: body.bodyMd,
+      context: { authorId: session.memberId, topicId },
+      viewer: { memberId: session.memberId },
+    },
+    { failClosed: failClosedVeto },
+  );
 
   if (filtered.veto !== undefined) {
     return json(
@@ -271,7 +279,7 @@ export async function replyResponse(
 
   const bodyMd = filtered.content;
 
-  const pluginHtml = await pluginWriteClient.extend(filtered.content);
+  const pluginHtml = await pluginWriteClient.extend(filtered.content, {});
   const result = await withPostFloodLock(sql, session.memberId, async (locked) => {
     const wait = await postFloodWait(locked, session.memberId);
 
@@ -328,12 +336,16 @@ export async function editPostResponse(
     return json({ code: "invalid_request" }, 400);
   }
 
-  const filtered = await pluginWriteClient.filter({
-    hook: "post.write",
-    content: body.bodyMd,
-    context: { authorId: session.memberId, postId },
-    viewer: { memberId: session.memberId },
-  });
+  const failClosedVeto = await hasFailClosedVeto(sql, "post.write");
+  const filtered = await pluginWriteClient.filter(
+    {
+      hook: "post.write",
+      content: body.bodyMd,
+      context: { authorId: session.memberId, postId },
+      viewer: { memberId: session.memberId },
+    },
+    { failClosed: failClosedVeto },
+  );
 
   if (filtered.veto !== undefined) {
     return json(
@@ -345,7 +357,7 @@ export async function editPostResponse(
     );
   }
 
-  const pluginHtml = await pluginWriteClient.extend(filtered.content);
+  const pluginHtml = await pluginWriteClient.extend(filtered.content, {});
   const result = await editPost(
     sql,
     {
