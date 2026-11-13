@@ -10,9 +10,9 @@
 
 ## 2. Endpoints
 
-- [ ] 2.1 Read endpoints (forums, topics, posts, public member fields, search) using the same permission-filtered repositories, with permission-denial tests per endpoint
-- [ ] 2.2 Write endpoints (create topic, reply, react, follow) using the same mutations as the apps, with tests including flood control and permission denial
-- [ ] 2.3 API documentation page, verified to render the generated document
+- [x] 2.1 Read endpoints (forums, topics, posts, public member fields, search) using the same permission-filtered repositories, with permission-denial tests per endpoint
+- [x] 2.2 Write endpoints (create topic, reply, react, follow) using the same mutations as the apps, with tests including flood control and permission denial
+- [x] 2.3 API documentation page, verified to render the generated document
 
 ## 3. Webhooks
 

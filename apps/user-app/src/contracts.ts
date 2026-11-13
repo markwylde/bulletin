@@ -425,9 +425,6 @@ export const searchNewContract = defineContract({
 });
 
 /**
- * The API pages are declared before their route files land (tasks 2.3 and 4.1): the
- * route-contract CI check only requires a registry entry once a page exists.
- *
  * The public API documentation (task 2.3). It renders the generated OpenAPI document and is
  * the same for every guest, so the CDN may cache it; a member sees the same HTML.
  */
@@ -455,6 +452,7 @@ export const apiKeysContract = defineContract<AccountViewModel>({
 
 export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [homeContract.route]: homeContract,
+  [apiDocsContract.route]: apiDocsContract,
   [loginContract.route]: loginContract,
   [callbackContract.route]: callbackContract,
   [demoContract.route]: demoContract,

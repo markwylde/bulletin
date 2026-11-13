@@ -1,4 +1,10 @@
 {
+  "api.docs.error": "No se pudo cargar la referencia de la API. El documento OpenAPI sin formato sigue disponible abajo.",
+  "api.docs.intro": "Todos los endpoints aceptan una clave de API en la cabecera Authorization. Aquí se ignoran las cookies de sesión.",
+  "api.docs.loading": "Cargando la referencia de la API…",
+  "api.docs.noScript": "La referencia interactiva necesita JavaScript.",
+  "api.docs.raw": "Abrir el documento OpenAPI",
+  "api.docs.title": "Documentación de la API",
   "account.attachments.body": "Archivos que has subido.",
   "account.attachments.delete": "Eliminar",
   "account.attachments.deleteFailed": "No se pudo eliminar ese adjunto.",

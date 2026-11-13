@@ -1,4 +1,10 @@
 {
+  "api.docs.error": "Could not load the API reference. The raw OpenAPI document is still available below.",
+  "api.docs.intro": "Every endpoint accepts an API key in the Authorization header. Session cookies are ignored here.",
+  "api.docs.loading": "Loading the API reference…",
+  "api.docs.noScript": "The interactive reference needs JavaScript.",
+  "api.docs.raw": "Open the OpenAPI document",
+  "api.docs.title": "API documentation",
   "account.attachments.body": "Files you have uploaded.",
   "account.attachments.delete": "Delete",
   "account.attachments.deleteFailed": "Could not delete that attachment.",

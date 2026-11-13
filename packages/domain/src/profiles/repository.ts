@@ -106,6 +106,33 @@ export async function readProfile(sql: SQL, memberId: string): Promise<ProfileRe
   return row === undefined ? null : profileRecord(row);
 }
 
+/**
+ * Public member fields for the API: only active, named, non-service members. A service
+ * member is an integration principal, never a profile, and an erased member is not public.
+ */
+export async function readPublicMember(sql: SQL, memberId: string): Promise<ProfileRecord | null> {
+  if (!/^\d+$/.test(memberId)) {
+    return null;
+  }
+
+  const [flags] = (await sql`
+    SELECT state, is_service, display_name
+    FROM core.members
+    WHERE id = ${memberId}
+  `) as Array<{ state: string; is_service: boolean; display_name: string | null }>;
+
+  if (
+    flags === undefined ||
+    flags.state !== "active" ||
+    flags.is_service ||
+    flags.display_name === null
+  ) {
+    return null;
+  }
+
+  return readProfile(sql, memberId);
+}
+
 interface FieldRow {
   readonly id: string;
   readonly type: ProfileFieldType;

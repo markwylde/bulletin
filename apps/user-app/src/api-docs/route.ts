@@ -1,0 +1,100 @@
+import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
+import { readBoardSettings } from "@bulletin/domain/board";
+import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
+import { contractTags, type LoadedTheme } from "@bulletin/templates";
+import type { SQL } from "bun";
+import { apiDocsContract } from "../contracts.ts";
+import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
+import type { UserAppSessionContext } from "../session.ts";
+import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
+import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
+
+export const OPENAPI_URL = "/api/v1/openapi.json";
+
+export interface ApiDocsRouteInput {
+  readonly sql: SQL;
+  readonly themeId?: string | null | undefined;
+  readonly preview?: boolean | undefined;
+  readonly locale: Locale;
+  readonly translate: Translator;
+  readonly session: UserAppSessionContext | null;
+  readonly pluginsGeneration: number;
+  readonly colourScheme: ColorScheme;
+  readonly cache: RenderCache;
+  readonly tagVersions?: TagVersionSource | null;
+}
+
+interface ApiDocsData {
+  readonly theme: LoadedTheme | null;
+  readonly boardName: string;
+  readonly flags: ViewerFlags;
+}
+
+/**
+ * The public API documentation page. The HTML is the same for guests and members; Scalar
+ * loads `/api/v1/openapi.json` on the client, so the page stays CDN-cacheable (ADR 0006, 0016).
+ */
+export async function renderApiDocsRoute(input: ApiDocsRouteInput): Promise<{
+  readonly html: string;
+  readonly title: string;
+  readonly boardName: string;
+  readonly cache: RenderStatus | null;
+  readonly variant: string;
+  readonly tags: readonly string[];
+  readonly etag: string | null;
+  readonly errors: readonly string[];
+}> {
+  let boardName = "";
+  const title = input.translate("api.docs.title");
+
+  const rendered = await renderCachedPage<ApiDocsData>({
+    tags: contractTags(apiDocsContract, {}),
+    cache: input.preview === true ? null : input.cache,
+    tagVersions: input.tagVersions ?? null,
+    shell: { visitor: input.session === null ? "guest" : "member" },
+    prepare: async () => {
+      const [theme, settings, flags] = await Promise.all([
+        loadActiveTheme(input.sql, input.themeId),
+        readBoardSettings(input.sql),
+        loadViewerFlags(input.sql, input.session),
+      ]);
+      const name = boardNameFrom(settings.boardName, input.translate);
+      boardName = name;
+
+      return {
+        variant: pageVariant({
+          route: apiDocsContract.route,
+          visibilityKey: "public",
+          theme,
+          pluginsGeneration: input.pluginsGeneration,
+          locale: input.locale,
+          colourScheme: input.colourScheme,
+          renderFlagsHash: flags.hash,
+        }),
+        data: { theme, boardName: name, flags },
+      };
+    },
+    render: async (data) => {
+      const page = await renderThemedPage({
+        sql: input.sql,
+        themeId: input.themeId,
+        boardName: data.boardName,
+        locale: input.locale,
+        translate: input.translate,
+        template: apiDocsContract.templates.page,
+        viewModel: {
+          openApiUrl: OPENAPI_URL,
+          flags: data.flags.values,
+        },
+        breadcrumbs: [{ label: title, href: null }],
+        route: apiDocsContract,
+        pluginsGeneration: input.pluginsGeneration,
+        theme: data.theme,
+      });
+
+      return { html: page.html, errors: page.errors };
+    },
+  });
+
+  return { ...rendered, title, boardName };
+}

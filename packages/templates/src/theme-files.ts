@@ -30,6 +30,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "display-name",
   "account",
   "account-profile",
+  "api-docs",
   "account-attachments",
   "account-follows",
   "account-notifications",

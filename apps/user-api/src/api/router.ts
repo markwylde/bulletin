@@ -252,6 +252,9 @@ export async function handleApiRequest(
   }
 
   const now = options.now?.() ?? new Date();
+  // Bun's Request type and the DOM Request type differ only in header augmentation; the
+  // handler gets an unconsumed clone so it can call an app response helper that reads JSON.
+  const handlerRequest = request.clone() as unknown as Request;
   const auth = await resolveApiPrincipal(options.sql, request, {
     pepper: options.pepper,
     now,
@@ -326,7 +329,7 @@ export async function handleApiRequest(
 
   try {
     response = await route.handler({
-      request,
+      request: handlerRequest,
       url,
       sql: options.sql,
       principal,

@@ -1,4 +1,10 @@
 {
+  "api.docs.error": "Impossible de charger la référence de l’API. Le document OpenAPI brut reste disponible ci-dessous.",
+  "api.docs.intro": "Tous les endpoints acceptent une clé d’API dans l’en-tête Authorization. Les cookies de session sont ignorés ici.",
+  "api.docs.loading": "Chargement de la référence de l’API…",
+  "api.docs.noScript": "La référence interactive nécessite JavaScript.",
+  "api.docs.raw": "Ouvrir le document OpenAPI",
+  "api.docs.title": "Documentation de l’API",
   "account.attachments.body": "Fichiers que vous avez envoyés.",
   "account.attachments.delete": "Supprimer",
   "account.attachments.deleteFailed": "Impossible de supprimer cette pièce jointe.",

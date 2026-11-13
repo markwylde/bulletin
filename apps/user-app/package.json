@@ -16,13 +16,14 @@
     "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
+    "@bulletin/plugin-sdk": "workspace:*",
     "@bulletin/storage": "workspace:*",
     "@bulletin/templates": "workspace:*",
     "@bulletin/ui": "workspace:*",
+    "@scalar/api-reference": "1.78.1",
     "astro": "7.4.7",
     "react": "19.3.1",
-    "react-dom": "19.3.1",
-    "@bulletin/plugin-sdk": "workspace:*"
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",
