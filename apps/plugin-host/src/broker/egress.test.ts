@@ -224,6 +224,40 @@ describe("egress redirects", () => {
     expect(calls).toHaveLength(1);
   });
 
+  test("rejects a 307 POST redirect to a manifest host the admin did not approve", async () => {
+    const { proxy, calls } = createHarness({
+      allowedHosts: ["example.com", "cdn.example"],
+      addresses: { "example.com": PUBLIC, "cdn.example": PUBLIC_CDN },
+      respond: () =>
+        new Response(null, { status: 307, headers: { location: "https://cdn.example/collect" } }),
+    });
+
+    await denied(
+      proxy.request({
+        url: "https://example.com/start",
+        method: "POST",
+        body: "secret",
+        approvedHosts: ["example.com"],
+      }),
+      "host",
+    );
+    expect(calls.map((call) => call.url)).toEqual(["https://example.com/start"]);
+  });
+
+  test("rejects an initial URL on the manifest but outside the approved hosts", async () => {
+    const { proxy, calls } = createHarness({
+      allowedHosts: ["example.com", "cdn.example"],
+      addresses: { "example.com": PUBLIC, "cdn.example": PUBLIC_CDN },
+      respond: () => new Response("ok", { status: 200 }),
+    });
+
+    await denied(
+      proxy.request({ url: "https://cdn.example/", approvedHosts: ["example.com"] }),
+      "host",
+    );
+    expect(calls).toHaveLength(0);
+  });
+
   test("re-validates and follows a redirect to another allowlisted host", async () => {
     const { proxy, calls } = createHarness({
       allowedHosts: ["example.com", "cdn.example"],

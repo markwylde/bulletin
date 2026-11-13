@@ -524,6 +524,7 @@ export class Broker implements BrokerHandler {
       const response = await this.#withEgressBudget(() =>
         this.#egress.request({
           url,
+          approvedHosts: [...approvedHosts],
           ...(method === undefined ? {} : { method }),
           ...(headers === undefined ? {} : { headers: headers as Record<string, string> }),
           ...(body === undefined ? {} : { body }),

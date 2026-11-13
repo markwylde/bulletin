@@ -281,6 +281,7 @@ describe("broker dispatch", () => {
     expect(egress.requests).toEqual([
       {
         url: "https://example.com/data",
+        approvedHosts: ["example.com"],
         method: "POST",
         headers: { accept: "application/json" },
         body: "{}",

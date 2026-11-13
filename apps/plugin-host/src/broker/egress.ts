@@ -28,6 +28,11 @@ export class EgressDeniedError extends Error {
 
 export interface EgressRequest {
   readonly url: string;
+  /**
+   * Hosts an admin approved for this plugin. When given, every hop (including every redirect
+   * target) must be on both the manifest allowlist and this approved set.
+   */
+  readonly approvedHosts?: readonly string[];
   readonly method?: string;
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: string;
@@ -524,12 +529,16 @@ export class EgressProxy {
     }
 
     const headers = validateHeaders(input.headers);
+    const approvedHosts =
+      input.approvedHosts === undefined
+        ? undefined
+        : new Set(input.approvedHosts.map((host) => normalizeHost(host)));
     let url = input.url;
     let currentMethod = method;
     let body = input.body;
 
     for (let hop = 0; ; hop += 1) {
-      const target = await this.#validate(url);
+      const target = await this.#validate(url, approvedHosts);
 
       let response: Response;
 
@@ -590,7 +599,10 @@ export class EgressProxy {
     }
   }
 
-  async #validate(input: string): Promise<{ url: URL; addresses: readonly DnsAddress[] }> {
+  async #validate(
+    input: string,
+    approvedHosts?: ReadonlySet<string>,
+  ): Promise<{ url: URL; addresses: readonly DnsAddress[] }> {
     let url: URL;
 
     try {
@@ -624,6 +636,11 @@ export class EgressProxy {
     if (!this.#allowedHosts.has(host)) {
       this.#logger.warn("egress.host_denied", { host });
       throw new EgressDeniedError("host", "Host is not on the plugin's egress allowlist");
+    }
+
+    if (approvedHosts !== undefined && !approvedHosts.has(host)) {
+      this.#logger.warn("egress.host_not_approved", { host });
+      throw new EgressDeniedError("host", "Host is not on the plugin's approved egress allowlist");
     }
 
     let addresses: readonly DnsAddress[];
