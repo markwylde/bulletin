@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
-import { createWebhookEventHandler } from "@bulletin/db/jobs";
+import { createWebhookEventHandler, purgeWebhookDeliveries } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -311,6 +311,40 @@ integrationDescribe("webhook configuration", () => {
       expect(denied.status).toBe(403);
     });
   }, 30_000);
+
+  test("accepts the local mock target through the staff allowlist environment", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberId(database, "member-1");
+      const principal = await servicePrincipal(database, "Allowlist Bot");
+      const previous = Bun.env.SAFE_FETCH_DEV_ALLOW;
+      Bun.env.SAFE_FETCH_DEV_ALLOW = "webhooks";
+
+      try {
+        const response = await mutateWebhookForStaff(
+          database.sql,
+          member,
+          new Request("http://staff.bulletin.localhost/api/staff/webhooks", {
+            method: "POST",
+            body: JSON.stringify({
+              action: "save",
+              url: "http://webhooks:4004/hook",
+              principalMemberId: principal,
+              events: ["post.created"],
+              contentFields: [],
+            }),
+          }),
+        );
+
+        expect(response.status).toBe(200);
+      } finally {
+        if (previous === undefined) {
+          delete Bun.env.SAFE_FETCH_DEV_ALLOW;
+        } else {
+          Bun.env.SAFE_FETCH_DEV_ALLOW = previous;
+        }
+      }
+    });
+  }, 30_000);
 });
 
 integrationDescribe("webhook subscriber and delivery", () => {
@@ -464,6 +498,51 @@ integrationDescribe("webhook subscriber and delivery", () => {
     });
   }, 30_000);
 
+  test("purges delivery logs after the 30-day retention boundary", async () => {
+    await withSeededDb(async (database) => {
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const principal = await servicePrincipal(database, "Retention Bot");
+      const { webhook } = await createWebhook(database, principal, ["post.created"]);
+      await createPublicTopicAndReply(database, forum, author, "Retention topic");
+      const eventId = await latestEvent(database, "post.created");
+      const old = await createWebhookDelivery(database.sql, {
+        webhookId: webhook.id,
+        eventId: eventId.toString(),
+        attempt: 1,
+      });
+      const recent = await createWebhookDelivery(database.sql, {
+        webhookId: webhook.id,
+        eventId: eventId.toString(),
+        attempt: 2,
+      });
+
+      if (old === null || recent === null) {
+        throw new Error("Could not create retention rows");
+      }
+
+      await database.sql`
+        UPDATE core.webhook_deliveries
+        SET created_at = ${new Date("2026-01-01T00:00:00.000Z")}
+        WHERE id = ${old}
+      `;
+      await database.sql`
+        UPDATE core.webhook_deliveries
+        SET created_at = ${new Date("2026-01-20T00:00:00.000Z")}
+        WHERE id = ${recent}
+      `;
+
+      expect(await purgeWebhookDeliveries(database.sql, new Date("2026-02-01T00:00:00.000Z"))).toBe(
+        1,
+      );
+      const remaining = (await database.sql`
+        SELECT id::text AS id FROM core.webhook_deliveries
+        WHERE id = ANY(${`{${old},${recent}}`}::bigint[])
+      `) as Array<{ id: string }>;
+      expect(remaining.map((row) => row.id)).toEqual([recent]);
+    });
+  }, 30_000);
+
   test("does not deliver a staff-forum event to a principal that cannot read it", async () => {
     await withSeededDb(async (database) => {
       const admin = await memberId(database, "admin");
@@ -580,6 +659,117 @@ integrationDescribe("webhook subscriber and delivery", () => {
       const html = (payload?.content as { readonly bodyHtml?: string } | undefined)?.bodyHtml;
       expect(html).toContain("Safe");
       expect(html).not.toContain("onerror");
+    });
+  }, 30_000);
+
+  test("keeps a failing event's deadline when another delivery succeeds", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const author = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const principal = await servicePrincipal(database, "Deadline Bot");
+      const { webhook, secret } = await createWebhook(database, principal, ["post.created"]);
+      const topic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: forum,
+        title: "Deadline topic",
+        bodyMd: "Topic body.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the topic");
+      }
+
+      for (const bodyMd of ["First reply.", "Second reply."]) {
+        const replied = await reply(database.sql, {
+          actorId: author,
+          topicId: topic.result.topicId,
+          bodyMd,
+        });
+
+        if (!replied.ok) {
+          throw new Error("Could not create the reply");
+        }
+      }
+
+      const events = (await database.sql`
+        SELECT id::text AS id FROM core.events
+        WHERE type = 'post.created' ORDER BY id DESC LIMIT 2
+      `) as Array<{ id: string }>;
+      const successEvent = events[0]?.id;
+      const failingEvent = events[1]?.id;
+
+      if (successEvent === undefined || failingEvent === undefined) {
+        throw new Error("Missing events");
+      }
+
+      const started = new Date("2026-01-01T00:00:00.000Z");
+      const deadline = new Date(started.getTime() + WEBHOOK_FAILURE_WINDOW_MS);
+      const first = await createWebhookDelivery(database.sql, {
+        webhookId: webhook.id,
+        eventId: failingEvent,
+        attempt: 1,
+        retryDeadline: deadline,
+      });
+      const other = await createWebhookDelivery(database.sql, {
+        webhookId: webhook.id,
+        eventId: successEvent,
+        attempt: 1,
+        retryDeadline: deadline,
+      });
+
+      if (first === null || other === null) {
+        throw new Error("Could not create deliveries");
+      }
+
+      const failed = await attemptWebhookDelivery(database.sql, first, {
+        fetch: failingFetch(),
+        now: started,
+      });
+      expect(failed?.retryAt?.getTime()).toBe(started.getTime() + 30_000);
+
+      const [secondAttempt] = (await database.sql`
+        SELECT id::text AS id, retry_deadline
+        FROM core.webhook_deliveries
+        WHERE webhook_id = ${webhook.id} AND event_id = ${failingEvent} AND attempt = 2
+      `) as Array<{ id: string; retry_deadline: Date }>;
+      expect(secondAttempt?.retry_deadline.toISOString()).toBe(deadline.toISOString());
+
+      const mock = mockFetch(secret);
+      const succeeded = await attemptWebhookDelivery(database.sql, other, {
+        fetch: mock.fetch,
+        now: new Date(started.getTime() + 60 * 60 * 1_000),
+      });
+      expect(succeeded?.status).toBe("delivered");
+      expect((await readWebhook(database.sql, webhook.id))?.failureSince).toBeNull();
+
+      const nearDeadline = new Date(deadline.getTime() - 10_000);
+      const retried = await attemptWebhookDelivery(database.sql, secondAttempt?.id ?? "", {
+        fetch: failingFetch(),
+        now: nearDeadline,
+      });
+      expect(retried?.retryAt?.toISOString()).toBe(deadline.toISOString());
+
+      const [thirdAttempt] = (await database.sql`
+        SELECT id::text AS id, retry_deadline
+        FROM core.webhook_deliveries
+        WHERE webhook_id = ${webhook.id} AND event_id = ${failingEvent} AND attempt = 3
+      `) as Array<{ id: string; retry_deadline: Date }>;
+      expect(thirdAttempt?.retry_deadline.toISOString()).toBe(deadline.toISOString());
+
+      const exhausted = await attemptWebhookDelivery(database.sql, thirdAttempt?.id ?? "", {
+        fetch: failingFetch(),
+        now: deadline,
+      });
+      expect(exhausted?.retryAt).toBeNull();
+      expect(exhausted?.disabled).toBe(false);
+      expect((await readWebhook(database.sql, webhook.id))?.enabled).toBe(true);
+
+      const [attempts] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.webhook_deliveries
+        WHERE webhook_id = ${webhook.id} AND event_id = ${failingEvent}
+      `) as Array<{ count: number }>;
+      expect(attempts?.count).toBe(3);
     });
   }, 30_000);
 

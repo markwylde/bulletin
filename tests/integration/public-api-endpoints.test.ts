@@ -247,7 +247,21 @@ integrationDescribe("public API read endpoints", () => {
 
       const visibleSearch = await api(database, "/api/v1/search?q=Public", key);
       expect(visibleSearch?.status).toBe(200);
-      expect((await json<{ items: unknown[] }>(visibleSearch)).items.length).toBeGreaterThan(0);
+      const searchItems = (
+        await json<{
+          items: Array<{
+            forumId?: string;
+            authorId?: string | null;
+            snippet?: string;
+          }>;
+        }>(visibleSearch)
+      ).items;
+      expect(searchItems.length).toBeGreaterThan(0);
+      expect(searchItems[0]).toMatchObject({
+        forumId: expect.any(String),
+        authorId: expect.any(String),
+        snippet: expect.any(String),
+      });
 
       const hiddenSearch = await api(database, "/api/v1/search?q=Private", key);
       expect(hiddenSearch?.status).toBe(200);

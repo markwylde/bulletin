@@ -140,6 +140,14 @@ const searchHitSchema = v.looseObject({
   id: v.string(),
   title: v.string(),
   url: v.string(),
+  forumId: v.string(),
+  forumTitle: v.string(),
+  authorId: v.nullable(v.string()),
+  authorName: v.nullable(v.string()),
+  createdAt: v.string(),
+  snippet: v.string(),
+  topicId: v.optional(v.string()),
+  position: v.optional(v.number()),
 });
 
 function topicVisibility(

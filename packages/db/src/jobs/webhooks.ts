@@ -13,6 +13,22 @@ import type { PgBoss } from "pg-boss";
 import { ensurePgBossQueue } from "../events/pg-boss.ts";
 
 export const WEBHOOK_QUEUE = "webhooks";
+export const WEBHOOK_RETENTION_QUEUE = "webhooks.retention";
+export const WEBHOOK_RETENTION_CRON = "23 4 * * *";
+/** Delivery logs are derived records retained for 30 days (ADR 0012). */
+export const WEBHOOK_DELIVERY_RETENTION_DAYS = 30;
+
+/** Deletes delivery attempts older than the documented retention boundary. */
+export async function purgeWebhookDeliveries(sql: SQL, now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - WEBHOOK_DELIVERY_RETENTION_DAYS * 24 * 60 * 60 * 1_000);
+  const rows = (await sql`
+    DELETE FROM core.webhook_deliveries
+    WHERE created_at < ${cutoff}
+    RETURNING 1
+  `) as unknown[];
+
+  return rows.length;
+}
 
 export interface WebhookJobPayload {
   /** Jobs carry IDs only; the worker loads the webhook, event and secret (ADR 0011). */
@@ -95,6 +111,7 @@ export function createWebhookEventHandler(
 export async function createWebhookJobs(options: WebhookJobsOptions): Promise<WebhookJobs> {
   const now = options.now ?? (() => new Date());
   await ensurePgBossQueue(options.boss, WEBHOOK_QUEUE);
+  await ensurePgBossQueue(options.boss, WEBHOOK_RETENTION_QUEUE);
 
   await options.boss.work<WebhookJobPayload>(WEBHOOK_QUEUE, async (jobs) => {
     for (const job of jobs) {
@@ -129,10 +146,17 @@ export async function createWebhookJobs(options: WebhookJobsOptions): Promise<We
     await enqueuePending(options.sql, options.boss);
   };
 
+  await options.boss.work(WEBHOOK_RETENTION_QUEUE, async () => {
+    const purged = await purgeWebhookDeliveries(options.sql, now());
+    options.logger?.info("webhook.retention.completed", { purged });
+  });
+  await options.boss.schedule(WEBHOOK_RETENTION_QUEUE, WEBHOOK_RETENTION_CRON, {});
+
   return {
     enqueuePending: enqueue,
     async stop() {
       await options.boss.offWork(WEBHOOK_QUEUE);
+      await options.boss.offWork(WEBHOOK_RETENTION_QUEUE);
     },
   };
 }

@@ -42,6 +42,7 @@ export interface WebhookDeliveryRecord {
   readonly httpStatus: number | null;
   readonly responseMs: number | null;
   readonly error: string | null;
+  readonly retryDeadline: Date;
   readonly createdAt: Date;
   readonly completedAt: Date | null;
 }
@@ -81,6 +82,7 @@ interface DeliveryRow {
   readonly error: string | null;
   readonly created_at: Date;
   readonly completed_at: Date | null;
+  readonly retry_deadline: Date;
 }
 
 function toWebhook(row: WebhookRow): WebhookRecord {
@@ -120,6 +122,7 @@ function toDelivery(row: DeliveryRow): WebhookDeliveryRecord {
     httpStatus: row.http_status,
     responseMs: row.response_ms,
     error: row.error,
+    retryDeadline: new Date(row.retry_deadline),
     createdAt: new Date(row.created_at),
     completedAt: row.completed_at === null ? null : new Date(row.completed_at),
   };
@@ -371,6 +374,8 @@ export interface CreateDeliveryInput {
   readonly attempt: number;
   /** When the worker may enqueue this attempt; defaults to immediately. */
   readonly scheduledAt?: Date;
+  /** The end of this event chain's retry window; inherited by each successor. */
+  readonly retryDeadline?: Date;
 }
 
 /** Inserts one pending attempt; a relay replay cannot duplicate the same attempt. */
@@ -379,10 +384,13 @@ export async function createWebhookDelivery(
   input: CreateDeliveryInput,
 ): Promise<string | null> {
   const rows = (await sql`
-    INSERT INTO core.webhook_deliveries (webhook_id, event_id, attempt, status, scheduled_at)
+    INSERT INTO core.webhook_deliveries (
+      webhook_id, event_id, attempt, status, scheduled_at, retry_deadline
+    )
     VALUES (
       ${input.webhookId}, ${input.eventId}, ${input.attempt}, 'pending',
-      ${input.scheduledAt ?? new Date()}
+      ${input.scheduledAt ?? new Date()},
+      ${input.retryDeadline ?? new Date(Date.now() + 24 * 60 * 60 * 1_000)}
     )
     ON CONFLICT (webhook_id, event_id, attempt) DO NOTHING
     RETURNING id::text AS id
@@ -401,7 +409,7 @@ export async function readWebhookDelivery(
 
   const [row] = (await sql`
     SELECT id::text AS id, webhook_id::text AS webhook_id, event_id::text AS event_id,
-      attempt, status, http_status, response_ms, error, created_at, completed_at
+      attempt, status, http_status, response_ms, error, retry_deadline, created_at, completed_at
     FROM core.webhook_deliveries
     WHERE id = ${deliveryId}
   `) as DeliveryRow[];
@@ -473,8 +481,8 @@ export async function listWebhookDeliveries(
     input.webhookId !== undefined && /^\d+$/.test(input.webhookId) ? input.webhookId : null;
   const rows = (await sql`
     SELECT d.id::text AS id, d.webhook_id::text AS webhook_id, d.event_id::text AS event_id,
-      d.attempt, d.status, d.http_status, d.response_ms, d.error, d.created_at, d.completed_at,
-      e.type AS event_type, w.url AS webhook_url
+      d.attempt, d.status, d.http_status, d.response_ms, d.error, d.retry_deadline,
+      d.created_at, d.completed_at, e.type AS event_type, w.url AS webhook_url
     FROM core.webhook_deliveries d
     JOIN core.events e ON e.id = d.event_id
     JOIN core.webhooks w ON w.id = d.webhook_id

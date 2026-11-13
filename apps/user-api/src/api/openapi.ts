@@ -12,6 +12,7 @@ interface SchemaNode {
   readonly pipe?: readonly unknown[];
   readonly key?: unknown;
   readonly value?: unknown;
+  readonly rest?: unknown;
   readonly enum?: Readonly<Record<string, unknown>>;
   readonly requirement?: unknown;
   readonly default?: unknown;
@@ -135,7 +136,12 @@ export function toJsonSchema(value: unknown): JsonSchema {
         }
       }
 
-      result = { type: "object", properties, additionalProperties: false };
+      result =
+        schema.type === "loose_object"
+          ? { type: "object", properties, additionalProperties: true }
+          : schema.type === "object_with_rest"
+            ? { type: "object", properties, additionalProperties: toJsonSchema(schema.rest) }
+            : { type: "object", properties, additionalProperties: false };
 
       if (required.length > 0) {
         result.required = required;

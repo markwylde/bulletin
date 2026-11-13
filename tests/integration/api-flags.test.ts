@@ -14,6 +14,7 @@ import {
 } from "@bulletin/db/seed";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createServerT } from "@bulletin/i18n";
+import { assertCacheVariants } from "@bulletin/test-utils/cache-variants";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { authorizeStaffRoute, STAFF_ROUTES } from "../../apps/staff-api/src/api.ts";
 import { handleApiRequest } from "../../apps/user-api/src/api/router.ts";
@@ -22,6 +23,7 @@ import { createUserApiFlags } from "../../apps/user-api/src/flag-guard.ts";
 import { renderApiDocsRoute } from "../../apps/user-app/src/api-docs/route.ts";
 import { renderApiKeysRoute } from "../../apps/user-app/src/api-keys/route.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { apiDocsContract, apiKeysContract } from "../../apps/user-app/src/contracts.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -200,6 +202,87 @@ integrationDescribe("public API feature flags", () => {
         expect(on.errors).toEqual([]);
         expect(hit.cache).toBe("hit");
         expect(hit.variant).toBe(on.variant);
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 30_000);
+
+  test("registers the actual API page renderers with the cache harness", async () => {
+    await withSeededDb(async (database) => {
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+      const docsCache = createRenderCache({ tags: versions });
+      const keysCache = createRenderCache({ tags: versions });
+      const english = createServerT("en", { shipped: USER_CATALOGS });
+      const french = createServerT("fr", { shipped: USER_CATALOGS });
+      const renderDocs = (locale: "en" | "fr", translate: typeof english) =>
+        renderApiDocsRoute({
+          sql: database.sql,
+          locale,
+          translate,
+          session: null,
+          pluginsGeneration: 1,
+          colourScheme: "system",
+          cache: docsCache,
+          tagVersions: versions,
+        });
+
+      try {
+        await setFlags(database, true);
+        await assertCacheVariants({
+          route: apiDocsContract.route,
+          cache: docsCache,
+          cases: [
+            {
+              name: "english docs",
+              async render() {
+                const result = await renderDocs("en", english);
+                return {
+                  variant: result.variant,
+                  html: result.html,
+                  ...(result.cache === null ? {} : { cache: result.cache }),
+                };
+              },
+            },
+            {
+              name: "french docs",
+              async render() {
+                const result = await renderDocs("fr", french);
+                return {
+                  variant: result.variant,
+                  html: result.html,
+                  ...(result.cache === null ? {} : { cache: result.cache }),
+                };
+              },
+            },
+          ],
+        });
+
+        const member = await memberSession(database, "member-1");
+        const renderKeys = () =>
+          renderApiKeysRoute({
+            sql: database.sql,
+            locale: "en",
+            translate: english,
+            session: member,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache: keysCache,
+            tagVersions: versions,
+          });
+        const first = await renderKeys();
+        const second = await renderKeys();
+
+        expect(first.status).toBe(200);
+        expect(first.cache).toBeNull();
+        expect(second.cache).toBeNull();
+        expect(first.html).toContain("data-account-api-keys");
+        expect(keysCache.size).toBe(0);
+        expect(apiKeysContract.cdnCacheable).toBe(false);
       } finally {
         await versions.close();
       }

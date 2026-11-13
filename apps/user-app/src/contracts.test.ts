@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createRenderCache } from "@bulletin/cache";
 import { contractTags, findContract, validateContracts } from "@bulletin/templates";
-import { assertCacheVariants } from "@bulletin/test-utils/cache-variants";
 import { ISLAND_NAMES } from "@bulletin/ui/islands";
 import {
   accountContract,
@@ -192,78 +190,5 @@ describe("route contracts", () => {
     expect(contractTags(apiKeysContract, { memberId: "7" })).toEqual(["member:7"]);
     expect(findContract(ROUTE_CONTRACTS, "/api-docs")).toBe(apiDocsContract);
     expect(findContract(ROUTE_CONTRACTS, "/account/api-keys")).toBe(apiKeysContract);
-  });
-
-  test("registers both API pages with the cache variant harness", async () => {
-    const docsCache = createRenderCache({
-      tags: { version: () => "1", isTrusted: () => true },
-    });
-    const keysCache = createRenderCache({
-      tags: { version: () => "1", isTrusted: () => true },
-    });
-
-    await assertCacheVariants({
-      route: apiDocsContract.route,
-      cache: docsCache,
-      cases: [
-        {
-          name: "english guest",
-          render: async () => {
-            const result = await docsCache.getOrRender({
-              tags: contractTags(apiDocsContract, {}),
-              prepare: async () => ({ key: "api-docs:en", data: undefined }),
-              render: () => "<p>API docs en</p>",
-            });
-            return { variant: result.key, html: result.html, cache: result.status };
-          },
-        },
-        {
-          name: "french guest",
-          render: async () => {
-            const result = await docsCache.getOrRender({
-              tags: contractTags(apiDocsContract, {}),
-              prepare: async () => ({ key: "api-docs:fr", data: undefined }),
-              render: () => "<p>API docs fr</p>",
-            });
-            return { variant: result.key, html: result.html, cache: result.status };
-          },
-        },
-      ],
-    });
-
-    await assertCacheVariants({
-      route: apiKeysContract.route,
-      cache: keysCache,
-      cases: [
-        {
-          name: "member one",
-          render: async () => {
-            const result = await keysCache.getOrRender({
-              tags: contractTags(apiKeysContract, { memberId: "1" }),
-              prepare: async () => ({ key: "keys:1", data: undefined }),
-              render: () => "<p>prefix blt_aaaaaaaa</p>",
-            });
-            return { variant: result.key, html: result.html, cache: result.status };
-          },
-        },
-        {
-          name: "member two",
-          render: async () => {
-            const result = await keysCache.getOrRender({
-              tags: contractTags(apiKeysContract, { memberId: "2" }),
-              prepare: async () => ({ key: "keys:2", data: undefined }),
-              render: () => "<p>prefix blt_bbbbbbbb</p>",
-            });
-            return { variant: result.key, html: result.html, cache: result.status };
-          },
-        },
-      ],
-      leaks: [
-        {
-          markers: ["blt_aaaaaaaa"],
-          absentFrom: ["member two"],
-        },
-      ],
-    });
   });
 });

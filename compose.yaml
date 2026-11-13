@@ -648,6 +648,8 @@ services:
       BULLETIN_AUTH_TOKEN_URL: http://darkauth-mock:3020/token
       BULLETIN_MARKETPLACE_URL: http://marketplace:4007
       BULLETIN_BOOTSTRAP_ADMINS: "http://auth.bulletin.localhost:${BULLETIN_HTTP_PORT:-8080}|admin"
+      # Webhook configuration resolves the local mock target in development (ADR 0002, 0016).
+      SAFE_FETCH_DEV_ALLOW: webhooks
     healthcheck: *service-healthcheck
     restart: unless-stopped
     depends_on: *depends-on-postgres

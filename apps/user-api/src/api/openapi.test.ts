@@ -25,6 +25,15 @@ describe("OpenAPI schema generation", () => {
     });
   });
 
+  test("preserves loose-object additional properties", () => {
+    expect(toJsonSchema(v.looseObject({ id: v.string() }))).toEqual({
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+      additionalProperties: true,
+    });
+  });
+
   test("describes parameters, request bodies, security and responses", () => {
     const route = defineApiRoute({
       method: "POST",

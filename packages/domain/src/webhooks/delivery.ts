@@ -531,21 +531,27 @@ export async function attemptWebhookDelivery(
     }
 
     const failureSince = fresh.failure_since === null ? now : new Date(fresh.failure_since);
-    const windowEnd = failureSince.getTime() + WEBHOOK_FAILURE_WINDOW_MS;
-    const desired = now.getTime() + webhookRetryDelayMs(delivery.attempt);
-    const retryAtMs = Math.min(desired, windowEnd);
-    const retryAt = retryAtMs > now.getTime() ? new Date(retryAtMs) : null;
-
-    if (retryAt === null || now.getTime() >= windowEnd) {
-      await notifyAdminsDisabled(tx, webhook, delivery.eventId, now);
-      return { retryAt: null, disabled: true };
-    }
-
+    const failureWindowEnd = failureSince.getTime() + WEBHOOK_FAILURE_WINDOW_MS;
     await tx`
       UPDATE core.webhooks
       SET failure_since = coalesce(failure_since, ${now}), updated_at = ${now}
       WHERE id = ${webhook.id}
     `;
+
+    if (now.getTime() >= failureWindowEnd) {
+      await notifyAdminsDisabled(tx, webhook, delivery.eventId, now);
+      return { retryAt: null, disabled: true };
+    }
+
+    const desired = now.getTime() + webhookRetryDelayMs(delivery.attempt);
+    const retryAtMs = Math.min(desired, delivery.retryDeadline.getTime());
+    const retryAt = retryAtMs > now.getTime() ? new Date(retryAtMs) : null;
+
+    if (retryAt === null) {
+      // This event's own 24-hour window is exhausted; other events and the webhook itself may
+      // still be healthy, so this is not an auto-disable.
+      return { retryAt: null, disabled: false };
+    }
 
     // The failure and its retry intent commit together. A worker crash before enqueueing the
     // successor leaves this pending row for the sweep to find at its deadline.
@@ -554,6 +560,7 @@ export async function attemptWebhookDelivery(
       eventId: delivery.eventId,
       attempt: delivery.attempt + 1,
       scheduledAt: retryAt,
+      retryDeadline: delivery.retryDeadline,
     });
 
     return { retryAt, disabled: false };
