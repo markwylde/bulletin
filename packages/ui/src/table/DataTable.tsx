@@ -25,6 +25,11 @@ export interface DataTableProps<Row> {
   readonly getRowId: (row: Row) => string;
   readonly getRowLabel?: (row: Row) => string;
   readonly pageSize?: number;
+  /**
+   * Set false for a complete inventory that must never hide a row on a later page, such as the
+   * code-declared feature flags. Pagination controls are then omitted.
+   */
+  readonly paginate?: boolean;
   readonly initialSort?: { readonly columnId: string; readonly direction: SortDirection };
   readonly selectable?: boolean;
   readonly selectedIds?: readonly string[];
@@ -110,6 +115,7 @@ export function DataTable<Row>({
   getRowId,
   getRowLabel,
   pageSize = 10,
+  paginate = true,
   initialSort,
   selectable = false,
   selectedIds,
@@ -131,7 +137,9 @@ export function DataTable<Row>({
     [columns],
   );
   const ordered = sort === null ? rows : sortRows(rows, columns, sort);
-  const pagination = paginateRows(ordered, page, pageSize);
+  const pagination = paginate
+    ? paginateRows(ordered, page, pageSize)
+    : { rows: ordered, page: 1, pageCount: 1 };
   const pageRows = pagination.rows;
   const visibleIds = pageRows.map(getRowId);
   const selected = selectedIds ?? internalSelected;
@@ -421,29 +429,31 @@ export function DataTable<Row>({
         )}
       </ul>
 
-      <div className="data-pagination">
-        <button
-          type="button"
-          data-page-previous
-          disabled={pagination.page <= 1}
-          aria-label={t("ui.table.previous")}
-          onClick={() => setPage((current) => Math.max(1, current - 1))}
-        >
-          <span aria-hidden="true">←</span>
-        </button>
-        <span data-page-label>
-          {t("ui.table.page", { page: pagination.page, pages: pagination.pageCount })}
-        </span>
-        <button
-          type="button"
-          data-page-next
-          disabled={pagination.page >= pagination.pageCount}
-          aria-label={t("ui.table.next")}
-          onClick={() => setPage((current) => Math.min(pagination.pageCount, current + 1))}
-        >
-          <span aria-hidden="true">→</span>
-        </button>
-      </div>
+      {paginate ? (
+        <div className="data-pagination">
+          <button
+            type="button"
+            data-page-previous
+            disabled={pagination.page <= 1}
+            aria-label={t("ui.table.previous")}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+          >
+            <span aria-hidden="true">←</span>
+          </button>
+          <span data-page-label>
+            {t("ui.table.page", { page: pagination.page, pages: pagination.pageCount })}
+          </span>
+          <button
+            type="button"
+            data-page-next
+            disabled={pagination.page >= pagination.pageCount}
+            aria-label={t("ui.table.next")}
+            onClick={() => setPage((current) => Math.min(pagination.pageCount, current + 1))}
+          >
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

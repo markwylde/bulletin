@@ -312,7 +312,9 @@ export function FlagsPage() {
               columns={columns}
               getRowId={(flag) => flag.key}
               getRowLabel={(flag) => flag.key}
-              pageSize={20}
+              // The flags are a code-declared inventory, not a paged dataset: paginating would
+              // hide a newly added flag behind a page staff never think to open.
+              paginate={false}
               captionKey="staff.flags.caption"
               emptyKey="staff.flags.empty"
               rowClassName={(flag) => (flag.stale ? "data-row-stale" : undefined)}

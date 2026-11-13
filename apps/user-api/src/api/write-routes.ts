@@ -31,6 +31,14 @@ const writeResultSchema = v.object({
   url: v.union([v.string(), v.null()]),
 });
 
+/** The reaction bar state after a write: the viewer's own reaction and the per-reaction totals. */
+const reactionStateSchema = v.object({
+  ok: v.boolean(),
+  postId: v.string(),
+  mine: v.nullable(v.string()),
+  summary: v.record(v.string(), v.number()),
+});
+
 export const WRITE_ROUTES = [
   defineApiRoute({
     method: "POST",
@@ -117,7 +125,7 @@ export const WRITE_ROUTES = [
     }),
     responses: responses({
       description: "Reaction state",
-      schema: v.object({ ok: v.boolean(), postId: v.string() }),
+      schema: reactionStateSchema,
     }),
     handler: async ({ sql, principal, params, request }) => {
       if (!isApiKeyPrincipal(principal)) {

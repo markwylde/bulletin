@@ -12,6 +12,7 @@ import {
   SeedRegistry,
   themesSeedModule,
 } from "@bulletin/db/seed";
+import { createPersonalApiKey } from "@bulletin/domain/api";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createServerT } from "@bulletin/i18n";
 import { assertCacheVariants } from "@bulletin/test-utils/cache-variants";
@@ -53,11 +54,15 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
   });
 }
 
-async function setFlags(database: TestDatabase, enabled: boolean): Promise<void> {
+async function setFlags(
+  database: TestDatabase,
+  enabled: boolean,
+  keys: readonly string[] = FEATURE_KEYS,
+): Promise<void> {
   await database.sql`
     UPDATE core.feature_flags
     SET default_value = ${enabled}, updated_at = now()
-    WHERE key = ANY(${`{${FEATURE_KEYS.join(",")}}`}::text[])
+    WHERE key = ANY(${`{${keys.join(",")}}`}::text[])
   `;
   await bumpFlagTag(database.sql);
 }
@@ -163,6 +168,38 @@ integrationDescribe("public API feature flags", () => {
         Response.json({ ok: true }),
       );
       expect(allowed.status).toBe(200);
+    });
+  }, 30_000);
+
+  test("the search endpoint answers 404 for guests and keys when the search flag is off", async () => {
+    await withSeededDb(async (database) => {
+      const member = await memberSession(database, "member-1");
+      const created = await createPersonalApiKey(database.sql, {
+        memberId: member.memberId,
+        label: "Search flag key",
+        scopes: ["read:search"],
+        pepper: "flag-test-pepper",
+      });
+      const search = (key?: string) =>
+        handleApiRequest(
+          new Request("http://bulletin.localhost/api/v1/search?q=welcome", {
+            ...(key === undefined ? {} : { headers: { authorization: `Bearer ${key}` } }),
+          }),
+          {
+            sql: database.sql,
+            routes: API_ROUTES,
+            pepper: "flag-test-pepper",
+            rateLimitSecret: "flag-test-rate",
+          },
+        );
+
+      await setFlags(database, false, ["search"]);
+      expect((await search())?.status).toBe(404);
+      expect((await search(created.key))?.status).toBe(404);
+
+      await setFlags(database, true, ["search"]);
+      expect((await search(created.key))?.status).toBe(200);
+      expect((await search())?.status).toBe(200);
     });
   }, 30_000);
 

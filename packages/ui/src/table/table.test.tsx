@@ -114,6 +114,25 @@ describe("data table component", () => {
     expect(markup).toContain("Edit Alpha");
   });
 
+  test("renders an unpaginated inventory in full, with no page controls", () => {
+    const markup = render(
+      <DataTable
+        rows={rows}
+        columns={columns}
+        getRowId={(row) => row.id}
+        getRowLabel={(row) => row.name}
+        pageSize={2}
+        paginate={false}
+      />,
+    );
+
+    expect(markup).toContain('data-card-row="a"');
+    expect(markup).toContain('data-card-row="c"');
+    expect(markup).toContain('data-page-count="1"');
+    expect(markup).not.toContain("data-page-next");
+    expect(markup).not.toContain("data-page-label");
+  });
+
   test("renders the empty state with a translated message", () => {
     const markup = render(
       <DataTable

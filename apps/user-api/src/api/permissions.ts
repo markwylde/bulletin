@@ -37,6 +37,11 @@ export async function loadApiPermissions(
   return { viewer, tree, snapshot, capability };
 }
 
+/** The member a feature flag is evaluated for; a guest key-less request passes `null`. */
+export function flagMemberId(principal: ApiPrincipal): string | null {
+  return isApiKeyPrincipal(principal) ? principal.memberId : null;
+}
+
 /** Members read API content in their own language; guests use the board default. */
 export async function apiLocale(
   sql: SQL,

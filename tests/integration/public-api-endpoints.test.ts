@@ -15,6 +15,7 @@ import {
 import { createIntegrationApiKey, createPersonalApiKey } from "@bulletin/domain/api";
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
+import { validateJsonSchema } from "@bulletin/test-utils/json-schema";
 import { handleApiRequest } from "../../apps/user-api/src/api/router.ts";
 import { API_ROUTES } from "../../apps/user-api/src/api/routes.ts";
 
@@ -120,6 +121,17 @@ interface TopicResult {
   readonly topicId: string;
   readonly postId: string;
   readonly url: string | null;
+}
+
+interface OpenApiOperation {
+  readonly responses: Record<
+    string,
+    { readonly content: Record<string, { readonly schema?: unknown }> }
+  >;
+}
+
+interface OpenApiDocument {
+  readonly paths: Record<string, Record<string, OpenApiOperation>>;
 }
 
 integrationDescribe("public API read endpoints", () => {
@@ -509,6 +521,52 @@ integrationDescribe("public API write endpoints", () => {
         body: JSON.stringify({ kind: "topic", id: topic.topicId, following: false }),
       });
       expect(unfollowed?.status).toBe(200);
+    });
+  }, 30_000);
+
+  test("describes every reaction response field in the generated OpenAPI schema", async () => {
+    await withSeededDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const member = await memberId(database, "member-1");
+      const forum = await forumId(database, "off-topic");
+      const key = await keyFor(database, member, ["read:posts", "write:reactions"]);
+      const topic = await startTopic(database.sql, {
+        actorId: admin,
+        forumId: forum,
+        title: "Reaction schema target",
+        bodyMd: "React to me.",
+      });
+
+      if (!topic.ok) {
+        throw new Error("Could not create the reaction target");
+      }
+
+      const [reaction] = (await database.sql`
+        SELECT id::text AS id FROM core.reactions WHERE key = 'like'
+      `) as Array<{ id: string }>;
+      const reacted = await api(database, `/api/v1/posts/${topic.result.postId}/reactions`, key, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reactionId: reaction?.id ?? "" }),
+      });
+      expect(reacted?.status).toBe(200);
+      const body = await json<unknown>(reacted);
+
+      const document = await json<OpenApiDocument>(await api(database, "/api/v1/openapi.json"));
+      const schema =
+        document.paths["/api/v1/posts/{id}/reactions"]?.post?.responses["200"]?.content[
+          "application/json"
+        ]?.schema;
+
+      expect(schema).toMatchObject({
+        type: "object",
+        required: expect.arrayContaining(["ok", "postId", "mine", "summary"]),
+        properties: {
+          mine: { anyOf: [{ type: "string" }, { type: "null" }] },
+          summary: { type: "object", additionalProperties: { type: "number" } },
+        },
+      });
+      expect(validateJsonSchema(schema, body)).toEqual([]);
     });
   }, 30_000);
 

@@ -16,7 +16,14 @@ import {
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
 import * as v from "valibot";
-import { apiLocale, loadApiPermissions, pageNumber, pageSize } from "./permissions.ts";
+import { createUserApiFlags } from "../flag-guard.ts";
+import {
+  apiLocale,
+  flagMemberId,
+  loadApiPermissions,
+  pageNumber,
+  pageSize,
+} from "./permissions.ts";
 import { type ApiResponseDefinition, defineApiRoute } from "./route.ts";
 import {
   forumJson,
@@ -576,6 +583,14 @@ export const FORUM_ROUTES = [
       }),
     }),
     handler: async ({ sql, principal, query }) => {
+      // Search is a flagged feature: a disabled search endpoint answers like a missing one,
+      // for keys and guests alike (ADR 0010, server-side enforcement).
+      const flags = createUserApiFlags(sql);
+
+      if (!(await flags.enabled("search", flagMemberId(principal)))) {
+        return Response.json({ code: "not_found" }, { status: 404 });
+      }
+
       const createdFrom = parseDate(query.createdFrom, "createdFrom");
       const createdTo = parseDate(query.createdTo, "createdTo");
 
