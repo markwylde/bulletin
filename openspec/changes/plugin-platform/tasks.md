@@ -6,7 +6,7 @@
 
 ## 2. Runtime
 
-- [ ] 2.1 Implement the supervisor (spawn, health, restart with backoff, kill on limits) with integration tests for the fork-bomb and memory scenarios
+- [x] 2.1 Implement the supervisor (spawn, health, restart with backoff, kill on limits) with integration tests for the fork-bomb and memory scenarios
 - [ ] 2.2 Implement the broker (JSON-RPC, DB allowlist, role connections, rate and concurrency limits, egress proxy with SSRF rules, core API forwarding with viewer context) with tests for the network, core-read, runtime-DDL and undeclared-host scenarios
 - [ ] 2.3 Implement the storage quota monitor and write revocation, plus the shared-cluster warning, with an integration test
 - [ ] 2.4 Extend the malicious-plugin suite from `plugin-sandbox-spike` (iframe bridge escape, rate-limit and quota abuse, egress SSRF variants) and keep it running in CI on Docker and Podman

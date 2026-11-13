@@ -65,6 +65,7 @@ const supervisor = new SandboxSupervisor({
   channel,
   logger,
   readyTimeoutMs: sandboxConfig.readyTimeoutMs,
+  restart: sandboxConfig.restart,
 });
 
 await startService({

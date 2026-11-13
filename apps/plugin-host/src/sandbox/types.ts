@@ -53,4 +53,8 @@ export interface SandboxStatus {
   readonly cgroup: SandboxCgroupUsage | null;
   readonly exitCode: number | null;
   readonly error: string | null;
+  /** Consecutive automatic restarts since construction. */
+  readonly restarts: number;
+  /** When the next restart is scheduled, if any. */
+  readonly restartAt: string | null;
 }

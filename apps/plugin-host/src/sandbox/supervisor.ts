@@ -18,6 +18,18 @@ export type SpawnSandbox = (
   env: Readonly<Record<string, string>>,
 ) => SandboxProcess;
 
+/** Exponential restart policy for a sandbox that exits or fails to start. */
+export interface SandboxRestartPolicy {
+  readonly initialDelayMs: number;
+  readonly maxDelayMs: number;
+  readonly factor?: number;
+  /** Give up after this many consecutive restarts (the circuit breaker adds auto-disable). */
+  readonly maxRestarts?: number;
+}
+
+const DEFAULT_RESTART_FACTOR = 2;
+const DEFAULT_MAX_RESTARTS = 5;
+
 export interface SandboxSupervisorOptions {
   readonly pluginId: string;
   readonly bundlePath: string;
@@ -44,6 +56,10 @@ export interface SandboxSupervisorOptions {
   ) => Promise<SandboxCgroupUsage | undefined>;
   /** Fail a sandbox whose cgroup limits did not stick. Defaults to `true`. */
   readonly verifyLimits?: boolean;
+  /** Restart after an unexpected exit or failed start. Omit to keep a one-shot sandbox. */
+  readonly restart?: SandboxRestartPolicy;
+  /** Supervisor-side wall-clock watchdog; defaults to the nsjail limit plus a grace second. */
+  readonly maxLifetimeMs?: number;
   readonly now?: () => number;
 }
 
@@ -110,6 +126,12 @@ export class SandboxSupervisor {
   #cgroup: SandboxStatus["cgroup"] = null;
   #exitCode: number | null = null;
   #error: string | null = null;
+  #restarts = 0;
+  #restartAt: string | null = null;
+  #restartTimer: ReturnType<typeof setTimeout> | undefined;
+  #lifetimeTimer: ReturnType<typeof setTimeout> | undefined;
+  #stopping = false;
+  #started = false;
 
   constructor(options: SandboxSupervisorOptions) {
     this.pluginId = options.pluginId;
@@ -140,15 +162,35 @@ export class SandboxSupervisor {
       cgroup: this.#cgroup,
       exitCode: this.#exitCode,
       error: this.#error,
+      restarts: this.#restarts,
+      restartAt: this.#restartAt,
     };
   }
 
-  /** Spawns the sandbox and resolves once the broker handshake arrives. */
+  /**
+   * Spawns the sandbox and resolves once the broker handshake arrives and its limits are
+   * verified. Failures schedule an exponential restart when a restart policy is set.
+   */
   async start(): Promise<SandboxStatus> {
     if (this.#state === "ready" || this.#state === "starting") {
       return this.status();
     }
 
+    this.#stopping = false;
+    this.#started = true;
+    this.#cancelRestart();
+
+    try {
+      const status = await this.#startOnce();
+      this.#armLifetime();
+      return status;
+    } catch (error) {
+      this.#scheduleRestart(error);
+      throw error;
+    }
+  }
+
+  async #startOnce(): Promise<SandboxStatus> {
     const uid = sandboxUid(this.pluginId);
     let args: string[];
 
@@ -272,8 +314,12 @@ export class SandboxSupervisor {
     return this.status();
   }
 
-  /** Stops the sandbox, escalating to SIGKILL after the grace period. */
+  /** Stops the sandbox, escalating to SIGKILL after the grace period. Cancels any restart. */
   async stop(): Promise<void> {
+    this.#stopping = true;
+    this.#cancelRestart();
+    this.#clearLifetime();
+
     if (this.#process === undefined) {
       this.#state = "stopped";
       return;
@@ -343,7 +389,97 @@ export class SandboxSupervisor {
         exitCode: code,
         stderr: this.#stderrLines,
       });
+      this.#scheduleRestart(new Error(this.#error));
     }
+  }
+
+  /** Arms the supervisor-side watchdog; nsjail's own time limit is the first line. */
+  #armLifetime(): void {
+    this.#clearLifetime();
+    const lifetimeMs =
+      this.#options.maxLifetimeMs ?? this.#options.limits.wallClockSeconds * 1_000 + 1_000;
+
+    this.#lifetimeTimer = setTimeout(() => {
+      if (this.#state !== "ready" || this.#process === undefined) {
+        return;
+      }
+
+      const message = `Sandbox exceeded its ${lifetimeMs} ms wall-clock limit`;
+      this.#logger.error("sandbox.lifetime_exceeded", { lifetimeMs });
+      this.#error = message;
+      this.#state = "failed";
+      void this.#killAndWait().then(() => this.#scheduleRestart(new Error(message)));
+    }, lifetimeMs);
+    this.#lifetimeTimer.unref?.();
+  }
+
+  #clearLifetime(): void {
+    if (this.#lifetimeTimer !== undefined) {
+      clearTimeout(this.#lifetimeTimer);
+      this.#lifetimeTimer = undefined;
+    }
+  }
+
+  #scheduleRestart(error: unknown): void {
+    const policy = this.#options.restart;
+
+    if (
+      policy === undefined ||
+      this.#stopping ||
+      !this.#started ||
+      this.#restartTimer !== undefined
+    ) {
+      return;
+    }
+
+    const maxRestarts = policy.maxRestarts ?? DEFAULT_MAX_RESTARTS;
+
+    if (this.#restarts >= maxRestarts) {
+      this.#logger.error("sandbox.restart_exhausted", {
+        restarts: this.#restarts,
+        error,
+      });
+      return;
+    }
+
+    const factor = policy.factor ?? DEFAULT_RESTART_FACTOR;
+    const delay = Math.min(
+      policy.maxDelayMs,
+      Math.round(policy.initialDelayMs * factor ** this.#restarts),
+    );
+    this.#restarts += 1;
+    this.#restartAt = new Date(Date.now() + delay).toISOString();
+    this.#logger.warn("sandbox.restart_scheduled", {
+      attempt: this.#restarts,
+      delayMs: delay,
+      error,
+    });
+
+    this.#restartTimer = setTimeout(() => {
+      this.#restartTimer = undefined;
+      this.#restartAt = null;
+
+      if (this.#stopping) {
+        return;
+      }
+
+      void this.#startOnce().then(
+        () => this.#armLifetime(),
+        (restartError: unknown) => {
+          this.#scheduleRestart(restartError);
+        },
+      );
+    }, delay);
+    this.#restartTimer.unref?.();
+  }
+
+  #cancelRestart(): void {
+    if (this.#restartTimer !== undefined) {
+      clearTimeout(this.#restartTimer);
+      this.#restartTimer = undefined;
+    }
+
+    this.#restartAt = null;
   }
 
   async #readMetrics(): Promise<SandboxCgroupUsage | undefined> {

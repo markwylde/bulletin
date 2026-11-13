@@ -58,6 +58,8 @@ Pull a new seed change with `docker compose down -v` before starting again.
 4. starts the broker's framed JSON-RPC socket and the database/egress broker;
 5. spawns the demo plugin under nsjail and waits for its handshake and for the requested
    cgroup limits to read back correctly. Readiness includes both the sandbox and the broker.
+   An unexpected exit or failed start restarts it with exponential backoff (capped by
+   `PLUGIN_HOST_RESTART_MAX`); `/sandbox` shows the restart count and `restartAt`.
 
 The service is the **only privileged container**. Its compose definition supplies the
 minimum it needs:

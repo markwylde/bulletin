@@ -6,7 +6,12 @@ import { createLogger } from "@bulletin/config";
 import { BrokerChannel } from "../broker/channel.ts";
 import { encodeFrame } from "../broker/protocol.ts";
 import { NSJAIL_ENVIRONMENT } from "./nsjail.ts";
-import { type SandboxProcess, SandboxSupervisor, type SpawnSandbox } from "./supervisor.ts";
+import {
+  type SandboxProcess,
+  type SandboxRestartPolicy,
+  SandboxSupervisor,
+  type SpawnSandbox,
+} from "./supervisor.ts";
 import { DEFAULT_SANDBOX_LIMITS, type SandboxCgroupUsage } from "./types.ts";
 
 const logger = createLogger({ service: "sandbox-test", level: "error", sink: () => {} });
@@ -14,32 +19,33 @@ const temporaryDirectories: string[] = [];
 
 interface FakeSandbox {
   readonly spawn: SpawnSandbox;
-  readonly process: SandboxProcess;
   readonly args: string[][];
   readonly environments: Readonly<Record<string, string>>[];
-  exit(code: number): void;
+  exit(code: number, index?: number): void;
 }
 
 function createFakeSandbox(hello: string | null, delayMs = 5): FakeSandbox {
-  let resolveExit: (code: number) => void = () => undefined;
   const args: string[][] = [];
   const environments: Readonly<Record<string, string>>[] = [];
   const sockets: Bun.Socket[] = [];
-  const sandboxProcess: SandboxProcess = {
-    pid: 4242,
-    exited: new Promise<number>((resolve) => {
-      resolveExit = resolve;
-    }),
-    kill() {
-      resolveExit(0);
-    },
-    stdout: null,
-    stderr: null,
-  };
+  const exits: Array<(code: number) => void> = [];
 
   const spawn: SpawnSandbox = (nextArgs, env) => {
     args.push([...nextArgs]);
     environments.push(env);
+    let resolveExit: (code: number) => void = () => undefined;
+    const sandboxProcess: SandboxProcess = {
+      pid: 4241 + args.length,
+      exited: new Promise<number>((resolve) => {
+        resolveExit = resolve;
+      }),
+      kill() {
+        resolveExit(0);
+      },
+      stdout: null,
+      stderr: null,
+    };
+    exits.push(resolveExit);
 
     if (hello !== null) {
       void (async () => {
@@ -61,14 +67,14 @@ function createFakeSandbox(hello: string | null, delayMs = 5): FakeSandbox {
 
   return {
     spawn,
-    process: sandboxProcess,
     args,
     environments,
-    exit(code) {
+    exit(code, index = args.length - 1) {
       for (const socket of sockets) {
         socket.end();
       }
-      resolveExit(code);
+
+      exits[index]?.(code);
     },
   };
 }
@@ -81,6 +87,8 @@ async function createSupervisor(
       childPid: number,
     ) => Promise<SandboxCgroupUsage | undefined>;
     readonly verifyLimits?: boolean;
+    readonly restart?: SandboxRestartPolicy;
+    readonly maxLifetimeMs?: number;
   } = {},
 ): Promise<{ channel: BrokerChannel; supervisor: SandboxSupervisor; directory: string }> {
   const directory = await mkdtemp(join(tmpdir(), "bulletin-sandbox-"));
@@ -117,6 +125,8 @@ async function createSupervisor(
         cpuMax: `${DEFAULT_SANDBOX_LIMITS.cpuMsPerSecond * 1_000} 1000000`,
       })),
     ...(options.verifyLimits === undefined ? {} : { verifyLimits: options.verifyLimits }),
+    ...(options.restart === undefined ? {} : { restart: options.restart }),
+    ...(options.maxLifetimeMs === undefined ? {} : { maxLifetimeMs: options.maxLifetimeMs }),
     now: () => {
       clock += 5;
       return clock;
@@ -214,6 +224,83 @@ describe("sandbox supervisor", () => {
     expect(fake.args).toHaveLength(1);
 
     await supervisor.stop();
+    await channel.close();
+  });
+
+  test("restarts an unexpectedly exited sandbox with backoff", async () => {
+    const fake = createFakeSandbox(
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
+    );
+    const { channel, supervisor } = await createSupervisor(fake.spawn, {
+      restart: { initialDelayMs: 10, maxDelayMs: 10, maxRestarts: 3 },
+    });
+
+    await supervisor.start();
+    fake.exit(9);
+    await Bun.sleep(60);
+
+    expect(fake.args).toHaveLength(2);
+    expect(supervisor.status().restarts).toBe(1);
+    expect(supervisor.ready).toBe(true);
+
+    await supervisor.stop();
+    expect(supervisor.status().state).toBe("stopped");
+    await channel.close();
+  });
+
+  test("stop cancels a scheduled restart", async () => {
+    const fake = createFakeSandbox(
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
+    );
+    const { channel, supervisor } = await createSupervisor(fake.spawn, {
+      restart: { initialDelayMs: 20, maxDelayMs: 20 },
+    });
+
+    await supervisor.start();
+    fake.exit(9);
+    await supervisor.stop();
+    await Bun.sleep(60);
+
+    expect(fake.args).toHaveLength(1);
+    expect(supervisor.status().state).toBe("stopped");
+    await channel.close();
+  });
+
+  test("gives up after the configured number of restarts", async () => {
+    const fake = createFakeSandbox(
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
+    );
+    const { channel, supervisor } = await createSupervisor(fake.spawn, {
+      restart: { initialDelayMs: 5, maxDelayMs: 5, maxRestarts: 1 },
+    });
+
+    await supervisor.start();
+    fake.exit(9);
+    await Bun.sleep(40);
+    expect(fake.args).toHaveLength(2);
+
+    fake.exit(9, 1);
+    await Bun.sleep(40);
+
+    expect(fake.args).toHaveLength(2);
+    expect(supervisor.status().restarts).toBe(1);
+    expect(supervisor.status().state).toBe("failed");
+
+    await channel.close();
+  });
+
+  test("kills a sandbox that outlives its supervisor wall-clock limit", async () => {
+    const fake = createFakeSandbox(
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
+    );
+    const { channel, supervisor } = await createSupervisor(fake.spawn, { maxLifetimeMs: 20 });
+
+    await supervisor.start();
+    await Bun.sleep(60);
+
+    expect(supervisor.status().state).toBe("failed");
+    expect(supervisor.status().error).toContain("wall-clock limit");
+
     await channel.close();
   });
 

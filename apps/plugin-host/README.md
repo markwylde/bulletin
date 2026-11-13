@@ -25,7 +25,11 @@ production runtime and its measured findings live in the ADR.
   another plugin's identity on the broker.
 
 `GET /sandbox` returns the live status and the sandbox's cgroup values. Readiness includes
-the sandbox, so `/health/ready` fails when nsjail cannot start.
+the sandbox, so `/health/ready` fails when nsjail cannot start. An unexpected exit, a failed
+start or a supervisor-side wall-clock kill schedules an exponential restart
+(`PLUGIN_HOST_RESTART_DELAY_MS`, `PLUGIN_HOST_RESTART_MAX_DELAY_MS`,
+`PLUGIN_HOST_RESTART_MAX`); readiness is false while a restart is pending, and the status
+reports the attempt count and `restartAt`.
 
 ## Container contract and preflight (task 1.1)
 

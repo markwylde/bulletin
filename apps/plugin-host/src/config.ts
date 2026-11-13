@@ -15,6 +15,12 @@ export interface PluginHostConfig {
   readonly stateDir: string;
   readonly limits: SandboxLimits;
   readonly readyTimeoutMs: number;
+  /** Automatic restart policy for a sandbox that exits or fails to start. */
+  readonly restart: {
+    readonly initialDelayMs: number;
+    readonly maxDelayMs: number;
+    readonly maxRestarts: number;
+  };
 }
 
 const MB = 1024 * 1024;
@@ -122,6 +128,23 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     { min: 100, max: 120_000 },
     issues,
   );
+  const restart = {
+    initialDelayMs: readInteger(
+      env,
+      "PLUGIN_HOST_RESTART_DELAY_MS",
+      1_000,
+      { min: 10, max: 60_000 },
+      issues,
+    ),
+    maxDelayMs: readInteger(
+      env,
+      "PLUGIN_HOST_RESTART_MAX_DELAY_MS",
+      30_000,
+      { min: 10, max: 300_000 },
+      issues,
+    ),
+    maxRestarts: readInteger(env, "PLUGIN_HOST_RESTART_MAX", 5, { min: 0, max: 100 }, issues),
+  };
 
   if (issues.length > 0) {
     throw new ConfigError(issues);
@@ -136,5 +159,6 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     stateDir: read(env, "PLUGIN_HOST_STATE_DIR") ?? "/run/plugin-host",
     limits,
     readyTimeoutMs,
+    restart,
   };
 }
