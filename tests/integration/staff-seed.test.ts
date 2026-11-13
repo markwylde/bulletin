@@ -121,6 +121,7 @@ integrationDescribe("flags seed", () => {
         "notifications",
         "plugins",
         "polls",
+        "public_api",
         "quickReply",
         "reactions",
         "realtime",
@@ -130,6 +131,7 @@ integrationDescribe("flags seed", () => {
         "theme_chooser",
         "unfurls",
         "warnings",
+        "webhooks",
         "whos_online",
       ]);
 

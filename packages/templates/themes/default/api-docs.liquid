@@ -4,7 +4,7 @@
   <h1 class="bl-page__title">{% t "api.docs.title" %}</h1>
   <p class="bl-muted">{% t "api.docs.intro" %}</p>
   <section class="bl-card" data-api-docs>
-    <div id="api-reference" data-api-reference data-url="{{ openApiUrl }}"></div>
+    {% island "ApiDocs" apiDocs %}
     <p class="bl-muted" id="api-reference-status" data-api-reference-status data-error="{% t "api.docs.error" %}" role="status">{% t "api.docs.loading" %}</p>
     <p class="bl-muted">{% t "api.docs.noScript" %}</p>
     <p><a class="bl-button" href="{{ openApiUrl }}">{% t "api.docs.raw" %}</a></p>

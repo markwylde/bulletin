@@ -19,6 +19,8 @@ export interface ApiRouterOptions {
   /** HMAC key for the rotating per-IP rate-limit identity (ADR 0012). */
   readonly rateLimitSecret: string;
   readonly now?: () => Date;
+  /** Evaluates a feature flag for the resolved principal; absent means enabled. */
+  readonly isEnabled?: (key: string, memberId: string | null) => Promise<boolean>;
 }
 
 const API_PREFIX = "/api/v1";
@@ -265,6 +267,17 @@ export async function handleApiRequest(
   }
 
   const { principal, route } = { principal: auth.principal, route: match.route };
+
+  const enabled =
+    options.isEnabled === undefined ||
+    (await options.isEnabled(
+      "public_api",
+      isApiKeyPrincipal(principal) ? principal.memberId : null,
+    ));
+
+  if (!enabled) {
+    return errorResponse(404, "not_found");
+  }
 
   if (route.auth === "required" && !isApiKeyPrincipal(principal)) {
     return errorResponse(401, "unauthenticated", { "www-authenticate": "Bearer" });

@@ -7,6 +7,7 @@ import { apiDocsContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
+import { renderThemedNotFound } from "../theme/not-found.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
 
 export const OPENAPI_URL = "/api/v1/openapi.json";
@@ -43,7 +44,32 @@ export async function renderApiDocsRoute(input: ApiDocsRouteInput): Promise<{
   readonly tags: readonly string[];
   readonly etag: string | null;
   readonly errors: readonly string[];
+  readonly status: number;
 }> {
+  const flags = await loadViewerFlags(input.sql, input.session);
+
+  if (flags.values.public_api !== true) {
+    const notFound = await renderThemedNotFound({
+      sql: input.sql,
+      themeId: input.themeId,
+      locale: input.locale,
+      translate: input.translate,
+      route: {
+        ...apiDocsContract,
+        requiredIslands: apiDocsContract.requiredIslands.filter((island) => island !== "ApiDocs"),
+      },
+    });
+
+    return {
+      ...notFound,
+      cache: null,
+      variant: "flag-off",
+      tags: [],
+      etag: null,
+      status: 404,
+    };
+  }
+
   let boardName = "";
   const title = input.translate("api.docs.title");
 
@@ -84,6 +110,7 @@ export async function renderApiDocsRoute(input: ApiDocsRouteInput): Promise<{
         template: apiDocsContract.templates.page,
         viewModel: {
           openApiUrl: OPENAPI_URL,
+          apiDocs: { url: OPENAPI_URL },
           flags: data.flags.values,
         },
         breadcrumbs: [{ label: title, href: null }],
@@ -96,5 +123,5 @@ export async function renderApiDocsRoute(input: ApiDocsRouteInput): Promise<{
     },
   });
 
-  return { ...rendered, title, boardName };
+  return { ...rendered, title, boardName, status: 200 };
 }

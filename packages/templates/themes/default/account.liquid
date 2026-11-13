@@ -13,6 +13,7 @@
     {% if flags.follows %}<a href="/account/follows" data-account-follows>{% t "account.follows.title" %}</a>{% endif %}
     {% if flags.conversations %}<a href="/conversations" data-account-conversations>{% t "conversation.title" %}</a>{% endif %}
     {% if flags.warnings %}<a href="/account/warnings" data-account-warnings>{% t "warnings.title" %}</a>{% endif %}
+    {% if flags.public_api %}<a href="/account/api-keys" data-account-api-keys>{% t "apiKeys.title" %}</a>{% endif %}
   </p>
 
   <section class="bl-card" data-account-profile>

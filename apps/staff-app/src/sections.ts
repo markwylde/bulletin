@@ -293,6 +293,8 @@ const SECTION_FLAG_KEYS: Readonly<Record<string, string>> = {
   announcements: "announcements",
   warnings: "warnings",
   multimod: "multimod",
+  apiKeys: "public_api",
+  webhooks: "webhooks",
 };
 
 export function canAccessSection(permissions: readonly string[], section: StaffSection): boolean {

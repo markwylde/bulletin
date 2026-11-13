@@ -148,6 +148,7 @@ await startService({
       routes: API_ROUTES,
       pepper: config.sessionSecret,
       rateLimitSecret: config.sessionSecret,
+      isEnabled: (key, memberId) => flags.enabled(key, memberId),
     });
 
     if (apiResponse !== null) {
@@ -218,7 +219,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return personalApiKeysResponse(sql, session.memberId);
+        return flags.guard("public_api", session.memberId)(request, () =>
+          personalApiKeysResponse(sql, session.memberId),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -230,7 +233,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return createPersonalApiKeyResponse(sql, session.memberId, request, config.sessionSecret);
+        return flags.guard("public_api", session.memberId)(request, () =>
+          createPersonalApiKeyResponse(sql, session.memberId, request, config.sessionSecret),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -242,7 +247,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return revokePersonalApiKeyResponse(sql, session.memberId, request);
+        return flags.guard("public_api", session.memberId)(request, () =>
+          revokePersonalApiKeyResponse(sql, session.memberId, request),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

@@ -1,20 +1,14 @@
 ---
 import { API_SCOPES } from "@bulletin/domain/api";
-import { can } from "@bulletin/domain/permissions";
 import { createServerT } from "@bulletin/i18n";
 import { apiKeyLabels, apiKeyScopeLabels } from "../../api-keys/page.ts";
+import { renderApiKeysRoute } from "../../api-keys/route.ts";
+import { cacheRuntime } from "../../cache-runtime.ts";
 import { USER_CATALOGS } from "../../catalogs.ts";
-import { apiKeysContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
-import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
-import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
-import { renderThemedNotFound } from "../../theme/not-found.ts";
-import {
-  boardNameFrom,
-  loadPluginsGeneration,
-  renderThemedPage,
-} from "../../theme/render.ts";
+import { applyCacheHeaders, isNotModified, requestHasSession } from "../../http/cache.ts";
+import { loadPluginsGeneration, requestColourScheme } from "../../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account/api-keys")}`;
 const session = Astro.locals.session ?? null;
@@ -27,75 +21,57 @@ const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
 const pluginsGeneration = await loadPluginsGeneration(sql);
-const flags = await loadViewerFlags(sql, session);
-const enabled = await can(sql, session.memberId, "create_personal_api_keys");
-const notFound = enabled
-  ? null
-  : await renderThemedNotFound({
-      sql,
-      themeId: Astro.locals.themeId,
-      locale,
-      translate,
-      route: apiKeysContract,
-    });
-const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
-const labels = apiKeyLabels(translate);
-const scopeLabels = apiKeyScopeLabels(translate);
-const rendered = await renderCachedPage({
-  tags: [`member:${session.memberId}`],
-  cache: null,
-  tagVersions: null,
-  shell: { visitor: "member", authState: "authenticated" },
-  prepare: async () => ({
-    variant: pageVariant({
-      route: apiKeysContract.route,
-      visibilityKey: "member",
-      theme: null,
-      pluginsGeneration: pluginsGeneration,
-      locale,
-      colourScheme: "system",
-      renderFlagsHash: flags.hash,
-    }),
-    data: undefined,
-  }),
-  render: async () => {
-    if (!enabled || notFound !== null) {
-      if (notFound === null) {
-        throw new Error("missing not-found page");
-      }
+const dev = import.meta.env.DEV;
+const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
+const runtime = await cacheRuntime(sql);
+const result = await renderApiKeysRoute({
+  sql,
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
+  locale,
+  translate,
+  session,
+  pluginsGeneration,
+  colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
+  cache: runtime.cache,
+  tagVersions: runtime.tags,
+});
+const headers = new Headers();
 
-      return { html: notFound.html, errors: notFound.errors };
-    }
-
-    const themed = await renderThemedPage({
-      sql,
-      themeId: Astro.locals.themeId,
-      boardName,
-      locale,
-      translate,
-      template: apiKeysContract.templates.page,
-      viewModel: { flags: flags.values },
-      breadcrumbs: [{ label: translate("apiKeys.title"), href: null }],
-      route: apiKeysContract,
-    });
-
-    return { html: themed.html, errors: themed.errors };
-  },
+applyCacheHeaders(headers, {
+  cdnCacheable: false,
+  hasSession: requestHasSession(Astro.request.headers.get("cookie"), nodeEnv),
+  hasUnlockGrant: false,
+  tags: result.tags,
+  etag: result.etag,
+  dev,
+  status: result.cache,
+  key: result.variant,
 });
 
-if (!enabled) {
-  Astro.response.status = 404;
+for (const [name, value] of headers) {
+  Astro.response.headers.set(name, value);
 }
 
+if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
+  return new Response(null, { status: 304, headers });
+}
+
+Astro.response.status = result.status;
 Astro.response.headers.set("cache-control", "private, no-store");
-const config = { labels, scopeLabels, scopes: API_SCOPES };
+const config = {
+  labels: apiKeyLabels(translate),
+  scopeLabels: apiKeyScopeLabels(translate),
+  scopes: API_SCOPES,
+};
 ---
 
 <ThemeLayout
   colourScheme={Astro.locals.colourScheme ?? "system"}
-  title={`${enabled ? translate("apiKeys.title") : (notFound?.title ?? "")} · ${boardName}`}
+  title={`${result.title} · ${result.boardName}`}
   locale={locale}
-  body={rendered.html}
+  body={result.html}
   authState="authenticated"
   visitor="member"
 >

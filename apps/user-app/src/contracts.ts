@@ -434,7 +434,7 @@ export const apiDocsContract = defineContract({
   deps: [],
   tags: [],
   cdnCacheable: true,
-  requiredIslands: ["LanguageSwitcher"],
+  requiredIslands: ["LanguageSwitcher", "ApiDocs"],
 });
 
 /** The member's own API keys (task 4.1): personal metadata, never shared or stored. */

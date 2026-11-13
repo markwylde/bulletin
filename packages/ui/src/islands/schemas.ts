@@ -178,9 +178,15 @@ export const pluginAppSchema = v.strictObject({
   origin: v.optional(pluginOriginSchema),
 });
 
+/** The public API documentation island; its component gates Scalar on `public_api`. */
+export const apiDocsSchema = v.strictObject({
+  url: v.pipe(v.string(), v.maxLength(500)),
+});
+
 /** The canonical island names; the template registry and the client runtime must match. */
 export const ISLAND_SCHEMAS = {
   SpikeCounter: spikeCounterSchema,
+  ApiDocs: apiDocsSchema,
   LanguageSwitcher: languageSwitcherSchema,
   LocaleSuggestion: localeSuggestionSchema,
   Editor: editorSchema,

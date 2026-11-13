@@ -3,6 +3,7 @@ import { hydrateRoot } from "react-dom/client";
 import * as v from "valibot";
 import { FlagsProvider } from "../flags.tsx";
 import {
+  apiDocsSchema,
   editorSchema,
   type IslandPropsSchema,
   languageSwitcherSchema,
@@ -84,6 +85,10 @@ export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
   SpikeCounter: defineClientIsland(spikeCounterSchema, async () => {
     const module = await import("./SpikeCounter.tsx");
     return module.SpikeCounter;
+  }),
+  ApiDocs: defineClientIsland(apiDocsSchema, async () => {
+    const module = await import("./ApiDocs.tsx");
+    return module.ApiDocs;
   }),
   LanguageSwitcher: defineClientIsland(languageSwitcherSchema, async () => {
     const module = await import("./LanguageSwitcher.tsx");

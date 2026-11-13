@@ -1,3 +1,4 @@
+export * from "./ApiDocs.tsx";
 export * from "./Editor.tsx";
 export * from "./editor/types.ts";
 export * from "./PluginApp.tsx";

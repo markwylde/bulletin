@@ -1257,7 +1257,10 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "GET",
     path: "/api/staff/api-keys",
     permission: "acp.api",
-    handler: async ({ sql }) => integrationKeysResponse(sql),
+    handler: async ({ sql, session }) =>
+      (await staffFlagEnabled(sql, session.memberId, "public_api"))
+        ? integrationKeysResponse(sql)
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "apiKeys.mutate",
@@ -1265,19 +1268,24 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/api-keys",
     permission: "acp.api",
     handler: async ({ sql, session, request, apiKeyPepper }) =>
-      mutateIntegrationKeyResponse(
-        sql,
-        session.memberId,
-        request,
-        apiKeyPepper ?? Bun.env.SESSION_SECRET ?? "bulletin-development-only-session-secret",
-      ),
+      (await staffFlagEnabled(sql, session.memberId, "public_api"))
+        ? mutateIntegrationKeyResponse(
+            sql,
+            session.memberId,
+            request,
+            apiKeyPepper ?? Bun.env.SESSION_SECRET ?? "bulletin-development-only-session-secret",
+          )
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "webhooks.list",
     method: "GET",
     path: "/api/staff/webhooks",
     permission: "acp.webhooks",
-    handler: async ({ sql }) => webhooksResponse(sql),
+    handler: async ({ sql, session }) =>
+      (await staffFlagEnabled(sql, session.memberId, "webhooks"))
+        ? webhooksResponse(sql)
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "webhooks.mutate",
@@ -1285,7 +1293,9 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/webhooks",
     permission: "acp.webhooks",
     handler: async ({ sql, session, request }) =>
-      mutateWebhookForStaff(sql, session.memberId, request),
+      (await staffFlagEnabled(sql, session.memberId, "webhooks"))
+        ? mutateWebhookForStaff(sql, session.memberId, request)
+        : json({ code: "not_found" }, 404),
   },
   {
     id: "filters.settings",

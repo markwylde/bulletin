@@ -75,6 +75,20 @@ describe("staff section registry", () => {
     expect(withFlags).toContain("announcements");
   });
 
+  test("hides the API key and webhook screens while their flags are off", () => {
+    const permissions = ["acp.access", "acp.api", "acp.webhooks"];
+
+    expect(
+      sectionsWithFlags(visibleSections(permissions), {}).map((section) => section.id),
+    ).toEqual(["dashboard"]);
+    expect(
+      sectionsWithFlags(visibleSections(permissions), {
+        public_api: true,
+        webhooks: true,
+      }).map((section) => section.id),
+    ).toEqual(["dashboard", "webhooks", "apiKeys"]);
+  });
+
   test("shows dead letters only with acp.system", () => {
     expect(visibleSections(["acp.access", "acp.log"]).map((section) => section.id)).not.toContain(
       "deadLetters",

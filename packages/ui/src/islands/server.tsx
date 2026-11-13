@@ -2,6 +2,7 @@ import type { ServerIslandDefinition, ServerIslandRegistry } from "@bulletin/tem
 import { type ComponentType, createElement } from "react";
 import { renderToString } from "react-dom/server";
 import * as v from "valibot";
+import { ApiDocs } from "./ApiDocs.tsx";
 import { Editor } from "./Editor.tsx";
 import { LanguageSwitcher } from "./LanguageSwitcher.tsx";
 import { LocaleSuggestion } from "./LocaleSuggestion.tsx";
@@ -10,6 +11,7 @@ import { PostReputation } from "./PostReputation.tsx";
 import { Reactions } from "./Reactions.tsx";
 import { SpikeCounter } from "./SpikeCounter.tsx";
 import {
+  apiDocsSchema,
   editorSchema,
   type IslandPropsSchema,
   languageSwitcherSchema,
@@ -45,6 +47,7 @@ function defineServerIsland<TProps extends object>(
 /** The server half of the fixed island registry (ADR 0008). */
 export const SERVER_ISLANDS: ServerIslandRegistry = {
   SpikeCounter: defineServerIsland("SpikeCounter", spikeCounterSchema, SpikeCounter),
+  ApiDocs: defineServerIsland("ApiDocs", apiDocsSchema, ApiDocs),
   LanguageSwitcher: defineServerIsland(
     "LanguageSwitcher",
     languageSwitcherSchema,

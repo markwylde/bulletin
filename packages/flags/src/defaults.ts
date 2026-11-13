@@ -305,6 +305,26 @@ export const pluginsFlag = defineFlag({
   clientVisible: true,
 });
 
+/** The versioned public API, its docs page and personal/integration keys (change `public-api-webhooks`). */
+export const publicApiFlag = defineFlag({
+  key: "public_api",
+  description: "The /api/v1 public API, its documentation and key management.",
+  owner: "platform",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** Outbound webhook configuration and deliveries (change `public-api-webhooks`). */
+export const webhooksFlag = defineFlag({
+  key: "webhooks",
+  description: "Outbound webhook configuration and deliveries.",
+  owner: "platform",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
@@ -333,4 +353,6 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   searchFlag,
   themeChooserFlag,
   pluginsFlag,
+  publicApiFlag,
+  webhooksFlag,
 ]);
