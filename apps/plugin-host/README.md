@@ -122,6 +122,20 @@ with `PLUGIN_CORE_BROKER_TOKEN`; the core API applies `can()` for that viewer. A
 choose its own viewer: `core.call` params are passed through, but the viewer field is always
 the broker's.
 
+### Storage quota and shared-cluster warning
+
+`src/quota/monitor.ts` measures each plugin schema every `PLUGIN_QUOTA_INTERVAL_MS`
+(default 60 s) with `pg_total_relation_size`. Over `PLUGIN_STORAGE_QUOTA_MB` (default 1 GB)
+it revokes `INSERT`/`UPDATE` on the schema's tables from the runtime role, which sticks
+because the role is not the owner. Reads and `DELETE` keep working; writes stay off until an
+admin calls `restoreWrites()` (wired to the plugin manager later). The plugin-host logs
+`plugin.storage_quota_exceeded` and `GET /quota` reports the usage, quota and revocation
+state.
+
+In production, plugin schemas default to the core Postgres cluster. The host logs
+`plugin.shared_cluster_warning` unless `PLUGIN_DATABASE_URL` points at a separate cluster;
+`/quota` exposes the same `sharedCluster` flag for the staff warning.
+
 ### Egress (task 2.2)
 
 `http.fetch` goes through `EgressProxy` (`src/broker/egress.ts`). The manifest's

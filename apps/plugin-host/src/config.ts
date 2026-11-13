@@ -15,6 +15,11 @@ export interface PluginHostConfig {
   readonly stateDir: string;
   readonly limits: SandboxLimits;
   readonly readyTimeoutMs: number;
+  /** Optional separate Postgres cluster for plugin schemas (`PLUGIN_DATABASE_URL`). */
+  readonly pluginDatabaseUrl: string | undefined;
+  /** Per-plugin schema quota and how often it is measured. */
+  readonly storageQuotaBytes: number;
+  readonly quotaIntervalMs: number;
   /** Core API base URL the broker forwards SDK data calls to. */
   readonly coreApiUrl: string;
   /** Shared secret for signed broker-to-core calls (development default, ADR 0002). */
@@ -125,6 +130,20 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     ),
   };
 
+  const storageQuotaMb = readInteger(
+    env,
+    "PLUGIN_STORAGE_QUOTA_MB",
+    1024,
+    { min: 1, max: 1_048_576 },
+    issues,
+  );
+  const quotaIntervalMs = readInteger(
+    env,
+    "PLUGIN_QUOTA_INTERVAL_MS",
+    60_000,
+    { min: 1_000, max: 3_600_000 },
+    issues,
+  );
   const readyTimeoutMs = readInteger(
     env,
     "PLUGIN_HOST_READY_TIMEOUT_MS",
@@ -163,6 +182,9 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     stateDir: read(env, "PLUGIN_HOST_STATE_DIR") ?? "/run/plugin-host",
     limits,
     readyTimeoutMs,
+    pluginDatabaseUrl: read(env, "PLUGIN_DATABASE_URL"),
+    storageQuotaBytes: storageQuotaMb * MB,
+    quotaIntervalMs,
     coreApiUrl: read(env, "PLUGIN_CORE_API_URL") ?? "http://user-api:3001",
     coreBrokerToken:
       read(env, "PLUGIN_CORE_BROKER_TOKEN") ?? "bulletin-development-only-broker-secret",

@@ -8,6 +8,7 @@ import { PluginDatabase } from "./broker/database.ts";
 import { EgressProxy } from "./broker/egress.ts";
 import { loadPluginManifest, loadPluginMigrations } from "./broker/manifest.ts";
 import { loadPluginHostConfig } from "./config.ts";
+import { PluginQuotaMonitor, usesSharedPluginCluster } from "./quota/monitor.ts";
 import { runSandboxPreflight } from "./sandbox/preflight.ts";
 import { buildSeccompPolicy, sandboxArch } from "./sandbox/seccomp.ts";
 import { SandboxSupervisor } from "./sandbox/supervisor.ts";
@@ -58,6 +59,30 @@ const channel = new BrokerChannel({
 });
 await channel.start();
 
+const sharedCluster = usesSharedPluginCluster({
+  nodeEnv: config.nodeEnv,
+  ...(sandboxConfig.pluginDatabaseUrl === undefined
+    ? {}
+    : { pluginDatabaseUrl: sandboxConfig.pluginDatabaseUrl }),
+});
+
+if (sharedCluster) {
+  logger.error("plugin.shared_cluster_warning", {
+    reason:
+      "untrusted plugin schemas share the core Postgres cluster in production; set " +
+      "PLUGIN_DATABASE_URL to a separate cluster for hard availability isolation",
+  });
+}
+
+const quota = new PluginQuotaMonitor({
+  adminUrl: config.databaseUrl,
+  pluginId: manifest.id,
+  logger: logger.child({ component: "quota" }),
+  quotaBytes: sandboxConfig.storageQuotaBytes,
+  intervalMs: sandboxConfig.quotaIntervalMs,
+});
+quota.start();
+
 const supervisor = new SandboxSupervisor({
   pluginId: manifest.id,
   bundlePath: sandboxConfig.bundlePath,
@@ -88,6 +113,10 @@ await startService({
       return Response.json({ schema: database.schema, stats: broker.stats() });
     }
 
+    if (url.pathname === "/quota") {
+      return Response.json({ ...quota.status(), sharedCluster });
+    }
+
     return Response.json({ service: "plugin-host", status: "ok" });
   },
   checks: [
@@ -95,6 +124,7 @@ await startService({
     { name: "broker", check: () => broker.ready },
   ],
   async onShutdown() {
+    quota.stop();
     await supervisor.stop();
     await channel.close();
     await broker.close();
