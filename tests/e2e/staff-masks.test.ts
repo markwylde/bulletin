@@ -64,6 +64,7 @@ integrationDescribe("staff permission masks", () => {
       await setInputValue(view, "[data-grid-scope]", forumId);
 
       // Row bulk: every mask grants read on one forum.
+      await waitForSelector(view, `[data-grid-row-bulk="${forumId}"]:not([disabled])`);
       await clickSelector(view, `[data-grid-row-bulk="${forumId}"]`);
       await waitForSelector(view, '[data-toast-tone="success"]');
       await waitForExpression(
