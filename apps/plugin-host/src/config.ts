@@ -15,6 +15,10 @@ export interface PluginHostConfig {
   readonly stateDir: string;
   readonly limits: SandboxLimits;
   readonly readyTimeoutMs: number;
+  /** Core API base URL the broker forwards SDK data calls to. */
+  readonly coreApiUrl: string;
+  /** Shared secret for signed broker-to-core calls (development default, ADR 0002). */
+  readonly coreBrokerToken: string;
   /** Automatic restart policy for a sandbox that exits or fails to start. */
   readonly restart: {
     readonly initialDelayMs: number;
@@ -159,6 +163,9 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     stateDir: read(env, "PLUGIN_HOST_STATE_DIR") ?? "/run/plugin-host",
     limits,
     readyTimeoutMs,
+    coreApiUrl: read(env, "PLUGIN_CORE_API_URL") ?? "http://user-api:3001",
+    coreBrokerToken:
+      read(env, "PLUGIN_CORE_BROKER_TOKEN") ?? "bulletin-development-only-broker-secret",
     restart,
   };
 }

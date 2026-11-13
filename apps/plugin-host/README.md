@@ -107,6 +107,21 @@ Rows are JSON-encoded at this boundary, so big integers arrive as JSON numbers; 
 for exact bigint fidelity is a `plugin-platform` follow-up. Database failures return a generic
 error to the plugin; details go to the broker log, without the SQL text or parameters.
 
+### Request budgets and core forwarding
+
+Each plugin has its own token bucket and concurrency gate: at most 2 concurrent database
+statements and 20 statements/second, and 2 concurrent egress requests at 10/second. Waiting
+for a database slot is bounded by the call deadline, so an exhausted budget denies only the
+waiting plugin's call (`reason: "rate"` or `"concurrency"`, stats
+`broker.stats().rateLimited/concurrencyLimited`).
+
+`core.call` forwards SDK data APIs (`posts.get`, `members.get`, …) to
+`PLUGIN_CORE_API_URL` (`http://user-api:3001`). The broker adds the trusted viewer context
+(guest when the request did not come from a viewer) and a timestamped HMAC of the body signed
+with `PLUGIN_CORE_BROKER_TOKEN`; the core API applies `can()` for that viewer. A plugin cannot
+choose its own viewer: `core.call` params are passed through, but the viewer field is always
+the broker's.
+
 ### Egress (task 2.2)
 
 `http.fetch` goes through `EgressProxy` (`src/broker/egress.ts`). The manifest's

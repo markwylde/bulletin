@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@bulletin/config";
 import { Broker, type BrokerDatabase, type BrokerEgress } from "./broker.ts";
+import { type CoreCall, CoreDeniedError, type CoreForwarder } from "./core.ts";
 import type { QueryResult } from "./database.ts";
 import { EgressDeniedError, type EgressRequest, type EgressResponse } from "./egress.ts";
+import type { BrokerLimitOptions } from "./limits.ts";
 import { RpcError } from "./protocol.ts";
 import type { AllowedStatement } from "./sql.ts";
 
@@ -77,7 +79,7 @@ function createEgress(): FakeEgress {
   return egress;
 }
 
-function createBroker(): {
+function createBroker(options: { limits?: BrokerLimitOptions; core?: CoreForwarder } = {}): {
   broker: Broker;
   database: FakeDatabase;
   egress: FakeEgress;
@@ -91,7 +93,18 @@ function createBroker(): {
     level: "debug",
     sink: (line) => lines.push(line),
   });
-  return { broker: new Broker({ database, egress, logger }), database, egress, lines };
+  return {
+    broker: new Broker({
+      database,
+      egress,
+      logger,
+      ...(options.core === undefined ? {} : { core: options.core }),
+      ...(options.limits === undefined ? {} : { limits: options.limits }),
+    }),
+    database,
+    egress,
+    lines,
+  };
 }
 
 async function expectRpcError(promise: Promise<unknown>, code: number): Promise<void> {
@@ -349,6 +362,155 @@ describe("broker dispatch", () => {
         params: { level: "info", message: "x", fields: [] },
       }),
       -32602,
+    );
+  });
+
+  test("rate-limits database statements per plugin", async () => {
+    const { broker } = createBroker({ limits: { dbStatementsPerSecond: 1 } });
+
+    await expect(
+      broker.handle({
+        method: "db.query",
+        pluginId: "sandbox-demo",
+        params: { sql: "SELECT 1" },
+      }),
+    ).resolves.toBeDefined();
+
+    try {
+      await broker.handle({
+        method: "db.query",
+        pluginId: "sandbox-demo",
+        params: { sql: "SELECT 2" },
+      });
+      throw new Error("Expected a rate-limit denial");
+    } catch (error) {
+      expect(error).toBeInstanceOf(RpcError);
+      expect((error as RpcError).code).toBe(-32000);
+      expect((error as RpcError).data).toMatchObject({ reason: "rate" });
+    }
+
+    expect(broker.stats().rateLimited).toBe(1);
+    expect(broker.stats().denials).toBe(1);
+  });
+
+  test("queues at the database concurrency limit and fails only the waiting call", async () => {
+    const { broker, database } = createBroker({
+      limits: { maxConcurrentDb: 1, dbStatementsPerSecond: 100, waitTimeoutMs: 20 },
+    });
+    let release: () => void = () => undefined;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    database.query = async () => {
+      await blocked;
+      return { rows: [], rowCount: 0, command: "select" };
+    };
+
+    const first = broker.handle({
+      method: "db.query",
+      pluginId: "sandbox-demo",
+      params: { sql: "SELECT 1" },
+    });
+    await Bun.sleep(5);
+
+    try {
+      await broker.handle({
+        method: "db.query",
+        pluginId: "sandbox-demo",
+        params: { sql: "SELECT 2" },
+      });
+      throw new Error("Expected a concurrency denial");
+    } catch (error) {
+      expect(error).toBeInstanceOf(RpcError);
+      expect((error as RpcError).data).toMatchObject({ reason: "concurrency" });
+    }
+
+    release();
+    await expect(first).resolves.toBeDefined();
+    expect(broker.stats().concurrencyLimited).toBe(1);
+  });
+
+  test("forwards core calls with the broker's viewer and ignores a plugin-supplied one", async () => {
+    const calls: CoreCall[] = [];
+    const core: CoreForwarder = {
+      async call(call) {
+        calls.push(call);
+        return { id: "42", title: "Hello" };
+      },
+    };
+    const { broker } = createBroker({ core });
+
+    const result = await broker.handle({
+      method: "core.call",
+      pluginId: "sandbox-demo",
+      viewer: { memberId: "7" },
+      params: {
+        method: "posts.get",
+        params: { id: "42" },
+        viewer: { memberId: "admin" },
+      },
+    });
+
+    expect(result).toEqual({ id: "42", title: "Hello" });
+    expect(calls).toEqual([
+      {
+        pluginId: "sandbox-demo",
+        method: "posts.get",
+        params: { id: "42" },
+        viewer: { memberId: "7" },
+      },
+    ]);
+  });
+
+  test("treats core calls without a viewer as guest", async () => {
+    const calls: CoreCall[] = [];
+    const { broker } = createBroker({
+      core: {
+        async call(call) {
+          calls.push(call);
+          return null;
+        },
+      },
+    });
+
+    await broker.handle({
+      method: "core.call",
+      pluginId: "sandbox-demo",
+      params: { method: "posts.get", params: {} },
+    });
+
+    expect(calls[0]?.viewer).toEqual({ memberId: null });
+  });
+
+  test("maps core denials to a policy error and reports missing configuration", async () => {
+    const { broker } = createBroker({
+      core: {
+        async call() {
+          throw new CoreDeniedError("response", "Core API denied the request for this viewer");
+        },
+      },
+    });
+
+    try {
+      await broker.handle({
+        method: "core.call",
+        pluginId: "sandbox-demo",
+        params: { method: "posts.get", params: {} },
+      });
+      throw new Error("Expected a core denial");
+    } catch (error) {
+      expect((error as RpcError).code).toBe(-32000);
+      expect((error as RpcError).data).toMatchObject({ reason: "response" });
+    }
+
+    const unconfigured = createBroker().broker;
+    await expectRpcError(
+      unconfigured.handle({
+        method: "core.call",
+        pluginId: "sandbox-demo",
+        params: { method: "posts.get" },
+      }),
+      -32601,
     );
   });
 

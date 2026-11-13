@@ -1,7 +1,14 @@
 import { LOG_LEVELS, type Logger, type LogLevel } from "@bulletin/config";
 import type { BrokerHandler } from "./channel.ts";
+import { CoreDeniedError, type CoreForwarder, GUEST_VIEWER, type ViewerContext } from "./core.ts";
 import { QueryLimitError, type QueryResult } from "./database.ts";
 import { EgressDeniedError, type EgressRequest, type EgressResponse } from "./egress.ts";
+import {
+  type BrokerBudgets,
+  BrokerLimitError,
+  type BrokerLimitOptions,
+  createBrokerBudgets,
+} from "./limits.ts";
 import { JSON_RPC_ERRORS, RpcError } from "./protocol.ts";
 import { type AllowedStatement, assertAllowedSql, SqlDeniedError } from "./sql.ts";
 
@@ -23,6 +30,9 @@ export interface BrokerOptions {
   readonly database: BrokerDatabase;
   readonly egress: BrokerEgress;
   readonly logger: Logger;
+  /** SDK core-data forwarding; omitted until the host has a core API configured. */
+  readonly core?: CoreForwarder;
+  readonly limits?: BrokerLimitOptions;
 }
 
 export interface BrokerStats {
@@ -31,6 +41,16 @@ export interface BrokerStats {
   readonly denials: number;
   readonly logs: number;
   readonly failures: number;
+  readonly rateLimited: number;
+  readonly concurrencyLimited: number;
+}
+
+export interface BrokerRequest {
+  readonly method: string;
+  readonly params: unknown;
+  readonly pluginId: string;
+  /** Trusted viewer context for core-data calls; absent means guest. */
+  readonly viewer?: ViewerContext;
 }
 
 const MAX_PARAMS = 100;
@@ -121,12 +141,24 @@ function parseLogFields(value: unknown): Record<string, unknown> | undefined {
 export class Broker implements BrokerHandler {
   readonly #database: BrokerDatabase;
   readonly #egress: BrokerEgress;
+  readonly #core: CoreForwarder | undefined;
+  readonly #budgets: BrokerBudgets;
   readonly #logger: Logger;
-  #stats = { queries: 0, fetches: 0, denials: 0, logs: 0, failures: 0 };
+  #stats = {
+    queries: 0,
+    fetches: 0,
+    denials: 0,
+    logs: 0,
+    failures: 0,
+    rateLimited: 0,
+    concurrencyLimited: 0,
+  };
 
   constructor(options: BrokerOptions) {
     this.#database = options.database;
     this.#egress = options.egress;
+    this.#core = options.core;
+    this.#budgets = createBrokerBudgets(options.limits);
     this.#logger = options.logger.child({ schema: options.database.schema });
   }
 
@@ -142,17 +174,15 @@ export class Broker implements BrokerHandler {
     await this.#database.close();
   }
 
-  async handle(request: {
-    readonly method: string;
-    readonly params: unknown;
-    readonly pluginId: string;
-  }): Promise<unknown> {
+  async handle(request: BrokerRequest): Promise<unknown> {
     try {
       switch (request.method) {
         case "db.query":
           return await this.#query(request.params);
         case "http.fetch":
           return await this.#fetch(request.params);
+        case "core.call":
+          return await this.#coreCall(request);
         case "log":
           return this.#log(request.params);
         default:
@@ -169,6 +199,102 @@ export class Broker implements BrokerHandler {
         error,
       });
       throw new RpcError(JSON_RPC_ERRORS.internal, "Broker request failed");
+    }
+  }
+
+  async #coreCall(request: BrokerRequest): Promise<unknown> {
+    if (this.#core === undefined) {
+      throw new RpcError(JSON_RPC_ERRORS.methodNotFound, "Core API forwarding is not configured");
+    }
+
+    const params = requireObject(request.params);
+    const method = params.method;
+
+    if (typeof method !== "string") {
+      throw new RpcError(JSON_RPC_ERRORS.invalidParams, "method must be a string");
+    }
+
+    try {
+      return await this.#core.call({
+        pluginId: request.pluginId,
+        method,
+        params: params.params ?? null,
+        viewer: request.viewer ?? GUEST_VIEWER,
+      });
+    } catch (error) {
+      if (error instanceof CoreDeniedError) {
+        this.#stats = { ...this.#stats, denials: this.#stats.denials + 1 };
+        this.#logger.warn("broker.core_denied", { method, reason: error.reason });
+
+        if (error.reason === "request") {
+          throw new RpcError(JSON_RPC_ERRORS.internal, error.message);
+        }
+
+        throw new RpcError(JSON_RPC_ERRORS.denied, error.message, { reason: error.reason });
+      }
+
+      throw error;
+    }
+  }
+
+  /** Applies the per-plugin statement rate and concurrency budget. */
+  async #withDbBudget<T>(task: () => Promise<T>): Promise<T> {
+    if (!this.#budgets.dbRate.take()) {
+      this.#stats = {
+        ...this.#stats,
+        denials: this.#stats.denials + 1,
+        rateLimited: this.#stats.rateLimited + 1,
+      };
+      this.#logger.warn("broker.rate_limited", { resource: "db" });
+      throw new RpcError(JSON_RPC_ERRORS.denied, "Too many database statements", {
+        reason: "rate",
+      });
+    }
+
+    try {
+      return await this.#budgets.dbGate.run(task);
+    } catch (error) {
+      if (error instanceof BrokerLimitError) {
+        this.#stats = {
+          ...this.#stats,
+          denials: this.#stats.denials + 1,
+          concurrencyLimited: this.#stats.concurrencyLimited + 1,
+        };
+        this.#logger.warn("broker.concurrency_limited", { resource: "db" });
+        throw new RpcError(JSON_RPC_ERRORS.denied, error.message, { reason: "concurrency" });
+      }
+
+      throw error;
+    }
+  }
+
+  async #withEgressBudget<T>(task: () => Promise<T>): Promise<T> {
+    if (!this.#budgets.egressRate.take()) {
+      this.#stats = {
+        ...this.#stats,
+        denials: this.#stats.denials + 1,
+        rateLimited: this.#stats.rateLimited + 1,
+      };
+      this.#logger.warn("broker.rate_limited", { resource: "egress" });
+      throw new RpcError(JSON_RPC_ERRORS.denied, "Too many egress requests", {
+        reason: "rate",
+      });
+    }
+
+    try {
+      return await this.#budgets.egressGate.run(task);
+    } catch (error) {
+      if (error instanceof BrokerLimitError) {
+        this.#stats = {
+          ...this.#stats,
+          denials: this.#stats.denials + 1,
+          concurrencyLimited: this.#stats.concurrencyLimited + 1,
+        };
+        this.#logger.warn("broker.concurrency_limited", { resource: "egress" });
+        throw new RpcError(JSON_RPC_ERRORS.denied, error.message, { reason: "concurrency" });
+      }
+
+      throw error;
     }
   }
 
@@ -203,7 +329,9 @@ export class Broker implements BrokerHandler {
     }
 
     try {
-      const result = await this.#database.query(sql, queryParams, statement);
+      const result = await this.#withDbBudget(() =>
+        this.#database.query(sql, queryParams, statement),
+      );
       const serialized = JSON.stringify(result, (_key, value) =>
         typeof value === "bigint" ? value.toString() : value,
       );
@@ -272,12 +400,14 @@ export class Broker implements BrokerHandler {
     const startedAt = performance.now();
 
     try {
-      const response = await this.#egress.request({
-        url,
-        ...(method === undefined ? {} : { method }),
-        ...(headers === undefined ? {} : { headers: headers as Record<string, string> }),
-        ...(body === undefined ? {} : { body }),
-      });
+      const response = await this.#withEgressBudget(() =>
+        this.#egress.request({
+          url,
+          ...(method === undefined ? {} : { method }),
+          ...(headers === undefined ? {} : { headers: headers as Record<string, string> }),
+          ...(body === undefined ? {} : { body }),
+        }),
+      );
       this.#stats = { ...this.#stats, fetches: this.#stats.fetches + 1 };
       this.#logger.debug("broker.fetch", {
         status: response.status,

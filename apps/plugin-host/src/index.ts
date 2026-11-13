@@ -3,6 +3,7 @@ import { createLogger, loadConfig } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
 import { Broker } from "./broker/broker.ts";
 import { BrokerChannel } from "./broker/channel.ts";
+import { CoreApiClient } from "./broker/core.ts";
 import { PluginDatabase } from "./broker/database.ts";
 import { EgressProxy } from "./broker/egress.ts";
 import { loadPluginManifest, loadPluginMigrations } from "./broker/manifest.ts";
@@ -45,7 +46,11 @@ const egress = new EgressProxy({
   allowedHosts: manifest.egressHosts,
   logger: logger.child({ component: "egress" }),
 });
-const broker = new Broker({ database, egress, logger });
+const core = new CoreApiClient({
+  baseUrl: sandboxConfig.coreApiUrl,
+  token: sandboxConfig.coreBrokerToken,
+});
+const broker = new Broker({ database, egress, core, logger });
 const channel = new BrokerChannel({
   socketPath: join(sandboxConfig.stateDir, "broker.sock"),
   logger,
