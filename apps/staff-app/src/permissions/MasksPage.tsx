@@ -1,4 +1,3 @@
-import { capabilityBitMask, FORUM_ACTIONS, type ForumAction } from "@bulletin/domain/permissions";
 import { useT } from "@bulletin/ui";
 import { useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,7 +19,8 @@ interface MatrixView {
   readonly groups: ReadonlyArray<{ id: string; key: string; title: string }>;
   readonly masks: readonly MaskView[];
   readonly forums: ReadonlyArray<{ id: string; parentId: string | null }>;
-  readonly actions: readonly ForumAction[];
+  readonly actions: readonly string[];
+  readonly actionBits: Readonly<Record<string, number>>;
   readonly rows: ReadonlyArray<{
     forumId: string;
     maskId: string;
@@ -47,10 +47,11 @@ const ACTION_LABELS = {
   upload: { labelKey: "staff.masks.action.upload" },
   download: { labelKey: "staff.masks.action.download" },
   vote: { labelKey: "staff.masks.action.vote" },
-} as const satisfies Readonly<Record<ForumAction, { labelKey: string }>>;
+} as const;
 
-function actionLabelKey(action: ForumAction): string {
-  return ACTION_LABELS[action].labelKey;
+function actionLabelKey(action: string): string {
+  const core = ACTION_LABELS[action as keyof typeof ACTION_LABELS];
+  return core?.labelKey ?? `staff.pluginForumAction.${action.replace(/^plugin\./, "")}`;
 }
 
 function maskDraft(mask: MaskView): MaskDraft {
@@ -81,7 +82,7 @@ export function MasksPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [createDraft, setCreateDraft] = useState<MaskDraft>(EMPTY_DRAFT);
   const [editDraft, setEditDraft] = useState<MaskDraft>(EMPTY_DRAFT);
-  const [gridAction, setGridAction] = useState<ForumAction>("read");
+  const [gridAction, setGridAction] = useState<string>("read");
   const [gridAllowed, setGridAllowed] = useState(true);
   const [gridScope, setGridScope] = useState("");
   const query = useQuery({
@@ -317,9 +318,9 @@ export function MasksPage() {
                   <select
                     data-grid-action
                     value={gridAction}
-                    onChange={(event) => setGridAction(event.target.value as ForumAction)}
+                    onChange={(event) => setGridAction(event.target.value)}
                   >
-                    {FORUM_ACTIONS.map((action) => (
+                    {query.data.actions.map((action) => (
                       <option key={action} value={action}>
                         {t(actionLabelKey(action))}
                       </option>
@@ -405,7 +406,7 @@ export function MasksPage() {
                           );
                           const allowed =
                             row !== undefined &&
-                            (row.effectiveActions & capabilityBitMask(gridAction)) !== 0;
+                            (row.effectiveActions & (query.data.actionBits[gridAction] ?? 0)) !== 0;
                           return (
                             <td key={mask.id} data-label={mask.title}>
                               <button
@@ -477,7 +478,7 @@ export function MasksPage() {
                           {query.data.actions.map((action) => {
                             const allowed =
                               row !== undefined &&
-                              (row.effectiveActions & capabilityBitMask(action)) !== 0;
+                              (row.effectiveActions & (query.data.actionBits[action] ?? 0)) !== 0;
                             return (
                               <td key={action} data-label={t(actionLabelKey(action))}>
                                 <button

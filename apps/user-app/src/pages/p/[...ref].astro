@@ -1,0 +1,67 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { safeHtml, sanitiseRenderedMarkup } from "@bulletin/templates";
+import { USER_CATALOGS } from "../../catalogs.ts";
+import { readSql } from "../../db.ts";
+import ThemeLayout from "../../layouts/ThemeLayout.astro";
+import { requestPluginRoute } from "../../plugins/host.ts";
+import { loadPluginsGeneration, renderThemedPage } from "../../theme/render.ts";
+
+const ref = Astro.params.ref ?? "";
+const [pluginId, ...rest] = ref.split("/");
+
+if (pluginId === undefined || !/^[a-z0-9][a-z0-9-]{0,48}$/.test(pluginId) || rest.length === 0) {
+  return new Response("Not found", { status: 404 });
+}
+
+const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const session = Astro.locals.session ?? null;
+const pluginPath = rest.join("/");
+const query = Object.fromEntries(Astro.url.searchParams.entries());
+const response = await requestPluginRoute({
+  pluginId,
+  path: pluginPath,
+  method: "GET",
+  query,
+  viewer: { memberId: session?.memberId ?? null },
+});
+
+if (response.status === 404) {
+  return new Response("Not found", { status: 404 });
+}
+
+if (response.status === 503) {
+  return new Response("Plugin unavailable", { status: 503 });
+}
+
+// Plugin HTML is untrusted: run the theme sanitiser before it becomes SafeHtml, then
+// renderThemePage sanitises the whole page again (ADR 0008, 0009).
+const sanitised = sanitiseRenderedMarkup(response.body).html;
+const page = await renderThemedPage({
+  sql,
+  boardName: Astro.locals.board?.boardName ?? "Bulletin",
+  locale,
+  translate,
+  template: "plugin",
+  viewModel: { content: safeHtml(sanitised) },
+  breadcrumbs: [],
+  route: { route: "plugin.page", requiredIslands: [] },
+  pluginsGeneration,
+  themeId: Astro.locals.themeId,
+});
+
+Astro.response.status = response.status;
+Astro.response.headers.set("cache-control", "private, no-store");
+---
+
+<ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
+  title={`${pluginId} · ${Astro.locals.board?.boardName ?? "Bulletin"}`}
+  locale={locale}
+  body={page.html}
+  visitor={session === null ? "guest" : "member"}
+  serverLocale={locale}
+/>

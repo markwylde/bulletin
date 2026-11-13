@@ -3,7 +3,10 @@
           data-label-redact="{% t "post.redact" %}" data-label-save="{% t "post.save" %}"
           data-label-edit-failed="{% t "post.editFailed" %}" data-label-delete="{% t "post.delete" %}"
           data-label-confirm-delete="{% t "post.confirmDelete" %}">
-          <div class="bl-post__author">{{ post.authorCard }}</div>
+          <div class="bl-post__author">
+            {{ post.authorCard }}
+            {% hook "post.userbar" %}
+          </div>
           <div class="bl-post__main">
             <div class="bl-post__ignored" data-post-ignored hidden>
               <p>{% t "profile.ignore.collapsed" %}</p>

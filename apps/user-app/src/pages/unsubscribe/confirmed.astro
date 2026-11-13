@@ -6,12 +6,13 @@ import { unsubscribeConfirmedContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
 import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
-import { boardNameFrom, PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
+import { boardNameFrom, loadPluginsGeneration, requestColourScheme } from "../../theme/render.ts";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
 import { renderThemedPage } from "../../theme/render.ts";
 import { buildUnsubscribePage } from "../../unsubscribe/page.ts";
 
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const session = Astro.locals.session ?? null;
@@ -34,7 +35,7 @@ const rendered = await renderCachedPage({
       route: unsubscribeConfirmedContract.route,
       visibilityKey: "public",
       theme: null,
-      pluginsGeneration: PLUGIN_GENERATION,
+      pluginsGeneration: pluginsGeneration,
       locale,
       colourScheme:
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),

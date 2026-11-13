@@ -8,7 +8,7 @@ import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
 import { renderThemedNotFound } from "../../theme/not-found.ts";
-import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
+import { boardNameFrom, loadPluginsGeneration, renderThemedPage } from "../../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account/notifications")}`;
 const session = Astro.locals.session ?? null;
@@ -20,6 +20,7 @@ if (session === null) {
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const flags = await loadViewerFlags(sql, session);
 const enabled = flags.values.notifications === true;
 const requestedPage = parseNotificationsPageParam(Astro.url.searchParams.get("page"));
@@ -47,7 +48,7 @@ const rendered = await renderCachedPage({
       route: notificationsContract.route,
       visibilityKey: "member",
       theme: null,
-      pluginsGeneration: PLUGIN_GENERATION,
+      pluginsGeneration: pluginsGeneration,
       locale,
       colourScheme: "system",
       renderFlagsHash: flags.hash,

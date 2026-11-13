@@ -13,7 +13,7 @@ import { applyCacheHeaders, isNotModified, requestHasSession } from "../http/cac
 import ThemeLayout from "../layouts/ThemeLayout.astro";
 import {
   boardNameFrom,
-  PLUGIN_GENERATION,
+  loadPluginsGeneration,
   renderThemedPage,
   requestColourScheme,
 } from "../theme/render.ts";
@@ -21,6 +21,7 @@ import {
 // The rest route serves the dev-only demo (`/_demo/<id>`, which Astro cannot route directly
 // because of the underscore) and the themed 404 for every other unknown path.
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
@@ -84,7 +85,7 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
 
       return bench !== null && /^\d{1,10}$/.test(bench) ? { bench: Number(bench) } : {};
     })(),
-    pluginsGeneration: PLUGIN_GENERATION,
+    pluginsGeneration: pluginsGeneration,
     colourScheme:
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
     cache: runtime.cache,

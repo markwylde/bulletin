@@ -1,4 +1,5 @@
 import { LOG_LEVELS, type Logger, type LogLevel } from "@bulletin/config";
+import type { CacheInvalidator } from "./cache.ts";
 import type { BrokerHandler } from "./channel.ts";
 import { CoreDeniedError, type CoreForwarder, GUEST_VIEWER, type ViewerContext } from "./core.ts";
 import { QueryLimitError, type QueryResult } from "./database.ts";
@@ -32,6 +33,7 @@ export interface BrokerOptions {
   readonly logger: Logger;
   /** SDK core-data forwarding; omitted until the host has a core API configured. */
   readonly core?: CoreForwarder;
+  readonly cache?: CacheInvalidator;
   readonly limits?: BrokerLimitOptions;
 }
 
@@ -43,6 +45,7 @@ export interface BrokerStats {
   readonly failures: number;
   readonly rateLimited: number;
   readonly concurrencyLimited: number;
+  readonly invalidations: number;
 }
 
 export interface BrokerRequest {
@@ -142,6 +145,7 @@ export class Broker implements BrokerHandler {
   readonly #database: BrokerDatabase;
   readonly #egress: BrokerEgress;
   readonly #core: CoreForwarder | undefined;
+  readonly #cache: CacheInvalidator | undefined;
   readonly #budgets: BrokerBudgets;
   readonly #logger: Logger;
   #stats = {
@@ -152,12 +156,14 @@ export class Broker implements BrokerHandler {
     failures: 0,
     rateLimited: 0,
     concurrencyLimited: 0,
+    invalidations: 0,
   };
 
   constructor(options: BrokerOptions) {
     this.#database = options.database;
     this.#egress = options.egress;
     this.#core = options.core;
+    this.#cache = options.cache;
     this.#budgets = createBrokerBudgets(options.limits);
     this.#logger = options.logger.child({ schema: options.database.schema });
   }
@@ -183,6 +189,8 @@ export class Broker implements BrokerHandler {
           return await this.#fetch(request.params);
         case "core.call":
           return await this.#coreCall(request);
+        case "cache.invalidate":
+          return await this.#cacheInvalidate(request);
         case "log":
           return this.#log(request.params);
         default:
@@ -235,6 +243,23 @@ export class Broker implements BrokerHandler {
 
       throw error;
     }
+  }
+
+  async #cacheInvalidate(request: BrokerRequest): Promise<unknown> {
+    if (this.#cache === undefined) {
+      throw new RpcError(JSON_RPC_ERRORS.methodNotFound, "Cache invalidation is not configured");
+    }
+
+    const params = requireObject(request.params);
+    const tags = params.tags;
+
+    if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string")) {
+      throw new RpcError(JSON_RPC_ERRORS.invalidParams, "tags must be an array of strings");
+    }
+
+    const namespaced = await this.#cache.invalidate(request.pluginId, tags as string[]);
+    this.#stats = { ...this.#stats, invalidations: this.#stats.invalidations + 1 };
+    return { tags: namespaced };
   }
 
   /** Applies the per-plugin statement rate and concurrency budget. */

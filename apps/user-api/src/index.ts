@@ -47,6 +47,7 @@ import {
   notificationPreferencesResponse,
   notificationReadResponse,
 } from "./notifications.ts";
+import { pluginApiResponse, pluginBridgeResponse } from "./plugin-routes.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
 import { profileSaveResponse } from "./profile.ts";
 import { reactionMembersResponse, reactionSetResponse } from "./reactions.ts";
@@ -420,6 +421,30 @@ await startService({
           friendResponse(sql, session, request),
         );
       });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const pluginBridgeMatch = /^\/api\/plugins\/([a-z0-9][a-z0-9-]{0,48})\/bridge$/.exec(pathname);
+
+    if (request.method === "POST" && pluginBridgeMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) =>
+        pluginBridgeResponse(pluginBridgeMatch[1] ?? "", request, {
+          memberId: session?.memberId ?? null,
+        }),
+      );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const pluginApiMatch = /^\/api\/p\/([a-z0-9][a-z0-9-]{0,48})\/(.+)$/.exec(pathname);
+
+    if (pluginApiMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) =>
+        pluginApiResponse(pluginApiMatch[1] ?? "", pluginApiMatch[2] ?? "", request, {
+          memberId: session?.memberId ?? null,
+        }),
+      );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

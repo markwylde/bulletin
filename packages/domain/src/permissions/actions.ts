@@ -48,7 +48,72 @@ export const MODERATOR_POWER_BITS: Readonly<Record<ModeratorPower, number>> = Ob
   MODERATOR_POWERS.map((power, index) => [power, FORUM_ACTIONS.length + index]),
 ) as Readonly<Record<ModeratorPower, number>>;
 
-export type CapabilityBit = ForumAction | ModeratorPower;
+export type CapabilityBit = ForumAction | ModeratorPower | PluginForumAction;
+
+/**
+ * Plugin forum actions (ADR 0009). They are appended after every core action and moderator
+ * power, so registering one never renumbers a stored bit. The registry is process-local; the
+ * lifecycle change populates it from installed manifests at startup.
+ */
+export interface PluginForumActionDefinition {
+  readonly key: `plugin.${string}`;
+  readonly labelKey: string;
+}
+
+export type PluginForumAction = `plugin.${string}`;
+
+/**
+ * Loads forum actions installed by plugins from the shared registry. Every service that
+ * checks or renders the matrix calls this once at startup / before building the matrix.
+ */
+export async function loadPluginForumActions(
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>,
+): Promise<void> {
+  const rows = (await sql`
+    SELECT plugin_id, key, definition->>'labelKey' AS label_key
+    FROM core.plugin_registry
+    WHERE kind = 'forum_action'
+    ORDER BY plugin_id, key
+  `) as Array<{ plugin_id: string; key: string; label_key: string | null }>;
+
+  for (const row of rows) {
+    const key = row.key.startsWith("plugin.") ? row.key : `plugin.${row.plugin_id}.${row.key}`;
+
+    registerPluginForumAction({
+      key: key as PluginForumAction,
+      labelKey: row.label_key ?? `plugin.${row.plugin_id}.forumAction.${row.key}`,
+    });
+  }
+}
+
+const pluginForumActions: PluginForumActionDefinition[] = [];
+export const PLUGIN_FORUM_ACTION_BASE = FORUM_ACTIONS.length + MODERATOR_POWERS.length;
+
+export function registerPluginForumAction(definition: PluginForumActionDefinition): void {
+  if (!/^plugin\.[a-z0-9][a-z0-9-]*\.[a-z][a-z0-9_]*$/.test(definition.key)) {
+    throw new TypeError(`Invalid plugin forum action: ${definition.key}`);
+  }
+
+  if (pluginForumActions.some((entry) => entry.key === definition.key)) {
+    return;
+  }
+
+  pluginForumActions.push(definition);
+}
+
+export function pluginForumActionDefinitions(): readonly PluginForumActionDefinition[] {
+  return [...pluginForumActions];
+}
+
+/** Core actions followed by registered plugin actions, in stable bit order. */
+export function matrixForumActions(): readonly (ForumAction | PluginForumAction)[] {
+  return [...FORUM_ACTIONS, ...pluginForumActions.map((entry) => entry.key)];
+}
+
+export function pluginForumActionIndex(action: PluginForumAction): number | undefined {
+  const index = pluginForumActions.findIndex((entry) => entry.key === action);
+  return index === -1 ? undefined : PLUGIN_FORUM_ACTION_BASE + index;
+}
 
 export function isModeratorPower(value: string): value is ModeratorPower {
   return (MODERATOR_POWERS as readonly string[]).includes(value);
@@ -58,8 +123,26 @@ export function isForumAction(value: string): value is ForumAction {
   return (FORUM_ACTIONS as readonly string[]).includes(value);
 }
 
+export function isPluginForumAction(value: string): value is PluginForumAction {
+  return pluginForumActionIndex(value as PluginForumAction) !== undefined;
+}
+
 export function capabilityBitIndex(bit: CapabilityBit): number {
-  return isForumAction(bit) ? FORUM_ACTION_BITS[bit] : MODERATOR_POWER_BITS[bit];
+  if (isForumAction(bit)) {
+    return FORUM_ACTION_BITS[bit];
+  }
+
+  if (isModeratorPower(bit)) {
+    return MODERATOR_POWER_BITS[bit];
+  }
+
+  const index = pluginForumActionIndex(bit);
+
+  if (index === undefined) {
+    throw new TypeError(`Unknown capability bit: ${bit}`);
+  }
+
+  return index;
 }
 
 export function capabilityBitMask(bit: CapabilityBit): number {
@@ -71,13 +154,13 @@ export function hasCapabilityBit(bits: number, bit: CapabilityBit): boolean {
 }
 
 /** Builds the `core.forum_permissions.actions` bitmap from actions. */
-export function forumActionMask(actions: readonly ForumAction[]): number {
+export function forumActionMask(actions: readonly (ForumAction | PluginForumAction)[]): number {
   return actions.reduce((mask, action) => mask | capabilityBitMask(action), 0);
 }
 
 /** Decodes a stored action bitmap, in `FORUM_ACTIONS` order. */
-export function forumActionsFromMask(bits: number): readonly ForumAction[] {
-  return FORUM_ACTIONS.filter((action) => hasCapabilityBit(bits, action));
+export function forumActionsFromMask(bits: number): readonly (ForumAction | PluginForumAction)[] {
+  return matrixForumActions().filter((action) => hasCapabilityBit(bits, action));
 }
 
 /** The group-setting key that grants a moderator power globally (ADR 0005). */

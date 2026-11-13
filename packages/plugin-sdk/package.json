@@ -4,7 +4,12 @@
   "type": "module",
   "description": "Public, versioned SDK that plugins compile against.",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./manifest": "./src/manifest.ts",
+    "./semver": "./src/semver.ts",
+    "./principal": "./src/principal.ts",
+    "./hooks": "./src/hooks.ts",
+    "./bridge": "./src/bridge.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

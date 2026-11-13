@@ -1,2 +1,6 @@
-/** Public, versioned SDK that plugins compile against. */
-export {};
+export * from "./hooks.ts";
+export * from "./manifest.ts";
+export * from "./principal.ts";
+export * from "./protocol.ts";
+export * from "./runtime.ts";
+export * from "./semver.ts";

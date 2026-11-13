@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@bulletin/config";
 import { Broker, type BrokerDatabase, type BrokerEgress } from "./broker.ts";
+import { CacheInvalidator } from "./cache.ts";
 import { type CoreCall, CoreDeniedError, type CoreForwarder } from "./core.ts";
 import type { QueryResult } from "./database.ts";
 import { EgressDeniedError, type EgressRequest, type EgressResponse } from "./egress.ts";
 import type { BrokerLimitOptions } from "./limits.ts";
+
+const cacheLogger = createLogger({ service: "cache-broker-test", level: "error", sink: () => {} });
+
 import { RpcError } from "./protocol.ts";
 import type { AllowedStatement } from "./sql.ts";
 
@@ -79,7 +83,9 @@ function createEgress(): FakeEgress {
   return egress;
 }
 
-function createBroker(options: { limits?: BrokerLimitOptions; core?: CoreForwarder } = {}): {
+function createBroker(
+  options: { limits?: BrokerLimitOptions; core?: CoreForwarder; cache?: CacheInvalidator } = {},
+): {
   broker: Broker;
   database: FakeDatabase;
   egress: FakeEgress;
@@ -99,6 +105,7 @@ function createBroker(options: { limits?: BrokerLimitOptions; core?: CoreForward
       egress,
       logger,
       ...(options.core === undefined ? {} : { core: options.core }),
+      ...(options.cache === undefined ? {} : { cache: options.cache }),
       ...(options.limits === undefined ? {} : { limits: options.limits }),
     }),
     database,
@@ -511,6 +518,45 @@ describe("broker dispatch", () => {
         params: { method: "posts.get" },
       }),
       -32601,
+    );
+  });
+
+  test("invalidates cache tags in the plugin namespace only", async () => {
+    const bumps: string[][] = [];
+    const cache = new CacheInvalidator({
+      bump: async (tags) => {
+        bumps.push([...tags]);
+      },
+      logger: cacheLogger,
+      coalesceMs: 1,
+    });
+    const { broker } = createBroker({ cache });
+
+    await expect(
+      broker.handle({
+        method: "cache.invalidate",
+        pluginId: "sandbox-demo",
+        params: { tags: ["leaderboard", "forum:3"] },
+      }),
+    ).resolves.toEqual({
+      tags: ["plugin:sandbox-demo:leaderboard", "plugin:sandbox-demo:forum:3"],
+    });
+    expect(bumps).toEqual([["plugin:sandbox-demo:leaderboard", "plugin:sandbox-demo:forum:3"]]);
+    expect(bumps[0]).not.toContain("forum:3");
+    expect(broker.stats().invalidations).toBe(1);
+  });
+
+  test("rejects invalid cache.invalidate params", async () => {
+    const cache = new CacheInvalidator({ bump: async () => undefined, logger: cacheLogger });
+    const { broker } = createBroker({ cache });
+
+    await expectRpcError(
+      broker.handle({
+        method: "cache.invalidate",
+        pluginId: "sandbox-demo",
+        params: { tags: "not-an-array" },
+      }),
+      -32602,
     );
   });
 

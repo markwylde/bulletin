@@ -2,8 +2,63 @@
   "id": "sandbox-demo",
   "name": "Sandbox demo plugin",
   "version": "0.0.0",
-  "sdkVersion": "0.0.0",
+  "sdkVersion": "^2.0.0",
   "entry": "server.ts",
+  "capabilities": ["template", "enricher", "filter", "veto", "route", "client", "events", "jobs"],
   "egressHosts": ["example.com"],
-  "migrations": ["migrations/0001_notes.sql"]
+  "migrations": ["migrations/0001_notes.sql"],
+  "templateFragments": [
+    {
+      "name": "post.userbar",
+      "kind": "hook",
+      "body": "<span class=\"bl-demo-userbar\" data-demo-userbar><bl-plugin-app data-plugin-id=\"sandbox-demo\" data-version=\"1\" data-app=\"client/index.html\" data-view=\"{}\"></bl-plugin-app></span>"
+    }
+  ],
+  "enrichers": [
+    {
+      "hook": "home.view",
+      "fields": ["tipTotal"],
+      "deps": ["tips"]
+    }
+  ],
+  "filters": [
+    {
+      "hook": "post.write",
+      "priority": 10
+    }
+  ],
+  "vetoes": [
+    {
+      "hook": "post.write",
+      "reasonKey": "plugin.demo.veto",
+      "failMode": "open"
+    }
+  ],
+  "events": ["topic.created"],
+  "contentExtensions": ["tip"],
+  "routes": [
+    {
+      "path": "tip",
+      "kind": "api"
+    }
+  ],
+  "jobs": [
+    {
+      "name": "leaderboard"
+    }
+  ],
+  "clientApps": [
+    {
+      "name": "tip-jar",
+      "entry": "client/index.html",
+      "hooks": ["post.userbar"]
+    }
+  ],
+  "i18n": {
+    "en": {
+      "plugin.demo.veto": "The demo plugin rejected this post"
+    }
+  },
+  "forumActions": ["can_tip"],
+  "flags": ["tip_jar"]
 }

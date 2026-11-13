@@ -1,7 +1,10 @@
 import { join } from "node:path";
+import { bumpCacheTags } from "@bulletin/cache";
 import { connectionPoolSize, createLogger, loadConfig } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
+import { SQL } from "bun";
 import { Broker } from "./broker/broker.ts";
+import { CacheInvalidator } from "./broker/cache.ts";
 import { BrokerChannel } from "./broker/channel.ts";
 import { PluginConnectionManager } from "./broker/connections.ts";
 import { CoreApiClient } from "./broker/core.ts";
@@ -9,6 +12,10 @@ import { PluginDatabase } from "./broker/database.ts";
 import { EgressProxy } from "./broker/egress.ts";
 import { loadPluginManifest, loadPluginMigrations } from "./broker/manifest.ts";
 import { loadPluginHostConfig } from "./config.ts";
+import { readInternal, serveClientApp } from "./hooks/http.ts";
+import { publishPluginFragments, publishPluginRegistry } from "./hooks/publish.ts";
+import { PluginHookRegistry } from "./hooks/registry.ts";
+import { PluginHookRunner } from "./hooks/runner.ts";
 import { PluginQuotaMonitor, usesSharedPluginCluster } from "./quota/monitor.ts";
 import { runSandboxPreflight } from "./sandbox/preflight.ts";
 import { buildSeccompPolicy, sandboxArch } from "./sandbox/seccomp.ts";
@@ -57,13 +64,38 @@ const core = new CoreApiClient({
   baseUrl: sandboxConfig.coreApiUrl,
   token: sandboxConfig.coreBrokerToken,
 });
-const broker = new Broker({ database, egress, core, logger });
+const cacheSql = new SQL(config.databaseUrl, { max: 1, connectionTimeout: 5 });
+const cache = new CacheInvalidator({
+  bump: async (tags) => {
+    await bumpCacheTags(cacheSql, tags);
+  },
+  logger: logger.child({ component: "cache" }),
+});
+const broker = new Broker({ database, egress, core, cache, logger });
+const hooks = new PluginHookRegistry();
+hooks.install(manifest, { generation: 1 });
+const bundles = new Map([[manifest.id, { manifest, path: sandboxConfig.bundlePath }]]);
 const channel = new BrokerChannel({
   socketPath: join(sandboxConfig.stateDir, "broker.sock"),
   logger,
   handler: broker,
 });
 await channel.start();
+
+const hookRunner = new PluginHookRunner({
+  transport: channel,
+  registry: hooks,
+  logger: logger.child({ component: "hooks" }),
+});
+const hookHttp = {
+  runner: hookRunner,
+  registry: hooks,
+  transport: channel,
+  token: sandboxConfig.internalToken,
+  frameAncestors: [config.userOrigin, config.staffOrigin],
+  logger: logger.child({ component: "hooks" }),
+  bundles,
+};
 
 const sharedCluster = usesSharedPluginCluster({
   nodeEnv: config.nodeEnv,
@@ -89,6 +121,28 @@ const quota = new PluginQuotaMonitor({
 });
 quota.start();
 
+async function publishFragments(attempt = 0): Promise<void> {
+  const sql = new SQL(config.databaseUrl, { max: 1, connectionTimeout: 5 });
+
+  try {
+    await publishPluginFragments(sql, manifest, logger);
+    await publishPluginRegistry(sql, manifest, logger);
+  } catch (error) {
+    if (attempt < 30) {
+      setTimeout(() => {
+        void publishFragments(attempt + 1);
+      }, 2_000).unref?.();
+      return;
+    }
+
+    logger.error("plugin.fragments_publish_failed", { error });
+  } finally {
+    await sql.close().catch(() => undefined);
+  }
+}
+
+void publishFragments();
+
 const supervisor = new SandboxSupervisor({
   pluginId: manifest.id,
   bundlePath: sandboxConfig.bundlePath,
@@ -108,8 +162,19 @@ await startService({
   service: "plugin-host",
   logger,
   port: config.port,
-  fetch(request) {
+  async fetch(request) {
     const url = new URL(request.url);
+    const internal = await readInternal(request, hookHttp);
+
+    if (internal !== undefined) {
+      return internal;
+    }
+
+    const app = await serveClientApp(url, bundles, hookHttp.frameAncestors);
+
+    if (app !== undefined) {
+      return app;
+    }
 
     if (url.pathname === "/sandbox") {
       return Response.json(supervisor.status());
@@ -138,6 +203,8 @@ await startService({
     await supervisor.stop();
     await channel.close();
     await broker.close();
+    await cache.flush();
+    await cacheSql.close().catch(() => undefined);
     await connections.close();
   },
 });

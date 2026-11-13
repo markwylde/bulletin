@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@bulletin/config": "workspace:*",
-    "libpg-query": "^18.2.2"
+    "libpg-query": "^18.2.2",
+    "@bulletin/plugin-sdk": "workspace:*",
+    "@bulletin/cache": "workspace:*"
   },
   "devDependencies": {
     "@bulletin/test-utils": "workspace:*"

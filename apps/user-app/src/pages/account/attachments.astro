@@ -7,7 +7,7 @@ import { readSql } from "../../db.ts";
 import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
-import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../theme/render.ts";
+import { boardNameFrom, loadPluginsGeneration, renderThemedPage } from "../../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account/attachments")}`;
 const session = Astro.locals.session ?? null;
@@ -19,6 +19,7 @@ if (session === null) {
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const flags = await loadViewerFlags(sql, session);
 const page = await buildAttachmentsPage({
   sql,
@@ -38,7 +39,7 @@ const rendered = await renderCachedPage({
       route: attachmentsContract.route,
       visibilityKey: "member",
       theme: null,
-      pluginsGeneration: PLUGIN_GENERATION,
+      pluginsGeneration: pluginsGeneration,
       locale,
       colourScheme: "system",
       renderFlagsHash: "",

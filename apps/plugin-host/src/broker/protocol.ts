@@ -221,3 +221,19 @@ export class FrameDecoder {
     this.#buffer = next;
   }
 }
+
+export interface JsonRpcResponse {
+  readonly jsonrpc: "2.0";
+  readonly id: JsonRpcId | null;
+  readonly result?: unknown;
+  readonly error?: { readonly code: number; readonly message: string; readonly data?: unknown };
+}
+
+/** Broker→plugin replies carry an id and exactly one of result/error, never a method. */
+export function isResponse(value: unknown): value is JsonRpcResponse {
+  if (!isRecord(value) || value.jsonrpc !== "2.0" || !("id" in value) || "method" in value) {
+    return false;
+  }
+
+  return value.id === null || typeof value.id === "string" || typeof value.id === "number";
+}

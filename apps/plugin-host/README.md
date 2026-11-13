@@ -31,6 +31,30 @@ start or a supervisor-side wall-clock kill schedules an exponential restart
 `PLUGIN_HOST_RESTART_MAX`); readiness is false while a restart is pending, and the status
 reports the attempt count and `restartAt`.
 
+## SDK, hooks and plugin apps
+
+`packages/plugin-sdk` is the public, versioned plugin surface: manifest parsing, semver and
+one-major shims, hook registration, a broker client/server, and the principal helper that
+intersections capabilities × viewer × service principal. The same manifest parser validates
+bundles at install time, so a bundle cannot describe hooks the host cannot install.
+
+Core services call plugin-host's token-protected `/internal/*` API for view-model enrichers
+(100 ms per plugin, declared fields/tags only), write filters and vetoes (300 ms shared budget,
+fail-open/fail-closed), content extensions (output re-sanitised by the core), event and job
+delivery, plugin routes, and bridge calls. Each plugin's events and jobs use their own pg-boss
+queues (`plugin.<id>.events`, `plugin.<id>.<job>`).
+
+Template fragments install into `core.hook_fragments` per `pluginsGeneration`, including
+whole-template overrides; toggling or changing a bundle bumps the generation, which changes
+the compile-cache and page variant keys. Plugin routes render under `/p/<plugin>/...` through
+the theme, and API routes proxy under `/api/p/<plugin>/...`.
+
+Client apps are served from the plugin origin (`plugins.<host>`) with a same-origin CSP for
+its own assets and `connect-src 'none'`. The forum frame uses
+`sandbox="allow-scripts allow-forms"` (never `allow-same-origin`). A per-iframe
+`MessageChannel` plus random instance token carries resize/read/route/open/toast messages;
+the host ignores `window` messages entirely, so another frame cannot spoof a call.
+
 ## Container contract and preflight (task 1.1)
 
 ADR 0009 records the capabilities and seccomp profile nsjail needs. Before the broker starts,

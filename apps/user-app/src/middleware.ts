@@ -130,7 +130,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
       // The content pipeline only embeds allowlisted providers, so their exact origins are
       // the only frames the page may load (ADR 0018). A provider read failure fails closed.
-      frameSrc = embedProviderOrigins(await listEmbedProviders(readSql()).catch(() => []));
+      frameSrc = [
+        ...embedProviderOrigins(await listEmbedProviders(readSql()).catch(() => [])),
+        // Plugin client apps are framed from the separate plugin origin (ADR 0009, 0018).
+        Bun.env.BULLETIN_PLUGINS_ORIGIN ??
+          `http://plugins.bulletin.localhost:${Bun.env.BULLETIN_HTTP_PORT ?? "8080"}`,
+      ];
 
       if (sessionContext !== null) {
         context.locals.locale = sessionContext.locale;

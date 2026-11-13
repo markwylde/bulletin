@@ -20,6 +20,8 @@ export interface PluginHostConfig {
   /** Per-plugin schema quota and how often it is measured. */
   readonly storageQuotaBytes: number;
   readonly quotaIntervalMs: number;
+  /** Shared token for core→plugin-host hook calls. */
+  readonly internalToken: string;
   /** Core API base URL the broker forwards SDK data calls to. */
   readonly coreApiUrl: string;
   /** Shared secret for signed broker-to-core calls (development default, ADR 0002). */
@@ -185,6 +187,7 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     pluginDatabaseUrl: read(env, "PLUGIN_DATABASE_URL"),
     storageQuotaBytes: storageQuotaMb * MB,
     quotaIntervalMs,
+    internalToken: read(env, "PLUGIN_INTERNAL_TOKEN") ?? "bulletin-development-only-internal-token",
     coreApiUrl: read(env, "PLUGIN_CORE_API_URL") ?? "http://user-api:3001",
     coreBrokerToken:
       read(env, "PLUGIN_CORE_BROKER_TOKEN") ?? "bulletin-development-only-broker-secret",

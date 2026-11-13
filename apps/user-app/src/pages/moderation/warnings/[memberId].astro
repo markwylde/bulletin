@@ -3,7 +3,7 @@ import { createServerT } from "@bulletin/i18n";
 import { USER_CATALOGS } from "../../../catalogs.ts";
 import { readSql } from "../../../db.ts";
 import ThemeLayout from "../../../layouts/ThemeLayout.astro";
-import { PLUGIN_GENERATION } from "../../../theme/render.ts";
+import { loadPluginsGeneration } from "../../../theme/render.ts";
 import { renderStaffWarningsRoute } from "../../../warnings/route.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent(Astro.url.pathname)}`;
@@ -13,16 +13,18 @@ if (session === null) {
   return Astro.redirect(loginUrl, 303);
 }
 
+const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const result = await renderStaffWarningsRoute({
-  sql: readSql(),
+  sql,
   themeId: Astro.locals.themeId,
   preview: Astro.locals.previewTheme === true,
   locale,
   translate,
   session,
-  pluginsGeneration: PLUGIN_GENERATION,
+  pluginsGeneration: pluginsGeneration,
   colourScheme: "system",
   boardName: Astro.locals.board?.boardName ?? null,
   memberId: Astro.params.memberId ?? "",

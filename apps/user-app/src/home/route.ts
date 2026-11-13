@@ -7,6 +7,7 @@ import { homeContract } from "../contracts.ts";
 import { loadViewerFlags, type ViewerFlags } from "../flags.ts";
 import { type BoardIndexData, buildBoardIndex } from "../forums/index.ts";
 import type { ShellVariant } from "../http/cache.ts";
+import { enrichView } from "../plugins/enrich.ts";
 import type { UserAppSessionContext } from "../session.ts";
 import { type CachedPageResult, pageVariant, renderCachedPage } from "../theme/cached-route.ts";
 import { boardNameFrom, loadActiveTheme, renderThemedPage } from "../theme/render.ts";
@@ -48,9 +49,15 @@ interface HomeData {
 /** The board index at `/` through the shared variant/cache/ETag pipeline (ADR 0006). */
 export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteResult> {
   let title = "";
+  const enrichment = await enrichView({
+    hook: "home.view",
+    route: "home",
+    view: { route: "home" },
+    viewer: { memberId: input.session?.memberId ?? null },
+  });
 
   const rendered = await renderCachedPage<HomeData>({
-    tags: contractTags(homeContract, {}),
+    tags: [...contractTags(homeContract, {}), ...enrichment.tags],
     contentValidator: true,
     cache: input.preview === true ? null : input.cache,
     tagVersions: input.tagVersions ?? null,
@@ -107,6 +114,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
           boardName,
           boardDescription,
           ...index.viewModel,
+          ...enrichment.fields,
           flags: { ...index.viewModel.flags, ...flags.values },
         },
         breadcrumbs: [],

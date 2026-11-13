@@ -20,6 +20,12 @@ integrationDescribe("staff permission masks", () => {
       await waitForSelector(view, '[data-page="masks"]');
       await waitForSelector(view, "[data-mask-create]", 20_000);
       await waitForExpression(view, "!document.querySelector('[data-matrix-disabled]')", 20_000);
+      // An installed plugin's forum action is a matrix column (ADR 0009).
+      expect(
+        await view.evaluate<boolean>(
+          '[...document.querySelectorAll("[data-grid-action] option")].some((option) => option.value === "plugin.sandbox-demo.can_tip")',
+        ),
+      ).toBe(true);
       // The cache revocation windows are documented next to the permission matrix.
       expect(
         await view.evaluate<string>(
@@ -62,7 +68,7 @@ integrationDescribe("staff permission masks", () => {
       await waitForSelector(view, '[data-toast-tone="success"]');
       await waitForExpression(
         view,
-        `[...document.querySelectorAll('[data-grid-cell^="${forumId}:"]')].every(
+        `[...document.querySelectorAll('[data-grid-cell^="${forumId}:"][data-grid-cell$=":read"]')].every(
           (cell) => cell.getAttribute('data-grid-allowed') === 'true'
         )`,
         20_000,

@@ -8,7 +8,7 @@ import ThemeLayout from "../../../layouts/ThemeLayout.astro";
 import { buildReportDetailView } from "../../../reports/page.ts";
 import { readReportDetailFromApi } from "../../../reports/read.ts";
 import { pageVariant, renderCachedPage } from "../../../theme/cached-route.ts";
-import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../../../theme/render.ts";
+import { boardNameFrom, loadPluginsGeneration, renderThemedPage } from "../../../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent(Astro.url.pathname)}`;
 const session = Astro.locals.session ?? null;
@@ -21,6 +21,7 @@ const reportId = Astro.params.id ?? "";
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const flags = await loadViewerFlags(sql, session);
 let status = 200;
 let report = null;
@@ -54,7 +55,7 @@ const rendered = await renderCachedPage({
       params: { id: reportId },
       visibilityKey: "member",
       theme: null,
-      pluginsGeneration: PLUGIN_GENERATION,
+      pluginsGeneration: pluginsGeneration,
       locale,
       colourScheme: "system",
       renderFlagsHash: flags.hash,

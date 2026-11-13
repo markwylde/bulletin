@@ -13,6 +13,10 @@ export const HOOK_POINTS: readonly HookPoint[] = [
     name: "demo.after.topics",
     description: "After the topic list on the development demo route.",
   },
+  {
+    name: "post.userbar",
+    description: "The author/userbar area of a post; hidden by the hide-post-count sample.",
+  },
 ];
 
 export const HOOK_NAMES: readonly string[] = HOOK_POINTS.map((point) => point.name);

@@ -11,8 +11,15 @@ export class BrokerCallError extends Error {
   }
 }
 
+export type BrokerRequestHandler = (request: {
+  readonly id: string | number;
+  readonly method: string;
+  readonly params: unknown;
+}) => Promise<unknown>;
+
 export interface BrokerClient {
   call<T>(method: string, params: unknown, timeoutMs?: number): Promise<T>;
+  onRequest(handler: BrokerRequestHandler): void;
   close(): void;
 }
 
@@ -41,6 +48,7 @@ export async function connectBroker(
   let flushing = false;
   let nextId = 1;
   let socket: Bun.Socket | undefined;
+  let requestHandler: BrokerRequestHandler | undefined;
 
   const flushOutbound = (): void => {
     if (socket === undefined || flushing) {
@@ -112,7 +120,41 @@ export async function connectBroker(
         }
 
         for (const value of values) {
-          if (!isRecord(value) || typeof value.id !== "number") {
+          if (!isRecord(value)) {
+            continue;
+          }
+
+          if (
+            typeof value.method === "string" &&
+            (typeof value.id === "number" || typeof value.id === "string")
+          ) {
+            const id = value.id;
+            void (async () => {
+              try {
+                const result =
+                  requestHandler === undefined
+                    ? null
+                    : await requestHandler({
+                        id,
+                        method: value.method as string,
+                        params: value.params,
+                      });
+                send({ jsonrpc: "2.0", id, result: result ?? null });
+              } catch (error) {
+                send({
+                  jsonrpc: "2.0",
+                  id,
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : String(error),
+                  },
+                });
+              }
+            })();
+            continue;
+          }
+
+          if (typeof value.id !== "number") {
             continue;
           }
 
@@ -165,6 +207,9 @@ export async function connectBroker(
   }
 
   return {
+    onRequest(handler) {
+      requestHandler = handler;
+    },
     call<T>(method: string, params: unknown, timeoutMs = DEFAULT_CALL_TIMEOUT_MS): Promise<T> {
       const id = nextId;
       nextId += 1;

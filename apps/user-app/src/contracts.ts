@@ -376,6 +376,16 @@ export const onlineContract = defineContract({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/** Plugin pages are themed but private (their HTML is never shared through the CDN). */
+export const pluginPageContract = defineContract({
+  route: "/p/[...ref]",
+  templates: { page: "plugin", regions: ["header", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 /** Guest-visible leaderboards; the variant is the current Guests-readable forum set. */
 export const leaderboardContract = defineContract({
   route: "/leaderboards",
@@ -428,6 +438,7 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [memberListContract.route]: memberListContract,
   [onlineContract.route]: onlineContract,
   [leaderboardContract.route]: leaderboardContract,
+  [pluginPageContract.route]: pluginPageContract,
   [unsubscribeContract.route]: unsubscribeContract,
   [unsubscribeConfirmedContract.route]: unsubscribeConfirmedContract,
   [notificationPreferencesContract.route]: notificationPreferencesContract,

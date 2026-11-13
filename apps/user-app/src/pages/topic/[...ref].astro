@@ -5,10 +5,11 @@ import { USER_CATALOGS } from "../../catalogs.ts";
 import { readSql } from "../../db.ts";
 import { applyCacheHeaders, isNotModified, requestHasSession } from "../../http/cache.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
-import { PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
+import { loadPluginsGeneration, requestColourScheme } from "../../theme/render.ts";
 import { renderTopicRoute } from "../../topics/route.ts";
 
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const session = Astro.locals.session ?? null;
@@ -24,7 +25,7 @@ const result = await renderTopicRoute({
   translate,
   session,
   ref: Astro.params.ref ?? "",
-  pluginsGeneration: PLUGIN_GENERATION,
+  pluginsGeneration: pluginsGeneration,
   colourScheme:
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,

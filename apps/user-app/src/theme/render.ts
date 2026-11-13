@@ -6,10 +6,11 @@ import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { BP_COOKIE_NAME, type ColorScheme, parseBpCookie } from "@bulletin/i18n";
 import {
+  applyPluginOverrides,
   createCompileCache,
   createTemplateEngine,
   type LoadedTheme,
-  loadHookFragments,
+  loadPluginFragments,
   loadTheme,
   missingRenderedIslands,
   type RenderedThemePage,
@@ -25,6 +26,9 @@ import type { SQL } from "bun";
 /** The active theme; `themes` adds member and guest theme choice. */
 export const THEME_NAME = "default";
 /** Plugin generation until `plugin-platform` provides the real counter (ADR 0009). */
+export { loadPluginsGeneration } from "@bulletin/templates";
+
+/** Legacy default for tests and callers that do not pass a generation. */
 export const PLUGIN_GENERATION = 1;
 
 const engine = createTemplateEngine({ islands: SERVER_ISLANDS });
@@ -305,16 +309,18 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
   }
 
   const generation = input.pluginsGeneration ?? PLUGIN_GENERATION;
+  const fragments = await loadPluginFragments(input.sql, generation);
+  const activeTheme = applyPluginOverrides(theme, fragments.overrides);
   const errors: string[] = [];
   const failures: FailureReport[] = [];
   const resources = await loadThemeResources(
     input.sql,
-    theme.chain.map((entry) => entry.id),
+    activeTheme.chain.map((entry) => entry.id),
   );
   const translate = themeTranslator(input.locale, resources.strings[input.locale], input.translate);
   const runtime: TemplateRuntime = {
     translate,
-    hooks: await loadHookFragments(input.sql, generation),
+    hooks: fragments.hooks,
     report: (message) => {
       errors.push(message);
       console.warn(`[theme] ${message}`);
@@ -326,7 +332,7 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
       });
     },
   };
-  const compiled = compiledThemes.compile(theme, generation);
+  const compiled = compiledThemes.compile(activeTheme, generation);
   // Content embeds stay in the page only when their frame origin is an enabled provider
   // (ADR 0007, 0008). Provider changes are rare, and this runs on a cache miss only.
   const trustedFrameOrigins = embedProviderOrigins(

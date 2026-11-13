@@ -1,5 +1,6 @@
 import type { Root as HastRoot } from "hast";
 import type { Root as MdastRoot, Parent } from "mdast";
+import rehypeParse from "rehype-parse";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import rehypeStringify from "rehype-stringify";
@@ -57,6 +58,11 @@ export interface RenderContentOptions {
   readonly replaceWords?: ReplaceWords;
   /** Also return the HTML before replace-word transformation (posts store it for reads). */
   readonly keepUnfilteredHtml?: boolean;
+  /**
+   * HTML from plugin content extensions. It is inserted before the core sanitiser, so a
+   * plugin can never store a `<script>` or an attribute the profile forbids (ADR 0009).
+   */
+  readonly pluginHtml?: readonly string[];
 }
 
 function downgradeHeadings(parent: Parent): void {
@@ -133,6 +139,11 @@ function processorFor(
     .use(() => (tree: HastRoot) => {
       if (applyReplaceWords) {
         transformReplaceWords(tree, options.replaceWords);
+      }
+
+      for (const html of options.pluginHtml ?? []) {
+        const fragment = unified().use(rehypeParse, { fragment: true }).parse(html) as HastRoot;
+        tree.children.push(...fragment.children);
       }
     })
     .use(rehypeSanitize, profileSchema(options.profile))

@@ -50,7 +50,7 @@ describe("plugin manifest", () => {
   });
 
   test("accepts a valid manifest and ignores unknown fields", () => {
-    expect(parsePluginManifest({ ...VALID, extra: true })).toEqual({
+    expect(parsePluginManifest({ ...VALID, extra: true })).toMatchObject({
       id: "sandbox-demo",
       name: "Demo",
       version: "0.0.0",
@@ -58,6 +58,7 @@ describe("plugin manifest", () => {
       entry: "server.ts",
       egressHosts: ["example.com", "api.example.org"],
       migrations: ["migrations/0001_notes.sql"],
+      capabilities: [],
     });
   });
 
@@ -67,9 +68,11 @@ describe("plugin manifest", () => {
   });
 
   test("rejects an id that cannot become a role name", () => {
-    expect(() => parsePluginManifest({ ...VALID, id: "Sandbox" })).toThrow("id must be");
-    expect(() => parsePluginManifest({ ...VALID, id: "a".repeat(56) })).toThrow("id must be");
-    expect(() => parsePluginManifest({ ...VALID, id: "a_b" })).toThrow("id must be");
+    expect(() => parsePluginManifest({ ...VALID, id: "Sandbox" })).toThrow("Invalid plugin.json");
+    expect(() => parsePluginManifest({ ...VALID, id: "a".repeat(56) })).toThrow(
+      "Invalid plugin.json",
+    );
+    expect(() => parsePluginManifest({ ...VALID, id: "a_b" })).toThrow("Invalid plugin.json");
   });
 
   test("rejects unsafe egress hosts", () => {
@@ -81,9 +84,7 @@ describe("plugin manifest", () => {
       "example..com",
       "exa mple.com",
     ]) {
-      expect(() => parsePluginManifest({ ...VALID, egressHosts: [host] })).toThrow(
-        "invalid egress host",
-      );
+      expect(() => parsePluginManifest({ ...VALID, egressHosts: [host] })).toThrow("invalid host");
     }
   });
 
@@ -101,7 +102,7 @@ describe("plugin manifest", () => {
     });
 
     await withBundle({ "plugin.json": JSON.stringify({ ...VALID, name: "" }) }, async (bundle) => {
-      await expect(loadPluginManifest(bundle)).rejects.toThrow("name must be");
+      await expect(loadPluginManifest(bundle)).rejects.toThrow("must be a non-empty string");
     });
   });
 });

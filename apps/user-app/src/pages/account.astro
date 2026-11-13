@@ -9,7 +9,7 @@ import ThemeLayout from "../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
 import {
   boardNameFrom,
-  PLUGIN_GENERATION,
+  loadPluginsGeneration,
   renderThemedPage,
   themeChooserView,
 } from "../theme/render.ts";
@@ -24,6 +24,7 @@ if (session === null) {
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const flags = await loadViewerFlags(sql, session);
 const account = await buildAccountPage({
   sql,
@@ -49,7 +50,7 @@ const rendered = await renderCachedPage({
       route: accountContract.route,
       visibilityKey: "member",
       theme: null,
-      pluginsGeneration: PLUGIN_GENERATION,
+      pluginsGeneration: pluginsGeneration,
       locale,
       colourScheme: "system",
       renderFlagsHash: "",

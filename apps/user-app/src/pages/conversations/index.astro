@@ -5,7 +5,7 @@ import { renderConversationsRoute } from "../../conversations/route.ts";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { readSql } from "../../db.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
-import { PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
+import { loadPluginsGeneration, requestColourScheme } from "../../theme/render.ts";
 
 const session = Astro.locals.session ?? null;
 
@@ -16,6 +16,7 @@ if (session === null) {
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const folderParam = Astro.url.searchParams.get("folder");
 const folder: ConversationFolder =
   folderParam === "sent" || folderParam === "archive" ? folderParam : "inbox";
@@ -29,7 +30,7 @@ const result = await renderConversationsRoute({
   session,
   folder,
   ...(query === "" ? {} : { query }),
-  pluginsGeneration: PLUGIN_GENERATION,
+  pluginsGeneration: pluginsGeneration,
   colourScheme:
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   boardName: Astro.locals.board?.boardName ?? null,

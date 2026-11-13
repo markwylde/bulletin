@@ -1,12 +1,13 @@
 import { emit } from "@bulletin/db/events";
 import {
   bumpPermVersion,
+  capabilityBitIndex,
   capabilityBitMask,
-  FORUM_ACTIONS,
-  type ForumAction,
   type ForumMatrixRow,
   isForumAction,
   loadForumTree,
+  loadPluginForumActions,
+  matrixForumActions,
   resolveForumMaskActions,
 } from "@bulletin/domain/permissions";
 import type { SQL } from "bun";
@@ -29,7 +30,8 @@ export interface PermissionMatrixView {
   readonly groups: ReadonlyArray<{ id: string; key: string; title: string }>;
   readonly masks: readonly PermissionMaskView[];
   readonly forums: ReadonlyArray<{ id: string; parentId: string | null }>;
-  readonly actions: readonly ForumAction[];
+  readonly actions: readonly string[];
+  readonly actionBits: Readonly<Record<string, number>>;
   readonly rows: ReadonlyArray<{
     forumId: string;
     maskId: string;
@@ -126,6 +128,7 @@ async function matrixRows(sql: SQL): Promise<readonly ForumMatrixRow[]> {
 }
 
 export async function listPermissionMatrix(sql: SQL): Promise<PermissionMatrixView> {
+  await loadPluginForumActions(sql);
   const tree = await loadForumTree(sql);
   const groups = (await sql`
     SELECT id, key, title FROM core.groups ORDER BY display_order, id
@@ -171,7 +174,10 @@ export async function listPermissionMatrix(sql: SQL): Promise<PermissionMatrixVi
     groups,
     masks,
     forums: tree.ids.map((id) => ({ id, parentId: tree.get(id)?.parentId ?? null })),
-    actions: FORUM_ACTIONS,
+    actions: matrixForumActions(),
+    actionBits: Object.fromEntries(
+      matrixForumActions().map((action) => [action, capabilityBitIndex(action)]),
+    ),
     rows: matrix,
   };
 }

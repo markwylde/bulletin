@@ -4,7 +4,7 @@ import { renderConversationRoute } from "../../conversations/route.ts";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { readSql } from "../../db.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
-import { PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
+import { loadPluginsGeneration, requestColourScheme } from "../../theme/render.ts";
 
 const session = Astro.locals.session ?? null;
 
@@ -13,17 +13,19 @@ if (session === null) {
   return Astro.redirect(`/auth/login?return_to=${encodeURIComponent(returnTo)}`, 303);
 }
 
+const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const result = await renderConversationRoute({
-  sql: readSql(),
+  sql,
   themeId: Astro.locals.themeId,
   preview: Astro.locals.previewTheme === true,
   locale,
   translate,
   session,
   ref: Astro.params.ref ?? "",
-  pluginsGeneration: PLUGIN_GENERATION,
+  pluginsGeneration: pluginsGeneration,
   colourScheme:
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   boardName: Astro.locals.board?.boardName ?? null,

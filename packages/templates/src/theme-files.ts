@@ -39,6 +39,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "conversation",
   "members",
   "online",
+  "plugin",
   "leaderboards",
   "profile",
   "search",

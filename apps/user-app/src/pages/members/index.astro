@@ -7,9 +7,10 @@ import { readSql } from "../../db.ts";
 import { applyCacheHeaders, isNotModified, requestHasSession } from "../../http/cache.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { renderMemberListRoute } from "../../members/route.ts";
-import { PLUGIN_GENERATION, requestColourScheme } from "../../theme/render.ts";
+import { loadPluginsGeneration, requestColourScheme } from "../../theme/render.ts";
 
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const session = Astro.locals.session ?? null;
@@ -24,7 +25,7 @@ const result = await renderMemberListRoute({
   translate,
   session,
   params: Astro.url.searchParams,
-  pluginsGeneration: PLUGIN_GENERATION,
+  pluginsGeneration: pluginsGeneration,
   colourScheme:
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,

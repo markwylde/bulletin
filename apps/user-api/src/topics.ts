@@ -28,6 +28,8 @@ import {
 } from "@bulletin/domain/topics";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
+import { apiTranslator } from "./catalogs.ts";
+import { pluginWriteClient } from "./plugins.ts";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
@@ -36,6 +38,7 @@ interface Session {
   /** The auth record's `id`; tests pass `sessionId` directly. */
   readonly id?: string;
   readonly sessionId?: string;
+  readonly locale?: "en" | "es" | "fr" | null;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -166,6 +169,24 @@ export async function createTopicResponse(
     return json({ code: "invalid_poll" }, 400);
   }
 
+  const bodyMd = typeof body.bodyMd === "string" ? body.bodyMd : "";
+  const filtered = await pluginWriteClient.filter({
+    hook: "post.write",
+    content: bodyMd,
+    context: { authorId: session.memberId, forumId },
+    viewer: { memberId: session.memberId },
+  });
+
+  if (filtered.veto !== undefined) {
+    return json(
+      {
+        code: "plugin_veto",
+        reason: apiTranslator(session.locale ?? "en")(filtered.veto.reasonKey),
+      },
+      422,
+    );
+  }
+
   const result = await withPostFloodLock(sql, session.memberId, async (locked) => {
     const wait = await postFloodWait(locked, session.memberId);
 
@@ -178,7 +199,7 @@ export async function createTopicResponse(
       forumId,
       sessionId: session.id ?? session.sessionId ?? null,
       title: typeof body.title === "string" ? body.title : "",
-      bodyMd: typeof body.bodyMd === "string" ? body.bodyMd : "",
+      bodyMd: filtered.content,
       ...(typeof body.prefixId === "string" ? { prefixId: body.prefixId } : {}),
       ...(poll === null || poll === undefined ? {} : { poll }),
       ...(options.followsEnabled === undefined ? {} : { autoFollow: options.followsEnabled }),
@@ -226,7 +247,24 @@ export async function replyResponse(
     return json({ code: "invalid_request" }, 400);
   }
 
-  const bodyMd = body.bodyMd;
+  const filtered = await pluginWriteClient.filter({
+    hook: "post.write",
+    content: body.bodyMd,
+    context: { authorId: session.memberId, topicId },
+    viewer: { memberId: session.memberId },
+  });
+
+  if (filtered.veto !== undefined) {
+    return json(
+      {
+        code: "plugin_veto",
+        reason: apiTranslator(session.locale ?? "en")(filtered.veto.reasonKey),
+      },
+      422,
+    );
+  }
+
+  const bodyMd = filtered.content;
 
   const result = await withPostFloodLock(sql, session.memberId, async (locked) => {
     const wait = await postFloodWait(locked, session.memberId);

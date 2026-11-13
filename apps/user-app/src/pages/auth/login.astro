@@ -8,11 +8,12 @@ import { readSql } from "../../db.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import {
   boardNameFrom,
-  PLUGIN_GENERATION,
+  loadPluginsGeneration,
   requestColourScheme,
 } from "../../theme/render.ts";
 
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const session = Astro.locals.session ?? null;
@@ -26,7 +27,7 @@ const rendered = await renderAuthRoute({
   translate,
   template: loginContract.templates.page,
   contract: loginContract,
-  pluginsGeneration: PLUGIN_GENERATION,
+  pluginsGeneration: pluginsGeneration,
   colourScheme:
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,

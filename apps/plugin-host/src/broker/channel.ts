@@ -9,10 +9,12 @@ import {
   FrameError,
   failure,
   isRequest,
+  isResponse,
   JSON_RPC_ERRORS,
   type JsonRpcId,
   type JsonRpcNotification,
   type JsonRpcRequest,
+  type JsonRpcResponse,
   parseMessage,
   RpcError,
   success,
@@ -68,6 +70,12 @@ interface BrokerSocket {
   end(): void;
 }
 
+interface PendingBrokerCall {
+  readonly resolve: (value: unknown) => void;
+  readonly reject: (error: Error) => void;
+  readonly timer: ReturnType<typeof setTimeout>;
+}
+
 interface Connection {
   readonly decoder: FrameDecoder;
   pluginId: string | null;
@@ -78,6 +86,7 @@ interface Connection {
   outboundOffset: number;
   outboundBytes: number;
   flushing: boolean;
+  readonly calls: Map<JsonRpcId, PendingBrokerCall>;
 }
 
 function parseHello(params: unknown): PluginHello | undefined {
@@ -116,6 +125,8 @@ export class BrokerChannel {
   #listener: { stop(closeActiveConnections?: boolean): void } | undefined;
   readonly #connections = new WeakMap<BrokerSocket, Connection>();
   readonly #sockets = new Set<BrokerSocket>();
+  #active: BrokerSocket | undefined;
+  #nextCallId = 0;
   #hello:
     | {
         resolve(hello: PluginHello): void;
@@ -183,6 +194,7 @@ export class BrokerChannel {
             outboundOffset: 0,
             outboundBytes: 0,
             flushing: false,
+            calls: new Map(),
           });
         },
         data: (socket, data) => {
@@ -195,7 +207,18 @@ export class BrokerChannel {
           if (connection !== undefined) {
             connection.outbound.length = 0;
             connection.outboundBytes = 0;
+
+            for (const call of connection.calls.values()) {
+              clearTimeout(call.timer);
+              call.reject(new Error("Plugin disconnected"));
+            }
+
+            connection.calls.clear();
             this.#connections.delete(socket);
+          }
+
+          if (this.#active === socket) {
+            this.#active = undefined;
           }
 
           if (this.#hello !== undefined) {
@@ -283,6 +306,11 @@ export class BrokerChannel {
     }
 
     for (const frame of frames) {
+      if (frame.kind === "message" && isResponse(frame.value)) {
+        this.#settle(connection, frame.value);
+        continue;
+      }
+
       if (frame.kind === "invalid_json") {
         this.#send(socket, connection, failure(null, JSON_RPC_ERRORS.parse, frame.message));
         continue;
@@ -433,6 +461,7 @@ export class BrokerChannel {
     }
 
     connection.pluginId = hello.pluginId;
+    this.#active = socket;
 
     if (id !== null) {
       this.#send(socket, connection, success(id, null));
@@ -448,6 +477,62 @@ export class BrokerChannel {
     clearTimeout(pending.timer);
     this.#logger.info("broker.hello", { pluginId: hello.pluginId });
     pending.resolve(hello);
+  }
+
+  /**
+   * Sends a broker→plugin request (hook dispatch) and resolves with the plugin's reply.
+   * One channel serves one plugin sandbox, so the most recently hello'd connection is the
+   * target; a missing or closed connection fails the call and the caller applies its
+   * hook failure policy.
+   */
+  request<T = unknown>(method: string, params: unknown, timeoutMs = 1_000): Promise<T> {
+    const socket = this.#active;
+    const connection = socket === undefined ? undefined : this.#connections.get(socket);
+
+    if (socket === undefined || connection === undefined || connection.pluginId === null) {
+      return Promise.reject(new Error("No plugin is connected to the broker"));
+    }
+
+    const id = `broker-${String(++this.#nextCallId)}`;
+
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        connection.calls.delete(id);
+        reject(new Error(`Plugin call ${method} timed out after ${timeoutMs} ms`));
+      }, timeoutMs);
+      timer.unref?.();
+
+      connection.calls.set(id, {
+        resolve: (value) => {
+          resolve(value as T);
+        },
+        reject,
+        timer,
+      });
+      this.#send(socket, connection, { jsonrpc: "2.0", id, method, params });
+    });
+  }
+
+  #settle(connection: Connection, response: JsonRpcResponse): void {
+    if (response.id === null) {
+      return;
+    }
+
+    const call = connection.calls.get(response.id);
+
+    if (call === undefined) {
+      return;
+    }
+
+    connection.calls.delete(response.id);
+    clearTimeout(call.timer);
+
+    if (response.error !== undefined) {
+      call.reject(new RpcError(response.error.code, response.error.message, response.error.data));
+      return;
+    }
+
+    call.resolve(response.result);
   }
 
   #send(socket: BrokerSocket, connection: Connection, message: unknown): void {

@@ -122,6 +122,56 @@ afterEach(async () => {
 });
 
 describe("broker channel", () => {
+  test("sends a broker-to-plugin request and resolves with the reply", async () => {
+    const channel = await createChannel();
+    const client = await connect(channel.socketPath);
+    client.write(helloNotification());
+    await channel.waitForHello(500);
+
+    const call = channel.request<{ fields: Record<string, unknown> }>("hook.enrich", {
+      hook: "post.view",
+    });
+    const request = (await client.next()) as { id: unknown; method: string; params: unknown };
+    expect(request).toMatchObject({ method: "hook.enrich", params: { hook: "post.view" } });
+    client.write({ jsonrpc: "2.0", id: request.id, result: { fields: { tip: 5 } } });
+
+    await expect(call).resolves.toEqual({ fields: { tip: 5 } });
+    client.socket.end();
+  });
+
+  test("rejects a broker-to-plugin request when no plugin is connected", async () => {
+    const channel = await createChannel();
+    await expect(channel.request("hook.enrich", {})).rejects.toThrow("No plugin is connected");
+  });
+
+  test("rejects a broker-to-plugin request on its deadline", async () => {
+    const channel = await createChannel();
+    const client = await connect(channel.socketPath);
+    client.write(helloNotification());
+    await channel.waitForHello(500);
+
+    await expect(channel.request("hook.enrich", {}, 20)).rejects.toThrow("timed out");
+    client.socket.end();
+  });
+
+  test("propagates a plugin error response", async () => {
+    const channel = await createChannel();
+    const client = await connect(channel.socketPath);
+    client.write(helloNotification());
+    await channel.waitForHello(500);
+
+    const call = channel.request("hook.enrich", {});
+    const request = (await client.next()) as { id: unknown };
+    client.write({
+      jsonrpc: "2.0",
+      id: request.id,
+      error: { code: -32603, message: "boom" },
+    });
+
+    await expect(call).rejects.toBeInstanceOf(RpcError);
+    client.socket.end();
+  });
+
   test("resolves the supervisor on a hello notification", async () => {
     const channel = await createChannel();
     const hello = channel.waitForHello(2_000);

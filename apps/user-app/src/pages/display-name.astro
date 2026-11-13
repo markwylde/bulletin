@@ -8,7 +8,7 @@ import { loadViewerFlags } from "../flags.ts";
 import { buildDisplayNamePage, displayNameLabels } from "../display-name/page.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../theme/cached-route.ts";
-import { boardNameFrom, PLUGIN_GENERATION, renderThemedPage } from "../theme/render.ts";
+import { boardNameFrom, loadPluginsGeneration, renderThemedPage } from "../theme/render.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/display-name")}`;
 const session = Astro.locals.session ?? null;
@@ -29,6 +29,7 @@ const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
 const page = buildDisplayNamePage({ returnTo, currentName: session.displayName, translate });
 const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
 const flags = await loadViewerFlags(sql, session);
 // A personal, no-store page: the shared pipeline runs but retains nothing (ADR 0006).
 const rendered = await renderCachedPage({
@@ -41,7 +42,7 @@ const rendered = await renderCachedPage({
       route: displayNameContract.route,
       visibilityKey: "member",
       theme: null,
-      pluginsGeneration: PLUGIN_GENERATION,
+      pluginsGeneration: pluginsGeneration,
       locale,
       colourScheme: "system",
       renderFlagsHash: "",

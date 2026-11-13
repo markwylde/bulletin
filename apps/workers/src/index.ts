@@ -44,6 +44,8 @@ import {
   createNotificationsFanoutWorker,
   NOTIFICATION_FANOUT_QUEUE,
 } from "./notifications.ts";
+import { createPluginJobs, type PluginJobQueue as PluginJobsQueue } from "./plugin-jobs.ts";
+import { createPluginEventJobs, type PluginJobQueue } from "./plugins.ts";
 import { createReputationEventHandler } from "./reputation.ts";
 
 const config = loadConfig();
@@ -76,8 +78,26 @@ const boss = await createPgBossQueue({
 const purgeUrl = Bun.env.BULLETIN_CDN_PURGE_URL;
 const purger = purgeUrl === undefined ? undefined : createCdnPurger({ url: purgeUrl });
 
+const pluginEvents = await createPluginEventJobs({
+  sql,
+  queue: boss.boss as unknown as PluginJobQueue,
+  hostUrl: Bun.env.PLUGIN_HOST_INTERNAL_URL ?? "http://plugin-host:3004",
+  token: Bun.env.PLUGIN_INTERNAL_TOKEN ?? "bulletin-development-only-internal-token",
+  logger: logger.child({ component: "plugin-events" }),
+});
+await pluginEvents.start();
+
+const pluginJobs = await createPluginJobs({
+  sql,
+  queue: boss.boss as unknown as PluginJobsQueue,
+  hostUrl: Bun.env.PLUGIN_HOST_INTERNAL_URL ?? "http://plugin-host:3004",
+  token: Bun.env.PLUGIN_INTERNAL_TOKEN ?? "bulletin-development-only-internal-token",
+  logger: logger.child({ component: "plugin-jobs" }),
+});
+await pluginJobs.start();
+
 // The core subscriber handles cache invalidation; notifications reacts to content and member
-// facts. Later changes add their own handlers (ADR 0011).
+// facts. Plugins receive their events through their own queues (ADR 0009, 0011).
 const subscribers: EventSubscriber[] = [
   { name: "core", types: "*" },
   {
@@ -102,6 +122,7 @@ const subscribers: EventSubscriber[] = [
     types: ["post.approved", "post.created", "topic.created", "reaction.added", "reputation.given"],
   },
   { name: "reputation", types: ["reputation.recount.requested"] },
+  { name: "plugins", types: "*" },
 ];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
 const enqueueEmail = async (intentId: string): Promise<void> => {
@@ -161,6 +182,7 @@ const eventWorker = await createEventWorker({
       enqueueFanout,
     }),
     badges: createBadgeEventHandler({ sql, logger }),
+    plugins: (event) => pluginEvents.dispatch(event).then(() => undefined),
   },
   logger,
 });
@@ -251,6 +273,8 @@ await startService({
     await reputationJobs.stop();
     await searchJobs.stop();
     await eventWorker.stop();
+    await pluginEvents.stop();
+    await pluginJobs.stop();
     await boss.stop();
   },
 }).catch(async (error: unknown) => {

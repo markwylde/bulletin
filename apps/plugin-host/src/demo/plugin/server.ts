@@ -19,7 +19,55 @@ interface QueryResult {
   readonly rows: Array<Record<string, unknown>>;
 }
 
-const client = await connectBroker(socketPath, { pluginId, sdkVersion: "0.0.0" });
+const client = await connectBroker(socketPath, { pluginId, sdkVersion: "2.0.0" });
+
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+client.onRequest(async ({ method, params }) => {
+  const input = record(params);
+
+  switch (method) {
+    case "hook.enrich":
+      return { fields: { tipTotal: 5 }, tags: ["tips"] };
+    case "hook.filter":
+      return { content: String(input.content ?? "").replaceAll("teh", "the") };
+    case "hook.veto":
+      return String(input.content ?? "").includes("blocked by demo")
+        ? { allow: false, reasonKey: "plugin.demo.veto" }
+        : { allow: true };
+    case "content.extend":
+      return { html: `<span class="bl-tip-demo">${String(input.source ?? "")}</span>` };
+    case "route.request":
+    case "bridge.request": {
+      const viewer = record(input.viewer);
+      return {
+        status: 200,
+        headers: { "content-type": "text/plain; charset=utf-8" },
+        body: `viewer:${typeof viewer.memberId === "string" ? viewer.memberId : "guest"}`,
+      };
+    }
+    case "event.deliver":
+      await client.call("log", {
+        level: "info",
+        message: "demo plugin received an event",
+        fields: { type: input.type },
+      });
+      return null;
+    case "job.run":
+      await client.call("log", {
+        level: "info",
+        message: "demo plugin ran a job",
+        fields: { name: input.name },
+      });
+      return null;
+    default:
+      throw new Error(`Unknown hook method: ${method}`);
+  }
+});
 
 try {
   const inserted = await client.call<QueryResult>("db.query", {
