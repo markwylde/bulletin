@@ -58,11 +58,11 @@ async function selectTheme(
   await setInputValue(view, `${scope} [data-appearance-theme]`, value);
   await waitForSelector(view, `${scope} [data-appearance-save]:not([disabled])`, 20_000);
   await clickSelector(view, `${scope} [data-appearance-save]`);
-  await waitForSelector(
-    view,
-    '[data-theme-footer][data-theme-variant="sunset"], [data-theme-footer][data-theme-variant="vip"]',
-    20_000,
-  );
+  // Callers selecting a theme without a variant (the board default) wait for
+  // the attribute to disappear themselves.
+  if (expectedVariant !== undefined) {
+    await waitForSelector(view, `[data-theme-footer]${expectedVariant}`, 20_000);
+  }
 }
 
 async function checkPages(view: Bun.WebView, member: boolean, variant: string): Promise<void> {
