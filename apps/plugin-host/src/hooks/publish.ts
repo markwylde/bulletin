@@ -60,6 +60,31 @@ export async function publishPluginFragments(
     return { generation, changed: false };
   }
 
+  // First start of a fresh board: sample seed fragments already live at generation 1, so the
+  // demo host joins that generation instead of bumping and hiding them.
+  if (existing.length === 0) {
+    const anyRows = (await sql`
+      SELECT 1 FROM core.hook_fragments WHERE plugin_id = ${manifest.id} LIMIT 1
+    `) as unknown[];
+
+    if (anyRows.length === 0 && generation === 1) {
+      for (const fragment of wanted) {
+        await sql`
+          INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
+          VALUES (${generation}, ${fragment.name}, ${fragment.body}, ${manifest.id}, ${fragment.kind})
+          ON CONFLICT DO NOTHING
+        `;
+      }
+
+      logger.info("plugin.fragments_published", {
+        pluginId: manifest.id,
+        generation,
+        fragments: wanted.length,
+      });
+      return { generation, changed: true };
+    }
+  }
+
   const next = generation + 1;
 
   await sql`

@@ -1,0 +1,33 @@
+{
+  "id": "welcome-bot",
+  "name": "Welcome bot",
+  "version": "1.0.0",
+  "sdkVersion": "^2.0.0",
+  "entry": "server.ts",
+  "capabilities": ["events", "jobs", "core.read", "settings"],
+  "egressHosts": [],
+  "migrations": ["migrations/0001_greetings.sql"],
+  "events": ["member.created"],
+  "jobs": [{ "name": "digest" }],
+  "personalData": [{ "table": "greetings", "memberColumn": "member_id" }],
+  "settings": {
+    "id": "welcome-bot",
+    "extensionPoint": "acp.groups.settings",
+    "sections": [
+      {
+        "id": "main",
+        "titleKey": "plugin.welcome.settings.title",
+        "fields": [
+          {
+            "id": "greeting",
+            "type": "text",
+            "labelKey": "plugin.welcome.greeting",
+            "required": true,
+            "maxLength": 200
+          },
+          { "id": "enabled", "type": "toggle", "labelKey": "plugin.welcome.enabled" }
+        ]
+      }
+    ]
+  }
+}

@@ -41,9 +41,9 @@
 
 ## 6. Strings, samples and seed
 
-- [ ] 6.1 Add en/es/fr strings for the plugin manager, capability descriptions and errors; verify completeness, and that sample plugin catalogs validate
-- [ ] 6.2 Build the three sample plugins and publish them in `mocks/marketplace`; seed `hide-post-count` (disabled), `welcome-bot` and `tip-jar` (enabled); verify they work after `docker compose up --watch`
-- [ ] 6.3 Write `docs/plugins/` (SDK guide, hook reference, capability list, sandbox limits) and verify the sample plugins follow it
+- [x] 6.1 Add en/es/fr strings for the plugin manager, capability descriptions and errors; verify completeness, and that sample plugin catalogs validate
+- [x] 6.2 Build the three sample plugins and publish them in `mocks/marketplace`; seed `hide-post-count` (disabled), `welcome-bot` and `tip-jar` (enabled); verify they work after `docker compose up --watch`
+- [x] 6.3 Write `docs/plugins/` (SDK guide, hook reference, capability list, sandbox limits) and verify the sample plugins follow it
 
 ## 7. Feature flag
 

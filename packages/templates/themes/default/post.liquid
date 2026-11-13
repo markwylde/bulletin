@@ -60,9 +60,11 @@
               <details class="bl-post__deleted" data-post-deleted>
                 <summary>{% t "post.deleted" %}</summary>
                 <div class="bl-post__body">{{ post.body }}</div>
+            {% hook "post.after.body" %}
               </details>
             {% else %}
               <div class="bl-post__body" data-post-body>{{ post.body }}</div>
+              {% hook "post.after.body" %}
             {% endif %}
             {% if flags.attachments and post.files %}
               <div class="bl-post__attachments" data-post-files="{{ post.id }}">{{ post.files }}</div>

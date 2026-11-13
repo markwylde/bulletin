@@ -4,6 +4,8 @@ FROM oven/bun:1.4.0-alpine AS deps
 
 WORKDIR /app
 COPY . .
+# Architecture tests read the plugin guides; docs are excluded from the normal build context.
+COPY docs ./docs
 RUN bun install --frozen-lockfile
 
 FROM deps AS test

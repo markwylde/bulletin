@@ -13,6 +13,7 @@ export * from "./members.ts";
 export * from "./moderator-assignments.ts";
 export * from "./notifications.ts";
 export * from "./permission-fixtures.ts";
+export * from "./plugins.ts";
 export * from "./profiles.ts";
 export * from "./reactions.ts";
 export * from "./reputation.ts";

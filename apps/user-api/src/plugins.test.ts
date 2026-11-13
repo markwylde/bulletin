@@ -21,6 +21,7 @@ describe("plugin write filters", () => {
 
   test("returns a veto with its translated reason key", async () => {
     const client = createPluginWriteClient({
+      url: "http://plugin-host:3004",
       fetch: async () =>
         Response.json({
           content: "teh cat",
@@ -36,6 +37,7 @@ describe("plugin write filters", () => {
 
   test("fails open when plugin-host is down", async () => {
     const client = createPluginWriteClient({
+      url: "http://plugin-host:3004",
       fetch: async () => {
         throw new Error("down");
       },

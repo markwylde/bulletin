@@ -140,6 +140,7 @@ export function PluginsPage() {
       setSelected(null);
       void queryClient.invalidateQueries({ queryKey: ["staff", "plugins"] });
     },
+    onError: () => setMessage(t("staff.plugins.uninstallFailed")),
   });
   const disable = useMutation({
     mutationFn: (pluginId: string) => apiPost("/api/staff/plugins/disable", { pluginId }),
@@ -147,6 +148,7 @@ export function PluginsPage() {
       setMessage(t("staff.plugins.disabled"));
       void queryClient.invalidateQueries({ queryKey: ["staff", "plugins"] });
     },
+    onError: () => setMessage(t("staff.plugins.disableFailed")),
   });
 
   const active = plugins.data?.plugins.find((plugin) => plugin.id === selected) ?? null;

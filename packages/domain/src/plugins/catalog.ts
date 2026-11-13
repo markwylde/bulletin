@@ -106,7 +106,7 @@ export function parsePluginCatalog(value: unknown): PluginCatalog {
       description,
       author,
       sdkVersion,
-      sdkMajor: Number(/^(\d+)/.exec(sdkVersion)?.[1] ?? "0"),
+      sdkMajor: Number(/(\d+)/.exec(sdkVersion)?.[1] ?? "0"),
       capabilities,
       bundleUrl,
       signatureUrl,

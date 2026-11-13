@@ -1,0 +1,44 @@
+{
+  "id": "tip-jar",
+  "name": "Tip jar",
+  "version": "1.0.0",
+  "sdkVersion": "^2.0.0",
+  "entry": "server.ts",
+  "capabilities": ["template", "route", "client", "core.read", "settings"],
+  "egressHosts": [],
+  "migrations": ["migrations/0001_tips.sql"],
+  "routes": [{ "path": "tip", "kind": "api" }],
+  "forumActions": ["can_tip"],
+  "flags": ["tip_jar"],
+  "templateFragments": [
+    {
+      "name": "post.after.body",
+      "kind": "hook",
+      "body": "<bl-plugin-app data-plugin-id=\"tip-jar\" data-version=\"1\" data-app=\"client/index.html\" data-view=\"{}\"></bl-plugin-app>",
+      "deps": ["tips"]
+    }
+  ],
+  "clientApps": [{ "name": "tip-jar", "entry": "client/index.html", "hooks": ["post.after.body"] }],
+  "personalData": [{ "table": "tips", "memberColumn": "member_id" }],
+  "settings": {
+    "id": "tip-jar",
+    "extensionPoint": "acp.groups.settings",
+    "sections": [
+      {
+        "id": "main",
+        "titleKey": "plugin.tips.settings.title",
+        "fields": [
+          {
+            "id": "currency",
+            "type": "select",
+            "labelKey": "plugin.tips.currency",
+            "options": [
+              { "value": "EUR", "labelKey": "plugin.tips.currency.eur" },
+              { "value": "USD", "labelKey": "plugin.tips.currency.usd" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -9,7 +9,6 @@ export interface Enrichment {
 }
 
 const EMPTY: Enrichment = { fields: {}, tags: [], failures: [] };
-const DEFAULT_URL = "http://plugin-host:3004";
 const DEFAULT_TOKEN = "bulletin-development-only-internal-token";
 
 export interface EnrichInput {
@@ -28,7 +27,14 @@ export interface EnrichInput {
  * so the page still renders (the host itself enforces the 100 ms per-enricher deadline).
  */
 export async function enrichView(input: EnrichInput): Promise<Enrichment> {
-  const url = (input.url ?? Bun.env.PLUGIN_HOST_INTERNAL_URL ?? DEFAULT_URL).replace(/\/+$/, "");
+  const configured = input.url ?? Bun.env.PLUGIN_HOST_INTERNAL_URL;
+
+  if (configured === undefined || configured === "") {
+    // Tests and minimal deployments without a plugin-host simply render without enrichments.
+    return EMPTY;
+  }
+
+  const url = configured.replace(/\/+$/, "");
   const token = input.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
   const request = input.fetch ?? ((target, init) => globalThis.fetch(target, init));
 

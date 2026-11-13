@@ -1,0 +1,18 @@
+{
+  "id": "hide-post-count",
+  "name": "Hide post count",
+  "version": "1.0.0",
+  "sdkVersion": "^2.0.0",
+  "entry": "server.ts",
+  "capabilities": ["template"],
+  "egressHosts": [],
+  "migrations": [],
+  "templateFragments": [
+    {
+      "name": "post.userbar",
+      "kind": "override",
+      "body": "<span class=\"bl-post-userbar\" data-post-userbar></span>",
+      "deps": []
+    }
+  ]
+}

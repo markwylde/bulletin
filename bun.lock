@@ -15,6 +15,7 @@
         "@bulletin/i18n": "workspace:*",
         "@bulletin/mock-mail": "workspace:*",
         "@bulletin/mock-s3": "workspace:*",
+        "@bulletin/plugin-sdk": "workspace:*",
         "@bulletin/storage": "workspace:*",
         "@bulletin/templates": "workspace:*",
         "@bulletin/test-utils": "workspace:*",

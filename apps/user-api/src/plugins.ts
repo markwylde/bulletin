@@ -35,11 +35,20 @@ export interface PluginWriteClientOptions {
   readonly logger?: Logger;
 }
 
-const DEFAULT_URL = "http://plugin-host:3004";
 const DEFAULT_TOKEN = "bulletin-development-only-internal-token";
 
 export function createPluginWriteClient(options: PluginWriteClientOptions = {}): PluginWriteClient {
-  const url = (options.url ?? Bun.env.PLUGIN_HOST_INTERNAL_URL ?? DEFAULT_URL).replace(/\/+$/, "");
+  const configured = options.url ?? Bun.env.PLUGIN_HOST_INTERNAL_URL;
+
+  if (configured === undefined || configured === "") {
+    return {
+      async filter(input) {
+        return { content: input.content };
+      },
+    };
+  }
+
+  const url = configured.replace(/\/+$/, "");
   const token = options.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
   const request = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
   const timeoutMs = options.timeoutMs ?? 1_000;

@@ -17,6 +17,10 @@ export const HOOK_POINTS: readonly HookPoint[] = [
     name: "post.userbar",
     description: "The author/userbar area of a post; hidden by the hide-post-count sample.",
   },
+  {
+    name: "post.after.body",
+    description: "After a post body, used by the tip-jar sample client app.",
+  },
 ];
 
 export const HOOK_NAMES: readonly string[] = HOOK_POINTS.map((point) => point.name);

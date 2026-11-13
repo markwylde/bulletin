@@ -93,7 +93,7 @@ describe("marketplace mock", () => {
 describe("marketplace plugin package", () => {
   test("serves a signed plugin bundle whose checksum and manifest are valid", async () => {
     const packages = await buildPluginPackages();
-    const entry = packages[0];
+    const entry = packages.find((candidate) => candidate.package.id === "welcome-bot");
 
     if (entry === undefined) {
       throw new Error("missing plugin package");
@@ -115,8 +115,20 @@ describe("marketplace plugin package", () => {
     const manifest = JSON.parse(new TextDecoder().decode(files.get("plugin.json")));
     expect(parsePluginManifest(manifest)).toMatchObject({
       id: "welcome-bot",
-      capabilities: ["events", "jobs", "core.read"],
+      capabilities: ["events", "jobs", "core.read", "settings"],
     });
     expect(files.has("server.ts")).toBe(true);
+  });
+});
+
+describe("sample plugin catalogs", () => {
+  test("every shipped sample manifest validates against the SDK schema", async () => {
+    const root = new URL("../plugins/", import.meta.url);
+    const ids = ["hide-post-count", "welcome-bot", "tip-jar"];
+
+    for (const id of ids) {
+      const value = await Bun.file(new URL(`${id}/plugin.json`, root)).json();
+      expect(() => parsePluginManifest(value)).not.toThrow();
+    }
   });
 });

@@ -1,4 +1,6 @@
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { bumpCacheTags } from "@bulletin/cache";
 import { connectionPoolSize, createLogger, loadConfig } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
@@ -75,6 +77,18 @@ const broker = new Broker({ database, egress, core, cache, logger });
 const hooks = new PluginHookRegistry();
 hooks.install(manifest, { generation: 1 });
 const bundles = new Map([[manifest.id, { manifest, path: sandboxConfig.bundlePath }]]);
+const sampleRoot = fileURLToPath(new URL("../../../mocks/marketplace/plugins", import.meta.url));
+
+// Sample plugin client apps are served from their source bundles; only the demo bundle has a
+// running sandbox in local development.
+for (const id of await readdir(sampleRoot).catch(() => [] as string[])) {
+  try {
+    const path = join(sampleRoot, id);
+    bundles.set(id, { manifest: await loadPluginManifest(path), path });
+  } catch {
+    // A non-plugin directory in the samples folder is not served.
+  }
+}
 const channel = new BrokerChannel({
   socketPath: join(sandboxConfig.stateDir, "broker.sock"),
   logger,

@@ -31,7 +31,7 @@ integrationDescribe("staff plugin manager", () => {
       ).toBe("active");
       expect(
         await view.evaluate<string>(
-          'document.querySelector("[data-plugin-capabilities]").innerText',
+          "document.querySelector('[data-plugin-card=\"sandbox-demo\"] [data-plugin-capabilities]').innerText",
         ),
       ).toContain("Receive domain events");
       expect(

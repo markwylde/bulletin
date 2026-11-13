@@ -15,6 +15,7 @@ import { membersSeedModule } from "./members.ts";
 import { moderationSeedModule } from "./moderation.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
 import { notificationsSeedModule } from "./notifications.ts";
+import { pluginSeedModule } from "./plugins.ts";
 import { profilesSeedModule } from "./profiles.ts";
 import { reactionsSeedModule } from "./reactions.ts";
 import { reputationSeedModule } from "./reputation.ts";
@@ -76,6 +77,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         flagsSeedModule,
         themesSeedModule,
         demoThemesSeedModule,
+        pluginSeedModule,
       ]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",
