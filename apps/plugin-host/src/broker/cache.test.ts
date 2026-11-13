@@ -60,6 +60,43 @@ describe("plugin cache invalidation", () => {
     expect(bumps).toHaveLength(2);
   });
 
+  test("does not acknowledge a later batch while an earlier bump is in flight", async () => {
+    let releaseFirst: () => void = () => undefined;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const bumps: string[][] = [];
+    const invalidator = new CacheInvalidator({
+      bump: async (tags) => {
+        bumps.push([...tags]);
+
+        if (bumps.length === 1) {
+          await firstGate;
+        }
+      },
+      logger,
+      coalesceMs: 1,
+    });
+
+    const first = invalidator.invalidate("tips", ["one"]);
+    await Bun.sleep(10);
+    expect(bumps).toEqual([["plugin:tips:one"]]);
+
+    let secondSettled = false;
+    const second = invalidator.invalidate("tips", ["two"]).then(() => {
+      secondSettled = true;
+    });
+
+    await Bun.sleep(10);
+    expect(secondSettled).toBe(false);
+    expect(bumps).toEqual([["plugin:tips:one"]]);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(secondSettled).toBe(true);
+    expect(bumps).toEqual([["plugin:tips:one"], ["plugin:tips:two"]]);
+  });
+
   test("rejects a failed bump and retries the pending tags next time", async () => {
     let fail = true;
     const bumps: string[][] = [];

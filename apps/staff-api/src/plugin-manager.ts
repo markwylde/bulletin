@@ -2,6 +2,7 @@ import { queueSystemAudit } from "@bulletin/domain/audit";
 import {
   advancePluginsGeneration,
   advancePluginsGenerationInTransaction,
+  dropPluginNamespace,
   grantElevatedAccess,
   reviewCapabilities,
 } from "@bulletin/domain/plugins";
@@ -453,12 +454,9 @@ export async function uninstallPlugin(
   await disablePlugin(sql, pluginId, actorId);
 
   if (dataAction !== "keep") {
-    const schema = `plugin_${pluginId.replaceAll("-", "_")}`;
-    const owner = `${schema}_owner`;
-    await sql.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-    await sql.unsafe(`DROP OWNED BY "${schema}", "${owner}"`);
-    await sql.unsafe(`DROP ROLE IF EXISTS "${schema}"`);
-    await sql.unsafe(`DROP ROLE IF EXISTS "${owner}"`);
+    // Ownership-checked and role-namespaced, so dropping this plugin can never drop another
+    // plugin's schema or objects (ADR 0009).
+    await dropPluginNamespace(sql, pluginId);
   }
 
   await sql`DELETE FROM core.plugin_registry WHERE plugin_id = ${pluginId}`;

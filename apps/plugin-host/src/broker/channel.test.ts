@@ -36,6 +36,8 @@ interface Client {
   write(value: unknown): void;
   writeRaw(frame: Uint8Array): void;
   next(): Promise<unknown>;
+  /** Messages received but not yet consumed. */
+  size(): number;
   pause(): void;
   resume(): void;
 }
@@ -78,6 +80,9 @@ async function connect(socketPath: string): Promise<Client> {
     },
     resume() {
       socket.resume();
+    },
+    size() {
+      return messages.length;
     },
     async next() {
       const deadline = Date.now() + 2_000;
@@ -187,6 +192,42 @@ describe("broker channel", () => {
   test("rejects a broker-to-plugin request when no plugin is connected", async () => {
     const channel = await createChannel();
     await expect(channel.request("hook.enrich", {})).rejects.toThrow("No plugin is connected");
+  });
+
+  test("counts queue time towards a hook call's deadline and drops it when it expires", async () => {
+    const channel = await createChannel();
+    const client = await connect(channel.socketPath);
+    client.write(helloNotification());
+    await channel.waitForHello(500);
+
+    // The first call holds the sandbox; the second one is queued behind it and must time out
+    // on its own budget rather than after it is finally dispatched.
+    const first = channel.requestWithContext(
+      "hook.enrich",
+      { hook: "first" },
+      { memberId: "1" },
+      2_000,
+    );
+    const firstRequest = (await client.next()) as { id: unknown };
+
+    const started = performance.now();
+    const second = channel.requestWithContext(
+      "hook.filter",
+      { hook: "second" },
+      { memberId: "1" },
+      40,
+    );
+
+    await expect(second).rejects.toThrow("timed out");
+    expect(performance.now() - started).toBeLessThan(500);
+
+    client.write({ jsonrpc: "2.0", id: firstRequest.id, result: { fields: {} } });
+    await expect(first).resolves.toEqual({ fields: {} });
+
+    // The expired call never reached the plugin.
+    await Bun.sleep(50);
+    expect(client.size()).toBe(0);
+    client.socket.end();
   });
 
   test("rejects a broker-to-plugin request on its deadline", async () => {

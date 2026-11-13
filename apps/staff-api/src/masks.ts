@@ -1,7 +1,6 @@
 import { emit } from "@bulletin/db/events";
 import {
   bumpPermVersion,
-  capabilityBitIndex,
   capabilityBitMask,
   type ForumMatrixRow,
   isForumAction,
@@ -32,6 +31,7 @@ export interface PermissionMatrixView {
   readonly masks: readonly PermissionMaskView[];
   readonly forums: ReadonlyArray<{ id: string; parentId: string | null }>;
   readonly actions: readonly string[];
+  /** Action name → its single-bit mask, the same encoding as `effectiveActions`. */
   readonly actionBits: Readonly<Record<string, number>>;
   readonly rows: ReadonlyArray<{
     forumId: string;
@@ -177,7 +177,7 @@ export async function listPermissionMatrix(sql: SQL): Promise<PermissionMatrixVi
     forums: tree.ids.map((id) => ({ id, parentId: tree.get(id)?.parentId ?? null })),
     actions: matrixForumActions(),
     actionBits: Object.fromEntries(
-      matrixForumActions().map((action) => [action, capabilityBitIndex(action)]),
+      matrixForumActions().map((action) => [action, capabilityBitMask(action)]),
     ),
     rows: matrix,
   };

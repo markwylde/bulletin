@@ -50,7 +50,14 @@ function mark(element: Element, attribute: string, value: string): void {
 export function hydrateIslands(options: HydrateIslandsOptions = {}): void {
   const root = options.root ?? document;
   const report = options.report ?? defaultReport;
+  const started = new WeakSet<Element>();
   const hydrate = async (element: Element): Promise<void> => {
+    if (started.has(element)) {
+      return;
+    }
+
+    started.add(element);
+
     const name = element.getAttribute(NAME_ATTRIBUTE) ?? "";
     const definition = CLIENT_ISLANDS[name];
 
@@ -113,5 +120,31 @@ export function hydrateIslands(options: HydrateIslandsOptions = {}): void {
 
   for (const island of pending) {
     observer.observe(island);
+  }
+
+  // Islands far below the fold must still become interactive without a scroll: a long post
+  // (for example one carrying plugin client apps) can push them past any fixed preload
+  // margin, and deep links or restored scroll positions rely on the same widgets. Hydrate the
+  // rest once the page has loaded, in an idle slice, so the first paint stays untouched.
+  const hydrateRemaining = (): void => {
+    observer.disconnect();
+
+    for (const island of pending) {
+      void hydrate(island);
+    }
+  };
+  const scheduleRemaining = (): void => {
+    if (typeof requestIdleCallback === "function") {
+      requestIdleCallback(hydrateRemaining, { timeout: 2_000 });
+      return;
+    }
+
+    setTimeout(hydrateRemaining, 0);
+  };
+
+  if (document.readyState === "complete") {
+    scheduleRemaining();
+  } else {
+    window.addEventListener("load", scheduleRemaining, { once: true });
   }
 }

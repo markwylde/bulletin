@@ -4,7 +4,13 @@ import { createLogger } from "@bulletin/config";
 import { withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
 import { PluginConnectionManager } from "./connections.ts";
-import { dropPlugin, PluginDatabase, pluginIdentifiers, pluginRoleUrl } from "./database.ts";
+import {
+  dropPlugin,
+  PluginDatabase,
+  PluginNamespaceCollisionError,
+  pluginIdentifiers,
+  pluginRoleUrl,
+} from "./database.ts";
 import { MigrationDeniedError } from "./migration.ts";
 import { assertAllowedSql } from "./sql.ts";
 
@@ -554,6 +560,173 @@ integrationDescribe("plugin database roles", () => {
         await second?.close();
         await first?.close();
         await dropPlugin({ adminUrl: database.url, pluginId });
+      }
+    });
+  }, 20_000);
+
+  test("keeps colliding plugin ids in disjoint roles and uninstalls only its own", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_collide" }, async (database) => {
+      // `demo-owner` used to become `plugin_demo_owner`, which was plugin `demo`'s owner role,
+      // and `migrator` used to become the platform's `plugin_migrator` login role.
+      const ids = ["demo", "demo-owner", "migrator"] as const;
+      const migrations = [
+        {
+          name: "0001_items.sql",
+          sql: `
+            CREATE TABLE items (body text NOT NULL);
+            INSERT INTO items (body) VALUES ('row');
+          `,
+        },
+      ];
+      const plugins = new Map<string, PluginDatabase>();
+
+      try {
+        for (const pluginId of ids) {
+          // Clean leftovers from an interrupted earlier run of this test.
+          await dropPlugin({ adminUrl: database.url, pluginId }).catch(() => undefined);
+          plugins.set(
+            pluginId,
+            await PluginDatabase.open({
+              adminUrl: database.url,
+              pluginId,
+              migrations,
+              logger,
+            }),
+          );
+        }
+
+        const namespaces = ids.map((pluginId) => pluginIdentifiers(pluginId));
+        const allNames = namespaces.flatMap((entry) => [
+          entry.schema,
+          entry.runtimeRole,
+          entry.ownerRole,
+        ]);
+        expect(new Set(allNames).size).toBe(allNames.length);
+
+        const migratorRole = (await database.sql`
+          SELECT 1 FROM pg_roles WHERE rolname = 'plugin_migrator'
+        `) as unknown[];
+        expect(migratorRole).toHaveLength(1);
+
+        // Each runtime role sees its own schema only.
+        for (const namespace of namespaces) {
+          const plugin = plugins.get(namespace.pluginId);
+
+          if (plugin === undefined) {
+            throw new Error("Missing provisioned plugin");
+          }
+
+          const own = await assertAllowedSql("SELECT body FROM items", {
+            schema: plugin.schema,
+            pluginFunctions: plugin.functions,
+          });
+          expect(await plugin.query("SELECT body FROM items", [], own)).toMatchObject({
+            rows: [{ body: "row" }],
+          });
+
+          for (const sibling of namespaces) {
+            if (sibling.pluginId === namespace.pluginId) {
+              continue;
+            }
+
+            await expect(
+              database.sql.begin(async (transaction) => {
+                await transaction.unsafe(`SET LOCAL ROLE ${namespace.runtimeRole}`);
+                return transaction.unsafe(`SELECT * FROM "${sibling.schema}".items`);
+              }),
+            ).rejects.toThrow(/permission denied/i);
+          }
+        }
+
+        // Uninstalling `demo` drops only its own namespace.
+        const demo = plugins.get("demo");
+        await demo?.close();
+        plugins.delete("demo");
+        await dropPlugin({ adminUrl: database.url, pluginId: "demo" });
+
+        const demoOwner = plugins.get("demo-owner");
+
+        if (demoOwner === undefined) {
+          throw new Error("Missing demo-owner plugin");
+        }
+
+        const select = await assertAllowedSql("SELECT count(*)::int AS count FROM items", {
+          schema: demoOwner.schema,
+          pluginFunctions: demoOwner.functions,
+        });
+        expect(
+          await demoOwner.query("SELECT count(*)::int AS count FROM items", [], select),
+        ).toMatchObject({ rows: [{ count: 1 }] });
+
+        const demoRoles = (await database.sql`
+          SELECT count(*)::int AS count FROM pg_roles
+          WHERE rolname IN (${pluginIdentifiers("demo").runtimeRole}, ${pluginIdentifiers("demo").ownerRole})
+        `) as Array<{ count: number }>;
+        expect(demoRoles[0]?.count).toBe(0);
+
+        // Uninstalling the plugin called `migrator` must never drop `plugin_migrator`.
+        const migrator = plugins.get("migrator");
+        await migrator?.close();
+        plugins.delete("migrator");
+        await dropPlugin({ adminUrl: database.url, pluginId: "migrator" });
+
+        const migratorAfter = (await database.sql`
+          SELECT rolcanlogin FROM pg_roles WHERE rolname = 'plugin_migrator'
+        `) as Array<{ rolcanlogin: boolean }>;
+        expect(migratorAfter).toEqual([{ rolcanlogin: true }]);
+      } finally {
+        await Promise.all(
+          [...plugins.values()].map((plugin) => plugin.close().catch(() => undefined)),
+        );
+
+        for (const pluginId of ids) {
+          await dropPlugin({ adminUrl: database.url, pluginId }).catch(() => undefined);
+        }
+      }
+    });
+  }, 60_000);
+
+  test("refuses a derived role that belongs to another owner", async () => {
+    if (adminUrl === undefined) {
+      return;
+    }
+
+    await withTestDatabase({ adminUrl, prefix: "plugin_foreign_role" }, async (database) => {
+      const pluginId = "demo-owner";
+      const identifiers = pluginIdentifiers(pluginId);
+
+      await dropPlugin({ adminUrl: database.url, pluginId }).catch(() => undefined);
+      await database.sql.unsafe(`CREATE ROLE ${identifiers.runtimeRole} NOLOGIN`);
+
+      try {
+        await expect(
+          PluginDatabase.open({
+            adminUrl: database.url,
+            pluginId,
+            migrations: MIGRATIONS,
+            logger,
+          }),
+        ).rejects.toBeInstanceOf(PluginNamespaceCollisionError);
+
+        // The foreign role was not taken over, and no schema was created in its name.
+        const rows = (await database.sql`
+          SELECT
+            (SELECT count(*)::int FROM pg_roles WHERE rolname = ${identifiers.runtimeRole}) AS roles,
+            (SELECT count(*)::int FROM pg_namespace WHERE nspname = ${identifiers.schema}) AS schemas
+        `) as Array<{ roles: number; schemas: number }>;
+        expect(rows[0]).toEqual({ roles: 1, schemas: 0 });
+
+        await expect(dropPlugin({ adminUrl: database.url, pluginId })).rejects.toBeInstanceOf(
+          PluginNamespaceCollisionError,
+        );
+      } finally {
+        await database.sql.unsafe(`DROP OWNED BY ${identifiers.runtimeRole}`);
+        await database.sql.unsafe(`DROP ROLE IF EXISTS ${identifiers.runtimeRole}`);
+        await dropPlugin({ adminUrl: database.url, pluginId }).catch(() => undefined);
       }
     });
   }, 20_000);

@@ -80,6 +80,19 @@ interface PendingBrokerCall {
   readonly timer: ReturnType<typeof setTimeout>;
 }
 
+interface QueuedInvocation {
+  readonly method: string;
+  readonly params: unknown;
+  readonly viewer: ViewerContext;
+  /** Absolute `performance.now()` deadline, started when the call is enqueued. */
+  readonly deadline: number;
+  readonly timeoutMs: number;
+  readonly resolve: (value: unknown) => void;
+  readonly reject: (error: Error) => void;
+  timer?: ReturnType<typeof setTimeout>;
+  settled: boolean;
+}
+
 interface Connection {
   readonly decoder: FrameDecoder;
   pluginId: string | null;
@@ -133,7 +146,8 @@ export class BrokerChannel {
   #active: BrokerSocket | undefined;
   #nextCallId = 0;
   #invocationViewer: ViewerContext | undefined;
-  #invocationQueue: Promise<unknown> = Promise.resolve();
+  #invocations: QueuedInvocation[] = [];
+  #dispatchingInvocations = false;
   #hello:
     | {
         resolve(hello: PluginHello): void;
@@ -281,6 +295,12 @@ export class BrokerChannel {
       clearTimeout(this.#hello.timer);
       this.#hello.reject(new Error("Broker channel closed"));
       this.#hello = undefined;
+    }
+
+    for (const invocation of this.#invocations.splice(0)) {
+      this.#settleInvocation(invocation, () => {
+        invocation.reject(new Error("Broker channel closed"));
+      });
     }
 
     this.#listener?.stop(true);
@@ -518,6 +538,11 @@ export class BrokerChannel {
   /**
    * Sends a hook request with the trusted viewer context. Broker calls the plugin makes while
    * handling it (core.*) see that viewer; requests are serialized so contexts cannot mix.
+   *
+   * The deadline starts when the call is enqueued, not when it reaches the sandbox: an
+   * enricher or write filter has a fixed budget no matter how many hook calls are queued
+   * ahead of it (ADR 0009). A call that expires while queued is rejected without ever being
+   * written to the plugin.
    */
   requestWithContext<T = unknown>(
     method: string,
@@ -525,21 +550,96 @@ export class BrokerChannel {
     viewer: ViewerContext,
     timeoutMs = 1_000,
   ): Promise<T> {
-    const run = async (): Promise<T> => {
-      this.#invocationViewer = viewer;
+    return new Promise<T>((resolve, reject) => {
+      const invocation: QueuedInvocation = {
+        method,
+        params,
+        viewer,
+        deadline: performance.now() + timeoutMs,
+        timeoutMs,
+        resolve: (value) => {
+          resolve(value as T);
+        },
+        reject,
+        settled: false,
+      };
+      invocation.timer = setTimeout(() => {
+        this.#settleInvocation(invocation, () => {
+          reject(new Error(`Plugin call ${method} timed out after ${timeoutMs} ms`));
+        });
+      }, timeoutMs);
+      invocation.timer.unref?.();
+      this.#invocations.push(invocation);
+      void this.#drainInvocations();
+    });
+  }
 
-      try {
-        return await this.request<T>(method, params, timeoutMs);
-      } finally {
-        this.#invocationViewer = undefined;
+  async #drainInvocations(): Promise<void> {
+    if (this.#dispatchingInvocations) {
+      return;
+    }
+
+    this.#dispatchingInvocations = true;
+
+    try {
+      for (;;) {
+        const invocation = this.#invocations.shift();
+
+        if (invocation === undefined) {
+          return;
+        }
+
+        if (invocation.settled) {
+          // Expired while queued: it never reaches the sandbox.
+          continue;
+        }
+
+        const remaining = invocation.deadline - performance.now();
+
+        if (remaining <= 0) {
+          this.#settleInvocation(invocation, () => {
+            invocation.reject(
+              new Error(
+                `Plugin call ${invocation.method} timed out after ${invocation.timeoutMs} ms`,
+              ),
+            );
+          });
+          continue;
+        }
+
+        this.#invocationViewer = invocation.viewer;
+
+        try {
+          const value = await this.request(invocation.method, invocation.params, remaining);
+          this.#settleInvocation(invocation, () => {
+            invocation.resolve(value);
+          });
+        } catch (error) {
+          this.#settleInvocation(invocation, () => {
+            invocation.reject(error instanceof Error ? error : new Error(String(error)));
+          });
+        } finally {
+          this.#invocationViewer = undefined;
+        }
       }
-    };
-    const result = this.#invocationQueue.then(run, run);
-    this.#invocationQueue = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
+    } finally {
+      this.#dispatchingInvocations = false;
+    }
+  }
+
+  /** Settles a queued invocation once; the queue and its deadline timer can both race. */
+  #settleInvocation(invocation: QueuedInvocation, settle: () => void): void {
+    if (invocation.settled) {
+      return;
+    }
+
+    invocation.settled = true;
+
+    if (invocation.timer !== undefined) {
+      clearTimeout(invocation.timer);
+    }
+
+    settle();
   }
 
   request<T = unknown>(method: string, params: unknown, timeoutMs = 1_000): Promise<T> {

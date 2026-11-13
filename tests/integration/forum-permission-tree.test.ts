@@ -2,11 +2,16 @@ import { describe, expect, test } from "bun:test";
 import { displayNameSkeleton } from "@bulletin/domain/member";
 import {
   CapabilityView,
+  capabilityBitMask,
   createPermissionService,
   loadForumTree,
 } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
-import { listPermissionMatrix, saveMatrixCell } from "../../apps/staff-api/src/masks.ts";
+import {
+  bulkToggleMatrix,
+  listPermissionMatrix,
+  saveMatrixCell,
+} from "../../apps/staff-api/src/masks.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -196,6 +201,52 @@ integrationDescribe("real forum tree permissions", () => {
       expect(matrix.enabled).toBe(true);
       expect(leafRow?.actions).toBe(3);
       expect(rootRow?.actions).toBe(0);
+    });
+  }, 30_000);
+
+  test("a row bulk stores a bit mask the matrix grid can decode", async () => {
+    await withDb("forum_permission_bulk", async (database) => {
+      const actor = await createMember(database, "Bulk Admin", ["administrators"]);
+      const linkedMask = await createLinkedMask(database, "bulk_linked");
+      // A freshly created mask has no forum rows yet; the grid still has to show it granted.
+      const emptyMask = await createLinkedMask(database, "bulk_empty");
+      const category = await createForum(database, {
+        title: "Bulk category",
+        slug: "bulk-category",
+        type: "category",
+      });
+      const child = await createForum(database, {
+        title: "Bulk child",
+        slug: "bulk-child",
+        parentId: category,
+      });
+
+      const result = await bulkToggleMatrix(database.sql, actor, {
+        forumId: category,
+        permissionAction: "read",
+        allowed: true,
+      });
+
+      expect(result).toEqual({ ok: true });
+
+      const matrix = await listPermissionMatrix(database.sql);
+
+      // The grid ANDs `effectiveActions` with `actionBits`, so these are masks, not indexes.
+      expect(matrix.actionBits.show).toBe(capabilityBitMask("show"));
+      expect(matrix.actionBits.read).toBe(capabilityBitMask("read"));
+      expect(matrix.actionBits.read).not.toBe(1);
+
+      for (const forumId of [category, child]) {
+        for (const maskId of [linkedMask, emptyMask]) {
+          const row = matrix.rows.find(
+            (candidate) => candidate.forumId === forumId && candidate.maskId === maskId,
+          );
+
+          expect(row).toBeDefined();
+          expect(((row?.effectiveActions ?? 0) & matrix.actionBits.read) !== 0).toBe(true);
+          expect(((row?.effectiveActions ?? 0) & matrix.actionBits.show) !== 0).toBe(false);
+        }
+      }
     });
   }, 30_000);
 });

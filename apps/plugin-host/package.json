@@ -11,7 +11,8 @@
     "@bulletin/config": "workspace:*",
     "libpg-query": "^18.2.2",
     "@bulletin/plugin-sdk": "workspace:*",
-    "@bulletin/cache": "workspace:*"
+    "@bulletin/cache": "workspace:*",
+    "@bulletin/domain": "workspace:*"
   },
   "devDependencies": {
     "@bulletin/test-utils": "workspace:*"

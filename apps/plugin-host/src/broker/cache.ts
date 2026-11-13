@@ -6,6 +6,10 @@ import { TokenBucket } from "./limits.ts";
  * `forum:3` becomes `plugin:<id>:forum:3`, so a plugin can never invalidate core output.
  * Excess calls are coalesced into one bump instead of failing: a plugin job that updates many
  * rows benefits from one invalidation, and the core stays bounded.
+ *
+ * Each coalescing window is its own batch. Batches flush one after another, and a caller is
+ * acknowledged only when the bump that contains its tags has committed — a bump that is
+ * already in flight never acknowledges a later call whose tags it did not include.
  */
 
 export type BumpTags = (tags: readonly string[]) => Promise<void>;
@@ -32,16 +36,26 @@ export class CacheRateLimitError extends Error {
   }
 }
 
+interface Waiter {
+  readonly resolve: () => void;
+  readonly reject: (error: Error) => void;
+}
+
+interface FlushBatch {
+  readonly tags: Set<string>;
+  readonly waiters: Waiter[];
+  timer: ReturnType<typeof setTimeout> | undefined;
+}
+
 export class CacheInvalidator {
   readonly #bump: BumpTags;
   readonly #logger: Logger;
   readonly #bucket: TokenBucket;
   readonly #coalesceMs: number;
-  readonly #pending = new Set<string>();
-  #flushTimer: ReturnType<typeof setTimeout> | undefined;
-  #flushing: Promise<void> | undefined;
-  #resolveFlush: (() => void) | undefined;
-  #rejectFlush: ((error: Error) => void) | undefined;
+  /** Tags collected since the last batch started flushing; new calls join this batch. */
+  #open: FlushBatch | undefined;
+  /** Batches flush one at a time, in the order they were closed. */
+  #flushing: Promise<void> = Promise.resolve();
   #coalesced = 0;
 
   constructor(options: CacheInvalidatorOptions) {
@@ -84,62 +98,103 @@ export class CacheInvalidator {
       throw new CacheRateLimitError();
     }
 
+    const batch = this.#openBatch();
+    const settled = new Promise<void>((resolve, reject) => {
+      batch.waiters.push({ resolve, reject });
+    });
+
     for (const tag of namespaced) {
-      this.#pending.add(tag);
+      if (batch.tags.has(tag)) {
+        this.#coalesced += 1;
+      }
+
+      batch.tags.add(tag);
     }
 
-    this.#schedule();
-    await this.#flushing;
+    this.#schedule(batch);
+    await settled;
 
     return namespaced;
   }
 
   /** Flushes now; used on shutdown and by tests. */
   async flush(): Promise<void> {
-    if (this.#flushTimer !== undefined) {
-      clearTimeout(this.#flushTimer);
-      this.#flushTimer = undefined;
+    const batch = this.#open;
+
+    if (batch !== undefined) {
+      if (batch.timer !== undefined) {
+        clearTimeout(batch.timer);
+        batch.timer = undefined;
+      }
+
+      this.#enqueue(batch);
     }
 
-    const tags = [...this.#pending];
-    this.#pending.clear();
+    await this.#flushing;
+  }
+
+  #openBatch(): FlushBatch {
+    this.#open ??= { tags: new Set(), waiters: [], timer: undefined };
+    return this.#open;
+  }
+
+  #schedule(batch: FlushBatch): void {
+    if (batch.timer !== undefined) {
+      return;
+    }
+
+    batch.timer = setTimeout(() => {
+      batch.timer = undefined;
+      this.#enqueue(batch);
+    }, this.#coalesceMs);
+    batch.timer.unref?.();
+  }
+
+  #enqueue(batch: FlushBatch): void {
+    if (this.#open === batch) {
+      this.#open = undefined;
+    }
+
+    // Custom promises keep the chain from wedging if a bump fails; the failure is reported
+    // to that batch's callers instead.
+    this.#flushing = this.#flushing.then(
+      () => this.#run(batch),
+      () => this.#run(batch),
+    );
+  }
+
+  async #run(batch: FlushBatch): Promise<void> {
+    const tags = [...batch.tags];
+    batch.tags.clear();
 
     if (tags.length === 0) {
-      this.#resolveFlush?.();
+      for (const waiter of batch.waiters) {
+        waiter.resolve();
+      }
+
       return;
     }
 
     try {
       await this.#bump(tags);
-      this.#resolveFlush?.();
+
+      for (const waiter of batch.waiters) {
+        waiter.resolve();
+      }
     } catch (error) {
-      // Keep the tags for the next attempt and fail the caller instead of acknowledging.
+      // Keep the tags for the next attempt and fail this batch's callers instead of
+      // acknowledging a bump that did not commit.
+      const retry = this.#openBatch();
+
       for (const tag of tags) {
-        this.#pending.add(tag);
+        retry.tags.add(tag);
       }
 
+      const failure = error instanceof Error ? error : new Error(String(error));
       this.#logger.error("plugin.cache_invalidate_failed", { tags, error });
-      this.#rejectFlush?.(error instanceof Error ? error : new Error(String(error)));
-      throw error;
-    } finally {
-      this.#resolveFlush = undefined;
-      this.#rejectFlush = undefined;
+      for (const waiter of batch.waiters) {
+        waiter.reject(failure);
+      }
     }
-  }
-
-  #schedule(): void {
-    if (this.#flushTimer !== undefined) {
-      return;
-    }
-
-    this.#flushing = new Promise<void>((resolve, reject) => {
-      this.#resolveFlush = resolve;
-      this.#rejectFlush = reject;
-    });
-    this.#flushTimer = setTimeout(() => {
-      this.#flushTimer = undefined;
-      void this.flush().catch(() => undefined);
-    }, this.#coalesceMs);
-    this.#flushTimer.unref?.();
   }
 }

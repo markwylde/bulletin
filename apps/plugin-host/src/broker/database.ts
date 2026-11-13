@@ -1,21 +1,56 @@
 import { randomBytes } from "node:crypto";
 import type { Logger } from "@bulletin/config";
+import {
+  type PluginIdentifiers,
+  pluginIdentifiers,
+  pluginRoleMarker,
+} from "@bulletin/domain/plugins/identifiers";
+import {
+  assertPluginSchemaOwned,
+  dropPluginNamespace,
+  PluginNamespaceCollisionError,
+} from "@bulletin/domain/plugins/namespace";
 import { SQL } from "bun";
 import type { PluginConnectionManager } from "./connections.ts";
 import type { PluginMigration } from "./manifest.ts";
 import { assertAllowedMigration } from "./migration.ts";
 import { type AllowedStatement, buildBoundedQuery } from "./sql.ts";
 
-const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}$/;
 const DEFAULT_MAX_ROWS = 1_000;
 /** Binary row-size budget enforced by Postgres before rows reach plugin-host. */
 const DEFAULT_MAX_RESULT_BYTES = 256 * 1024;
 
-export interface PluginIdentifiers {
-  readonly pluginId: string;
-  readonly schema: string;
-  readonly runtimeRole: string;
-  readonly ownerRole: string;
+export type { PluginIdentifiers };
+export { PluginNamespaceCollisionError, pluginIdentifiers };
+
+function quote(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function quoteLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+/**
+ * Creates a role, or reuses one this plugin already owns. A role with the derived name but
+ * without this plugin's marker belongs to another plugin or to the platform, so provisioning
+ * refuses instead of taking it over (and later dropping it on uninstall).
+ */
+async function ensureRole(sql: SQL, name: string, login: boolean, pluginId: string): Promise<void> {
+  const rows = (await sql`
+    SELECT shobj_description(oid, 'pg_authid') AS marker FROM pg_roles WHERE rolname = ${name}
+  `) as Array<{ marker: string | null }>;
+
+  if (rows.length > 0) {
+    if (rows[0]?.marker !== pluginRoleMarker(pluginId)) {
+      throw new PluginNamespaceCollisionError(name, "role");
+    }
+
+    return;
+  }
+
+  await sql.unsafe(`CREATE ROLE ${quote(name)} ${login ? "LOGIN" : "NOLOGIN"}`);
+  await sql.unsafe(`COMMENT ON ROLE ${quote(name)} IS ${quoteLiteral(pluginRoleMarker(pluginId))}`);
 }
 
 export interface PluginDatabaseOptions {
@@ -46,33 +81,6 @@ export class QueryLimitError extends Error {
   constructor() {
     super("Query result is too large");
     this.name = "QueryLimitError";
-  }
-}
-
-/** Identifier mapping shared by the installer, the broker and the tests. */
-export function pluginIdentifiers(pluginId: string): PluginIdentifiers {
-  if (!ID_PATTERN.test(pluginId)) {
-    throw new TypeError("Plugin id must be 1-49 lowercase letters, digits or hyphens");
-  }
-
-  const normalized = pluginId.replaceAll("-", "_");
-  return {
-    pluginId,
-    schema: `plugin_${normalized}`,
-    runtimeRole: `plugin_${normalized}`,
-    ownerRole: `plugin_${normalized}_owner`,
-  };
-}
-
-function quote(identifier: string): string {
-  return `"${identifier.replaceAll('"', '""')}"`;
-}
-
-async function ensureRole(sql: SQL, name: string, login: boolean): Promise<void> {
-  const rows = (await sql`SELECT 1 FROM pg_roles WHERE rolname = ${name}`) as unknown[];
-
-  if (rows.length === 0) {
-    await sql.unsafe(`CREATE ROLE ${quote(name)} ${login ? "LOGIN" : "NOLOGIN"}`);
   }
 }
 
@@ -148,9 +156,19 @@ export class PluginDatabase {
     let migrator: SQL | undefined;
 
     try {
-      await ensureRole(admin, identifiers.ownerRole, false);
-      await ensureRole(admin, identifiers.runtimeRole, true);
-      await ensureRole(admin, "plugin_migrator", true);
+      await ensureRole(admin, identifiers.ownerRole, false, options.pluginId);
+      await ensureRole(admin, identifiers.runtimeRole, true, options.pluginId);
+
+      // `plugin_migrator` is platform infrastructure (migration 0115 creates it); a plugin
+      // never derives this name, so it is only ensured for databases created before that
+      // migration ran.
+      const migratorRole = (await admin`
+        SELECT 1 FROM pg_roles WHERE rolname = 'plugin_migrator'
+      `) as unknown[];
+
+      if (migratorRole.length === 0) {
+        await admin.unsafe(`CREATE ROLE ${quote("plugin_migrator")} LOGIN`);
+      }
 
       await admin.unsafe(`
         ALTER ROLE ${quote(identifiers.ownerRole)}
@@ -178,6 +196,8 @@ export class PluginDatabase {
         ALTER ROLE ${quote(identifiers.runtimeRole)}
           PASSWORD '${runtimePassword}';
       `);
+
+      await assertPluginSchemaOwned(admin, identifiers);
 
       await admin.unsafe(`
         CREATE SCHEMA IF NOT EXISTS ${quote(identifiers.schema)}
@@ -394,16 +414,10 @@ export async function dropPlugin(options: {
   readonly adminUrl: string;
   readonly pluginId: string;
 }): Promise<void> {
-  const identifiers = pluginIdentifiers(options.pluginId);
   const sql = new SQL(options.adminUrl, { max: 1, connectionTimeout: 5 });
 
   try {
-    await sql.unsafe(`DROP SCHEMA IF EXISTS ${quote(identifiers.schema)} CASCADE`);
-    await sql.unsafe(
-      `DROP OWNED BY ${quote(identifiers.runtimeRole)}, ${quote(identifiers.ownerRole)}`,
-    );
-    await sql.unsafe(`DROP ROLE IF EXISTS ${quote(identifiers.runtimeRole)}`);
-    await sql.unsafe(`DROP ROLE IF EXISTS ${quote(identifiers.ownerRole)}`);
+    await dropPluginNamespace(sql, options.pluginId);
   } finally {
     await sql.close();
   }
