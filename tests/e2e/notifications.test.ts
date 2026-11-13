@@ -93,6 +93,9 @@ let replyIndex = 0;
 async function replyToTopic(topicId: string): Promise<void> {
   const profile = REPLIERS[replyIndex % REPLIERS.length] ?? "member-2";
   replyIndex += 1;
+  // Each reply must be distinct: moderation holds repeated identical bodies as duplicates,
+  // and a held reply never notifies the topic's followers.
+  const bodyMd = `A browser notification reply ${Date.now().toString(36)}-${replyIndex}.`;
 
   await withPage(
     {
@@ -121,7 +124,7 @@ async function replyToTopic(topicId: string): Promise<void> {
       const response = await fetch("/api/topics/${topicId}/replies", {
         method: "POST",
         headers: { "content-type": "application/json", "x-bulletin-csrf": token ?? "" },
-        body: JSON.stringify({ bodyMd: "A browser notification reply." })
+        body: JSON.stringify({ bodyMd: ${JSON.stringify(bodyMd)} })
       });
       const payload = await response.json().catch(() => ({}));
       return { status: response.status, retryAfterSeconds: payload.retryAfterSeconds ?? 0 };
