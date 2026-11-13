@@ -453,6 +453,7 @@ export const apiKeysContract = defineContract<AccountViewModel>({
 export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [homeContract.route]: homeContract,
   [apiDocsContract.route]: apiDocsContract,
+  [apiKeysContract.route]: apiKeysContract,
   [loginContract.route]: loginContract,
   [callbackContract.route]: callbackContract,
   [demoContract.route]: demoContract,

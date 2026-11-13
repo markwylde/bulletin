@@ -15,6 +15,7 @@ export type MergeRule = (typeof MERGE_RULES)[number];
 
 export const REGISTRY_SECTIONS = [
   "acp",
+  "api",
   "board",
   "posting",
   "members",
@@ -45,6 +46,7 @@ export interface GroupSettingDefinition {
 
 const SECTION_LABELS = [
   { section: "acp", labelKey: "staff.groups.section.acp" },
+  { section: "api", labelKey: "staff.groups.section.api" },
   { section: "board", labelKey: "staff.groups.section.board" },
   { section: "posting", labelKey: "staff.groups.section.posting" },
   { section: "members", labelKey: "staff.groups.section.members" },
@@ -318,6 +320,15 @@ const PERMISSION_DEFINITIONS = [
     defaultValue: false,
     section: "acp",
     labelKey: "staff.groups.permission.acpWebhooks",
+  },
+  {
+    key: "acp.api",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "acp",
+    labelKey: "staff.groups.permission.acpApi",
   },
   {
     key: "reports.members",
@@ -785,6 +796,15 @@ const VALUE_SETTING_DEFINITIONS = [
     defaultValue: false,
     section: "members",
     labelKey: "staff.groups.setting.unignorable",
+  },
+  {
+    key: "api.personal_keys",
+    kind: "setting",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "api",
+    labelKey: "staff.groups.setting.personalApiKeys",
   },
   {
     key: "restrictions.banned",

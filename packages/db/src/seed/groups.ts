@@ -388,6 +388,28 @@ export const groupsSeedModule: SeedModule = {
       `;
     }
 
+    // Personal API keys are opt-in per group (ADR 0016).
+    for (const groupKey of [
+      "members",
+      "regulars",
+      "vip",
+      "moderators",
+      "super_moderators",
+      "administrators",
+    ] as const) {
+      const groupId = ids.get(groupKey);
+
+      if (groupId === undefined) {
+        continue;
+      }
+
+      await sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        VALUES (${groupId}, 'api.personal_keys', 'true'::jsonb)
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()
+      `;
+    }
+
     // Signature limits by group (task 2.1). Zero would disable signatures entirely.
     for (const [groupKey, limits] of [
       ["members", { chars: 500, lines: 4, images: 1, links: 2 }],

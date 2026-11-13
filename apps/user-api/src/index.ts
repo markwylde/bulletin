@@ -16,6 +16,11 @@ import { createStorage } from "@bulletin/storage";
 import { announceDismissResponse } from "./announcements.ts";
 import { handleApiRequest } from "./api/router.ts";
 import { API_ROUTES } from "./api/routes.ts";
+import {
+  createPersonalApiKeyResponse,
+  personalApiKeysResponse,
+  revokePersonalApiKeyResponse,
+} from "./api-keys.ts";
 import { saveAppearanceResponse, themeOptionsResponse } from "./appearance.ts";
 import {
   attachmentDeleteRoute,
@@ -203,6 +208,42 @@ await startService({
       const response = await auth.handle(request, async ({ session }) =>
         redirectCountsResponse(sql, session?.memberId ?? GUEST_PRINCIPAL, session?.id ?? null),
       );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/me/api-keys") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return personalApiKeysResponse(sql, session.memberId);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/api-keys") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return createPersonalApiKeyResponse(sql, session.memberId, request, config.sessionSecret);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/api-keys/revoke") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return revokePersonalApiKeyResponse(sql, session.memberId, request);
+      });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

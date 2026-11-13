@@ -134,6 +134,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     labelKey: "staff.nav.webhooks",
   },
   {
+    id: "apiKeys",
+    path: "/settings/api-keys",
+    navGroup: "configuration",
+    permission: "acp.api",
+    icon: "settings",
+    labelKey: "staff.nav.apiKeys",
+  },
+  {
     id: "stringOverrides",
     path: "/settings/strings",
     navGroup: "configuration",

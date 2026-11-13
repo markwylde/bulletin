@@ -20,6 +20,7 @@ import {
   listAnnouncementsAdmin,
   saveAnnouncement,
 } from "./announcements.ts";
+import { integrationKeysResponse, mutateIntegrationKeyResponse } from "./api-keys.ts";
 import {
   listBadgesForStaff,
   listMemberBadgesForStaff,
@@ -147,6 +148,8 @@ export interface StaffRouteContext {
   readonly storage?: StorageClient;
   readonly userOrigin?: string;
   readonly themePreviewSecret?: string;
+  /** Server pepper for integration key hashes (ADR 0016). */
+  readonly apiKeyPepper?: string;
 }
 
 export interface StaffRoute {
@@ -169,6 +172,8 @@ export interface StaffApiOptions {
   readonly storage?: StorageClient;
   readonly userOrigin?: string;
   readonly themePreviewSecret?: string;
+  /** Server pepper for integration key hashes (ADR 0016). */
+  readonly apiKeyPepper?: string;
 }
 
 export interface StaffApi {
@@ -1248,6 +1253,26 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     handler: async ({ sql, request }) => readIpAccessResponse(sql, request),
   },
   {
+    id: "apiKeys.list",
+    method: "GET",
+    path: "/api/staff/api-keys",
+    permission: "acp.api",
+    handler: async ({ sql }) => integrationKeysResponse(sql),
+  },
+  {
+    id: "apiKeys.mutate",
+    method: "POST",
+    path: "/api/staff/api-keys",
+    permission: "acp.api",
+    handler: async ({ sql, session, request, apiKeyPepper }) =>
+      mutateIntegrationKeyResponse(
+        sql,
+        session.memberId,
+        request,
+        apiKeyPepper ?? Bun.env.SESSION_SECRET ?? "bulletin-development-only-session-secret",
+      ),
+  },
+  {
     id: "webhooks.list",
     method: "GET",
     path: "/api/staff/webhooks",
@@ -2061,6 +2086,10 @@ export function createStaffApi(options: StaffApiOptions): StaffApi {
           ...(options.themePreviewSecret === undefined
             ? {}
             : { themePreviewSecret: options.themePreviewSecret }),
+          apiKeyPepper:
+            options.apiKeyPepper ??
+            Bun.env.SESSION_SECRET ??
+            "bulletin-development-only-session-secret",
         });
       });
 

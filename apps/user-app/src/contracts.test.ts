@@ -54,6 +54,7 @@ describe("route contracts", () => {
       [
         homeContract.route,
         apiDocsContract.route,
+        apiKeysContract.route,
         loginContract.route,
         callbackContract.route,
         demoContract.route,
@@ -190,6 +191,7 @@ describe("route contracts", () => {
     expect(apiKeysContract.cdnCacheable).toBe(false);
     expect(contractTags(apiKeysContract, { memberId: "7" })).toEqual(["member:7"]);
     expect(findContract(ROUTE_CONTRACTS, "/api-docs")).toBe(apiDocsContract);
+    expect(findContract(ROUTE_CONTRACTS, "/account/api-keys")).toBe(apiKeysContract);
   });
 
   test("registers both API pages with the cache variant harness", async () => {

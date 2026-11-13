@@ -22,7 +22,7 @@
 
 ## 4. Key management UI
 
-- [ ] 4.1 Personal keys page (user app, gated by group setting) and integration keys (staff app); E2E at 360 and 1440
+- [x] 4.1 Personal keys page (user app, gated by group setting) and integration keys (staff app); E2E at 360 and 1440
 
 ## 5. Strings and seed
 

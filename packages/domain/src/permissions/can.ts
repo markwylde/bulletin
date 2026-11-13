@@ -30,6 +30,7 @@ export const CAPABILITY_ACTIONS = [
   "send_pm",
   "post",
   "change_display_name",
+  "create_personal_api_keys",
 ] as const;
 
 export type CapabilityAction = (typeof CAPABILITY_ACTIONS)[number];
@@ -52,6 +53,8 @@ const CAPABILITY_SETTINGS: Readonly<
   post: { key: "restrictions.cannot_post", allows: false },
   // Name changes are a write capability gated only by every ban source.
   change_display_name: { key: "restrictions.banned", allows: false },
+  // Personal keys are available only to groups that opt in (ADR 0016).
+  create_personal_api_keys: { key: "api.personal_keys", allows: true },
 };
 
 export function isCapabilityAction(value: string): value is CapabilityAction {

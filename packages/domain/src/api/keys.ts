@@ -248,6 +248,27 @@ export async function listApiKeys(sql: SQL, memberId: string): Promise<readonly 
   return rows.map(metadataOf);
 }
 
+export interface IntegrationKeyMetadata extends ApiKeyMetadata {
+  readonly principalName: string | null;
+}
+
+/** Every integration key with its service member name, for the staff management screen. */
+export async function listIntegrationKeys(sql: SQL): Promise<readonly IntegrationKeyMetadata[]> {
+  const rows = (await sql`
+    SELECT k.id::text AS id, k.prefix, k.label, k.kind, k.scopes, k.created_at, k.expires_at,
+      k.revoked_at, k.last_used_at, m.display_name AS principal_name
+    FROM core.api_keys k
+    JOIN core.members m ON m.id = k.principal_member_id
+    WHERE k.kind = 'integration'
+    ORDER BY k.created_at DESC, k.id DESC
+  `) as Array<ApiKeyRow & { principal_name: string | null }>;
+
+  return rows.map((row) => ({
+    ...metadataOf(row),
+    principalName: row.principal_name,
+  }));
+}
+
 export interface RevokeApiKeyInput {
   readonly keyId: string;
   /** Restrict revocation to a member's own keys; omit for staff/administrative revocation. */
@@ -262,6 +283,22 @@ export async function revokeApiKey(sql: SQL, input: RevokeApiKeyInput): Promise<
     WHERE id = ${input.keyId}
       AND (${input.principalMemberId ?? null}::bigint IS NULL
         OR principal_member_id = ${input.principalMemberId ?? null}::bigint)
+    RETURNING 1
+  `) as unknown[];
+
+  return rows.length > 0;
+}
+
+/** Staff may revoke an integration key, but never a member's personal key. */
+export async function revokeIntegrationApiKey(sql: SQL, keyId: string): Promise<boolean> {
+  if (!/^\d+$/.test(keyId)) {
+    return false;
+  }
+
+  const rows = (await sql`
+    UPDATE core.api_keys
+    SET revoked_at = coalesce(revoked_at, now())
+    WHERE id = ${keyId} AND kind = 'integration'
     RETURNING 1
   `) as unknown[];
 

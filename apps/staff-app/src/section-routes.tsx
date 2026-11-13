@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import { AnnouncementsPage } from "./announcements/AnnouncementsPage.tsx";
+import { ApiKeysPage } from "./api-keys/ApiKeysPage.tsx";
 import { BadgesPage } from "./badges/BadgesPage.tsx";
 import { DashboardPage } from "./dashboard/DashboardPage.tsx";
 import { EmoticonsPage } from "./emoticons/EmoticonsPage.tsx";
@@ -65,6 +66,7 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   themes: ThemesPage,
   plugins: PluginsPage,
   webhooks: WebhooksPage,
+  apiKeys: ApiKeysPage,
 };
 
 export function sectionElement(section: StaffSection): ComponentType | null {

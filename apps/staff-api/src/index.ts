@@ -62,6 +62,7 @@ const api = createStaffApi({
   storage,
   userOrigin: config.userOrigin,
   themePreviewSecret: config.sessionSecret,
+  apiKeyPepper: config.sessionSecret,
   ...(purge === undefined ? {} : { purge }),
 });
 

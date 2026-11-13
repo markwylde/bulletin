@@ -1851,3 +1851,25 @@ html[data-hide-signatures] [data-signature] {
   font-weight: 700;
   overflow-wrap: anywhere;
 }
+
+.bl-api-keys {
+  display: grid;
+  gap: var(--bl-space);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bl-api-key {
+  min-width: 0;
+  padding: var(--bl-space);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius);
+  background: var(--bl-surface);
+}
+
+.bl-api-key code,
+[data-api-key-secret-value] {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}

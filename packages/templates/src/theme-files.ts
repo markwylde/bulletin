@@ -29,6 +29,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "demo",
   "display-name",
   "account",
+  "account-api-keys",
   "account-profile",
   "api-docs",
   "account-attachments",

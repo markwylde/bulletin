@@ -1613,3 +1613,9 @@ textarea.form-input {
     color: #ffb3b3;
   }
 }
+
+[data-api-key-secret] code,
+[data-api-key-row] code {
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
