@@ -158,6 +158,14 @@ export const postReputationSchema = v.strictObject({
   flags: v.strictObject({ reputation: v.boolean() }),
 });
 
+/** A plugin client app slot; the `plugins` flag gates it in the island component. */
+export const pluginAppSchema = v.strictObject({
+  pluginId: v.pipe(v.string(), v.minLength(1), v.maxLength(49)),
+  version: v.pipe(v.string(), v.minLength(1), v.maxLength(20)),
+  app: v.pipe(v.string(), v.minLength(1), v.maxLength(200)),
+  viewJson: v.optional(v.pipe(v.string(), v.maxLength(20_000)), "{}"),
+});
+
 /** The canonical island names; the template registry and the client runtime must match. */
 export const ISLAND_SCHEMAS = {
   SpikeCounter: spikeCounterSchema,
@@ -167,6 +175,7 @@ export const ISLAND_SCHEMAS = {
   Reactions: reactionsSchema,
   PostReputation: postReputationSchema,
   ThemeChooser: themeChooserSchema,
+  PluginApp: pluginAppSchema,
 } as const;
 
 export type IslandName = keyof typeof ISLAND_SCHEMAS;

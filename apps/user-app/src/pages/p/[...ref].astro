@@ -3,6 +3,7 @@ import { createServerT } from "@bulletin/i18n";
 import { safeHtml, sanitiseRenderedMarkup } from "@bulletin/templates";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { readSql } from "../../db.ts";
+import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { requestPluginRoute } from "../../plugins/host.ts";
 import { loadPluginsGeneration, renderThemedPage } from "../../theme/render.ts";
@@ -19,6 +20,12 @@ const pluginsGeneration = await loadPluginsGeneration(sql);
 const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const session = Astro.locals.session ?? null;
+const viewerFlags = await loadViewerFlags(sql, session);
+
+if (!viewerFlags.values.plugins) {
+  return new Response("Not found", { status: 404 });
+}
+
 const pluginPath = rest.join("/");
 const query = Object.fromEntries(Astro.url.searchParams.entries());
 const response = await requestPluginRoute({

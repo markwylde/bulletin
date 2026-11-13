@@ -119,6 +119,7 @@ integrationDescribe("flags seed", () => {
         "multimod",
         "newEditor",
         "notifications",
+        "plugins",
         "polls",
         "quickReply",
         "reactions",

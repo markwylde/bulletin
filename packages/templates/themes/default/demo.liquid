@@ -49,7 +49,7 @@
         {% endfor %}
       </ol>
       {% island "SpikeCounter" counter %}
-      {% hook "demo.after.topics" %}
+      {% if flags.plugins %}{% hook "demo.after.topics" %}{% endif %}
       {% if showModTools %}
         <a class="bl-button bl-button--quiet" href="/_demo/{{ forumId }}{% if showDeleted %}?deleted=0{% else %}?deleted=1{% endif %}" data-demo-mod-tools>
           {% if showDeleted %}{% t "demo.mod.close" %}{% else %}{% t "demo.mod.open" %}{% endif %}

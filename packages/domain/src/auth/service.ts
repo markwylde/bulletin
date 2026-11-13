@@ -936,12 +936,18 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         if (!isCsrfExempt(request.method, pathname) && !devTestPost) {
           const token = parseCookieHeader(request.headers.get("cookie"))[cookieName];
           const session = token === undefined ? null : await sessions.find(options.kind, token);
+          // A guest has no session or CSRF token to protect; plugin bridge calls still run as
+          // guest. Authenticated bridge calls must present the normal CSRF token.
+          const guestPluginBridge =
+            options.kind === "user" &&
+            request.method === "POST" &&
+            /^\/api\/plugins\/[a-z0-9][a-z0-9-]{0,48}\/bridge$/.test(pathname);
 
           if (session === null) {
-            return json({ code: "unauthenticated" }, 401);
-          }
-
-          if (
+            if (!guestPluginBridge) {
+              return json({ code: "unauthenticated" }, 401);
+            }
+          } else if (
             !verifyCsrfToken(
               request.headers.get("x-bulletin-csrf"),
               createCsrfToken(session.id, options.sessionSecret),

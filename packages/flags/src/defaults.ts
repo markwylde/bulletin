@@ -295,6 +295,16 @@ export const multimodFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Marketplace installs, plugin hooks, routes and client apps (change `plugin-platform`). */
+export const pluginsFlag = defineFlag({
+  key: "plugins",
+  description: "Runtime-installed plugins, marketplace installs, hooks and client apps.",
+  owner: "plugins",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
@@ -322,4 +332,5 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   multimodFlag,
   searchFlag,
   themeChooserFlag,
+  pluginsFlag,
 ]);

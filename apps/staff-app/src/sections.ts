@@ -273,6 +273,7 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
 
 /** Sections that only exist while their feature flag is on (ADR 0010). */
 const SECTION_FLAG_KEYS: Readonly<Record<string, string>> = {
+  plugins: "plugins",
   announcements: "announcements",
   warnings: "warnings",
   multimod: "multimod",

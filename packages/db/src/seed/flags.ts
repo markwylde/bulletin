@@ -347,6 +347,18 @@ const FLAGS: readonly SeededFlag[] = [
     fullyOnDaysAgo: 1,
   },
   {
+    key: "plugins",
+    description: "Runtime-installed plugins, marketplace installs, hooks and client apps.",
+    owner: "plugins",
+    defaultValue: true,
+    affectsRender: true,
+    clientVisible: true,
+    rules: [],
+    createdDaysAgo: 2,
+    updatedDaysAgo: 1,
+    fullyOnDaysAgo: 1,
+  },
+  {
     key: "compactTopicList",
     description: "Compact topic rows with a smaller author column.",
     owner: "core",

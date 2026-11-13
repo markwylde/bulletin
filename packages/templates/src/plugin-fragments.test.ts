@@ -74,6 +74,31 @@ describe("hide-post-count scenario", () => {
     expect(viewModel.postCount).toBe(42);
   });
 
+  test("the plugins flag gates plugin hook fragments in the template", async () => {
+    const gated = buildTheme([
+      {
+        name: "child",
+        templates: {
+          post: '<article>{% if flags.plugins %}{% hook "post.after.body" %}{% endif %}</article>',
+        },
+      },
+    ]);
+    const compiled = createCompileCache(engine).compile(gated, 1);
+    const render = (plugins: boolean) =>
+      renderThemeTemplate({
+        engine,
+        compiled,
+        name: "post",
+        viewModel: { flags: { plugins } },
+        runtime: { ...runtime, hooks: { "post.after.body": "<span data-tip>tip</span>" } },
+      });
+
+    await expect(render(false)).resolves.toMatchObject({ html: "<article></article>" });
+    await expect(render(true)).resolves.toMatchObject({
+      html: "<article><span data-tip>tip</span></article>",
+    });
+  });
+
   test("toggling the plugin bumps the compile-cache variant", async () => {
     const cache = createCompileCache(engine);
     const before = cache.compile(theme, 1);

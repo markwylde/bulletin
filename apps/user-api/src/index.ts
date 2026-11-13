@@ -429,9 +429,11 @@ await startService({
 
     if (request.method === "POST" && pluginBridgeMatch !== null) {
       const response = await auth.handle(request, async ({ session }) =>
-        pluginBridgeResponse(pluginBridgeMatch[1] ?? "", request, {
-          memberId: session?.memberId ?? null,
-        }),
+        flags.guard("plugins", session?.memberId ?? null)(request, () =>
+          pluginBridgeResponse(pluginBridgeMatch[1] ?? "", request, {
+            memberId: session?.memberId ?? null,
+          }),
+        ),
       );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -441,9 +443,11 @@ await startService({
 
     if (pluginApiMatch !== null) {
       const response = await auth.handle(request, async ({ session }) =>
-        pluginApiResponse(pluginApiMatch[1] ?? "", pluginApiMatch[2] ?? "", request, {
-          memberId: session?.memberId ?? null,
-        }),
+        flags.guard("plugins", session?.memberId ?? null)(request, () =>
+          pluginApiResponse(pluginApiMatch[1] ?? "", pluginApiMatch[2] ?? "", request, {
+            memberId: session?.memberId ?? null,
+          }),
+        ),
       );
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

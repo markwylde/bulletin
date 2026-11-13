@@ -7,6 +7,7 @@ import {
   type IslandPropsSchema,
   languageSwitcherSchema,
   localeSuggestionSchema,
+  pluginAppSchema,
   postReputationSchema,
   reactionsSchema,
   spikeCounterSchema,
@@ -107,5 +108,9 @@ export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
   ThemeChooser: defineClientIsland(themeChooserSchema, async () => {
     const module = await import("./ThemeChooser.tsx");
     return module.ThemeChooser;
+  }),
+  PluginApp: defineClientIsland(pluginAppSchema, async () => {
+    const module = await import("./PluginApp.tsx");
+    return module.PluginApp;
   }),
 };

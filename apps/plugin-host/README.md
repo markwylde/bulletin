@@ -31,6 +31,14 @@ start or a supervisor-side wall-clock kill schedules an exponential restart
 `PLUGIN_HOST_RESTART_MAX`); readiness is false while a restart is pending, and the status
 reports the attempt count and `restartAt`.
 
+## Feature flag (task 7)
+
+The `plugins` flag is declared with `defineFlag` (off in code defaults, on in the seed) and is
+render-affecting/client-visible. Plugin pages and plugin API/bridge routes answer 404 while it
+is off; the default theme wraps plugin hook points in `{% if flags.plugins %}`; the
+`PluginApp` island uses `useFlag("plugins")`; and the staff manager section is hidden. The
+render-flag hash makes the toggle a separate cache variant.
+
 ## Staff integration (task 5)
 
 The staff app has a Plugins section (`acp.plugins`) showing each installed plugin's state,
