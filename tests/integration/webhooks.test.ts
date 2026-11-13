@@ -36,7 +36,7 @@ import { createWebhookHandler, createWebhookStore } from "../../mocks/webhooks/s
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 const PEPPER = "webhook-test-key-pepper";
-const MOCK_SECRET = "bulletin-dev-webhook-secret";
+const MOCK_SECRET = "bulletin-dev-webhook-secret-0123456789";
 
 async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Promise<void> {
   if (adminUrl === undefined) {
@@ -56,6 +56,9 @@ async function withSeededDb(run: (database: TestDatabase) => Promise<void>): Pro
         moderatorAssignmentsSeedModule,
       ]),
     });
+    // These tests exercise webhook fanout; remove the demo webhook so assertions describe only
+    // the webhook each test creates.
+    await database.sql`DELETE FROM core.webhooks`;
     await run(database);
   });
 }

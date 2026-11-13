@@ -131,3 +131,39 @@ describe("reaction and reputation catalogs", () => {
     }
   });
 });
+
+const REQUIRED_API_KEY_KEYS = [
+  "api.docs.title",
+  "api.docs.intro",
+  "api.docs.loading",
+  "api.docs.error",
+  "api.docs.raw",
+  "apiKeys.title",
+  "apiKeys.intro",
+  "apiKeys.list.title",
+  "apiKeys.loading",
+  "apiKeys.empty",
+  "apiKeys.loadError",
+  "apiKeys.create.title",
+  "apiKeys.label",
+  "apiKeys.scopes",
+  "apiKeys.create.submit",
+  "apiKeys.secretOnce",
+  "apiKeys.revoke",
+  "apiKeys.revoked",
+  "apiKeys.createFailed",
+  "apiKeys.revokeFailed",
+  "apiKeys.invalid",
+  "apiKeys.scope.readForums",
+  "apiKeys.scope.writePosts",
+] as const;
+
+describe("public API catalogs", () => {
+  test("translate the API documentation and personal key screens", () => {
+    for (const locale of LOCALES) {
+      for (const key of REQUIRED_API_KEY_KEYS) {
+        expect(USER_CATALOGS[locale][key]?.trim().length ?? 0).toBeGreaterThan(0);
+      }
+    }
+  });
+});

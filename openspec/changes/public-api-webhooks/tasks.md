@@ -26,8 +26,8 @@
 
 ## 5. Strings and seed
 
-- [ ] 5.1 Add en/es/fr strings for key and webhook management and API errors; verify completeness
-- [ ] 5.2 Seed one integration key with a service member, one personal key and one webhook pointing at `mocks/webhooks`; verify deliveries appear in the mock after `docker compose up --watch`
+- [x] 5.1 Add en/es/fr strings for key and webhook management and API errors; verify completeness
+- [x] 5.2 Seed one integration key with a service member, one personal key and one webhook pointing at `mocks/webhooks`; verify deliveries appear in the mock after `docker compose up --watch`
 
 ## 6. Feature flag
 

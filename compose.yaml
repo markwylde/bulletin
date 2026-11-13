@@ -30,6 +30,8 @@ x-app-environment: &app-environment
   SESSION_SECRET: bulletin-development-only-session-secret
   SEED: "42"
   SEED_SIZE: "${SEED_SIZE:-default}"
+  # The seeded demo webhook points at the local webhooks mock (task 5.2).
+  BULLETIN_SEED_WEBHOOK_URL: "http://webhooks:4004/hook"
 
 x-depends-on-postgres: &depends-on-postgres
   postgres:
@@ -262,7 +264,7 @@ services:
         MOCK_NAME: webhooks
     environment:
       PORT: "4004"
-      WEBHOOK_SECRET: bulletin-dev-webhook-secret
+      WEBHOOK_SECRET: bulletin-dev-webhook-secret-0123456789
     healthcheck: *bun-healthcheck
     develop:
       watch:

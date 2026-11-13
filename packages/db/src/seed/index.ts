@@ -1,4 +1,5 @@
 export * from "./admin-log.ts";
+export * from "./api.ts";
 export * from "./attachments.ts";
 export * from "./base.ts";
 export * from "./conversations.ts";
