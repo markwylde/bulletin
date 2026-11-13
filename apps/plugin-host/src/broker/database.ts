@@ -194,7 +194,11 @@ export class PluginDatabase {
 
       if (options.migrations.length > 0) {
         migrator = new SQL(
-          runtimeUrl(options.migratorUrl ?? options.adminUrl, "plugin_migrator", migratorPassword),
+          pluginRoleUrl(
+            options.migratorUrl ?? options.adminUrl,
+            "plugin_migrator",
+            migratorPassword,
+          ),
           { max: 1, connectionTimeout: 5 },
         );
         await migrator.begin(async (transaction) => {
@@ -253,10 +257,13 @@ export class PluginDatabase {
       const functions = new Set(functionRows.map((row) => row.name));
 
       if (options.connections === undefined) {
-        runtime = new SQL(runtimeUrl(options.adminUrl, identifiers.runtimeRole, runtimePassword), {
-          max: 2,
-          connectionTimeout: 5,
-        });
+        runtime = new SQL(
+          pluginRoleUrl(options.adminUrl, identifiers.runtimeRole, runtimePassword),
+          {
+            max: 2,
+            connectionTimeout: 5,
+          },
+        );
         await runtime`SELECT 1`;
       }
 
@@ -375,7 +382,7 @@ export class PluginDatabase {
   }
 }
 
-function runtimeUrl(adminUrl: string, role: string, password?: string): string {
+export function pluginRoleUrl(adminUrl: string, role: string, password?: string): string {
   const url = new URL(adminUrl);
   url.username = role;
   url.password = password ?? "";

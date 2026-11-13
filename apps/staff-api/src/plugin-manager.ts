@@ -414,7 +414,7 @@ export async function uninstallPlugin(
 ): Promise<void> {
   await disablePlugin(sql, pluginId, actorId);
 
-  if (dataAction === "drop") {
+  if (dataAction !== "keep") {
     const schema = `plugin_${pluginId.replaceAll("-", "_")}`;
     const owner = `${schema}_owner`;
     await sql.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);

@@ -4,7 +4,7 @@ import { createLogger } from "@bulletin/config";
 import { withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
 import { PluginConnectionManager } from "./connections.ts";
-import { dropPlugin, PluginDatabase, pluginIdentifiers } from "./database.ts";
+import { dropPlugin, PluginDatabase, pluginIdentifiers, pluginRoleUrl } from "./database.ts";
 import { MigrationDeniedError } from "./migration.ts";
 import { assertAllowedSql } from "./sql.ts";
 
@@ -36,6 +36,17 @@ function runtimeUrl(databaseUrl: string, role: string): string {
   url.password = "";
   return url.toString();
 }
+
+describe("plugin role URLs", () => {
+  test("keeps broker-held runtime passwords", () => {
+    expect(pluginRoleUrl("postgres://admin@db:5432/bulletin", "plugin_x", "secret-token")).toBe(
+      "postgres://plugin_x:secret-token@db:5432/bulletin",
+    );
+    expect(pluginRoleUrl("postgres://admin@db:5432/bulletin", "plugin_migrator", "migrator")).toBe(
+      "postgres://plugin_migrator:migrator@db:5432/bulletin",
+    );
+  });
+});
 
 integrationDescribe("plugin database roles", () => {
   test("provisions owner and runtime roles and runs migrations as the owner", async () => {
