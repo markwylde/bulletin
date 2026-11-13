@@ -16,7 +16,7 @@ function probe(options: {
 }
 
 describe("cgroup v2 root discovery", () => {
-  test("offers the mount and the delegated parent of the container scope", () => {
+  test("offers the mount and every ancestor of the container cgroup, deepest first", () => {
     expect(
       cgroupRootCandidates(
         "/sys/fs/cgroup",
@@ -24,20 +24,31 @@ describe("cgroup v2 root discovery", () => {
       ),
     ).toEqual([
       "/sys/fs/cgroup",
+      "/sys/fs/cgroup/user.slice/user-501.slice/user@501.service/user.slice/libpod-abc123.scope/container",
+      "/sys/fs/cgroup/user.slice/user-501.slice/user@501.service/user.slice/libpod-abc123.scope",
       "/sys/fs/cgroup/user.slice/user-501.slice/user@501.service/user.slice",
+      "/sys/fs/cgroup/user.slice/user-501.slice/user@501.service",
+      "/sys/fs/cgroup/user.slice/user-501.slice",
+      "/sys/fs/cgroup/user.slice",
     ]);
 
     expect(
       cgroupRootCandidates("/sys/fs/cgroup/", "/machine.slice/libpod-abc123.scope/container"),
-    ).toEqual(["/sys/fs/cgroup", "/sys/fs/cgroup/machine.slice"]);
+    ).toEqual([
+      "/sys/fs/cgroup",
+      "/sys/fs/cgroup/machine.slice/libpod-abc123.scope/container",
+      "/sys/fs/cgroup/machine.slice/libpod-abc123.scope",
+      "/sys/fs/cgroup/machine.slice",
+    ]);
 
     expect(cgroupRootCandidates("/sys/fs/cgroup", "/system.slice/docker-abc123.scope")).toEqual([
       "/sys/fs/cgroup",
+      "/sys/fs/cgroup/system.slice/docker-abc123.scope",
       "/sys/fs/cgroup/system.slice",
     ]);
   });
 
-  test("falls back to the mount when the cgroup path has no container scope", () => {
+  test("falls back to the mount when the cgroup path is the root", () => {
     expect(cgroupRootCandidates("/sys/fs/cgroup", "/")).toEqual(["/sys/fs/cgroup"]);
   });
 
@@ -71,6 +82,37 @@ describe("cgroup v2 root discovery", () => {
     expect(root).toBe(delegated);
   });
 
+  test("uses the cgroupfs parent when Podman names it libpod_parent", async () => {
+    const delegated = "/sys/fs/cgroup/libpod_parent";
+    const root = await resolveSandboxCgroupRoot(
+      "/sys/fs/cgroup",
+      probe({
+        self: "/libpod_parent/libpod-abc123.scope/container",
+        writable: [delegated],
+        controllers: {
+          "/sys/fs/cgroup": FULL,
+          [delegated]: FULL,
+        },
+      }),
+    );
+
+    expect(root).toBe(delegated);
+  });
+
+  test("prefers the deepest writable ancestor the container owns", async () => {
+    const scope = "/sys/fs/cgroup/system.slice/docker-abc123.scope";
+    const root = await resolveSandboxCgroupRoot(
+      "/sys/fs/cgroup",
+      probe({
+        self: "/system.slice/docker-abc123.scope",
+        writable: [scope, "/sys/fs/cgroup/system.slice"],
+        controllers: { "/sys/fs/cgroup": FULL, [scope]: FULL },
+      }),
+    );
+
+    expect(root).toBe(scope);
+  });
+
   test("skips candidates without the controllers the sandbox limits need", async () => {
     const delegated = "/sys/fs/cgroup/user.slice";
     const root = await resolveSandboxCgroupRoot(
@@ -98,6 +140,6 @@ describe("cgroup v2 root discovery", () => {
           controllers: { "/sys/fs/cgroup": FULL, "/sys/fs/cgroup/user.slice": FULL },
         }),
       ),
-    ).rejects.toThrow("Tried: /sys/fs/cgroup, /sys/fs/cgroup/user.slice");
+    ).rejects.toThrow(/Tried: \/sys\/fs\/cgroup, .*\/sys\/fs\/cgroup\/user\.slice/);
   });
 });

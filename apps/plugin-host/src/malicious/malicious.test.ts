@@ -15,7 +15,7 @@ import { SandboxSupervisor } from "../sandbox/supervisor.ts";
 import type { SandboxLimits } from "../sandbox/types.ts";
 
 const MALICIOUS_BUNDLE = fileURLToPath(new URL("./plugin", import.meta.url));
-const DEMO_BUNDLE = fileURLToPath(new URL("../spike/plugin", import.meta.url));
+const DEMO_BUNDLE = fileURLToPath(new URL("../demo/plugin", import.meta.url));
 const enabled = Bun.env.BULLETIN_SANDBOX_TESTS === "1" && typeof Bun.env.DATABASE_URL === "string";
 const sandboxDescribe = enabled ? describe : describe.skip;
 

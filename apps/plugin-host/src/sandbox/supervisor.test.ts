@@ -7,7 +7,7 @@ import { BrokerChannel } from "../broker/channel.ts";
 import { encodeFrame } from "../broker/protocol.ts";
 import { NSJAIL_ENVIRONMENT } from "./nsjail.ts";
 import { type SandboxProcess, SandboxSupervisor, type SpawnSandbox } from "./supervisor.ts";
-import { DEFAULT_SANDBOX_LIMITS } from "./types.ts";
+import { DEFAULT_SANDBOX_LIMITS, type SandboxCgroupUsage } from "./types.ts";
 
 const logger = createLogger({ service: "sandbox-test", level: "error", sink: () => {} });
 const temporaryDirectories: string[] = [];
@@ -75,6 +75,13 @@ function createFakeSandbox(hello: string | null, delayMs = 5): FakeSandbox {
 
 async function createSupervisor(
   spawn: SpawnSandbox,
+  options: {
+    readonly readCgroup?: (
+      mount: string,
+      childPid: number,
+    ) => Promise<SandboxCgroupUsage | undefined>;
+    readonly verifyLimits?: boolean;
+  } = {},
 ): Promise<{ channel: BrokerChannel; supervisor: SandboxSupervisor; directory: string }> {
   const directory = await mkdtemp(join(tmpdir(), "bulletin-sandbox-"));
   temporaryDirectories.push(directory);
@@ -87,7 +94,7 @@ async function createSupervisor(
   let clock = 0;
   const supervisor = new SandboxSupervisor({
     pluginId: "sandbox-demo",
-    bundlePath: "/app/apps/plugin-host/src/spike/plugin",
+    bundlePath: "/app/apps/plugin-host/src/demo/plugin",
     socketPath: channel.socketPath,
     nsjailPath: "/usr/bin/nsjail",
     rootfsPath: "/opt/plugin-rootfs",
@@ -99,6 +106,17 @@ async function createSupervisor(
     readyTimeoutMs: 500,
     spawn,
     resolveChildPid: async () => 9001,
+    readCgroup:
+      options.readCgroup ??
+      (async () => ({
+        memoryCurrentBytes: 3 * 1024 * 1024,
+        memoryMaxBytes: DEFAULT_SANDBOX_LIMITS.memoryBytes,
+        anonBytes: 2 * 1024 * 1024,
+        fileBytes: 1024 * 1024,
+        pidsMax: DEFAULT_SANDBOX_LIMITS.pids,
+        cpuMax: `${DEFAULT_SANDBOX_LIMITS.cpuMsPerSecond * 1_000} 1000000`,
+      })),
+    ...(options.verifyLimits === undefined ? {} : { verifyLimits: options.verifyLimits }),
     now: () => {
       clock += 5;
       return clock;
@@ -196,6 +214,60 @@ describe("sandbox supervisor", () => {
     expect(fake.args).toHaveLength(1);
 
     await supervisor.stop();
+    await channel.close();
+  });
+
+  test("refuses a handshake that announces another plugin id", async () => {
+    const fake = createFakeSandbox(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "hello",
+        params: { pluginId: "other-plugin", sdkVersion: "0.0.0" },
+      }),
+    );
+    const { channel, supervisor } = await createSupervisor(fake.spawn);
+
+    await expect(supervisor.start()).rejects.toThrow(
+      "announced plugin other-plugin, expected sandbox-demo",
+    );
+    expect(supervisor.status().state).toBe("failed");
+    expect(supervisor.status().error).toContain("other-plugin");
+
+    await channel.close();
+  });
+
+  test("refuses to become ready when a cgroup limit did not stick", async () => {
+    const fake = createFakeSandbox(
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
+    );
+    const { channel, supervisor } = await createSupervisor(fake.spawn, {
+      readCgroup: async () => ({
+        memoryCurrentBytes: 1024,
+        memoryMaxBytes: DEFAULT_SANDBOX_LIMITS.memoryBytes * 4,
+        anonBytes: 1024,
+        fileBytes: 0,
+        pidsMax: DEFAULT_SANDBOX_LIMITS.pids,
+        cpuMax: `${DEFAULT_SANDBOX_LIMITS.cpuMsPerSecond * 1_000} 1000000`,
+      }),
+    });
+
+    await expect(supervisor.start()).rejects.toThrow(/memory limit is/);
+    expect(supervisor.status().state).toBe("failed");
+
+    await channel.close();
+  });
+
+  test("refuses to become ready when the sandbox cgroup cannot be read", async () => {
+    const fake = createFakeSandbox(
+      `${JSON.stringify({ jsonrpc: "2.0", method: "hello", params: { pluginId: "sandbox-demo", sdkVersion: "0.0.0" } })}\n`,
+    );
+    const { channel, supervisor } = await createSupervisor(fake.spawn, {
+      readCgroup: async () => undefined,
+    });
+
+    await expect(supervisor.start()).rejects.toThrow(/Could not read the sandbox cgroup/);
+    expect(supervisor.status().state).toBe("failed");
+
     await channel.close();
   });
 });

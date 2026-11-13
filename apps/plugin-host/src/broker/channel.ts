@@ -218,8 +218,8 @@ export class BrokerChannel {
     });
 
     // The plugin runs as a different UID inside its own user namespace. The socket is only
-    // reachable through the bind mount, so world-connectable is the spike's simplest safe
-    // option; per-plugin sockets and broker tokens arrive with `plugin-platform`.
+    // reachable through the bind mount, so world-connectable is the simplest safe option for
+    // one sandbox; per-plugin sockets and broker tokens arrive with the broker work (task 2.2).
     await chmod(this.socketPath, 0o666);
     this.#logger.info("broker.listening", { socket: this.socketPath });
   }

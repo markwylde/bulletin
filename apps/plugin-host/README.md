@@ -1,12 +1,12 @@
-# plugin-host (spike S2)
+# plugin-host
 
-Prototype of the brokered plugin sandbox from [ADR 0009](../../docs/adr/0009-plugin-platform.md).
-`plugin-platform` reviews and hardens this code; the spike exists to prove the isolation
-primitives on Docker and rootless Podman and to measure their cost.
+The brokered plugin sandbox from [ADR 0009](../../docs/adr/0009-plugin-platform.md). The
+isolation primitives were proven by spike S2 (`plugin-sandbox-spike`); this app is the
+production runtime and its measured findings live in the ADR.
 
 ## What runs
 
-- A Bun supervisor (`src/index.ts`) starts one demo plugin (`src/spike/plugin`) under nsjail.
+- A Bun supervisor (`src/index.ts`) starts one demo plugin (`src/demo/plugin`) under nsjail.
 - The plugin runs as its own UID (`sandboxUid(pluginId)`, 10 000–59 999) in fresh user, PID,
   mount, IPC, UTS, cgroup and network namespaces.
 - It sees only:
@@ -20,16 +20,41 @@ primitives on Docker and rootless Podman and to measure their cost.
 - A default-deny Kafel seccomp filter (`src/sandbox/seccomp.ts`) allows only the syscalls a
   broker-connected Bun needs and none of the escape or credential families.
 - The plugin connects to the broker socket and sends a `hello`; the supervisor only reports
-  ready after that handshake.
+  ready after that handshake and after verifying the cgroup limits it requested were applied.
+- A handshake that announces a different plugin id is rejected, so a sandbox cannot claim
+  another plugin's identity on the broker.
 
 `GET /sandbox` returns the live status and the sandbox's cgroup values. Readiness includes
 the sandbox, so `/health/ready` fails when nsjail cannot start.
+
+## Container contract and preflight (task 1.1)
+
+ADR 0009 records the capabilities and seccomp profile nsjail needs. Before the broker starts,
+`src/sandbox/preflight.ts` verifies the container matches that contract and refuses to run
+plugin code otherwise, instead of degrading to weaker isolation:
+
+- Linux, an executable `nsjail`, and the minimal root filesystem with `bin/bun`;
+- the effective capability mask includes `CAP_SYS_ADMIN` (plus the engine defaults nsjail
+  uses: `CAP_CHOWN`, `CAP_SETGID`, `CAP_SETUID`);
+- the outer container seccomp mode is `0` (unconfined); Docker's default profile rejects
+  `CLONE_NEWUSER`, while the jail's own Kafel filter remains the security boundary;
+- a writable cgroup v2 root with the `memory`, `pids` and `cpu` controllers.
+
+The preflight aggregates every problem and its compose fix into one log line
+(`sandbox.preflight_failed`). After spawn, the supervisor reads `memory.max`, `pids.max` and
+`cpu.max` from the sandbox cgroup and fails the sandbox (killing it) if any limit did not
+stick, for example because an engine did not delegate a controller.
+
+The seccomp policy stays a bare default-deny `ALLOW { … }` Kafel block. Newer mount-API,
+cross-process inspection, keyring, io_uring and host-administration syscalls are on an
+explicit forbidden list, and `forbiddenInAllowlist` makes the build fail if one is ever added
+to the allowlist.
 
 ## Broker protocol and database (task 2.1)
 
 The broker listens on the bind-mounted Unix socket and speaks **length-prefixed JSON-RPC 2.0**:
 a 4-byte big-endian length followed by UTF-8 JSON, capped at 1 MiB per frame. The first message
-is a `hello` notification; requests on one connection are handled in order. The spike
+is a `hello` notification; requests on one connection are handled in order. It currently
 implements `db.query`, `http.fetch` and `log`.
 
 ```json
@@ -129,7 +154,7 @@ filter still applies. `label=disable` is for SELinux hosts (Podman on Fedora).
 Check it:
 
 ```bash
-docker compose logs plugin-host                 # sandbox.ready, plugin.database_ready, plugin.log
+docker compose logs plugin-host                 # sandbox.preflight_ok, sandbox.ready, plugin.database_ready
 docker compose exec -T plugin-host bun -e \
   'console.log(await (await fetch("http://127.0.0.1:3004/sandbox")).text())'
 docker compose exec -T plugin-host bun -e \
@@ -138,7 +163,7 @@ docker compose exec -T postgres psql -U bulletin -d bulletin \
   -c "select id, body from plugin_sandbox_demo.notes order by id desc limit 5"
 ```
 
-## Measurement (task 1.2)
+## Measurement
 
 The measurement script spawns and stops the demo sandbox N times. It runs one untimed warm-up
 first so the shared Bun binary is already in the page cache; with a warm cache the per-sandbox
@@ -146,7 +171,7 @@ number is the marginal cost. It also asserts that the cgroup limits were applied
 
 ```bash
 docker compose exec -T -e PLUGIN_HOST_ENGINE=podman -e PLUGIN_HOST_MEASURE_ITERATIONS=10 \
-  plugin-host bun apps/plugin-host/src/spike/measure.ts
+  plugin-host bun apps/plugin-host/src/demo/measure.ts
 ```
 
 On a Docker host, set `PLUGIN_HOST_ENGINE=docker` (or omit it and let the script read
@@ -177,12 +202,12 @@ Notes:
   memory. That is why a cold sandbox is ~20 MiB and a warm one ~3.6 MiB. The cgroup memory
   limit still bounds the anonymous memory a hostile plugin can allocate.
 - Process-tree RSS over-counts shared pages and is only reported for cross-checking.
-- The **Docker engine was not available in the environment this spike ran in** (the host's
+- The **Docker engine was not available in the environment spike S2 ran in** (the host's
   `docker` is Podman). The script is engine-agnostic and detects `docker`/`libpod` from
   `/proc/self/cgroup`; the Docker row is produced by the E2E CI job, which runs this command
   on Docker and rootless Podman.
 
-## Malicious-plugin suite (task 3)
+## Malicious-plugin suite
 
 `src/malicious/malicious.test.ts` spawns a probe bundle (`src/malicious/plugin`) under nsjail
 once per case. The probe reports through the broker; the tests assert denial/containment and
@@ -204,9 +229,10 @@ and rootless Podman after the E2E stack is healthy.
 
 - nsjail 3.4 needs **CAP_SYS_ADMIN** and cgroupns=host to create one cgroup per sandbox.
 - Rootful engines let the container write the host cgroup root. Rootless Podman mounts it
-  read-only and puts the container under the user's systemd slice, so nsjail's cgroup parent
-  must be the delegated `user.slice` directory. `src/sandbox/cgroup.ts` probes the mount and
-  then that delegated parent at startup and records which one it used.
+  read-only and puts the container under the user's systemd slice (or `libpod_parent` with
+  the cgroupfs manager), so nsjail's cgroup parent must be a delegated ancestor.
+  `src/sandbox/cgroup.ts` probes the mount and then every ancestor of the container's own
+  cgroup, deepest first, and records which one it used.
 - Docker's default seccomp profile blocks `clone`/`unshare` with `CLONE_NEWUSER`, so the
   container needs `seccomp=unconfined`. The jail's own filter is the security boundary.
 - Bun's `Bun.spawn` helper uses `pidfd_open`. The profile allows it; omitting it kills the

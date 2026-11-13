@@ -4,20 +4,21 @@ import { BrokerChannel } from "../broker/channel.ts";
 import { loadPluginManifest } from "../broker/manifest.ts";
 import { loadPluginHostConfig } from "../config.ts";
 import { resolveSandboxCgroupRoot } from "../sandbox/cgroup.ts";
+import { checkAppliedLimits } from "../sandbox/limits.ts";
 import { readProcessTreeRssBytes, readProcFile, readSandboxCgroup } from "../sandbox/procfs.ts";
 import { buildSeccompPolicy, sandboxArch } from "../sandbox/seccomp.ts";
 import { SandboxSupervisor } from "../sandbox/supervisor.ts";
 import type { SandboxCgroupUsage } from "../sandbox/types.ts";
 
 /**
- * Spike S2 measurement: spawn and stop the demo sandbox N times and report the handshake
+ * Sandbox measurement: spawn and stop the demo sandbox N times and report the handshake
  * latency and the memory held by each cgroup. One untimed warm-up sandbox runs first so the
  * shared Bun binary is already in the page cache; per-sandbox marginal memory is the number
  * that matters once the host is warm.
  *
  * Run it inside the plugin-host container:
  *
- *   docker compose exec -T plugin-host bun apps/plugin-host/src/spike/measure.ts
+ *   docker compose exec -T plugin-host bun apps/plugin-host/src/demo/measure.ts
  */
 
 interface Sample {
@@ -168,9 +169,17 @@ const memoryCurrent = numbers(samples.map((sample) => sample.memoryCurrentBytes)
 const anon = numbers(samples.map((sample) => sample.anonBytes));
 const limitsApplied = samples.every(
   (sample) =>
-    sample.memoryMaxBytes === config.limits.memoryBytes &&
-    sample.pidsMax === config.limits.pids &&
-    sample.cpuMax === `${config.limits.cpuMsPerSecond * 1000} 1000000`,
+    checkAppliedLimits(
+      {
+        memoryCurrentBytes: sample.memoryCurrentBytes,
+        memoryMaxBytes: sample.memoryMaxBytes,
+        anonBytes: sample.anonBytes,
+        fileBytes: sample.fileBytes,
+        pidsMax: sample.pidsMax,
+        cpuMax: sample.cpuMax,
+      },
+      config.limits,
+    ).length === 0,
 );
 
 const report = {

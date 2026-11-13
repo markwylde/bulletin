@@ -2,7 +2,7 @@
 
 ## 1. From the spike
 
-- [ ] 1.1 Review and harden the `apps/plugin-host` prototype from `plugin-sandbox-spike` against the findings recorded in ADR 0009 (container capabilities, seccomp profile, Podman caveats); remove spike shortcuts
+- [x] 1.1 Review and harden the `apps/plugin-host` prototype from `plugin-sandbox-spike` against the findings recorded in ADR 0009 (container capabilities, seccomp profile, Podman caveats); remove spike shortcuts
 
 ## 2. Runtime
 

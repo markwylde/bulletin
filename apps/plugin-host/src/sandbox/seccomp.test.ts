@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { buildSeccompPolicy, FORBIDDEN_SYSCALLS, sandboxArch } from "./seccomp.ts";
+import {
+  buildSeccompPolicy,
+  FORBIDDEN_SYSCALLS,
+  forbiddenInAllowlist,
+  sandboxArch,
+} from "./seccomp.ts";
 
 describe("seccomp profile", () => {
   test("is a bare default-deny Kafel policy that nsjail accepts via --seccomp_string", () => {
@@ -48,6 +53,31 @@ describe("seccomp profile", () => {
       }
     },
   );
+
+  test("keeps the newer mount API and cross-process families forbidden", () => {
+    for (const syscall of [
+      "fsopen",
+      "fsmount",
+      "open_tree",
+      "move_mount",
+      "mount_setattr",
+      "pidfd_getfd",
+      "process_vm_readv",
+      "kcmp",
+      "name_to_handle_at",
+      "io_uring_enter",
+      "settimeofday",
+      "sethostname",
+    ]) {
+      expect(FORBIDDEN_SYSCALLS as readonly string[]).toContain(syscall);
+    }
+  });
+
+  test("fails the build if a forbidden syscall is added to the allowlist", () => {
+    expect(forbiddenInAllowlist(["read", "write"])).toEqual([]);
+    expect(forbiddenInAllowlist(["read", "mount", "write"])).toEqual(["mount"]);
+    expect(forbiddenInAllowlist(["read", "SYS_pidfd_getfd"])).toEqual(["pidfd_getfd"]);
+  });
 
   test("uses the right numeric aliases per architecture", () => {
     expect(buildSeccompPolicy("arm64")).toContain("#define SYS_uname 160");

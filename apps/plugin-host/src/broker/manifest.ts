@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-/** Subset of `plugin.json` the broker spike needs. */
+/** Subset of `plugin.json` the broker currently needs. */
 export interface PluginManifest {
   readonly id: string;
   readonly name: string;

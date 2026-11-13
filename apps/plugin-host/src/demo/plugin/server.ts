@@ -1,5 +1,5 @@
 /**
- * The sandbox spike's demo plugin. It runs inside nsjail and talks to the broker only over
+ * The sandbox demo plugin. It runs inside nsjail and talks to the broker only over
  * the Unix socket: a JSON-RPC handshake, then a couple of database calls and a log line.
  *
  * If the broker is not available (for example the sandbox-only measurement harness), the

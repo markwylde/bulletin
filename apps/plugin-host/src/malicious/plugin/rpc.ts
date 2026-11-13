@@ -1,6 +1,6 @@
 import { encodeFrame, FrameDecoder } from "./framing.ts";
 
-/** Minimal JSON-RPC client for the broker socket used by the spike plugin. */
+/** Minimal JSON-RPC client for the broker socket used by the malicious probe. */
 export class BrokerCallError extends Error {
   readonly code: number;
 

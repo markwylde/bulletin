@@ -150,8 +150,8 @@ async function runCase(): Promise<Result> {
     case "sibling-bundle": {
       const current = await Bun.file("/plugin/server.ts").exists();
       const candidates = [
-        "/plugin/../spike/plugin/server.ts",
-        "/app/apps/plugin-host/src/spike/plugin/server.ts",
+        "/plugin/../demo/plugin/server.ts",
+        "/app/apps/plugin-host/src/demo/plugin/server.ts",
         "/tmp/malicious-sibling/secret",
       ];
       const visible: string[] = [];

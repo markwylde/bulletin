@@ -170,32 +170,96 @@ export function buildSeccompPolicy(arch: SandboxArch): string {
   const defines = Object.entries(aliases).map(([name, number]) => `#define SYS_${name} ${number}`);
   const aliasNames = Object.keys(aliases).map((name) => `SYS_${name}`);
   const allowed = [...COMMON_ALLOW, ...aliasNames];
+  const conflicts = forbiddenInAllowlist(allowed);
+
+  if (conflicts.length > 0) {
+    throw new Error(`Seccomp allowlist contains forbidden syscalls: ${conflicts.join(", ")}`);
+  }
 
   return [...defines, "", "ALLOW {", `  ${allowed.join(", ")}`, "}"].join("\n");
 }
 
-/** Syscalls that must never appear in the plugin profile. */
+/** Names that a policy emits but the forbidden list says must stay denied, including aliases. */
+export function forbiddenInAllowlist(allowed: readonly string[]): string[] {
+  const emitted = new Set(allowed);
+
+  return FORBIDDEN_SYSCALLS.filter(
+    (syscall) => emitted.has(syscall) || emitted.has(`SYS_${syscall}`),
+  );
+}
+
+/**
+ * Syscalls that must never appear in the plugin profile. Everything not in the allowlist is
+ * already denied by Kafel's default-deny action; this list is the reviewable boundary and
+ * makes an accidental addition to {@link COMMON_ALLOW} fail the build instead of weakening
+ * the sandbox. It includes the newer mount API, cross-process inspection, keyring and
+ * host-administration families that are not named in older Kafel tables.
+ */
 export const FORBIDDEN_SYSCALLS = [
+  "acct",
+  "add_key",
+  "adjtimex",
   "bpf",
   "capset",
   "chroot",
+  "clock_adjtime",
+  "clock_settime",
+  "create_module",
+  "delete_module",
+  "fanotify_init",
+  "finit_module",
+  "fsconfig",
+  "fsmount",
+  "fsopen",
+  "fspick",
   "init_module",
+  "io_uring_enter",
+  "io_uring_register",
   "io_uring_setup",
-  "keyctl",
+  "ioperm",
+  "iopl",
+  "kcmp",
+  "kexec_file_load",
   "kexec_load",
+  "keyctl",
+  "lookup_dcookie",
   "mount",
+  "mount_setattr",
+  "move_mount",
+  "name_to_handle_at",
+  "nfsservctl",
   "open_by_handle_at",
+  "open_tree",
   "perf_event_open",
   "personality",
+  "pidfd_getfd",
   "pivot_root",
+  "process_vm_readv",
+  "process_vm_writev",
   "ptrace",
+  "quotactl",
   "reboot",
+  "request_key",
+  "setdomainname",
+  "setfsgid",
+  "setfsuid",
   "setgid",
+  "setgroups",
+  "sethostname",
   "setns",
+  "setregid",
+  "setresgid",
+  "setresuid",
+  "setreuid",
+  "settimeofday",
   "setuid",
   "swapoff",
   "swapon",
   "syslog",
+  "umount2",
   "unshare",
+  "uselib",
   "userfaultfd",
+  "vm86",
+  "vm86old",
 ] as const;

@@ -778,6 +778,9 @@ services:
       DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
     # The only privileged container: nsjail needs SYS_ADMIN for namespaces, mounts and the
     # cgroup hierarchy. It drops to the per-plugin UID and installs its own seccomp filter.
+    # The plugin-host preflight verifies this exact contract (capabilities, unconfined outer
+    # seccomp, writable cgroup v2) and refuses to run plugin code if it does not match
+    # (ADR 0009; apps/plugin-host/src/sandbox/preflight.ts).
     cap_add:
       - SYS_ADMIN
     security_opt:

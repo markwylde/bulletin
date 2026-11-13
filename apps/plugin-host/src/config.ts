@@ -131,7 +131,7 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     nsjailPath: read(env, "PLUGIN_HOST_NSJAIL") ?? "/usr/bin/nsjail",
     rootfsPath: read(env, "PLUGIN_HOST_ROOTFS") ?? "/opt/plugin-rootfs",
     bundlePath:
-      read(env, "PLUGIN_HOST_BUNDLE") ?? fileURLToPath(new URL("./spike/plugin", import.meta.url)),
+      read(env, "PLUGIN_HOST_BUNDLE") ?? fileURLToPath(new URL("./demo/plugin", import.meta.url)),
     cgroupV2Mount: read(env, "PLUGIN_HOST_CGROUP_ROOT") ?? "/sys/fs/cgroup",
     stateDir: read(env, "PLUGIN_HOST_STATE_DIR") ?? "/run/plugin-host",
     limits,

@@ -13,7 +13,7 @@ function sandbox(overrides: Partial<NsjailSandbox> = {}): NsjailSandbox {
   return {
     pluginId: "sandbox-demo",
     rootfsPath: "/opt/plugin-rootfs",
-    bundlePath: "/app/apps/plugin-host/src/spike/plugin",
+    bundlePath: "/app/apps/plugin-host/src/demo/plugin",
     socketPath: "/run/plugin-host/broker.sock",
     uid: 12_345,
     gid: 12_345,
@@ -69,7 +69,7 @@ describe("nsjail arguments", () => {
     const args = buildNsjailArgs(sandbox());
 
     expect(valuesOf(args, "--bindmount_ro")).toContain(
-      `/app/apps/plugin-host/src/spike/plugin:${JAIL_BUNDLE_PATH}`,
+      `/app/apps/plugin-host/src/demo/plugin:${JAIL_BUNDLE_PATH}`,
     );
     expect(valuesOf(args, "--bindmount")).toEqual([
       `/run/plugin-host/broker.sock:${JAIL_SOCKET_PATH}`,

@@ -66,8 +66,8 @@ async function ensureRole(sql: SQL, name: string, login: boolean): Promise<void>
 
 /**
  * Provisions the two roles and the schema from ADR 0009, runs the plugin's migrations as the
- * owner, then opens the DML-only runtime pool. In the real installer this runs from
- * `plugin_migrator`; the spike uses the local Postgres administrator.
+ * owner, then opens the DML-only runtime pool. Until the installer lands (task 2.5) this
+ * runs from the local Postgres administrator; production uses `plugin_migrator`.
  */
 export class PluginDatabase {
   readonly identifiers: PluginIdentifiers;

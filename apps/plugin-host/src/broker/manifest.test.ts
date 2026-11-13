@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadPluginManifest, loadPluginMigrations, parsePluginManifest } from "./manifest.ts";
 
-const REAL_BUNDLE = fileURLToPath(new URL("../spike/plugin", import.meta.url));
+const REAL_BUNDLE = fileURLToPath(new URL("../demo/plugin", import.meta.url));
 
 async function withBundle<T>(
   files: Readonly<Record<string, string>>,
@@ -37,7 +37,7 @@ const VALID = {
 } as const;
 
 describe("plugin manifest", () => {
-  test("parses the spike bundle and its migration", async () => {
+  test("parses the demo bundle and its migration", async () => {
     const manifest = await loadPluginManifest(REAL_BUNDLE);
 
     expect(manifest.id).toBe("sandbox-demo");

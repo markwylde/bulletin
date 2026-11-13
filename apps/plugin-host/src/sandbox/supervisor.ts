@@ -1,8 +1,9 @@
 import type { Logger } from "@bulletin/config";
 import type { BrokerChannel, PluginHello } from "../broker/channel.ts";
+import { checkAppliedLimits, describeLimitMismatches } from "./limits.ts";
 import { buildNsjailArgs, JAIL_BUNDLE_PATH, NSJAIL_ENVIRONMENT, sandboxUid } from "./nsjail.ts";
 import { findChildPid, readProcessTreeRssBytes, readSandboxCgroup } from "./procfs.ts";
-import type { SandboxLimits, SandboxState, SandboxStatus } from "./types.ts";
+import type { SandboxCgroupUsage, SandboxLimits, SandboxState, SandboxStatus } from "./types.ts";
 
 export interface SandboxProcess {
   readonly pid: number;
@@ -36,6 +37,13 @@ export interface SandboxSupervisorOptions {
   readonly spawn?: SpawnSandbox;
   /** Test seam: finds nsjail's clone target. Defaults to reading `/proc`. */
   readonly resolveChildPid?: (pid: number) => Promise<number | undefined>;
+  /** Test seam: reads the sandbox's own cgroup. Defaults to reading `/proc`-backed files. */
+  readonly readCgroup?: (
+    cgroupV2Mount: string,
+    childPid: number,
+  ) => Promise<SandboxCgroupUsage | undefined>;
+  /** Fail a sandbox whose cgroup limits did not stick. Defaults to `true`. */
+  readonly verifyLimits?: boolean;
   readonly now?: () => number;
 }
 
@@ -220,12 +228,33 @@ export class SandboxSupervisor {
       throw outcome.error;
     }
 
+    if (outcome.hello.pluginId !== this.pluginId) {
+      await this.#killAndWait();
+      this.#state = "failed";
+      this.#error = `Sandbox announced plugin ${outcome.hello.pluginId}, expected ${this.pluginId}`;
+      this.#logger.error("sandbox.handshake_identity_mismatch", {
+        announced: outcome.hello.pluginId,
+        expected: this.pluginId,
+      });
+      throw new Error(this.#error);
+    }
+
     const resolveChildPid = this.#options.resolveChildPid ?? ((pid: number) => findChildPid(pid));
     this.#childPid = (await resolveChildPid(child.pid)) ?? null;
     this.#startupMs = this.#now() - startedAt;
+    const usage = await this.#readMetrics();
+    const limitError = this.#limitsNotApplied(usage);
+
+    if (limitError !== undefined) {
+      this.#logger.error("sandbox.limits_not_applied", { error: limitError });
+      await this.#killAndWait();
+      this.#state = "failed";
+      this.#error = limitError;
+      throw new Error(limitError);
+    }
+
     this.#readyAt = new Date().toISOString();
     this.#state = "ready";
-    await this.#readMetrics();
 
     // Keep watching for the rest of the sandbox's life, not just up to the handshake.
     void child.exited.then((code) => {
@@ -317,16 +346,44 @@ export class SandboxSupervisor {
     }
   }
 
-  async #readMetrics(): Promise<void> {
+  async #readMetrics(): Promise<SandboxCgroupUsage | undefined> {
     if (this.#childPid === null) {
-      return;
+      this.#cgroup = null;
+      this.#memoryBytes = this.#pid === null ? null : await readProcessTreeRssBytes(this.#pid);
+      return undefined;
     }
 
-    const cgroup = await readSandboxCgroup(this.#options.cgroupV2Mount, this.#childPid);
+    const read = this.#options.readCgroup ?? readSandboxCgroup;
+    const cgroup = await read(this.#options.cgroupV2Mount, this.#childPid);
     this.#cgroup = cgroup ?? null;
     this.#memoryBytes =
       cgroup?.memoryCurrentBytes ??
       (this.#pid === null ? null : await readProcessTreeRssBytes(this.#pid));
+    return cgroup;
+  }
+
+  /**
+   * `verifyLimits` defaults to on: a sandbox whose cgroup limits did not stick (for example
+   * because the engine did not delegate a controller) must never serve plugin code.
+   */
+  #limitsNotApplied(usage: SandboxCgroupUsage | undefined): string | undefined {
+    if (this.#options.verifyLimits === false) {
+      return undefined;
+    }
+
+    if (this.#childPid === null) {
+      return "Could not find the sandbox process to verify its cgroup limits";
+    }
+
+    if (usage === undefined) {
+      return `Could not read the sandbox cgroup at ${this.#options.cgroupV2Mount} to verify its limits`;
+    }
+
+    const mismatches = checkAppliedLimits(usage, this.#options.limits);
+
+    return mismatches.length === 0
+      ? undefined
+      : `Sandbox enforced different limits: ${describeLimitMismatches(mismatches)}`;
   }
 
   #drain(child: SandboxProcess): void {

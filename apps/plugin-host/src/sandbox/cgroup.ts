@@ -15,18 +15,24 @@ export interface CgroupProbe {
   controllers(path: string): Promise<readonly string[]>;
 }
 
-const SCOPE_PATTERN = /^(?:libpod|docker)-[0-9a-f]+\.scope$/;
 const REQUIRED_CONTROLLERS = ["memory", "pids", "cpu"] as const;
 
-/** Candidate cgroup roots in preference order. Exported for tests. */
+/**
+ * Candidate cgroup roots in preference order: the mount itself, then every ancestor of the
+ * container's own cgroup, deepest first.
+ *
+ * Rootful engines let the container write the host root. Rootless Podman mounts it read-only
+ * and only delegates an ancestor (the systemd `user.slice`, or `libpod_parent` with the
+ * cgroupfs manager), while `docker`/`libpod` scope names differ between engines and versions.
+ * Walking the ancestors instead of matching scope names keeps both cases working.
+ */
 export function cgroupRootCandidates(mount: string, selfCgroup: string): string[] {
   const normalizedMount = mount.replace(/\/+$/, "");
   const parts = selfCgroup.split("/").filter((part) => part !== "");
-  const scopeIndex = parts.findIndex((part) => SCOPE_PATTERN.test(part));
   const candidates = [normalizedMount];
 
-  if (scopeIndex > 0) {
-    candidates.push(join(normalizedMount, ...parts.slice(0, scopeIndex)));
+  for (let end = parts.length; end > 0; end -= 1) {
+    candidates.push(join(normalizedMount, ...parts.slice(0, end)));
   }
 
   return [...new Set(candidates)];

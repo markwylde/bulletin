@@ -1,4 +1,4 @@
--- Test migration for the sandbox spike. Runs as plugin_<id>_owner with search_path set to
+-- Demo migration for the sandbox. Runs as plugin_<id>_owner with search_path set to
 -- the plugin schema, so unqualified names stay inside the plugin's own schema.
 CREATE TABLE IF NOT EXISTS notes (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

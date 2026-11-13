@@ -48,14 +48,16 @@ Pull a new seed change with `docker compose down -v` before starting again.
 
 1. builds an Alpine 3.22 image with nsjail 3.4 and a minimal read-only root filesystem
    containing Bun 1.4.0 and its musl libraries;
-2. discovers a writable cgroup v2 parent (the host root on rootful engines, the
-   systemd-delegated `user.slice` on rootless Podman);
+2. runs the container preflight (Linux, nsjail, root filesystem, `CAP_SYS_ADMIN` and the
+   engine's default capabilities, an unconfined outer seccomp profile) and discovers a
+   writable cgroup v2 parent (the host root on rootful engines, the deepest delegated
+   ancestor such as `user.slice` on rootless Podman);
 3. provisions the demo plugin's schema and roles (`plugin_sandbox_demo` and
    `plugin_sandbox_demo_owner`) and runs its migration from
-   `apps/plugin-host/src/spike/plugin/migrations/`;
+   `apps/plugin-host/src/demo/plugin/migrations/`;
 4. starts the broker's framed JSON-RPC socket and the database/egress broker;
-5. spawns the demo plugin under nsjail and waits for its handshake. Readiness includes both
-   the sandbox and the broker.
+5. spawns the demo plugin under nsjail and waits for its handshake and for the requested
+   cgroup limits to read back correctly. Readiness includes both the sandbox and the broker.
 
 The service is the **only privileged container**. Its compose definition supplies the
 minimum it needs:
@@ -92,7 +94,8 @@ rows are not part of the forum seed.
 
 ```bash
 docker compose logs -f plugin-host
-# look for: plugin.database_ready, broker.listening, sandbox.ready, plugin.log
+# look for: sandbox.preflight_ok, plugin.database_ready, broker.listening,
+#          sandbox.ready, plugin.log
 
 docker compose exec -T plugin-host bun -e \
   'const r = await fetch("http://127.0.0.1:3004/health/ready"); console.log(r.status, await r.text())'
@@ -112,7 +115,7 @@ the schema and query/egress/denial counters.
 
 `docker compose up --watch` syncs `apps/plugin-host/src` and `packages/` into the container.
 A TypeScript change restarts Bun's watcher; the supervisor stops the old sandbox and starts a
-new one. The bundle mount is read-only, so editing `apps/plugin-host/src/spike/plugin` is
+new one. The bundle mount is read-only, so editing `apps/plugin-host/src/demo/plugin` is
 picked up on the next restart. A change to `package.json`, `bun.lock` or the Dockerfile
 triggers a Compose rebuild.
 
@@ -122,12 +125,14 @@ fixtures). Plugin installers must do the same when they write a bundle.
 ### Rootless Podman
 
 Rootless Podman is supported without host changes. The container's `/sys/fs/cgroup` mount is
-read-only at the host root, so the supervisor probes for the systemd-delegated parent
-(`user.slice/...`) and points nsjail at it. If no writable cgroup parent with
-`cpu`/`memory`/`pids` controllers exists, startup logs `sandbox.cgroup_unavailable`; the
-plugin-host stays unready and the rest of the stack waits on it. Check
-`docker compose logs plugin-host` and the container's cgroup v2 delegation. The per-plugin
-container fallback is a production decision for `plugin-platform`, not a local workaround.
+read-only at the host root, so the supervisor probes the container's cgroup ancestors
+(deepest first) for a writable parent with the `cpu`/`memory`/`pids` controllers, such as
+the systemd-delegated `user.slice/...` or `libpod_parent`, and points nsjail at it. If the
+preflight finds no usable parent — or the container is missing `SYS_ADMIN` or the
+unconfined outer seccomp profile — startup logs `sandbox.preflight_failed` with the fix,
+and the plugin-host exits instead of running plugins with weaker isolation. Check
+`docker compose logs plugin-host` and the container's cgroup v2 delegation. There is no
+per-plugin container fallback locally.
 
 ### Tests
 
@@ -151,7 +156,7 @@ container fallback is a production decision for `plugin-platform`, not a local w
   ```bash
   docker compose exec -T -e PLUGIN_HOST_ENGINE=podman \
     -e PLUGIN_HOST_MEASURE_ITERATIONS=10 plugin-host \
-    bun apps/plugin-host/src/spike/measure.ts
+    bun apps/plugin-host/src/demo/measure.ts
   ```
 
 Stop the stack with `docker compose down` (data kept) or reset everything, including the
@@ -163,9 +168,14 @@ plugin schema and roles, with `docker compose down -v`.
   `docker compose logs plugin-host`. The supervisor logs the nsjail stderr and the sandbox
   error; `/sandbox` shows the last state. The stack's proxy depends on a healthy plugin-host,
   so this blocks the other origins until fixed.
-- **`sandbox.cgroup_unavailable`** — the container cannot create a child cgroup. Check that
-  the engine uses cgroup v2 and that the compose `cgroup: host`/`/sys/fs/cgroup` mount is
-  intact. Rootless hosts need a delegated systemd user slice.
+- **`sandbox.preflight_failed`** — the one-line error names each problem: a missing
+  capability (`cap_add: [SYS_ADMIN]`), a filtered outer seccomp profile
+  (`seccomp=unconfined`), a missing nsjail/root filesystem, or no writable cgroup v2 parent.
+  Check the engine uses cgroup v2 and that the compose `cgroup: host`/`/sys/fs/cgroup` mount
+  is intact; rootless hosts need a delegated systemd user slice.
+- **`sandbox.limits_not_applied`** — nsjail started but the cgroup limits read back
+  differently (usually an undelegated controller). The supervisor kills the sandbox and
+  readiness fails; fix the delegation rather than relaxing the limits.
 - **nsjail/namespace errors** — the plugin-host container must have `SYS_ADMIN`, an
   unconfined outer seccomp profile and `label=disable` on SELinux hosts; use the compose
   service as-is.
