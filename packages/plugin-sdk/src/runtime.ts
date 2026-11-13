@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   ContentExtensionInput,
   EnricherInput,
@@ -43,6 +44,7 @@ export class BrokerClient {
   readonly #socket: Bun.Socket;
   readonly #decoder = new FrameDecoder();
   readonly #pending = new Map<JsonRpcId, PendingCall>();
+  readonly #invocation = new AsyncLocalStorage<string | undefined>();
   readonly #timeoutMs: number;
   #nextId = 0;
   #handler: RequestHandler | undefined;
@@ -73,12 +75,25 @@ export class BrokerClient {
         reject,
         timer,
       });
-      this.#write({ jsonrpc: "2.0", id, method, params: params ?? null });
+      const invocation = this.#invocation.getStore();
+      this.#write({
+        jsonrpc: "2.0",
+        id,
+        method,
+        params: params ?? null,
+        ...(invocation === undefined ? {} : { invocation }),
+      });
     });
   }
 
   notify(method: string, params?: unknown): void {
-    this.#write({ jsonrpc: "2.0", method, params: params ?? null });
+    const invocation = this.#invocation.getStore();
+    this.#write({
+      jsonrpc: "2.0",
+      method,
+      params: params ?? null,
+      ...(invocation === undefined ? {} : { invocation }),
+    });
   }
 
   receive(data: Uint8Array): void {
@@ -114,7 +129,9 @@ export class BrokerClient {
   }
 
   async #dispatch(request: JsonRpcRequest): Promise<void> {
-    if (this.#handler === undefined) {
+    const handler = this.#handler;
+
+    if (handler === undefined) {
       this.#write({
         jsonrpc: "2.0",
         id: request.id,
@@ -124,7 +141,7 @@ export class BrokerClient {
     }
 
     try {
-      const result = await this.#handler(request);
+      const result = await this.#invocation.run(request.invocation, () => handler(request));
       this.#write({ jsonrpc: "2.0", id: request.id, result: result ?? null });
     } catch (error) {
       this.#write({

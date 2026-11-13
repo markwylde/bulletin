@@ -25,11 +25,13 @@ export const pluginSeedModule: SeedModule = {
       await sql`
         INSERT INTO core.plugins (
           plugin_id, name, version, sdk_version, state, enabled, generation,
-          capabilities, personal_data, timings
+          capabilities, approved_capabilities, approved_egress_hosts, personal_data, timings
         ) VALUES (
           ${plugin.id}, ${plugin.name}, ${plugin.version}, ${plugin.sdkVersion},
           ${plugin.state}, ${plugin.state === "active"}, ${generation},
           (${JSON.stringify(plugin.capabilities)}::text)::jsonb,
+          (${JSON.stringify(plugin.capabilities)}::text)::jsonb,
+          '[]'::jsonb,
           (${JSON.stringify(plugin.personalData)}::text)::jsonb,
           '{"activationMs":35}'::jsonb
         )

@@ -32,6 +32,7 @@ const VALID = {
   version: "0.0.0",
   sdkVersion: "0.0.0",
   entry: "server.ts",
+  capabilities: ["egress"],
   egressHosts: ["example.com", "api.example.org"],
   migrations: ["migrations/0001_notes.sql"],
 } as const;
@@ -58,7 +59,7 @@ describe("plugin manifest", () => {
       entry: "server.ts",
       egressHosts: ["example.com", "api.example.org"],
       migrations: ["migrations/0001_notes.sql"],
-      capabilities: [],
+      capabilities: ["egress"],
     });
   });
 

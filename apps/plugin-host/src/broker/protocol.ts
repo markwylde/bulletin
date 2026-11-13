@@ -9,12 +9,15 @@ export interface JsonRpcRequest {
   readonly id: JsonRpcId;
   readonly method: string;
   readonly params: unknown;
+  /** Dispatch token the broker issued with the request that caused this call. */
+  readonly invocation?: string;
 }
 
 export interface JsonRpcNotification {
   readonly jsonrpc: "2.0";
   readonly method: string;
   readonly params: unknown;
+  readonly invocation?: string;
 }
 
 export interface JsonRpcSuccess {
@@ -94,16 +97,31 @@ export function parseMessage(value: unknown): JsonRpcRequest | JsonRpcNotificati
   }
 
   const params = value.params ?? null;
+  const invocation =
+    typeof value.invocation === "string" && value.invocation.length <= 128
+      ? value.invocation
+      : undefined;
 
   if ("id" in value) {
     if (typeof value.id !== "string" && typeof value.id !== "number") {
       return undefined;
     }
 
-    return { jsonrpc: "2.0", id: value.id, method: value.method, params };
+    return {
+      jsonrpc: "2.0",
+      id: value.id,
+      method: value.method,
+      params,
+      ...(invocation === undefined ? {} : { invocation }),
+    };
   }
 
-  return { jsonrpc: "2.0", method: value.method, params };
+  return {
+    jsonrpc: "2.0",
+    method: value.method,
+    params,
+    ...(invocation === undefined ? {} : { invocation }),
+  };
 }
 
 export function isRequest(

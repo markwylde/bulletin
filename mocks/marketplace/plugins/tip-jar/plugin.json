@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "sdkVersion": "^2.0.0",
   "entry": "server.ts",
-  "capabilities": ["template", "route", "client", "core.read", "settings"],
+  "capabilities": ["template", "route", "client", "core.read", "db", "settings"],
   "egressHosts": [],
   "migrations": ["migrations/0001_tips.sql"],
   "routes": [{ "path": "tip", "kind": "api" }],

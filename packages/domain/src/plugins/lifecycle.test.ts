@@ -116,6 +116,59 @@ integrationDescribe("plugin lifecycle", () => {
     );
   }, 20_000);
 
+  test("rejects egress hosts that were not covered by the approved egress capability", async () => {
+    await withTestDatabase(
+      { adminUrl: adminUrl as string, prefix: "plugin_lifecycle_egress" },
+      async (db) => {
+        const runtime = new FakeRuntime();
+        const service = new PluginLifecycle({ sql: db.sql, runtime });
+        const invalid = {
+          ...manifest(),
+          egressHosts: ["api.example.com"],
+        } as PluginManifest;
+
+        await expect(service.install(installInput(invalid))).rejects.toMatchObject({
+          code: "approval",
+        });
+        expect(await loadPlugin(db.sql, "welcome-bot")).toBeNull();
+        expect(runtime.calls).toEqual([]);
+      },
+    );
+  }, 20_000);
+
+  test("stores approved grants at install and replaces them on upgrade", async () => {
+    await withTestDatabase(
+      { adminUrl: adminUrl as string, prefix: "plugin_lifecycle_grants" },
+      async (db) => {
+        const runtime = new FakeRuntime();
+        const service = new PluginLifecycle({ sql: db.sql, runtime });
+        const first = manifest({
+          capabilities: ["events", "core.read", "egress"],
+          egressHosts: ["api.example.com"],
+        });
+        const installed = await service.install(installInput(first));
+
+        expect(installed).toMatchObject({
+          approvedCapabilities: ["events", "core.read", "egress"],
+          approvedEgressHosts: ["api.example.com"],
+        });
+
+        const next = manifest({
+          version: "2.0.0",
+          capabilities: ["events", "core.read"],
+          egressHosts: [],
+        });
+        const upgraded = await service.upgrade("welcome-bot", installInput(next));
+
+        expect(upgraded).toMatchObject({
+          capabilities: ["events", "core.read"],
+          approvedCapabilities: ["events", "core.read"],
+          approvedEgressHosts: [],
+        });
+      },
+    );
+  }, 30_000);
+
   test("installs, records personal data and activates", async () => {
     await withTestDatabase(
       { adminUrl: adminUrl as string, prefix: "plugin_install" },

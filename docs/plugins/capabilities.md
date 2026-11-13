@@ -13,7 +13,7 @@ authentication.
 | `jobs` | Enqueue and run plugin jobs |
 | `kv` | Store key/value data in its schema |
 | `cache.invalidate` | Bump only `plugin:<id>:*` tags |
-| `egress` | HTTP through the broker to manifest-declared hosts |
+| `egress` | HTTP through the broker to approved, manifest-declared hosts; declaring hosts without this capability is rejected at install |
 | `template` | Inject template fragments/overrides |
 | `enricher` | Add declared view-model fields |
 | `filter` | Transform content on the write path |

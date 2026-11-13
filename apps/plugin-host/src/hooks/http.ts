@@ -263,6 +263,7 @@ async function readInternal(
               "content.extend",
               { syntax, source: input.source, viewer: viewer(input.viewer) },
               200,
+              viewer(input.viewer),
             );
             const rendered = isRecord(result) && typeof result.html === "string" ? result.html : "";
 
@@ -311,7 +312,7 @@ async function readInternal(
         const method = url.pathname === "/internal/bridge" ? "bridge.request" : "route.request";
         const result =
           transport.requestWithContext === undefined
-            ? await transport.request(method, requestPayload, 3_000)
+            ? await transport.request(method, requestPayload, 3_000, viewer(input.viewer))
             : await transport.requestWithContext(
                 method,
                 requestPayload,

@@ -20,13 +20,20 @@ interface FakePool {
   closed: boolean;
 }
 
-function createFactory(): { factory: (pluginId: string) => SQL; pools: Map<string, FakePool> } {
+function createFactory(): {
+  factory: (pluginId: string) => SQL;
+  pools: Map<string, FakePool>;
+  created: FakePool[];
+} {
   const pools = new Map<string, FakePool>();
+  const created: FakePool[] = [];
 
   return {
     pools,
+    created,
     factory(pluginId) {
       const pool: FakePool = { closed: false, sql: undefined as unknown as SQL };
+      created.push(pool);
       const callable = (async () => [{ ok: 1 }]) as unknown as SQL & {
         close: () => Promise<void>;
       };
@@ -42,11 +49,12 @@ function createFactory(): { factory: (pluginId: string) => SQL; pools: Map<strin
 
 function manager(
   options: { maxConnections?: number; idleTimeoutMs?: number; waitTimeoutMs?: number } = {},
-): { manager: PluginConnectionManager; pools: Map<string, FakePool> } {
-  const { factory, pools } = createFactory();
+): { manager: PluginConnectionManager; pools: Map<string, FakePool>; created: FakePool[] } {
+  const { factory, pools, created } = createFactory();
 
   return {
     pools,
+    created,
     manager: new PluginConnectionManager({
       adminUrl: "postgres://bulletin@postgres/bulletin",
       createPool: factory,
@@ -129,6 +137,38 @@ describe("plugin connection budget", () => {
     expect(connections.stats().open).toBeGreaterThanOrEqual(1);
     expect(connections.stats().open).toBeLessThanOrEqual(2);
     await connections.close();
+  });
+
+  test("shares one pool between concurrent waiters for the same plugin", async () => {
+    const {
+      manager: connections,
+      pools,
+      created,
+    } = manager({
+      maxConnections: 2,
+      idleTimeoutMs: 20,
+      waitTimeoutMs: 5_000,
+    });
+
+    await connections.withConnection("plugin-a", async () => undefined);
+    await connections.withConnection("plugin-b", async () => undefined);
+
+    const waiting = ["one", "two", "three"].map((value) =>
+      connections.withConnection("plugin-c", async () => value),
+    );
+
+    await expect(Promise.all(waiting)).resolves.toEqual(["one", "two", "three"]);
+    expect(connections.stats()).toMatchObject({
+      maxConnections: 2,
+      opened: 3,
+      rejections: 0,
+    });
+    expect(pools.get("plugin-c")?.closed).toBe(false);
+
+    await connections.close();
+    expect(connections.stats().open).toBe(0);
+    expect(created).toHaveLength(3);
+    expect(created.every((pool) => pool.closed)).toBe(true);
   });
 
   test("releases the slot when a pool fails to open", async () => {

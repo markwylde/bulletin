@@ -56,10 +56,15 @@ export interface ConnectionManagerStats {
 }
 
 interface Waiter {
-  readonly pluginId: string;
   readonly resolve: (connection: OpenConnection) => void;
   readonly reject: (error: Error) => void;
-  readonly timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** One group per plugin, so concurrent same-plugin callers share a pending acquisition. */
+interface WaiterGroup {
+  readonly pluginId: string;
+  readonly waiters: Waiter[];
 }
 
 function runtimeUrl(adminUrl: string, role: string): string {
@@ -76,7 +81,10 @@ export class PluginConnectionManager {
   readonly #waitTimeoutMs: number;
   readonly #createPool: ConnectionFactory;
   readonly #connections = new Map<string, OpenConnection>();
-  readonly #waiters: Waiter[] = [];
+  /** A plug-in's acquisition is shared by every concurrent caller; it reserves its slot. */
+  readonly #pending = new Map<string, Promise<OpenConnection>>();
+  readonly #waiters = new Map<string, WaiterGroup>();
+  #closing = false;
   #opened = 0;
   #closed = 0;
   #rejections = 0;
@@ -102,7 +110,10 @@ export class PluginConnectionManager {
     return {
       open: this.#connections.size,
       maxConnections: this.#maxConnections,
-      waiting: this.#waiters.length,
+      waiting: [...this.#waiters.values()].reduce(
+        (count, group) => count + group.waiters.length,
+        0,
+      ),
       opened: this.#opened,
       closed: this.#closed,
       rejections: this.#rejections,
@@ -125,14 +136,23 @@ export class PluginConnectionManager {
 
   /** Closes every pool; used on shutdown. */
   async close(): Promise<void> {
-    for (const waiter of this.#waiters.splice(0)) {
-      clearTimeout(waiter.timer);
-      waiter.reject(new ConnectionBudgetError("The plugin-host is shutting down"));
+    this.#closing = true;
+
+    for (const group of this.#waiters.values()) {
+      for (const waiter of group.waiters) {
+        clearTimeout(waiter.timer);
+        waiter.reject(new ConnectionBudgetError("The plugin-host is shutting down"));
+      }
     }
 
-    const connections = [...this.#connections.entries()];
+    this.#waiters.clear();
 
-    for (const [, connection] of connections) {
+    // An acquisition already in flight still reserves a slot; wait for it, then close it
+    // with everything else so shutdown cannot leave an orphan connection behind.
+    await Promise.allSettled([...this.#pending.values()]);
+    const connections = [...this.#connections.values()];
+
+    for (const connection of connections) {
       await this.#close(connection);
     }
 
@@ -140,24 +160,73 @@ export class PluginConnectionManager {
   }
 
   async #acquire(pluginId: string): Promise<OpenConnection> {
+    if (this.#closing) {
+      throw new ConnectionBudgetError("The plugin-host is shutting down");
+    }
+
     const existing = this.#connections.get(pluginId);
 
     if (existing !== undefined) {
       return existing;
     }
 
-    if (this.#connections.size < this.#maxConnections) {
-      return this.#open(pluginId);
+    const pending = this.#pending.get(pluginId);
+
+    if (pending !== undefined) {
+      return pending;
     }
 
+    if (this.#slots() < this.#maxConnections) {
+      return this.#start(pluginId);
+    }
+
+    return this.#wait(pluginId);
+  }
+
+  /** Slots in use, counting a pool that is still opening but not yet in `#connections`. */
+  #slots(): number {
+    let count = this.#connections.size;
+
+    for (const pluginId of this.#pending.keys()) {
+      if (!this.#connections.has(pluginId)) {
+        count += 1;
+      }
+    }
+
+    return count;
+  }
+
+  /** Starts one acquisition per plugin and shares it with every concurrent caller. */
+  #start(pluginId: string): Promise<OpenConnection> {
+    const pending = this.#open(pluginId).then(
+      (connection) => {
+        this.#pending.delete(pluginId);
+        return connection;
+      },
+      (error: unknown) => {
+        this.#pending.delete(pluginId);
+        void this.#handOff();
+        throw error;
+      },
+    );
+    this.#pending.set(pluginId, pending);
+    return pending;
+  }
+
+  #wait(pluginId: string): Promise<OpenConnection> {
+    let group = this.#waiters.get(pluginId);
+
+    if (group === undefined) {
+      group = { pluginId, waiters: [] };
+      this.#waiters.set(pluginId, group);
+    }
+
+    const current = group;
+
     return new Promise<OpenConnection>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        const index = this.#waiters.findIndex((waiter) => waiter.resolve === resolve);
-
-        if (index !== -1) {
-          this.#waiters.splice(index, 1);
-        }
-
+      const waiter = { resolve, reject } as Waiter;
+      waiter.timer = setTimeout(() => {
+        this.#removeWaiter(current, waiter);
         this.#rejections += 1;
         reject(
           new ConnectionBudgetError(
@@ -165,10 +234,21 @@ export class PluginConnectionManager {
           ),
         );
       }, this.#waitTimeoutMs);
-      timer.unref?.();
-
-      this.#waiters.push({ pluginId, resolve, reject, timer });
+      waiter.timer.unref?.();
+      current.waiters.push(waiter);
     });
+  }
+
+  #removeWaiter(group: WaiterGroup, waiter: Waiter): void {
+    const index = group.waiters.indexOf(waiter);
+
+    if (index !== -1) {
+      group.waiters.splice(index, 1);
+    }
+
+    if (group.waiters.length === 0 && this.#waiters.get(group.pluginId) === group) {
+      this.#waiters.delete(group.pluginId);
+    }
   }
 
   async #open(pluginId: string): Promise<OpenConnection> {
@@ -232,24 +312,34 @@ export class PluginConnectionManager {
   }
 
   async #handOff(): Promise<void> {
-    const waiter = this.#waiters.shift();
-
-    if (waiter === undefined) {
+    if (this.#closing) {
       return;
     }
 
-    clearTimeout(waiter.timer);
+    const next = this.#waiters.values().next().value as WaiterGroup | undefined;
 
-    if (this.#connections.size >= this.#maxConnections) {
-      // Another waiter was handed the slot first; stay queued.
-      this.#waiters.unshift(waiter);
+    if (next === undefined || this.#slots() >= this.#maxConnections) {
       return;
+    }
+
+    this.#waiters.delete(next.pluginId);
+
+    for (const waiter of next.waiters) {
+      clearTimeout(waiter.timer);
     }
 
     try {
-      waiter.resolve(await this.#open(waiter.pluginId));
+      const connection = await this.#acquire(next.pluginId);
+
+      for (const waiter of next.waiters) {
+        waiter.resolve(connection);
+      }
     } catch (error) {
-      waiter.reject(error instanceof Error ? error : new Error(String(error)));
+      const failure = error instanceof Error ? error : new Error(String(error));
+
+      for (const waiter of next.waiters) {
+        waiter.reject(failure);
+      }
     }
   }
 }

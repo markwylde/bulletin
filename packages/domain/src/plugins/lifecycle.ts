@@ -28,6 +28,10 @@ export interface PluginRecord {
   readonly enabled: boolean;
   readonly generation: number;
   readonly capabilities: readonly string[];
+  /** Capabilities the admin approved; runtime access is checked against these. */
+  readonly approvedCapabilities: readonly string[];
+  /** Egress hosts the admin approved; runtime egress is checked against these. */
+  readonly approvedEgressHosts: readonly string[];
   readonly error: string | null;
 }
 
@@ -94,8 +98,13 @@ function record(row: {
   enabled: boolean;
   generation: number;
   capabilities: unknown;
+  approved_capabilities?: unknown;
+  approved_egress_hosts?: unknown;
   error: string | null;
 }): PluginRecord {
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+
   return {
     pluginId: row.plugin_id,
     version: row.version,
@@ -103,16 +112,17 @@ function record(row: {
     state: row.state,
     enabled: row.enabled,
     generation: row.generation,
-    capabilities: Array.isArray(row.capabilities)
-      ? row.capabilities.filter((value): value is string => typeof value === "string")
-      : [],
+    capabilities: strings(row.capabilities),
+    approvedCapabilities: strings(row.approved_capabilities),
+    approvedEgressHosts: strings(row.approved_egress_hosts),
     error: row.error,
   };
 }
 
 export async function loadPlugin(sql: SQL, pluginId: string): Promise<PluginRecord | null> {
   const rows = (await sql`
-    SELECT plugin_id, version, sdk_version, state, enabled, generation, capabilities, error
+    SELECT plugin_id, version, sdk_version, state, enabled, generation, capabilities,
+           approved_capabilities, approved_egress_hosts, error
     FROM core.plugins
     WHERE plugin_id = ${pluginId}
   `) as Array<Parameters<typeof record>[0]>;
@@ -183,6 +193,20 @@ export interface LifecycleOptions {
   readonly now?: () => Date;
 }
 
+/**
+ * Egress hosts without the egress capability would let a manifest reach the network through
+ * the broker while asking the admin to approve nothing that mentions it. Reject at install
+ * and upgrade as well as at manifest parse time.
+ */
+function assertApprovableManifest(manifest: PluginManifest): void {
+  if (manifest.egressHosts.length > 0 && !manifest.capabilities.includes("egress")) {
+    throw new LifecycleError(
+      "approval",
+      "Egress hosts require the egress capability to be approved",
+    );
+  }
+}
+
 export class PluginLifecycle {
   readonly #sql: SQL;
   readonly #runtime: PluginRuntime;
@@ -199,6 +223,8 @@ export class PluginLifecycle {
     if (!input.approved) {
       throw new LifecycleError("approval", "Capabilities were not approved");
     }
+
+    assertApprovableManifest(input.manifest);
 
     const now = input.now ?? this.#now();
     const stepUpAge =
@@ -221,11 +247,14 @@ export class PluginLifecycle {
 
     await this.#sql`
       INSERT INTO core.plugins (
-        plugin_id, version, sdk_version, state, enabled, capabilities, personal_data,
+        plugin_id, version, sdk_version, state, enabled, capabilities,
+        approved_capabilities, approved_egress_hosts, personal_data,
         bundle, signature, checksum
       ) VALUES (
         ${input.manifest.id}, ${input.manifest.version}, ${input.manifest.sdkVersion},
         'installing', false, (${JSON.stringify(input.manifest.capabilities)}::text)::jsonb,
+        (${JSON.stringify(input.manifest.capabilities)}::text)::jsonb,
+        (${JSON.stringify(input.manifest.egressHosts)}::text)::jsonb,
         (${JSON.stringify(personalData)}::text)::jsonb, ${Buffer.from(input.bundle)},
         ${input.signature}, ${input.checksum}
       )
@@ -235,6 +264,8 @@ export class PluginLifecycle {
         state = 'installing',
         enabled = false,
         capabilities = EXCLUDED.capabilities,
+        approved_capabilities = EXCLUDED.approved_capabilities,
+        approved_egress_hosts = EXCLUDED.approved_egress_hosts,
         personal_data = EXCLUDED.personal_data,
         bundle = EXCLUDED.bundle,
         signature = EXCLUDED.signature,
@@ -336,6 +367,12 @@ export class PluginLifecycle {
     if (input.manifest.id !== pluginId) {
       throw new LifecycleError("state", "Bundle id does not match the installed plugin");
     }
+
+    if (!input.approved) {
+      throw new LifecycleError("approval", "Capabilities were not approved");
+    }
+
+    assertApprovableManifest(input.manifest);
 
     await setState(this.#sql, pluginId, "upgrading", { enabled: false });
     await journal(
@@ -444,6 +481,7 @@ export class PluginLifecycle {
       UPDATE core.plugins SET generation = ${generation}, updated_at = now()
       WHERE plugin_id = ${pluginId}
     `;
+    await this.#setApprovedGrants(pluginId, input.manifest);
     await this.#audit(pluginId, "plugin.upgraded", {
       from: current.version,
       to: input.manifest.version,
@@ -599,6 +637,8 @@ export class PluginLifecycle {
       throw new LifecycleError("state", "Plugin is not installed");
     }
 
+    assertApprovableManifest(manifest);
+
     const targetRows = (await this.#sql`
       SELECT target_version FROM core.plugin_operations
       WHERE plugin_id = ${pluginId} AND kind = 'upgrade' AND target_version IS NOT NULL
@@ -652,6 +692,7 @@ export class PluginLifecycle {
       UPDATE core.plugins SET generation = ${generation}, updated_at = now()
       WHERE plugin_id = ${pluginId}
     `;
+    await this.#setApprovedGrants(pluginId, manifest);
     await journal(
       this.#sql,
       pluginId,
@@ -662,6 +703,17 @@ export class PluginLifecycle {
       manifest.version,
     );
     return (await loadPlugin(this.#sql, pluginId)) as PluginRecord;
+  }
+
+  async #setApprovedGrants(pluginId: string, manifest: PluginManifest): Promise<void> {
+    await this.#sql`
+      UPDATE core.plugins
+      SET capabilities = (${JSON.stringify(manifest.capabilities)}::text)::jsonb,
+          approved_capabilities = (${JSON.stringify(manifest.capabilities)}::text)::jsonb,
+          approved_egress_hosts = (${JSON.stringify(manifest.egressHosts)}::text)::jsonb,
+          updated_at = now()
+      WHERE plugin_id = ${pluginId}
+    `;
   }
 
   async #nextGeneration(): Promise<number> {

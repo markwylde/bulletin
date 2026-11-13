@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Logger } from "@bulletin/config";
@@ -78,6 +79,14 @@ interface PendingBrokerCall {
   readonly resolve: (value: unknown) => void;
   readonly reject: (error: Error) => void;
   readonly timer: ReturnType<typeof setTimeout>;
+  readonly invocationId: string;
+}
+
+interface InvocationContext {
+  readonly pluginId: string;
+  /** The viewer that caused this dispatch; absent means background work. */
+  readonly viewer?: ViewerContext;
+  readonly timer: ReturnType<typeof setTimeout>;
 }
 
 interface QueuedInvocation {
@@ -145,7 +154,9 @@ export class BrokerChannel {
   readonly #sockets = new Set<BrokerSocket>();
   #active: BrokerSocket | undefined;
   #nextCallId = 0;
-  #invocationViewer: ViewerContext | undefined;
+  #nextInvocationId = 0;
+  /** Every call the plugin makes must present the token of the dispatch that caused it. */
+  readonly #contexts = new Map<string, InvocationContext>();
   #invocations: QueuedInvocation[] = [];
   #dispatchingInvocations = false;
   #hello:
@@ -232,6 +243,7 @@ export class BrokerChannel {
 
             for (const call of connection.calls.values()) {
               clearTimeout(call.timer);
+              this.#forgetInvocation(call.invocationId);
               call.reject(new Error("Plugin disconnected"));
             }
 
@@ -303,6 +315,11 @@ export class BrokerChannel {
       });
     }
 
+    for (const context of this.#contexts.values()) {
+      clearTimeout(context.timer);
+    }
+
+    this.#contexts.clear();
     this.#listener?.stop(true);
     this.#listener = undefined;
     this.#sockets.clear();
@@ -431,12 +448,33 @@ export class BrokerChannel {
       return;
     }
 
+    const context =
+      message.invocation === undefined ? undefined : this.#contexts.get(message.invocation);
+
+    if (context === undefined || context.pluginId !== connection.pluginId) {
+      this.#logger.warn("broker.invocation_rejected", {
+        pluginId: connection.pluginId,
+        method: message.method,
+      });
+
+      if (isRequest(message)) {
+        this.#send(
+          socket,
+          connection,
+          failure(message.id, JSON_RPC_ERRORS.denied, "Invocation context is not valid", {
+            reason: "invocation",
+          }),
+        );
+      }
+      return;
+    }
+
     try {
       const result = await this.#handler.handle({
         method: message.method,
         params: message.params,
         pluginId: connection.pluginId,
-        ...(this.#invocationViewer === undefined ? {} : { viewer: this.#invocationViewer }),
+        ...(context.viewer === undefined ? {} : { viewer: context.viewer }),
       });
 
       if (isRequest(message)) {
@@ -607,10 +645,13 @@ export class BrokerChannel {
           continue;
         }
 
-        this.#invocationViewer = invocation.viewer;
-
         try {
-          const value = await this.request(invocation.method, invocation.params, remaining);
+          const value = await this.#sendRequest(
+            invocation.method,
+            invocation.params,
+            remaining,
+            invocation.viewer,
+          );
           this.#settleInvocation(invocation, () => {
             invocation.resolve(value);
           });
@@ -618,8 +659,6 @@ export class BrokerChannel {
           this.#settleInvocation(invocation, () => {
             invocation.reject(error instanceof Error ? error : new Error(String(error)));
           });
-        } finally {
-          this.#invocationViewer = undefined;
         }
       }
     } finally {
@@ -642,7 +681,26 @@ export class BrokerChannel {
     settle();
   }
 
-  request<T = unknown>(method: string, params: unknown, timeoutMs = 1_000): Promise<T> {
+  /**
+   * Sends an unserialized dispatch. Background work (jobs, events) omits the viewer; content
+   * extensions and routes pass theirs so the calls they make are never treated as another
+   * dispatch's viewer.
+   */
+  request<T = unknown>(
+    method: string,
+    params: unknown,
+    timeoutMs = 1_000,
+    viewer?: ViewerContext,
+  ): Promise<T> {
+    return this.#sendRequest(method, params, timeoutMs, viewer);
+  }
+
+  #sendRequest<T>(
+    method: string,
+    params: unknown,
+    timeoutMs: number,
+    viewer: ViewerContext | undefined,
+  ): Promise<T> {
     const socket = this.#active;
     const connection = socket === undefined ? undefined : this.#connections.get(socket);
 
@@ -651,23 +709,65 @@ export class BrokerChannel {
     }
 
     const id = `broker-${String(++this.#nextCallId)}`;
+    const invocationId = this.#registerInvocation(connection.pluginId, viewer, timeoutMs);
 
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         connection.calls.delete(id);
+        this.#forgetInvocation(invocationId);
         reject(new Error(`Plugin call ${method} timed out after ${timeoutMs} ms`));
       }, timeoutMs);
       timer.unref?.();
 
       connection.calls.set(id, {
         resolve: (value) => {
+          this.#forgetInvocation(invocationId);
           resolve(value as T);
         },
-        reject,
+        reject: (error) => {
+          this.#forgetInvocation(invocationId);
+          reject(error);
+        },
         timer,
+        invocationId,
       });
-      this.#send(socket, connection, { jsonrpc: "2.0", id, method, params });
+      this.#send(socket, connection, {
+        jsonrpc: "2.0",
+        id,
+        method,
+        params,
+        invocation: invocationId,
+      });
     });
+  }
+
+  #registerInvocation(
+    pluginId: string,
+    viewer: ViewerContext | undefined,
+    timeoutMs: number,
+  ): string {
+    const invocationId = `inv-${String(++this.#nextInvocationId)}-${randomUUID()}`;
+    const timer = setTimeout(() => {
+      this.#forgetInvocation(invocationId);
+    }, timeoutMs);
+    timer.unref?.();
+    this.#contexts.set(invocationId, {
+      pluginId,
+      ...(viewer === undefined ? {} : { viewer }),
+      timer,
+    });
+    return invocationId;
+  }
+
+  #forgetInvocation(invocationId: string): void {
+    const context = this.#contexts.get(invocationId);
+
+    if (context === undefined) {
+      return;
+    }
+
+    clearTimeout(context.timer);
+    this.#contexts.delete(invocationId);
   }
 
   #settle(connection: Connection, response: JsonRpcResponse): void {
@@ -683,6 +783,7 @@ export class BrokerChannel {
 
     connection.calls.delete(response.id);
     clearTimeout(call.timer);
+    this.#forgetInvocation(call.invocationId);
 
     if (response.error !== undefined) {
       call.reject(new RpcError(response.error.code, response.error.message, response.error.data));

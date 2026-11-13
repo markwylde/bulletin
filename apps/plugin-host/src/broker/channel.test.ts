@@ -108,6 +108,31 @@ function helloNotification(): unknown {
   };
 }
 
+interface InvocationContext {
+  readonly invocation: string;
+  finish(): void;
+}
+
+/**
+ * Opens a real background dispatch and returns its invocation token. Tests that exercise
+ * unrelated channel limits use it so their plugin calls present a valid context.
+ */
+async function invocationContext(
+  client: Client,
+  channel: BrokerChannel,
+): Promise<InvocationContext> {
+  const pending = channel.request("hook.test", {}, 5_000);
+  pending.catch(() => undefined);
+  const request = (await client.next()) as { id: unknown; invocation: string };
+
+  return {
+    invocation: request.invocation,
+    finish() {
+      client.write({ jsonrpc: "2.0", id: request.id, result: null });
+    },
+  };
+}
+
 function rawFrame(text: string): Uint8Array {
   const payload = new TextEncoder().encode(text);
   const frame = new Uint8Array(4 + payload.byteLength);
@@ -140,13 +165,137 @@ describe("broker channel", () => {
     await channel.waitForHello(500);
 
     const hook = channel.requestWithContext("hook.enrich", {}, { memberId: "7" }, 500);
-    const request = (await client.next()) as { id: unknown };
-    client.write({ jsonrpc: "2.0", id: 2, method: "db.query", params: { sql: "SELECT 1" } });
+    const request = (await client.next()) as { id: unknown; invocation: string };
+    client.write({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "db.query",
+      params: { sql: "SELECT 1" },
+      invocation: request.invocation,
+    });
     await client.next();
     client.write({ jsonrpc: "2.0", id: request.id, result: {} });
     await hook;
 
     expect(seen).toEqual([{ memberId: "7" }]);
+    client.socket.end();
+  });
+
+  test("keeps overlapping guest and admin invocations separate", async () => {
+    const seen: Array<unknown> = [];
+    const channel = await createChannel({
+      async handle(request) {
+        seen.push(request.viewer);
+        return null;
+      },
+    });
+    const client = await connect(channel.socketPath);
+    client.write(helloNotification());
+    await channel.waitForHello(500);
+
+    const admin = channel.requestWithContext("hook.enrich", {}, { memberId: "admin" }, 2_000);
+    const adminRequest = (await client.next()) as { id: unknown; invocation: string };
+    const guest = channel.request("content.extend", { syntax: "tip" }, 2_000, {
+      memberId: "guest",
+    });
+    const guestRequest = (await client.next()) as { id: unknown; invocation: string };
+
+    client.write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "db.query",
+      params: { sql: "SELECT 1" },
+      invocation: adminRequest.invocation,
+    });
+    await client.next();
+    client.write({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "db.query",
+      params: { sql: "SELECT 2" },
+      invocation: guestRequest.invocation,
+    });
+    await client.next();
+
+    client.write({ jsonrpc: "2.0", id: adminRequest.id, result: null });
+    client.write({ jsonrpc: "2.0", id: guestRequest.id, result: null });
+    await Promise.all([admin, guest]);
+
+    expect(seen).toEqual([{ memberId: "admin" }, { memberId: "guest" }]);
+    client.socket.end();
+  });
+
+  test("a background job or event call has no viewer", async () => {
+    const seen: Array<unknown> = [];
+    const channel = await createChannel({
+      async handle(request) {
+        seen.push(request.viewer);
+        return null;
+      },
+    });
+    const client = await connect(channel.socketPath);
+    client.write(helloNotification());
+    await channel.waitForHello(500);
+
+    const job = channel.request("job.run", { name: "digest" }, 2_000);
+    const jobRequest = (await client.next()) as { id: unknown; invocation: string };
+    client.write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "db.query",
+      params: { sql: "SELECT 1" },
+      invocation: jobRequest.invocation,
+    });
+    await client.next();
+
+    client.write({ jsonrpc: "2.0", id: jobRequest.id, result: null });
+    await job;
+
+    expect(seen).toEqual([undefined]);
+    client.socket.end();
+  });
+
+  test("rejects expired and forged invocation contexts", async () => {
+    let calls = 0;
+    const channel = await createChannel({
+      async handle() {
+        calls += 1;
+        return null;
+      },
+    });
+    const client = await connect(channel.socketPath);
+    client.write(helloNotification());
+    await channel.waitForHello(500);
+
+    const context = await invocationContext(client, channel);
+    context.finish();
+    await Bun.sleep(20);
+
+    client.write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "db.query",
+      params: { sql: "SELECT 1" },
+      invocation: context.invocation,
+    });
+    expect(await client.next()).toMatchObject({
+      id: 1,
+      error: { code: -32000, data: { reason: "invocation" } },
+    });
+
+    client.write({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "db.query",
+      params: { sql: "SELECT 1" },
+      invocation: "forged",
+    });
+    expect(await client.next()).toMatchObject({
+      id: 2,
+      error: { code: -32000, data: { reason: "invocation" } },
+    });
+
+    expect(calls).toBe(0);
     client.socket.end();
   });
 
@@ -286,11 +435,13 @@ describe("broker channel", () => {
 
     client.write(helloNotification());
     await hello;
+    const context = await invocationContext(client, channel);
     client.write({
       jsonrpc: "2.0",
       id: 1,
       method: "db.query",
       params: { sql: "SELECT 1" },
+      invocation: context.invocation,
     });
 
     expect(await client.next()).toEqual({
@@ -299,6 +450,7 @@ describe("broker channel", () => {
       result: { rows: [{ id: "1" }] },
     });
     expect(calls).toEqual([{ method: "db.query", pluginId: "sandbox-demo" }]);
+    context.finish();
     client.socket.end();
   });
 
@@ -319,7 +471,16 @@ describe("broker channel", () => {
     client.writeRaw(combined);
 
     await hello;
-    expect(await client.next()).toEqual({ jsonrpc: "2.0", id: 9, result: null });
+    // Both frames were decoded; the second has no invocation context yet.
+    expect(await client.next()).toEqual({
+      jsonrpc: "2.0",
+      id: 9,
+      error: {
+        code: -32000,
+        message: "Invocation context is not valid",
+        data: { reason: "invocation" },
+      },
+    });
     client.socket.end();
   });
 
@@ -377,7 +538,14 @@ describe("broker channel", () => {
 
     client.write(helloNotification());
     await hello;
-    client.write({ jsonrpc: "2.0", id: 1, method: "db.query", params: {} });
+    const context = await invocationContext(client, channel);
+    client.write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "db.query",
+      params: {},
+      invocation: context.invocation,
+    });
 
     expect(await client.next()).toEqual({
       jsonrpc: "2.0",
@@ -386,13 +554,20 @@ describe("broker channel", () => {
     });
 
     mode = "crash";
-    client.write({ jsonrpc: "2.0", id: 2, method: "db.query", params: {} });
+    client.write({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "db.query",
+      params: {},
+      invocation: context.invocation,
+    });
 
     expect(await client.next()).toEqual({
       jsonrpc: "2.0",
       id: 2,
       error: { code: -32603, message: "Broker request failed" },
     });
+    context.finish();
     client.socket.end();
   });
 
@@ -409,10 +584,17 @@ describe("broker channel", () => {
 
     client.write(helloNotification());
     await hello;
-    client.write({ jsonrpc: "2.0", method: "log", params: { level: "info" } });
+    const context = await invocationContext(client, channel);
+    client.write({
+      jsonrpc: "2.0",
+      method: "log",
+      params: { level: "info" },
+      invocation: context.invocation,
+    });
     await Bun.sleep(20);
 
     expect(called).toBe(1);
+    context.finish();
     client.socket.end();
   });
 
@@ -498,9 +680,16 @@ describe("broker channel", () => {
 
     client.write(helloNotification());
     await hello;
+    const context = await invocationContext(client, channel);
 
     for (let id = 1; id <= 4; id += 1) {
-      client.write({ jsonrpc: "2.0", id, method: "log", params: { level: "info" } });
+      client.write({
+        jsonrpc: "2.0",
+        id,
+        method: "log",
+        params: { level: "info" },
+        invocation: context.invocation,
+      });
     }
 
     const busy = [await client.next(), await client.next()] as Array<{
@@ -526,6 +715,7 @@ describe("broker channel", () => {
     }
 
     expect(calls).toBe(2);
+    context.finish();
     client.socket.end();
   });
 
@@ -545,11 +735,13 @@ describe("broker channel", () => {
 
     client.write(helloNotification());
     await hello;
+    const context = await invocationContext(client, channel);
     client.write({
       jsonrpc: "2.0",
       id: 7,
       method: "log",
       params: { level: "info", message: "x".repeat(400) },
+      invocation: context.invocation,
     });
 
     expect(await client.next()).toMatchObject({
@@ -557,6 +749,7 @@ describe("broker channel", () => {
       error: { code: -32000, message: "Broker is busy" },
     });
     expect(calls).toBe(0);
+    context.finish();
     client.socket.end();
   });
 
@@ -572,9 +765,16 @@ describe("broker channel", () => {
 
     client.write(helloNotification());
     await hello;
+    const context = await invocationContext(client, channel);
 
     client.pause();
-    client.write({ jsonrpc: "2.0", id: 1, method: "log", params: { level: "info" } });
+    client.write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "log",
+      params: { level: "info" },
+      invocation: context.invocation,
+    });
     await Bun.sleep(100);
     client.resume();
 
@@ -582,10 +782,17 @@ describe("broker channel", () => {
     expect(first.id).toBe(1);
     expect(first.result.body).toBe(body);
 
-    client.write({ jsonrpc: "2.0", id: 2, method: "log", params: { level: "info" } });
+    client.write({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "log",
+      params: { level: "info" },
+      invocation: context.invocation,
+    });
     const second = (await client.next()) as { id: number; result: { body: string } };
     expect(second.id).toBe(2);
     expect(second.result.body).toBe(body);
+    context.finish();
     client.socket.end();
   }, 10_000);
 
@@ -603,7 +810,14 @@ describe("broker channel", () => {
 
     client.write(helloNotification());
     await hello;
-    client.write({ jsonrpc: "2.0", id: 3, method: "log", params: { level: "info" } });
+    const context = await invocationContext(client, channel);
+    client.write({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "log",
+      params: { level: "info" },
+      invocation: context.invocation,
+    });
 
     await Promise.race([
       client.closed,
@@ -629,6 +843,7 @@ describe("broker channel", () => {
 
     first.write(helloNotification());
     await hello;
+    const context = await invocationContext(first, channel);
 
     const second = await connect(channel.socketPath);
     await Promise.race([
@@ -638,10 +853,17 @@ describe("broker channel", () => {
       }),
     ]);
 
-    first.write({ jsonrpc: "2.0", id: 1, method: "log", params: { level: "info" } });
+    first.write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "log",
+      params: { level: "info" },
+      invocation: context.invocation,
+    });
     expect(await first.next()).toMatchObject({ id: 1, result: null });
     expect(calls).toBe(1);
 
+    context.finish();
     first.socket.end();
     second.socket.end();
   });

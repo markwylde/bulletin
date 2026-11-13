@@ -279,6 +279,7 @@ async function withCase(
     }
 
     monitor = startCgroupMonitor(supervisor);
+    void channel.request("job.run", { name: "run", payload: {} }, 5_000).catch(() => undefined);
     await waitForStarted(caseName);
 
     const result = await waitForResult(
@@ -365,9 +366,10 @@ async function expectBenignSandbox(): Promise<void> {
   try {
     const status = await supervisor.start();
     expect(status.state).toBe("ready");
+    void channel.request("job.run", { name: "run", payload: {} }, 5_000).catch(() => undefined);
 
-    // The demo catches DB errors. Wait for its acknowledged insert/select/log so a broken
-    // broker cannot make a recovery test pass on handshake readiness alone.
+    // Wait for the demo's acknowledged insert/select/log so a broken broker cannot make a
+    // recovery test pass on handshake readiness alone.
     const result = await waitForDemoDatabaseSuccess(database?.schema ?? "");
     expect(result.insertedId).toBeDefined();
     expect(result.recentRows).toEqual(expect.any(Number));
@@ -403,7 +405,15 @@ sandboxDescribe("malicious plugin cases", () => {
       allowedHosts: [],
       logger: logger.child({ component: "egress" }),
     });
-    broker = new Broker({ database, egress, logger });
+    broker = new Broker({
+      database,
+      egress,
+      logger,
+      grants: async () => ({
+        capabilities: ["db", "egress", "cache.invalidate", "core.read", "core.write"],
+        egressHosts: ["example.com", "metadata.test", "rebind.test", "redirect.test"],
+      }),
+    });
   }, 30_000);
 
   afterAll(async () => {
@@ -620,7 +630,15 @@ sandboxDescribe("malicious plugin cases", () => {
             })
           : new Response("ok"),
     });
-    const ssrfBroker = new Broker({ database: database as PluginDatabase, egress, logger });
+    const ssrfBroker = new Broker({
+      database: database as PluginDatabase,
+      egress,
+      logger,
+      grants: async () => ({
+        capabilities: ["db", "egress", "cache.invalidate", "core.read", "core.write"],
+        egressHosts: ["example.com", "metadata.test", "rebind.test", "redirect.test"],
+      }),
+    });
 
     await withCase("egress-ssrf", { broker: ssrfBroker }, async ({ result, supervisor }) => {
       expect(result?.ok).toBe(true);

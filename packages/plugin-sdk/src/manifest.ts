@@ -520,6 +520,10 @@ export function parsePluginManifest(value: unknown): PluginManifest {
     issues.push({ path: "$.capabilities", message: "veto hooks require the veto capability" });
   }
 
+  if (manifest.egressHosts.length > 0 && !capabilities.includes("egress")) {
+    issues.push({ path: "$.capabilities", message: "egress hosts require the egress capability" });
+  }
+
   if (issues.length > 0) {
     throw new ManifestError(issues);
   }

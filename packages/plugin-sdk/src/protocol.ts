@@ -9,12 +9,15 @@ export interface JsonRpcRequest {
   readonly id: JsonRpcId;
   readonly method: string;
   readonly params?: unknown;
+  /** Dispatch token the broker issued for the request being handled. */
+  readonly invocation?: string;
 }
 
 export interface JsonRpcNotification {
   readonly jsonrpc: "2.0";
   readonly method: string;
   readonly params?: unknown;
+  readonly invocation?: string;
 }
 
 export interface JsonRpcResponse {

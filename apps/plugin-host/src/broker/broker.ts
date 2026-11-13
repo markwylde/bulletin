@@ -1,7 +1,13 @@
 import { LOG_LEVELS, type Logger, type LogLevel } from "@bulletin/config";
 import { type CacheInvalidator, CacheRateLimitError } from "./cache.ts";
 import type { BrokerHandler } from "./channel.ts";
-import { CoreDeniedError, type CoreForwarder, GUEST_VIEWER, type ViewerContext } from "./core.ts";
+import {
+  CoreDeniedError,
+  type CoreForwarder,
+  coreMethodScope,
+  GUEST_VIEWER,
+  type ViewerContext,
+} from "./core.ts";
 import { QueryLimitError, type QueryResult } from "./database.ts";
 import { EgressDeniedError, type EgressRequest, type EgressResponse } from "./egress.ts";
 import {
@@ -27,6 +33,14 @@ export interface BrokerEgress {
   request(input: EgressRequest): Promise<EgressResponse>;
 }
 
+/** Capabilities and egress hosts the admin approved at install or upgrade (ADR 0009). */
+export interface PluginGrants {
+  readonly capabilities: readonly string[];
+  readonly egressHosts: readonly string[];
+}
+
+export type PluginGrantsLoader = (pluginId: string) => Promise<PluginGrants | null>;
+
 export interface BrokerOptions {
   readonly database: BrokerDatabase;
   readonly egress: BrokerEgress;
@@ -35,6 +49,7 @@ export interface BrokerOptions {
   readonly core?: CoreForwarder;
   readonly cache?: CacheInvalidator;
   readonly limits?: BrokerLimitOptions;
+  readonly grants?: PluginGrantsLoader;
   /** Runtime state/flag check; a disabled plugin cannot use the broker. */
   readonly isActive?: (pluginId: string) => Promise<boolean>;
 }
@@ -104,6 +119,15 @@ function parseQueryParams(value: unknown): unknown[] {
   return value;
 }
 
+/** Exact host match, mirroring the egress proxy's hostname normalisation. */
+function egressHost(url: string): string | undefined {
+  try {
+    return new URL(url).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
 function parseLogLevel(value: unknown): LogLevel {
   if (typeof value !== "string" || !(LOG_LEVELS as readonly string[]).includes(value)) {
     throw new RpcError(
@@ -149,6 +173,7 @@ export class Broker implements BrokerHandler {
   readonly #core: CoreForwarder | undefined;
   readonly #cache: CacheInvalidator | undefined;
   readonly #budgets: BrokerBudgets;
+  readonly #grants: PluginGrantsLoader;
   readonly #isActive: (pluginId: string) => Promise<boolean>;
   readonly #logger: Logger;
   #stats = {
@@ -168,6 +193,7 @@ export class Broker implements BrokerHandler {
     this.#core = options.core;
     this.#cache = options.cache;
     this.#budgets = createBrokerBudgets(options.limits);
+    this.#grants = options.grants ?? (async () => null);
     this.#isActive = options.isActive ?? (async () => true);
     this.#logger = options.logger.child({ schema: options.database.schema });
   }
@@ -191,14 +217,23 @@ export class Broker implements BrokerHandler {
 
     try {
       switch (request.method) {
-        case "db.query":
+        case "db.query": {
+          const grants = await this.#approved(request.pluginId);
+          this.#requireCapability(grants, "db");
           return await this.#query(request.params);
-        case "http.fetch":
-          return await this.#fetch(request.params);
+        }
+        case "http.fetch": {
+          const grants = await this.#approved(request.pluginId);
+          this.#requireCapability(grants, "egress");
+          return await this.#fetch(request.params, grants);
+        }
         case "core.call":
-          return await this.#coreCall(request);
-        case "cache.invalidate":
+          return await this.#coreCall(request, await this.#approved(request.pluginId));
+        case "cache.invalidate": {
+          const grants = await this.#approved(request.pluginId);
+          this.#requireCapability(grants, "cache.invalidate");
           return await this.#cacheInvalidate(request);
+        }
         case "log":
           return this.#log(request.params);
         default:
@@ -218,7 +253,36 @@ export class Broker implements BrokerHandler {
     }
   }
 
-  async #coreCall(request: BrokerRequest): Promise<unknown> {
+  async #approved(pluginId: string): Promise<PluginGrants> {
+    let grants: PluginGrants | null;
+
+    try {
+      grants = await this.#grants(pluginId);
+    } catch (error) {
+      this.#logger.error("broker.grants_unavailable", { pluginId, error });
+      grants = null;
+    }
+
+    if (grants === null) {
+      this.#deny("Plugin grants are unavailable", "grants");
+    }
+
+    return grants;
+  }
+
+  #requireCapability(grants: PluginGrants, capability: string): void {
+    if (!grants.capabilities.includes(capability)) {
+      this.#deny(`Plugin has not been approved for the ${capability} capability`, "capability");
+    }
+  }
+
+  #deny(message: string, reason: string): never {
+    this.#stats = { ...this.#stats, denials: this.#stats.denials + 1 };
+    this.#logger.warn("broker.denied", { reason });
+    throw new RpcError(JSON_RPC_ERRORS.denied, message, { reason });
+  }
+
+  async #coreCall(request: BrokerRequest, grants: PluginGrants): Promise<unknown> {
     if (this.#core === undefined) {
       throw new RpcError(JSON_RPC_ERRORS.methodNotFound, "Core API forwarding is not configured");
     }
@@ -228,6 +292,12 @@ export class Broker implements BrokerHandler {
 
     if (typeof method !== "string") {
       throw new RpcError(JSON_RPC_ERRORS.invalidParams, "method must be a string");
+    }
+
+    const scope = coreMethodScope(method);
+
+    if (scope !== undefined) {
+      this.#requireCapability(grants, scope);
     }
 
     try {
@@ -412,12 +482,19 @@ export class Broker implements BrokerHandler {
     }
   }
 
-  async #fetch(params: unknown): Promise<unknown> {
+  async #fetch(params: unknown, grants: PluginGrants): Promise<unknown> {
     const record = requireObject(params);
     const url = record.url;
 
     if (typeof url !== "string") {
       throw new RpcError(JSON_RPC_ERRORS.invalidParams, "url must be a string");
+    }
+
+    const host = egressHost(url);
+    const approvedHosts = new Set(grants.egressHosts.map((entry) => entry.toLowerCase()));
+
+    if (host === undefined || !approvedHosts.has(host)) {
+      this.#deny("Host is not on the plugin's approved egress allowlist", "host");
     }
 
     const method = record.method;

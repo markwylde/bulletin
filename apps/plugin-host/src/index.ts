@@ -12,7 +12,7 @@ import {
 } from "@bulletin/domain/permissions";
 import { advancePluginsGeneration, PluginCircuitBreaker } from "@bulletin/domain/plugins";
 import { SQL } from "bun";
-import { Broker } from "./broker/broker.ts";
+import { Broker, type PluginGrants } from "./broker/broker.ts";
 import { CacheInvalidator } from "./broker/cache.ts";
 import { BrokerChannel } from "./broker/channel.ts";
 import { PluginConnectionManager } from "./broker/connections.ts";
@@ -92,7 +92,35 @@ const pluginActive = async (pluginId: string): Promise<boolean> => {
   return !!row?.enabled && row.state === "active" && row.default_value !== false;
 };
 
-const broker = new Broker({ database, egress, core, cache, logger, isActive: pluginActive });
+const pluginGrants = async (pluginId: string): Promise<PluginGrants | null> => {
+  const rows = (await cacheSql`
+    SELECT approved_capabilities, approved_egress_hosts
+    FROM core.plugins WHERE plugin_id = ${pluginId}
+  `) as Array<{ approved_capabilities: unknown; approved_egress_hosts: unknown }>;
+  const row = rows[0];
+
+  if (row === undefined) {
+    return null;
+  }
+
+  const strings = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+
+  return {
+    capabilities: strings(row.approved_capabilities),
+    egressHosts: strings(row.approved_egress_hosts),
+  };
+};
+
+const broker = new Broker({
+  database,
+  egress,
+  core,
+  cache,
+  logger,
+  isActive: pluginActive,
+  grants: pluginGrants,
+});
 const hooks = new PluginHookRegistry();
 hooks.install(manifest, { generation: 1 });
 const bundles = new Map([[manifest.id, { manifest, path: sandboxConfig.bundlePath }]]);

@@ -7,6 +7,7 @@ const BASE = {
   version: "1.2.0",
   sdkVersion: "^2.0.0",
   entry: "server.ts",
+  capabilities: ["egress"],
   egressHosts: ["api.example.com"],
   migrations: ["migrations/0001.sql"],
 };
@@ -19,7 +20,7 @@ describe("plugin manifest", () => {
       id: "hide-post-count",
       version: "1.2.0",
       egressHosts: ["api.example.com"],
-      capabilities: [],
+      capabilities: ["egress"],
       templateFragments: [],
       enrichers: [],
       vetoes: [],
@@ -34,7 +35,16 @@ describe("plugin manifest", () => {
   test("parses fragments, hooks, routes, jobs, client apps and GDPR tables", () => {
     const manifest = parsePluginManifest({
       ...BASE,
-      capabilities: ["template", "enricher", "filter", "veto", "route", "client", "events"],
+      capabilities: [
+        "template",
+        "enricher",
+        "filter",
+        "veto",
+        "route",
+        "client",
+        "events",
+        "egress",
+      ],
       templateFragments: [
         { name: "post.userbar", kind: "override", body: "<span>{{ postCount }}</span>" },
       ],
@@ -98,6 +108,24 @@ describe("plugin manifest", () => {
     expect(paths).toContain("$.routes[0].path");
     expect(paths).toContain("$.vetoes[0].reasonKey");
     expect(paths).toContain("$.capabilities");
+  });
+
+  test("rejects egress hosts without the egress capability", () => {
+    expect(() =>
+      parsePluginManifest({
+        ...BASE,
+        capabilities: ["events"],
+        egressHosts: ["api.example.com"],
+      }),
+    ).toThrow("egress hosts require the egress capability");
+
+    expect(() =>
+      parsePluginManifest({
+        ...BASE,
+        capabilities: ["events", "egress"],
+        egressHosts: ["api.example.com"],
+      }),
+    ).not.toThrow();
   });
 
   test("requires en and matching placeholders across plugin catalogs", () => {

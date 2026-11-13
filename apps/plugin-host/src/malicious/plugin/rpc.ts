@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { encodeFrame, FrameDecoder } from "./framing.ts";
 
 /** Minimal JSON-RPC client for the broker socket used by the malicious probe. */
@@ -11,8 +12,16 @@ export class BrokerCallError extends Error {
   }
 }
 
+export type BrokerRequestHandler = (request: {
+  readonly id: string | number;
+  readonly method: string;
+  readonly params: unknown;
+  readonly invocation?: string;
+}) => Promise<unknown>;
+
 export interface BrokerClient {
   call<T>(method: string, params: unknown, timeoutMs?: number): Promise<T>;
+  onRequest(handler: BrokerRequestHandler): void;
   close(): void;
 }
 
@@ -41,6 +50,8 @@ export async function connectBroker(
   let flushing = false;
   let nextId = 1;
   let socket: Bun.Socket | undefined;
+  let requestHandler: BrokerRequestHandler | undefined;
+  const invocation = new AsyncLocalStorage<string | undefined>();
 
   const flushOutbound = (): void => {
     if (socket === undefined || flushing) {
@@ -112,7 +123,45 @@ export async function connectBroker(
         }
 
         for (const value of values) {
-          if (!isRecord(value) || typeof value.id !== "number") {
+          if (!isRecord(value)) {
+            continue;
+          }
+
+          if (
+            typeof value.method === "string" &&
+            (typeof value.id === "number" || typeof value.id === "string")
+          ) {
+            const id = value.id;
+            const token = typeof value.invocation === "string" ? value.invocation : undefined;
+            void (async () => {
+              try {
+                const result =
+                  requestHandler === undefined
+                    ? null
+                    : await invocation.run(token, () =>
+                        requestHandler?.({
+                          id,
+                          method: value.method as string,
+                          params: value.params,
+                          ...(token === undefined ? {} : { invocation: token }),
+                        }),
+                      );
+                send({ jsonrpc: "2.0", id, result: result ?? null });
+              } catch (error) {
+                send({
+                  jsonrpc: "2.0",
+                  id,
+                  error: {
+                    code: -32603,
+                    message: error instanceof Error ? error.message : String(error),
+                  },
+                });
+              }
+            })();
+            continue;
+          }
+
+          if (typeof value.id !== "number") {
             continue;
           }
 
@@ -165,6 +214,9 @@ export async function connectBroker(
   }
 
   return {
+    onRequest(handler) {
+      requestHandler = handler;
+    },
     call<T>(method: string, params: unknown, timeoutMs = DEFAULT_CALL_TIMEOUT_MS): Promise<T> {
       const id = nextId;
       nextId += 1;
@@ -182,7 +234,14 @@ export async function connectBroker(
         });
 
         try {
-          send({ jsonrpc: "2.0", id, method, params });
+          const token = invocation.getStore();
+          send({
+            jsonrpc: "2.0",
+            id,
+            method,
+            params,
+            ...(token === undefined ? {} : { invocation: token }),
+          });
         } catch (error) {
           pending.delete(id);
           clearTimeout(timer);

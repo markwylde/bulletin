@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { definePlugin, type PluginDefinition } from "./hooks.ts";
 import { encodeFrame, FrameDecoder, isResponse, type JsonRpcResponse } from "./protocol.ts";
-import { type PluginServer, servePlugin } from "./runtime.ts";
+import { type BrokerClient, type PluginServer, servePlugin } from "./runtime.ts";
 
 const servers: Array<{ stop(force?: boolean): void }> = [];
 
@@ -18,7 +18,8 @@ afterEach(async () => {
 interface TestBroker {
   readonly socketPath: string;
   readonly hello: Promise<Record<string, unknown>>;
-  readonly request: (method: string, params?: unknown) => Promise<unknown>;
+  readonly requests: Array<{ method: string; params: unknown; invocation?: string }>;
+  readonly request: (method: string, params?: unknown, invocation?: string) => Promise<unknown>;
   readonly close: () => Promise<void>;
 }
 
@@ -26,6 +27,7 @@ async function startBroker(): Promise<TestBroker> {
   const socketPath = join(tmpdir(), `plugin-sdk-${randomUUID()}.sock`);
   const decoder = new FrameDecoder();
   const pending = new Map<number, (response: JsonRpcResponse) => void>();
+  const requests: TestBroker["requests"] = [];
   let nextId = 0;
   let resolveHello: (value: Record<string, unknown>) => void = () => undefined;
   const hello = new Promise<Record<string, unknown>>((resolve) => {
@@ -47,10 +49,28 @@ async function startBroker(): Promise<TestBroker> {
             continue;
           }
 
-          const record = message as { method?: string; params?: unknown };
+          const record = message as {
+            id?: unknown;
+            method?: string;
+            params?: unknown;
+            invocation?: string;
+          };
 
           if (record.method === "hello") {
             resolveHello((record.params ?? {}) as Record<string, unknown>);
+            continue;
+          }
+
+          if (
+            typeof record.method === "string" &&
+            (typeof record.id === "number" || typeof record.id === "string")
+          ) {
+            requests.push({
+              method: record.method,
+              params: record.params,
+              ...(record.invocation === undefined ? {} : { invocation: record.invocation }),
+            });
+            socket?.write(encodeFrame({ jsonrpc: "2.0", id: record.id, result: null }));
           }
         }
       },
@@ -63,7 +83,8 @@ async function startBroker(): Promise<TestBroker> {
   return {
     socketPath,
     hello,
-    request(method, params) {
+    requests,
+    request(method, params, invocation) {
       const id = ++nextId;
       const response = new Promise<unknown>((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -82,7 +103,15 @@ async function startBroker(): Promise<TestBroker> {
           resolve(message.result);
         });
       });
-      socket?.write(encodeFrame({ jsonrpc: "2.0", id, method, params: params ?? null }));
+      socket?.write(
+        encodeFrame({
+          jsonrpc: "2.0",
+          id,
+          method,
+          params: params ?? null,
+          ...(invocation === undefined ? {} : { invocation }),
+        }),
+      );
       return response;
     },
     async close() {
@@ -217,6 +246,33 @@ describe("plugin SDK runtime", () => {
     expect(await broker.request("gdpr.erase", { memberId: "9" })).toBeNull();
 
     plugin?.close();
+    await broker.close();
+  });
+
+  test("presents the dispatch invocation on calls and omits it for background work", async () => {
+    const broker = await startBroker();
+    let client: BrokerClient | undefined;
+    const worker = definePlugin({
+      id: "invocation-test",
+      hooks: {},
+      jobs: {
+        emit: async () => {
+          await client?.call("db.query", { sql: "SELECT 1" });
+        },
+      },
+    });
+    const server = await servePlugin(worker, { socketPath: broker.socketPath });
+    client = server.client;
+    await broker.hello;
+
+    await broker.request("job.run", { name: "emit" }, "inv-123");
+    await broker.request("job.run", { name: "emit" });
+
+    const calls = broker.requests.filter((entry) => entry.method === "db.query");
+    expect(calls[0]?.invocation).toBe("inv-123");
+    expect(calls[1]?.invocation).toBeUndefined();
+
+    server.close();
     await broker.close();
   });
 

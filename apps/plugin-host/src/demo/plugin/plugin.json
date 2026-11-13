@@ -4,7 +4,18 @@
   "version": "0.0.0",
   "sdkVersion": "^2.0.0",
   "entry": "server.ts",
-  "capabilities": ["template", "enricher", "filter", "veto", "route", "client", "events", "jobs"],
+  "capabilities": [
+    "template",
+    "enricher",
+    "filter",
+    "veto",
+    "route",
+    "client",
+    "events",
+    "jobs",
+    "db",
+    "egress"
+  ],
   "egressHosts": ["example.com"],
   "migrations": ["migrations/0001_notes.sql"],
   "templateFragments": [

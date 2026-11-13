@@ -4,7 +4,13 @@ import { type PluginHookRegistry, pluginTag } from "./registry.ts";
 
 /** The transport the host uses to reach one plugin sandbox (the broker channel). */
 export interface HookTransport {
-  request<T = unknown>(method: string, params: unknown, timeoutMs?: number): Promise<T>;
+  /** Unserialized dispatch; omit the viewer for background jobs and events. */
+  request<T = unknown>(
+    method: string,
+    params: unknown,
+    timeoutMs?: number,
+    viewer?: ViewerContext,
+  ): Promise<T>;
   requestWithContext?<T = unknown>(
     method: string,
     params: unknown,
@@ -252,6 +258,7 @@ export class PluginHookRunner {
         entry.failMode ?? "open",
         entry.reasonKey,
         input,
+        content,
         remaining(),
       );
 
@@ -280,6 +287,8 @@ export class PluginHookRunner {
     /** The manifest's declared reason; the SDK lets a handler answer `{ allow: false }`. */
     fallbackReasonKey: string,
     input: FilterInput,
+    /** The content after every earlier filter, i.e. what the write would actually save. */
+    content: string,
     timeoutMs: number,
   ): Promise<VetoOutcome> {
     if (timeoutMs <= 0) {
@@ -291,7 +300,7 @@ export class PluginHookRunner {
         "hook.veto",
         {
           hook: input.hook,
-          content: input.content,
+          content,
           context: input.context,
           viewer: input.viewer,
         },

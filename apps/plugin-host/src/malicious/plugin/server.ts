@@ -422,12 +422,20 @@ async function reportStarted(): Promise<void> {
   });
 }
 
-try {
-  await reportStarted();
-  await report(await runCase());
-} catch (error) {
-  await report({ ok: false, detail: errorMessage(error) });
-}
+client.onRequest(async ({ method }) => {
+  if (method !== "job.run") {
+    return null;
+  }
+
+  try {
+    await reportStarted();
+    await report(await runCase());
+  } catch (error) {
+    await report({ ok: false, detail: errorMessage(error) });
+  }
+
+  return null;
+});
 
 // Keep the process alive unless the sandbox kills it (fork/memory cases).
 await new Promise(() => {});

@@ -174,10 +174,13 @@ export async function publishPluginRegistry(
   // The local demo plugin is visible in the staff manager without a marketplace install.
   await sql`
     INSERT INTO core.plugins (
-      plugin_id, name, version, sdk_version, state, enabled, capabilities, timings
+      plugin_id, name, version, sdk_version, state, enabled, capabilities,
+      approved_capabilities, approved_egress_hosts, timings
     ) VALUES (
       ${manifest.id}, ${manifest.name}, ${manifest.version}, ${manifest.sdkVersion},
       'active', true, (${JSON.stringify(manifest.capabilities)}::text)::jsonb,
+      (${JSON.stringify(manifest.capabilities)}::text)::jsonb,
+      (${JSON.stringify(manifest.egressHosts)}::text)::jsonb,
       '{"activationMs":30}'::jsonb
     )
     ON CONFLICT (plugin_id) DO NOTHING

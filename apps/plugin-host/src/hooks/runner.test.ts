@@ -262,6 +262,38 @@ describe("write filters and vetoes", () => {
     expect(result.veto).toEqual({ reasonKey: "plugin.spam.reason", pluginId: "spam" });
   });
 
+  test("vetoes inspect the content filters actually produced", async () => {
+    const hooks = registry(
+      plugin("cleanup", { filters: [{ hook: "post.write", priority: 10 }] }),
+      plugin("spam", {
+        vetoes: [{ hook: "post.write", priority: 20, reasonKey: "plugin.spam.reason" }],
+      }),
+    );
+    const fake = transport((method, params) => {
+      const input = params as { content?: unknown };
+
+      if (method === "hook.filter") {
+        return { content: String(input.content).replace("teh", "the") };
+      }
+
+      return String(input.content).includes("buy now")
+        ? { allow: false, reasonKey: "plugin.spam.reason" }
+        : { allow: true };
+    });
+
+    const result = await runner(hooks, fake).filter({
+      hook: "post.write",
+      content: "teh cat, buy now",
+      context: { authorId: "1" },
+      viewer: { memberId: "1" },
+    });
+
+    const veto = fake.calls.find((call) => call.method === "hook.veto");
+    const vetoContent = (veto?.params as { content?: string } | undefined)?.content;
+    expect(vetoContent).toBe("the cat, buy now");
+    expect(result.veto).toEqual({ reasonKey: "plugin.spam.reason", pluginId: "spam" });
+  });
+
   test("falls back to the manifest reason when the handler omits one", async () => {
     const hooks = registry(
       plugin("spam", {

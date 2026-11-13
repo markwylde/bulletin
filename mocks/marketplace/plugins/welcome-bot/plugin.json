@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "sdkVersion": "^2.0.0",
   "entry": "server.ts",
-  "capabilities": ["events", "jobs", "core.read", "settings"],
+  "capabilities": ["events", "jobs", "core.read", "db", "settings"],
   "egressHosts": [],
   "migrations": ["migrations/0001_greetings.sql"],
   "events": ["member.created"],

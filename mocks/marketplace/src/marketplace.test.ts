@@ -115,7 +115,7 @@ describe("marketplace plugin package", () => {
     const manifest = JSON.parse(new TextDecoder().decode(files.get("plugin.json")));
     expect(parsePluginManifest(manifest)).toMatchObject({
       id: "welcome-bot",
-      capabilities: ["events", "jobs", "core.read", "settings"],
+      capabilities: ["events", "jobs", "core.read", "db", "settings"],
     });
     expect(files.has("server.ts")).toBe(true);
   });

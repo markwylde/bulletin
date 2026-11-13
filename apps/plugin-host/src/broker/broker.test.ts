@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createLogger } from "@bulletin/config";
-import { Broker, type BrokerDatabase, type BrokerEgress } from "./broker.ts";
+import {
+  Broker,
+  type BrokerDatabase,
+  type BrokerEgress,
+  type PluginGrants,
+  type PluginGrantsLoader,
+} from "./broker.ts";
 import { CacheInvalidator } from "./cache.ts";
 import { type CoreCall, CoreDeniedError, type CoreForwarder } from "./core.ts";
 import type { QueryResult } from "./database.ts";
@@ -83,12 +89,18 @@ function createEgress(): FakeEgress {
   return egress;
 }
 
+const ALL_GRANTS: PluginGrants = {
+  capabilities: ["db", "egress", "core.read", "core.write", "cache.invalidate"],
+  egressHosts: ["example.com"],
+};
+
 function createBroker(
   options: {
     limits?: BrokerLimitOptions;
     core?: CoreForwarder;
     cache?: CacheInvalidator;
     isActive?: (pluginId: string) => Promise<boolean>;
+    grants?: PluginGrantsLoader;
   } = {},
 ): {
   broker: Broker;
@@ -113,6 +125,7 @@ function createBroker(
       ...(options.cache === undefined ? {} : { cache: options.cache }),
       ...(options.limits === undefined ? {} : { limits: options.limits }),
       ...(options.isActive === undefined ? {} : { isActive: options.isActive }),
+      grants: options.grants ?? (async () => ALL_GRANTS),
     }),
     database,
     egress,
@@ -564,6 +577,113 @@ describe("broker dispatch", () => {
       }),
       -32602,
     );
+  });
+
+  test("denies every broker method without the approved capability", async () => {
+    const grants =
+      (capabilities: readonly string[]): PluginGrantsLoader =>
+      async () => ({
+        capabilities,
+        egressHosts: ALL_GRANTS.egressHosts,
+      });
+    const coreCalls: CoreCall[] = [];
+    const core: CoreForwarder = {
+      async call(call) {
+        coreCalls.push(call);
+        return null;
+      },
+    };
+    const cache = new CacheInvalidator({ bump: async () => undefined, logger: cacheLogger });
+
+    for (const [method, params] of [
+      ["db.query", { sql: "SELECT 1" }],
+      ["http.fetch", { url: "https://example.com/data" }],
+      ["cache.invalidate", { tags: ["tips"] }],
+      ["core.call", { method: "posts.get", params: {} }],
+    ] as const) {
+      const { broker, database, egress } = createBroker({
+        grants: grants([]),
+        core,
+        cache,
+      });
+
+      await expect(
+        broker.handle({ method, pluginId: "sandbox-demo", params }),
+      ).rejects.toMatchObject({ code: -32000, data: { reason: "capability" } });
+      expect(database.queries).toEqual([]);
+      expect(egress.requests).toEqual([]);
+    }
+
+    expect(coreCalls).toEqual([]);
+  });
+
+  test("denies a capability the manifest declared but the admin did not approve", async () => {
+    const { broker, egress } = createBroker({
+      grants: async () => ({ capabilities: ["db"], egressHosts: ["example.com"] }),
+    });
+
+    // The bundle declares egress and example.com, but only the approved grants count.
+    await expect(
+      broker.handle({
+        method: "http.fetch",
+        pluginId: "sandbox-demo",
+        params: { url: "https://example.com/data" },
+      }),
+    ).rejects.toMatchObject({ code: -32000, data: { reason: "capability" } });
+    expect(egress.requests).toEqual([]);
+  });
+
+  test("denies an egress host outside the approved allowlist", async () => {
+    const { broker, egress } = createBroker({
+      grants: async () => ({ capabilities: ["egress"], egressHosts: ["api.example.com"] }),
+    });
+
+    await expect(
+      broker.handle({
+        method: "http.fetch",
+        pluginId: "sandbox-demo",
+        params: { url: "https://evil.example.com/data" },
+      }),
+    ).rejects.toMatchObject({ code: -32000, data: { reason: "host" } });
+    expect(egress.requests).toEqual([]);
+  });
+
+  test("denies core methods outside the approved core scope", async () => {
+    const calls: CoreCall[] = [];
+    const { broker } = createBroker({
+      grants: async () => ({ capabilities: ["core.read"], egressHosts: [] }),
+      core: {
+        async call(call) {
+          calls.push(call);
+          return null;
+        },
+      },
+    });
+
+    await expect(
+      broker.handle({
+        method: "core.call",
+        pluginId: "sandbox-demo",
+        params: { method: "members.addBadge", params: {} },
+      }),
+    ).rejects.toMatchObject({ code: -32000, data: { reason: "capability" } });
+    expect(calls).toEqual([]);
+  });
+
+  test("fails closed when the approved grants cannot be loaded", async () => {
+    const { broker } = createBroker({
+      grants: async () => {
+        throw new Error("database unavailable");
+      },
+    });
+
+    await expect(
+      broker.handle({
+        method: "db.query",
+        pluginId: "sandbox-demo",
+        params: { sql: "SELECT 1" },
+      }),
+    ).rejects.toMatchObject({ code: -32000, data: { reason: "grants" } });
   });
 
   test("rejects every request from a disabled plugin", async () => {

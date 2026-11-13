@@ -57,37 +57,28 @@ client.onRequest(async ({ method, params }) => {
         fields: { type: input.type },
       });
       return null;
-    case "job.run":
+    case "job.run": {
+      const inserted = await client.call<QueryResult>("db.query", {
+        sql: "INSERT INTO notes (body) VALUES ($1) RETURNING id",
+        params: ["hello from the sandbox"],
+      });
+      const id = inserted.rows[0]?.id;
+
+      const recent = await client.call<QueryResult>("db.query", {
+        sql: "SELECT id, body FROM notes ORDER BY id DESC LIMIT 5",
+      });
+
       await client.call("log", {
         level: "info",
-        message: "demo plugin ran a job",
-        fields: { name: input.name },
+        message: "demo plugin exercised the broker",
+        fields: { insertedId: id, recentRows: recent.rows.length },
       });
       return null;
+    }
     default:
       throw new Error(`Unknown hook method: ${method}`);
   }
 });
-
-try {
-  const inserted = await client.call<QueryResult>("db.query", {
-    sql: "INSERT INTO notes (body) VALUES ($1) RETURNING id",
-    params: ["hello from the sandbox"],
-  });
-  const id = inserted.rows[0]?.id;
-
-  const recent = await client.call<QueryResult>("db.query", {
-    sql: "SELECT id, body FROM notes ORDER BY id DESC LIMIT 5",
-  });
-
-  await client.call("log", {
-    level: "info",
-    message: "demo plugin exercised the broker",
-    fields: { insertedId: id, recentRows: recent.rows.length },
-  });
-} catch (error) {
-  console.error(`broker demo failed: ${error instanceof Error ? error.message : String(error)}`);
-}
 
 // Keep the plugin alive until the supervisor stops the sandbox.
 await new Promise(() => {});
