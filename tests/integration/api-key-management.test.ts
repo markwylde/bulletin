@@ -115,7 +115,7 @@ integrationDescribe("personal API keys", () => {
       expect(listed.keys).toHaveLength(1);
       expect(listed.keys[0]?.prefix).toBe(body.metadata.prefix);
       expect(listed.scopes).toContain("read:topics");
-      expect(JSON.stringify(listed)).not.toContain(body.key.split("_")[2] ?? "");
+      expect(JSON.stringify(listed)).not.toContain(body.key.split("_").slice(2).join("_"));
 
       expect(
         await authenticateApiKey(database.sql, { key: body.key, pepper: PEPPER }),
@@ -248,7 +248,7 @@ integrationDescribe("integration API keys", () => {
         prefix: body.metadata.prefix,
         principalName: `Management Bot ${stamp}`,
       });
-      expect(JSON.stringify(listed)).not.toContain(body.key.split("_")[2] ?? "");
+      expect(JSON.stringify(listed)).not.toContain(body.key.split("_").slice(2).join("_"));
 
       expect(
         (await authenticateApiKey(database.sql, { key: body.key, pepper: PEPPER }))?.keyKind,

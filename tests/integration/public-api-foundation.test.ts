@@ -182,7 +182,7 @@ integrationDescribe("public API keys", () => {
         scopes: ["read:forums", "read:topics"],
         revokedAt: null,
       });
-      expect(JSON.stringify(listed)).not.toContain(created.key.split("_")[2] ?? "");
+      expect(JSON.stringify(listed)).not.toContain(created.key.split("_").slice(2).join("_"));
 
       const principal = await authenticateApiKey(database.sql, {
         key: created.key,
