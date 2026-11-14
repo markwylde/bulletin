@@ -275,6 +275,16 @@ export const searchFlag = defineFlag({
   clientVisible: false,
 });
 
+/** RSS and Atom feeds for the board and each readable forum (change `seo-feeds`). */
+export const feedsFlag = defineFlag({
+  key: "feeds",
+  description: "RSS and Atom feeds for the board and each readable forum.",
+  owner: "seo",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Member and guest theme/scheme chooser (change `themes`). */
 export const themeChooserFlag = defineFlag({
   key: "theme_chooser",
@@ -371,6 +381,7 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   warningsFlag,
   multimodFlag,
   searchFlag,
+  feedsFlag,
   themeChooserFlag,
   pluginsFlag,
   publicApiFlag,

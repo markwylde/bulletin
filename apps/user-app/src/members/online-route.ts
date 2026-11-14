@@ -7,6 +7,7 @@ import {
   loadForumTree,
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -38,6 +39,7 @@ interface OnlineData {
   readonly boardName: string;
   readonly page: OnlinePageView;
   readonly flags: ViewerFlags;
+  readonly seo: SeoMetadata;
 }
 
 export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
@@ -50,6 +52,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
   readonly etag: string | null;
   readonly hasUnlockGrant: boolean;
   readonly status: number;
+  readonly seo: SeoMetadata;
   readonly errors: readonly string[];
 }> {
   const flags = await loadViewerFlags(input.sql, input.session);
@@ -71,6 +74,13 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
       etag: null,
       hasUnlockGrant: false,
       status: 404,
+      seo: buildSeoMetadata({
+        title: input.translate("online.title"),
+        boardName: "",
+        description: input.translate("seo.online.description"),
+        canonicalPath: "/members/online",
+        robots: "noindex",
+      }),
     };
   }
 
@@ -87,6 +97,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
   let title = input.translate("online.title");
   let boardName = "";
   let hasUnlockGrant = false;
+  let latestSeo: SeoMetadata | null = null;
 
   const rendered = await renderCachedPage<OnlineData>({
     tags: contractTags(onlineContract, {}),
@@ -114,6 +125,13 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
       title = page.title;
       boardName = name;
       hasUnlockGrant = view.hasUnlockGrant;
+      latestSeo = buildSeoMetadata({
+        title,
+        boardName: name,
+        description: input.translate("seo.online.description"),
+        canonicalPath: "/members/online",
+        robots: "noindex",
+      });
 
       return {
         variant: pageVariant({
@@ -125,7 +143,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
           colourScheme: input.colourScheme,
           renderFlagsHash: flags.hash,
         }),
-        data: { theme, boardName: name, page, flags },
+        data: { theme, boardName: name, page, flags, seo: latestSeo },
         ttlMs: 60_000,
       };
     },
@@ -137,7 +155,7 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
         locale: input.locale,
         translate: input.translate,
         template: onlineContract.templates.page,
-        viewModel: { ...data.page, flags: data.flags.values },
+        viewModel: { ...data.page, seo: data.seo, flags: data.flags.values },
         breadcrumbs: [{ label: input.translate("online.title"), href: null }],
         route: onlineContract,
         pluginsGeneration: input.pluginsGeneration,
@@ -148,5 +166,20 @@ export async function renderOnlineRoute(input: OnlineRouteInput): Promise<{
     },
   });
 
-  return { ...rendered, title, boardName, hasUnlockGrant, status: 200 };
+  return {
+    ...rendered,
+    title,
+    boardName,
+    hasUnlockGrant,
+    status: 200,
+    seo:
+      latestSeo ??
+      buildSeoMetadata({
+        title,
+        boardName,
+        description: input.translate("seo.online.description"),
+        canonicalPath: "/members/online",
+        robots: "noindex",
+      }),
+  };
 }

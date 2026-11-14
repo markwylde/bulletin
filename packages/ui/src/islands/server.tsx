@@ -4,6 +4,7 @@ import { renderToString } from "react-dom/server";
 import * as v from "valibot";
 import { ApiDocs } from "./ApiDocs.tsx";
 import { Editor } from "./Editor.tsx";
+import { FeedLinks } from "./FeedLinks.tsx";
 import { LanguageSwitcher } from "./LanguageSwitcher.tsx";
 import { LocaleSuggestion } from "./LocaleSuggestion.tsx";
 import { PluginApp } from "./PluginApp.tsx";
@@ -13,6 +14,7 @@ import { SpikeCounter } from "./SpikeCounter.tsx";
 import {
   apiDocsSchema,
   editorSchema,
+  feedLinksSchema,
   type IslandPropsSchema,
   languageSwitcherSchema,
   localeSuggestionSchema,
@@ -59,6 +61,7 @@ export const SERVER_ISLANDS: ServerIslandRegistry = {
     LocaleSuggestion,
   ),
   Editor: defineServerIsland("Editor", editorSchema, Editor),
+  FeedLinks: defineServerIsland("FeedLinks", feedLinksSchema, FeedLinks),
   Reactions: defineServerIsland("Reactions", reactionsSchema, Reactions),
   PostReputation: defineServerIsland("PostReputation", postReputationSchema, PostReputation),
   ThemeChooser: defineServerIsland("ThemeChooser", themeChooserSchema, ThemeChooser),

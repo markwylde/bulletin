@@ -407,6 +407,18 @@ const FLAGS: readonly SeededFlag[] = [
     fullyOnDaysAgo: 1,
   },
   {
+    key: "feeds",
+    description: "RSS and Atom feeds for the board and each readable forum.",
+    owner: "seo",
+    defaultValue: true,
+    affectsRender: true,
+    clientVisible: true,
+    rules: [],
+    createdDaysAgo: 4,
+    updatedDaysAgo: 1,
+    fullyOnDaysAgo: 1,
+  },
+  {
     key: "compactTopicList",
     description: "Compact topic rows with a smaller author column.",
     owner: "core",

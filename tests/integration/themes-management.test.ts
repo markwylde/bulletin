@@ -52,7 +52,7 @@ import {
 } from "../../apps/user-api/src/appearance.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderHomeRoute } from "../../apps/user-app/src/home/route.ts";
-import { renderThemedPage } from "../../apps/user-app/src/theme/render.ts";
+import { renderThemedPage, renderThemeHead } from "../../apps/user-app/src/theme/render.ts";
 import { resolveRequestTheme } from "../../apps/user-app/src/theme/request-theme.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
@@ -990,6 +990,110 @@ integrationDescribe("theme CSS, assets, strings and preview", () => {
         code: "checks_failed",
         issues: [expect.objectContaining({ code: "responsive" })],
       });
+    });
+  }, 60_000);
+
+  test("a theme head override restyles metadata but cannot drop or change robots and canonical", async () => {
+    await withDb(async (database) => {
+      const admin = await memberId(database, "admin");
+      const childId = await child(database, "head-override-child", admin);
+      const save = (body: string) =>
+        saveTemplateResponse(
+          database.sql,
+          admin,
+          new Request("http://staff.localhost/api/staff/themes/template", {
+            method: "POST",
+            body: JSON.stringify({ themeId: childId, name: "head", body }),
+          }),
+        );
+
+      // Save-time required-meta validation.
+      const missing = await save('<title>{{ seo.title }}</title>\n<meta name="x" content="y">');
+      expect(missing.status).toBe(400);
+      expect(await missing.json()).toMatchObject({
+        code: "checks_failed",
+        issues: expect.arrayContaining([
+          { code: "missing_meta", template: "head", meta: "robots" },
+          { code: "missing_meta", template: "head", meta: "canonical" },
+        ]),
+      });
+
+      const stylesheet = await save(
+        [
+          "<title>{{ seo.title }}</title>",
+          '<meta name="robots" content="{{ seo.robots }}">',
+          '<link rel="canonical" href="{{ seo.canonical }}">',
+          '<link rel="stylesheet" href="/x.css">',
+        ].join("\n"),
+      );
+      expect(stylesheet.status).toBe(400);
+      expect(await stylesheet.json()).toMatchObject({
+        code: "checks_failed",
+        issues: [{ code: "head_element", template: "head", element: "link" }],
+      });
+
+      const valid = await save(
+        [
+          "<title>{{ seo.title }} (custom head)</title>",
+          '<meta name="robots" content="{{ seo.robots }}">',
+          '<link rel="canonical" href="{{ seo.canonical }}">',
+          '<meta name="theme-color" content="#123456">',
+        ].join("\n"),
+      );
+      expect(valid.status).toBe(200);
+
+      const seo = {
+        title: "Members <b>·</b> Bulletin",
+        description: "Browse the members.",
+        canonical: "https://board.test/members",
+        robots: "noindex",
+        type: "website",
+        locale: "en",
+        alternates: [
+          { hreflang: "en", href: "https://board.test/members" },
+          { hreflang: "es", href: "https://board.test/members?lang=es" },
+          { hreflang: "fr", href: "https://board.test/members?lang=fr" },
+          { hreflang: "x-default", href: "https://board.test/members" },
+        ],
+      };
+      const input = {
+        sql: database.sql,
+        themeId: childId,
+        pluginsGeneration: 1,
+        translate: createServerT("en", { shipped: USER_CATALOGS }),
+        boardName: "Bulletin",
+        seo,
+      };
+      const custom = await renderThemeHead(input);
+
+      expect(custom).toContain(
+        "<title>Members &lt;b&gt;·&lt;/b&gt; Bulletin (custom head)</title>",
+      );
+      expect(custom).toContain('<meta name="theme-color" content="#123456">');
+      expect(custom).toContain('<meta name="robots" content="noindex">');
+      expect(custom).toContain('<link rel="canonical" href="https://board.test/members">');
+      expect(custom).toContain('hreflang="es" href="https://board.test/members?lang=es"');
+
+      // A stored override that bypassed the save check (e.g. installed before it existed)
+      // is still enforced at render time.
+      expectOk(
+        await saveThemeTemplate(database.sql, {
+          themeId: childId,
+          name: "head",
+          body: '<title>{{ seo.title }}</title><meta name="robots" content="index, follow">',
+          actorId: admin,
+        }),
+      );
+      const enforced = await renderThemeHead(input);
+
+      expect(enforced).not.toContain("index, follow");
+      expect(enforced).toContain('<meta name="robots" content="noindex">');
+      expect(enforced).toContain('<link rel="canonical" href="https://board.test/members">');
+
+      // The default theme renders the full set.
+      const fallback = await renderThemeHead({ ...input, themeId: null });
+      expect(fallback).toContain('<meta property="og:url" content="https://board.test/members">');
+      expect(fallback).toContain('<meta name="twitter:card" content="summary">');
     });
   }, 60_000);
 

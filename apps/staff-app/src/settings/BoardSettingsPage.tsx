@@ -19,6 +19,7 @@ interface BoardSettings {
   readonly reputationLabelScale: readonly ReputationLabel[];
   readonly apiKeyRateLimitPerMinute: number;
   readonly apiIpRateLimitPerMinute: number;
+  readonly robotsTxt: string;
 }
 
 interface ReputationLabel {
@@ -85,6 +86,7 @@ const EMPTY_VALUES: FormValues = {
   reputationDisplay: true,
   apiKeyRateLimitPerMinute: 60,
   apiIpRateLimitPerMinute: 120,
+  robotsTxt: "",
   ...Object.fromEntries(REPUTATION_LABEL_FIELDS.map((field) => [field.id, field.fallback])),
 };
 
@@ -203,6 +205,21 @@ const BOARD_FORM: FormDefinition = {
       ],
     },
     {
+      id: "seo",
+      titleKey: "staff.settings.board.section.seo",
+      descriptionKey: "staff.settings.board.section.seoHelp",
+      fields: [
+        {
+          id: "robotsTxt",
+          type: "text",
+          labelKey: "staff.settings.board.robotsTxt",
+          helpKey: "staff.settings.board.robotsTxtHelp",
+          multiline: true,
+          maxLength: 65_535,
+        },
+      ],
+    },
+    {
       id: "offline",
       titleKey: "staff.settings.board.section.offline",
       descriptionKey: "staff.settings.board.section.offlineDescription",
@@ -241,6 +258,7 @@ function toValues(settings: BoardSettings): FormValues {
     reputationDisplay: settings.reputationDisplay,
     apiKeyRateLimitPerMinute: settings.apiKeyRateLimitPerMinute,
     apiIpRateLimitPerMinute: settings.apiIpRateLimitPerMinute,
+    robotsTxt: settings.robotsTxt,
     ...Object.fromEntries(
       REPUTATION_LABEL_FIELDS.map((field) => [
         field.id,
@@ -278,6 +296,7 @@ function toPayload(values: FormValues): BoardSettings {
       typeof values.apiIpRateLimitPerMinute === "number"
         ? values.apiIpRateLimitPerMinute
         : Number(values.apiIpRateLimitPerMinute ?? 120),
+    robotsTxt: typeof values.robotsTxt === "string" ? values.robotsTxt : "",
     reputationLabelScale: REPUTATION_LABEL_FIELDS.map((field) => {
       const raw = values[field.id];
       return {

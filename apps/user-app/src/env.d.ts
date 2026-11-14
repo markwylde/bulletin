@@ -9,6 +9,8 @@ declare global {
       cspNonce: string;
       locale?: "en" | "es" | "fr";
       localeSource?: "member" | "guest";
+      /** True when a guest's locale came from `?lang=` (an `hreflang` alternate URL). */
+      localeFromQuery?: boolean;
       board?: BoardSettings;
       session?: UserAppSessionContext | null;
       /** The preview or guest-chosen theme; null means the bundled default. */

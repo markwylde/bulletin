@@ -230,11 +230,24 @@ integrationDescribe("search query", () => {
       expect(stems.items.map((item) => item.kind === "post" && item.postId)).toContain(
         running.postId,
       );
+      const stemmedSnippet = stems.items.find(
+        (item) => item.kind === "post" && item.postId === running.postId,
+      );
+      expect(stemmedSnippet?.snippet).toContain("<mark>run</mark>");
 
       const topics = await search(database, author, { query: "run", kind: "topics" });
       expect(topics.items.map((item) => item.kind === "topic" && item.topicId)).toContain(
         running.topicId,
       );
+
+      const inflectedTitle = await search(database, author, {
+        query: "running",
+        kind: "topics",
+      });
+      const titleHit = inflectedTitle.items.find(
+        (item) => item.kind === "topic" && item.topicId === running.topicId,
+      );
+      expect(titleHit?.snippet).toContain("<mark>Running</mark>");
 
       const phrase = await search(database, author, {
         query: '"power supply" -laptop',

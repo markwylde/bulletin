@@ -115,6 +115,31 @@ describe("request locale resolution", () => {
     });
   });
 
+  test("a guest's explicit ?lang= wins over the cookie and the board default", () => {
+    expect(
+      resolveRequestLocale({
+        audience: "guest",
+        query: "fr",
+        bp: "es.2.dark",
+        boardDefaultLocale: "en",
+        acceptLanguage: "es",
+      }),
+    ).toEqual({ locale: "fr", source: "query", suggestion: null });
+  });
+
+  test("an unknown ?lang= is ignored and members keep their preference", () => {
+    expect(resolveRequestLocale({ audience: "guest", query: "de", bp: "es.2.dark" })).toEqual({
+      locale: "es",
+      source: "cookie",
+      suggestion: null,
+    });
+    expect(resolveRequestLocale({ audience: "member", memberLocale: "es", query: "fr" })).toEqual({
+      locale: "es",
+      source: "member",
+      suggestion: null,
+    });
+  });
+
   test("guests use the bp cookie locale", () => {
     expect(
       resolveRequestLocale({

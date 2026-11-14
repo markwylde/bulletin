@@ -279,6 +279,7 @@ erasure, export and retention cover them too; they are not part of the column-ta
 | Object storage `journal/<date>/<seq>.json` | security-record | Erasure journal (IDs and timestamps only) | 2 years | Kept as proof of erasure; replayed after restore |
 | Plugin schemas | personal-content | Data a plugin declares in `core.plugin_personal_data` | Plugin-defined, removed by `gdpr.erase` | Plugin erase hook, or maintenance sandbox |
 | Redis/render caches and CDN entries | derived | Rendered fragments and cache metadata | Until invalidated or expired | Invalidated by erasure/re-render |
+| Feeds, sitemaps and page metadata (CDN entries) | derived | Public display names, profile text and post excerpts for crawlers and feed readers | At most 30 s in the CDN; not stored at the origin | Feeds carry `member:{id}`, member sitemaps `member_directory`; erasure bumps and purges both |
 | `core.events` and `core.event_deliveries` | derived | Transactional outbox; payloads carry IDs only | Until published/expired | Purged by retention |
 | Search vectors (`tsv`, `tsv_simple`, `search_vector`, `title_search_vector`) | derived | Materialised search indexes | Until re-rendered/purged | Rebuilt or deleted with the source row |
 | Email in flight (SMTP mock/queue) and `core.digest_deliveries` | derived | Delivery address resolved at send time from `pii` | Transient | Delivery refused for erasing members; the address is never stored outside `pii` |

@@ -74,6 +74,7 @@ const relationshipLabels = {
   title={`${result.title} · ${result.boardName}`}
   locale={locale}
   body={result.html}
+  seo={result.seo}
   visitor={session === null ? "guest" : "member"}
   serverLocale={locale}
   {...(Astro.locals.localeSource === undefined

@@ -1,5 +1,6 @@
 import type { RenderCache, TagVersionSource } from "@bulletin/cache";
 import { readBoardSettings } from "@bulletin/domain/board";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -36,6 +37,7 @@ export interface HomeRouteInput {
 
 export interface HomeRouteResult extends CachedPageResult {
   readonly title: string;
+  readonly seo: SeoMetadata;
   readonly hasUnlockGrant: boolean;
 }
 
@@ -45,12 +47,14 @@ interface HomeData {
   readonly boardDescription: string;
   readonly index: BoardIndexData;
   readonly flags: ViewerFlags;
+  readonly seo: SeoMetadata;
   readonly enrichment: Readonly<Record<string, unknown>>;
 }
 
 /** The board index at `/` through the shared variant/cache/ETag pipeline (ADR 0006). */
 export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteResult> {
   let title = "";
+  let latestSeo: SeoMetadata | null = null;
   const pluginTags = await loadEnricherTags(input.sql, "home.view");
 
   const rendered = await renderCachedPage<HomeData>({
@@ -79,7 +83,14 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
       const boardName = boardNameFrom(settings.boardName, input.translate);
       const boardDescription =
         settings.boardDescription.trim() || input.translate("user.placeholder.body");
+      const seo = buildSeoMetadata({
+        title: boardName,
+        boardName,
+        description: boardDescription,
+        canonicalPath: "/",
+      });
 
+      latestSeo = seo;
       title = boardName;
       const enrichment = await enrichView({
         hook: "home.view",
@@ -101,11 +112,19 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
           colourScheme: input.colourScheme,
           renderFlagsHash: flags.hash,
         }),
-        data: { theme, boardName, boardDescription, index, flags, enrichment: enrichment.fields },
+        data: {
+          theme,
+          boardName,
+          boardDescription,
+          index,
+          flags,
+          enrichment: enrichment.fields,
+          seo,
+        },
         ...(index.ttlMs === null ? {} : { ttlMs: index.ttlMs }),
       };
     },
-    render: async ({ theme, boardName, boardDescription, index, flags, enrichment }) => {
+    render: async ({ theme, boardName, boardDescription, index, flags, enrichment, seo }) => {
       const page = await renderThemedPage({
         sql: input.sql,
         themeId: input.themeId,
@@ -118,6 +137,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
           boardDescription,
           ...index.viewModel,
           ...enrichment,
+          seo,
           flags: { ...index.viewModel.flags, ...flags.values },
         },
         breadcrumbs: [],
@@ -133,6 +153,14 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
   return {
     ...rendered,
     title,
+    seo:
+      latestSeo ??
+      buildSeoMetadata({
+        title,
+        boardName: title,
+        description: input.translate("user.placeholder.body"),
+        canonicalPath: "/",
+      }),
     hasUnlockGrant: false,
   };
 }

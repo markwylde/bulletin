@@ -35,6 +35,8 @@ export interface BoardSettings {
   readonly apiKeyRateLimitPerMinute: number;
   /** Requests per minute allowed from one client IP (ADR 0016). */
   readonly apiIpRateLimitPerMinute: number;
+  /** The complete admin-managed robots.txt; empty means serve the generated default. */
+  readonly robotsTxt: string;
 }
 
 export interface BoardSettingsInput {
@@ -54,6 +56,7 @@ export interface BoardSettingsInput {
   readonly reputationLabelScale: readonly ReputationLabel[];
   readonly apiKeyRateLimitPerMinute: number;
   readonly apiIpRateLimitPerMinute: number;
+  readonly robotsTxt: string;
 }
 
 export const EMPTY_BOARD_SETTINGS: BoardSettings = {
@@ -72,6 +75,7 @@ export const EMPTY_BOARD_SETTINGS: BoardSettings = {
   reputationLabelScale: DEFAULT_REPUTATION_LABEL_SCALE,
   apiKeyRateLimitPerMinute: 60,
   apiIpRateLimitPerMinute: 120,
+  robotsTxt: "",
 };
 
 export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
@@ -79,7 +83,8 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     SELECT board_name, board_description, default_locale, offline, offline_message,
       topics_per_page, posts_per_page, public_edit_history, new_member_approval_posts,
       attachment_allowed_types, reactions_affect_reputation, reputation_display,
-      reputation_label_scale, api_key_rate_limit_per_minute, api_ip_rate_limit_per_minute
+      reputation_label_scale, api_key_rate_limit_per_minute, api_ip_rate_limit_per_minute,
+      robots_txt
     FROM core.board_settings
     WHERE id = 1
   `) as Array<{
@@ -98,6 +103,7 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     reputation_label_scale: unknown;
     api_key_rate_limit_per_minute: number;
     api_ip_rate_limit_per_minute: number;
+    robots_txt: string;
   }>;
   const row = rows[0];
 
@@ -120,6 +126,7 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     reputationLabelScale: canonicalReputationLabelScale(row?.reputation_label_scale),
     apiKeyRateLimitPerMinute: row?.api_key_rate_limit_per_minute ?? 60,
     apiIpRateLimitPerMinute: row?.api_ip_rate_limit_per_minute ?? 120,
+    robotsTxt: row?.robots_txt ?? "",
   };
 }
 
@@ -194,6 +201,11 @@ function pageSize(value: unknown): number | null {
 }
 
 /** Validates a staff board-settings request body. Field ids match the form definition. */
+/** Robots files are line-based; storing one line ending keeps diffs and editors predictable. */
+export function normaliseRobotsTxt(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
+}
+
 export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResult {
   if (!isRecord(value)) {
     return { ok: false, fields: ["form"] };
@@ -240,6 +252,7 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
   const reputationDisplay = value.reputationDisplay !== false;
   const apiKeyRateLimitPerMinute = rateLimit(value.apiKeyRateLimitPerMinute, 60);
   const apiIpRateLimitPerMinute = rateLimit(value.apiIpRateLimitPerMinute, 120);
+  const robotsTxt = typeof value.robotsTxt === "string" ? normaliseRobotsTxt(value.robotsTxt) : "";
   let reputationLabelScale: readonly ReputationLabel[] = DEFAULT_REPUTATION_LABEL_SCALE;
 
   if (value.reputationLabelScale !== undefined) {
@@ -289,6 +302,10 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
     fields.push("apiIpRateLimitPerMinute");
   }
 
+  if (robotsTxt.length > 65_535) {
+    fields.push("robotsTxt");
+  }
+
   if (value.defaultLocale !== undefined && !isLocale(String(value.defaultLocale))) {
     fields.push("defaultLocale");
   }
@@ -315,6 +332,7 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
       reputationLabelScale,
       apiKeyRateLimitPerMinute: apiKeyRateLimitPerMinute ?? 60,
       apiIpRateLimitPerMinute: apiIpRateLimitPerMinute ?? 120,
+      robotsTxt,
     },
   };
 }

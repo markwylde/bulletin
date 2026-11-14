@@ -270,9 +270,11 @@ export async function searchTopicPage(
       author.display_name AS author_display_name,
       topic.created_at,
       ts_headline(
-        'simple',
+        (CASE WHEN topic.tsv @@ search_query.stemmed
+          THEN ${input.queryConfig} ELSE 'simple' END)::regconfig,
         replace(replace(topic.title, '<', ${SNIPPET_LT}), '>', ${SNIPPET_GT}),
-        (search_query.stemmed || search_query.simple),
+        CASE WHEN topic.tsv @@ search_query.stemmed
+          THEN search_query.stemmed ELSE search_query.simple END,
         ${TITLE_SNIPPET_OPTIONS}
       ) AS headline
     FROM core.topics AS topic
@@ -424,9 +426,11 @@ export async function searchPostPage(
       post.created_at,
       post.position,
       ts_headline(
-        'simple',
+        (CASE WHEN post.tsv @@ search_query.stemmed
+          THEN ${input.queryConfig} ELSE 'simple' END)::regconfig,
         replace(replace(post.body_text, '<', ${SNIPPET_LT}), '>', ${SNIPPET_GT}),
-        (search_query.stemmed || search_query.simple),
+        CASE WHEN post.tsv @@ search_query.stemmed
+          THEN search_query.stemmed ELSE search_query.simple END,
         ${BODY_SNIPPET_OPTIONS}
       ) AS headline
     FROM core.posts AS post
