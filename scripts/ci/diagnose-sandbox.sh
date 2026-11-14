@@ -21,3 +21,12 @@ cd /app/apps/plugin-host && bun -e '
   const missing = used.filter((name) => !new RegExp(`\\b(SYS_)?${name}\\b`).test(policy));
   console.log(`arch=${process.arch} used=${used.length} not-in-policy: ${missing.join(" ") || "(none)"}`);
 '
+
+# Trace one real sandbox launch (nsjail + plugin) and report what seccomp killed.
+cd /app/apps/plugin-host
+PLUGIN_HOST_MEASURE_ITERATIONS=1 timeout 60 strace -f -qq -o /tmp/sandbox-trace.txt \
+  bun src/demo/measure.ts >/tmp/measure.out 2>&1
+echo "--- seccomp kills ---"
+grep -E "SIGSYS|SYS_SECCOMP" /tmp/sandbox-trace.txt | head -5
+echo "--- calls just before each kill ---"
+grep -B4 "SIGSYS" /tmp/sandbox-trace.txt | head -20
