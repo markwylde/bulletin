@@ -1,4 +1,5 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
+import { replaceWordsInText } from "@bulletin/content";
 import { type BoardSettings, readBoardSettings } from "@bulletin/domain/board";
 import { loadReplaceWords } from "@bulletin/domain/filters";
 import { showVisibleForum } from "@bulletin/domain/forums";
@@ -469,8 +470,10 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       const seo = buildSeoMetadata({
         title,
         boardName,
+        // ADR 0007: apply the current replace list; stored text may predate it.
         description:
-          firstPost?.bodyText.trim() || input.translate("seo.topic.description", { title }),
+          replaceWordsInText(firstPost?.bodyText ?? "", replaceWords).trim() ||
+          input.translate("seo.topic.description", { title }),
         canonicalPath,
         robots: error === null && guestReadable ? "index" : "noindex",
         type: "article",
@@ -486,7 +489,10 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
                 dateModified: (freshTopic.lastPostAt ?? freshTopic.createdAt).toISOString(),
                 author: {
                   "@type": "Person",
-                  name: firstPost?.authorName ?? boardName,
+                  name:
+                    firstPost?.authorName === undefined || firstPost.authorName === null
+                      ? boardName
+                      : replaceWordsInText(firstPost.authorName, replaceWords),
                 },
                 commentCount: freshTopic.replyCount,
                 isPartOf: { "@type": "WebSite", name: boardName, url: "/" },

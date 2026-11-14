@@ -427,6 +427,52 @@ integrationDescribe("feeds", () => {
     });
   });
 
+  test("applies the current replace list to titles, authors and excerpts before re-rendering", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const [author] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton)
+        VALUES ('Zorkmid Fan', 'zorkmid-fan-seo')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (author === undefined) {
+        throw new Error("Could not insert the author");
+      }
+
+      await insertFeedTopic(database, {
+        forumId: offTopic,
+        authorId: author.id,
+        title: "All about zorkmid coins",
+        bodyText: "A zorkmid is a coin.",
+        lastPostAt: new Date("2046-01-01T00:00:00Z"),
+      });
+      // Configured after the content was stored: no re-render has run yet (ADR 0007).
+      await database.sql`
+        INSERT INTO core.filter_words (word, mode, replacement, match_mode)
+        VALUES ('zorkmid', 'replace', 'token', 'whole')
+      `;
+
+      for (const format of ["rss", "atom"] as const) {
+        for (const forumRef of [null, `${offTopic}-off-topic`]) {
+          const feed = await feedDocumentFor({
+            sql: database.sql,
+            origin: ORIGIN,
+            format,
+            forumRef,
+          });
+
+          expect(feed.status).toBe(200);
+          expect(feed.body).not.toMatch(/zorkmid/i);
+          expect(feed.body).toContain("All about token coins");
+          expect(feed.body).toContain("A token is a coin.");
+          expect(feed.body).toContain("token Fan");
+          expect(feed.tags).toContain("filters");
+        }
+      }
+    });
+  });
+
   test("caps excerpts at 300 quote-free characters", async () => {
     await withSeededDb(async (database) => {
       const announcements = await forumId(database, "announcements");

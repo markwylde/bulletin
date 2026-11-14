@@ -153,6 +153,7 @@ export async function feedDocumentFor(input: {
       tags: [
         GLOBAL_CACHE_TAGS.perm,
         GLOBAL_CACHE_TAGS.board,
+        GLOBAL_CACHE_TAGS.filters,
         ...access.readableForumIds.map(forumTag),
         ...authorTags(topics),
       ],
@@ -185,6 +186,7 @@ export async function feedDocumentFor(input: {
     tags: [
       GLOBAL_CACHE_TAGS.perm,
       GLOBAL_CACHE_TAGS.board,
+      GLOBAL_CACHE_TAGS.filters,
       ...access.tree.ancestors(forum.id).map((node) => forumTag(node.id)),
       forumTag(forum.id),
       ...authorTags(topics),

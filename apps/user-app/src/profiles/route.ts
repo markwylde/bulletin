@@ -1,4 +1,5 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
+import { replaceWordsInText } from "@bulletin/content";
 import { readBoardSettings } from "@bulletin/domain/board";
 import { loadReplaceWords } from "@bulletin/domain/filters";
 import {
@@ -192,9 +193,10 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
 
       title = page?.title ?? input.translate("theme.error.title");
       hasUnlockGrant = page?.hasUnlockGrant === true;
+      // ADR 0007: profile text is filtered with the current replace list at read time.
       const description =
-        profile.aboutMd.trim() ||
-        profile.customTitle?.trim() ||
+        replaceWordsInText(profile.aboutMd, replaceWords).trim() ||
+        replaceWordsInText(profile.customTitle ?? "", replaceWords).trim() ||
         input.translate("seo.profile.description", { name: title });
       // The slug must match what route resolution compares against (the stored display
       // name), not the word-filtered page title, or the canonical would point at a redirect.

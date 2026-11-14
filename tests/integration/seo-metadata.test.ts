@@ -294,4 +294,93 @@ integrationDescribe("route metadata", () => {
       }
     });
   }, 60_000);
+
+  test("topic and profile metadata apply the current replace list before re-rendering", async () => {
+    await withSeededDb(async (database) => {
+      const announcements = await forumId(database, "announcements");
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton, about_md, about_html)
+        VALUES (
+          'Quux Writer', 'quux-writer-seo', 'I write about quux.', '<p>I write about quux.</p>'
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined) {
+        throw new Error("Could not insert the member");
+      }
+
+      const [topic] = (await database.sql`
+        INSERT INTO core.topics (
+          forum_id, title, slug, starter_id, lang, created_at, updated_at, last_post_at
+        )
+        VALUES (
+          ${announcements}, 'A quux topic', 'a-quux-topic', ${member.id}, 'english'::regconfig,
+          now(), now(), now()
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      await database.sql`
+        INSERT INTO core.posts (
+          topic_id, author_id, body_md, body_html, body_text, render_version,
+          sanitiser_version, position, visibility, lang
+        )
+        VALUES (
+          ${topic?.id}, ${member.id}, 'Quux everywhere.', '<p>Quux everywhere.</p>',
+          'Quux everywhere.', 1, 1, 1, 'visible', 'english'::regconfig
+        )
+      `;
+      // Stored before the rule exists, and no re-render job runs in this test.
+      await database.sql`
+        INSERT INTO core.filter_words (word, mode, replacement, match_mode)
+        VALUES ('quux', 'replace', 'thing', 'whole')
+      `;
+
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const common = {
+          sql: database.sql,
+          locale: "en" as const,
+          translate,
+          session: null,
+          pluginsGeneration: 1,
+          colourScheme: "system" as const,
+          cache,
+          tagVersions: versions,
+        };
+        const topicResult = await renderTopicRoute({ ...common, ref: `${topic?.id}-a-quux-topic` });
+        const profileResult = await renderProfileRoute({
+          ...common,
+          ref: canonicalUrl("profile", member.id, "Quux Writer").slice("/profile/".length),
+        });
+
+        if (topicResult.kind !== "page" || profileResult.kind !== "page") {
+          throw new Error("Expected both pages");
+        }
+
+        expect(topicResult.seo.description).toBe("thing everywhere.");
+        expect(topicResult.seo.title).not.toMatch(/quux/i);
+        // URLs keep the stored slug (resolved by ID); every published text is filtered.
+        expect(topicResult.seo.jsonLd).toMatchObject({
+          headline: "A thing topic",
+          author: { name: "thing Writer" },
+        });
+        expect(topicResult.tags).toContain("filters");
+        expect(profileResult.seo.description).toBe("I write about thing.");
+        expect(profileResult.seo.title).not.toMatch(/quux/i);
+        expect(profileResult.seo.jsonLd).toMatchObject({
+          name: "thing Writer",
+          description: "I write about thing.",
+        });
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 60_000);
 });

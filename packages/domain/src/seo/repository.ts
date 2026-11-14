@@ -1,5 +1,7 @@
+import { type ReplaceWords, replaceWordsInText } from "@bulletin/content";
 import type { SQL } from "bun";
 import { readBoardSettings } from "../board/settings.ts";
+import { loadReplaceWords } from "../filters/repository.ts";
 import {
   can,
   GUEST_PRINCIPAL,
@@ -356,18 +358,23 @@ async function readFeedTopics(
     LIMIT ${limit}
   `) as FeedTopicRow[];
 
+  // ADR 0007: stored titles, names and text may predate the current replace list (the
+  // re-render job scrubs them later), so every read applies the current list on the fly.
+  const replaceWords: ReplaceWords = await loadReplaceWords(sql);
+  const filter = (value: string): string => replaceWordsInText(value, replaceWords);
+
   return rows.map((row) => ({
     id: row.id,
-    title: row.title,
+    title: filter(row.title),
     slug: row.slug,
     forumId: row.forum_id,
     forumSlug: row.forum_slug,
     forumTitle: row.forum_title,
     authorId: row.author_id,
-    authorName: row.author_name,
+    authorName: row.author_name === null ? null : filter(row.author_name),
     createdAt: row.created_at,
     lastPostAt: row.last_post_at ?? row.created_at,
-    excerpt: feedExcerpt(row.body_text ?? ""),
+    excerpt: feedExcerpt(filter(row.body_text ?? "")),
   }));
 }
 
