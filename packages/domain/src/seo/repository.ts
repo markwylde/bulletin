@@ -280,6 +280,8 @@ export interface FeedTopicRecord {
   readonly forumId: string;
   readonly forumSlug: string;
   readonly forumTitle: string;
+  /** The starter, so the feed can carry `member:{id}` and erasure/renames purge it. */
+  readonly authorId: string | null;
   readonly authorName: string | null;
   readonly createdAt: Date;
   readonly lastPostAt: Date;
@@ -293,6 +295,7 @@ interface FeedTopicRow {
   readonly forum_id: string;
   readonly forum_slug: string;
   readonly forum_title: string;
+  readonly author_id: string | null;
   readonly author_name: string | null;
   readonly created_at: Date;
   readonly last_post_at: Date | null;
@@ -318,6 +321,7 @@ async function readFeedTopics(
       t.forum_id::text AS forum_id,
       forum.slug AS forum_slug,
       forum.title AS forum_title,
+      starter.id::text AS author_id,
       starter.display_name AS author_name,
       t.created_at,
       t.last_post_at,
@@ -347,6 +351,7 @@ async function readFeedTopics(
     forumId: row.forum_id,
     forumSlug: row.forum_slug,
     forumTitle: row.forum_title,
+    authorId: row.author_id,
     authorName: row.author_name,
     createdAt: row.created_at,
     lastPostAt: row.last_post_at ?? row.created_at,

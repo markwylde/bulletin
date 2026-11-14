@@ -28,6 +28,41 @@ Uses the Guests permission snapshot and CDN caching rules (ADR 0006).
   never rewrites `bp` and never varies by member. The board default locale's alternate and
   `x-default` are the clean URL; a non-default `?lang=` page is its own canonical.
 
+## Privacy checklist (ADR 0012)
+
+This change stores no new personal data. It re-publishes personal content that guests can
+already read, in machine-readable form, to crawlers and feed readers. `robots.txt` (column
+`core.board_settings.robots_txt`) is board configuration, not personal data.
+
+| Data published | Where | Class |
+|---|---|---|
+| Member display name | feed item author (`dc:creator`, Atom `author`), topic JSON-LD author, profile title and `Person` JSON-LD, profile URL slug in member sitemaps | personal content |
+| Profile "about" text or custom title | profile meta/OpenGraph description and JSON-LD | personal content |
+| First-post text (300 quote-free characters) | feed excerpts, topic meta description | personal content |
+| Generated feeds, sitemaps and page heads | CDN entries | derived |
+
+- **Purpose**: making content that is already public to guests discoverable by search engines
+  and followable in feed readers (the board's public posting purpose; no new purpose).
+- **Access permission**: Guests only. Every feed and sitemap evaluates the Guests snapshot via
+  `can()`, regardless of who asks; password forums, member-only forums and unapproved or
+  soft-deleted content never appear. Member sitemaps list only active, non-service members
+  with a display name who have not chosen to hide from the member list. Profiles that are not
+  public, and pages guests cannot see, are `noindex`.
+- **Retention**: nothing is stored at the origin; documents are generated on request. CDN
+  copies live at most `s-maxage=15` + `stale-while-revalidate=15` = **30 s** (ADR 0006). Copies
+  already taken by third-party crawlers and feed readers are outside the board's control and are
+  not covered by erasure; the admin-authored privacy policy should say so.
+- **Export**: nothing new to export. The underlying posts, profile and display name are in the
+  member's existing export.
+- **Erasure**: anonymisation changes the display name, clears the profile text, sets
+  `hide_from_member_list` and the `erased` state, so regenerated feeds show the anonymised
+  name and sitemaps drop the profile URL. Feeds carry the `member:{id}` tag of every listed
+  author and member sitemaps carry `member_directory`; the erasure job bumps and CDN-purges
+  both tags when it anonymises the member, so cached copies are invalidated immediately rather
+  than waiting for the 30 s expiry. Other cached pages that embed the name (topic heads) are
+  re-rendered via their topic tags and expire from the CDN within the same 30 s window.
+  Tested in `tests/integration/seo-feeds.test.ts` (erasure scenario).
+
 ## Risks / Trade-offs
 
 - [Large boards' sitemap generation cost] → served from cache; regenerated per tag invalidation, not per request.

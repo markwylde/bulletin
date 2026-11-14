@@ -1,4 +1,4 @@
-import { forumTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
+import { forumTag, GLOBAL_CACHE_TAGS, memberTag } from "@bulletin/cache";
 import { readBoardSettings } from "@bulletin/domain/board";
 import {
   type FeedDocument,
@@ -93,6 +93,19 @@ function feedDocument(input: {
 }
 
 /**
+ * Feeds publish author display names, so each listed author's `member:{id}` tag is on the
+ * document: a rename or an erasure (which bumps and CDN-purges that tag) refreshes it at once
+ * instead of waiting for the 30 s guest cache window (ADR 0006, 0012).
+ */
+function authorTags(topics: readonly FeedTopicRecord[]): readonly string[] {
+  return [
+    ...new Set(
+      topics.flatMap((topic) => (topic.authorId === null ? [] : [memberTag(topic.authorId)])),
+    ),
+  ];
+}
+
+/**
  * The board or per-forum feed. A forum guests cannot read, a password forum and a redirect
  * forum all answer 404, exactly like the forum page's denial (spec: Private forum feed).
  */
@@ -136,6 +149,7 @@ export async function feedDocumentFor(input: {
         GLOBAL_CACHE_TAGS.perm,
         GLOBAL_CACHE_TAGS.board,
         ...access.readableForumIds.map(forumTag),
+        ...authorTags(topics),
       ],
     };
   }
@@ -168,6 +182,7 @@ export async function feedDocumentFor(input: {
       GLOBAL_CACHE_TAGS.board,
       ...access.tree.ancestors(forum.id).map((node) => forumTag(node.id)),
       forumTag(forum.id),
+      ...authorTags(topics),
     ],
   };
 }

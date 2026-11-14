@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { GLOBAL_CACHE_TAGS, memberTag } from "@bulletin/cache";
+import { runErasureJob } from "@bulletin/db/jobs";
 import {
   baseSeedModule,
   flagsSeedModule,
@@ -12,14 +14,17 @@ import {
   topicsSeedModule,
 } from "@bulletin/db/seed";
 import { can, GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
+import { requestDataErasure } from "@bulletin/domain/privacy";
 import {
   guestCanReadForum,
   loadGuestSeoAccess,
   readForumFeed,
   readGuestFeedForum,
 } from "@bulletin/domain/seo";
+import type { StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { feedDocumentFor } from "../../apps/user-app/src/seo/feeds.ts";
+import { sitemapPageDocument } from "../../apps/user-app/src/seo/sitemaps.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -450,4 +455,134 @@ integrationDescribe("feeds", () => {
       expect(feed.body).toContain('<summary type="text">');
     });
   });
+
+  test("erasure purges the feed's author tag and removes the name from feeds and sitemaps", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton)
+        VALUES ('Erin Feedauthor', 'erin-feedauthor')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined) {
+        throw new Error("Could not insert the feed author");
+      }
+
+      await database.sql`
+        INSERT INTO pii.identities (member_id, issuer, sub, email)
+        VALUES (${member.id}, 'https://auth.test', 'seo-erase', 'erin@example.test')
+      `;
+      const token = "seo-erase-user-token";
+      await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (
+          ${member.id}, 'user', sha256(convert_to(${token}, 'UTF8')), now() + interval '1 day'
+        )
+      `;
+      const topicId = await insertFeedTopic(database, {
+        forumId: offTopic,
+        authorId: member.id,
+        title: "Erin's public topic",
+        bodyText: "Written before erasure.",
+        lastPostAt: new Date("2045-01-01T00:00:00Z"),
+      });
+      const forumRef = `${offTopic}-off-topic`;
+      const before = await feedDocumentFor({
+        sql: database.sql,
+        origin: ORIGIN,
+        format: "rss",
+        forumRef,
+      });
+      const membersBefore = await sitemapPageDocument({
+        sql: database.sql,
+        origin: ORIGIN,
+        kind: "members",
+        page: 1,
+      });
+
+      expect(before.body).toContain("<dc:creator>Erin Feedauthor</dc:creator>");
+      expect(before.tags).toContain(memberTag(member.id));
+      expect(membersBefore.body).toContain(`/profile/${member.id}-erin-feedauthor`);
+      expect(membersBefore.tags).toContain(GLOBAL_CACHE_TAGS.directory);
+
+      const request = await requestDataErasure(database.sql, token, member.id);
+
+      if (request === null) {
+        throw new Error("The erasure request was not created");
+      }
+
+      const staffToken = "seo-erase-staff-token";
+      await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at, last_auth_at)
+        SELECT member_id, 'staff', sha256(convert_to(${staffToken}, 'UTF8')),
+          now() + interval '1 day', now()
+        FROM pii.identities WHERE sub = 'admin'
+      `;
+      await database.sql`
+        SELECT pii.update_data_request(${staffToken}, ${request.requestId}, 'process', 'Approved')
+      `;
+
+      const purged: string[] = [];
+      const result = await runErasureJob(database.sql, emptyStorage(), request.requestId, {
+        pluginErase: async () => ({ ok: true }),
+        purge: {
+          async purge(tags) {
+            purged.push(...tags);
+            return { tags, ok: true };
+          },
+        },
+      });
+
+      expect(result?.memberId).toBe(member.id);
+      // The CDN copies of both documents are purged by tags they carry (ADR 0006, 0012).
+      expect(purged).toContain(memberTag(member.id));
+      expect(purged).toContain(GLOBAL_CACHE_TAGS.directory);
+
+      const after = await feedDocumentFor({
+        sql: database.sql,
+        origin: ORIGIN,
+        format: "rss",
+        forumRef,
+      });
+      const membersAfter = await sitemapPageDocument({
+        sql: database.sql,
+        origin: ORIGIN,
+        kind: "members",
+        page: 1,
+      });
+
+      expect(after.body).toContain(`/topic/${topicId}-`);
+      expect(after.body).not.toContain("Erin Feedauthor");
+      expect(membersAfter.body).not.toContain(`/profile/${member.id}-`);
+    });
+  }, 60_000);
 });
+
+function emptyStorage(): StorageClient {
+  return {
+    async put(_key, data) {
+      return typeof data === "string" ? data.length : data.byteLength;
+    },
+    async get() {
+      return new Uint8Array();
+    },
+    async exists() {
+      return false;
+    },
+    async stat() {
+      return { size: 0, contentType: "application/octet-stream", etag: "" };
+    },
+    async delete() {},
+    async copy() {},
+    async list() {
+      return [];
+    },
+    presignGet() {
+      return "https://files.test/object";
+    },
+    presignPut() {
+      return "https://files.test/upload";
+    },
+  };
+}
