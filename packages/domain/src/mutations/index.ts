@@ -1,4 +1,5 @@
 import { bumpCacheTags } from "@bulletin/cache";
+import { SpanKind, withSpan } from "@bulletin/config/tracing";
 import type { SQL } from "bun";
 
 /**
@@ -44,14 +45,23 @@ export * from "./topics.ts";
 export async function runMutation<TInput, TResult>(
   options: RunMutationOptions<TInput, TResult>,
 ): Promise<TResult> {
-  return options.sql.begin(async (tx) => {
-    const result = await options.apply(tx, options.input);
-    const tags = [...new Set(options.mutation.tags(options.input, result))];
+  // The transaction span is the parent of any outbox event the write emits (ADR 0020).
+  return withSpan(
+    `db.transaction ${options.mutation.name}`,
+    () =>
+      options.sql.begin(async (tx) => {
+        const result = await options.apply(tx, options.input);
+        const tags = [...new Set(options.mutation.tags(options.input, result))];
 
-    if (tags.length > 0) {
-      await bumpCacheTags(tx, tags);
-    }
+        if (tags.length > 0) {
+          await bumpCacheTags(tx, tags);
+        }
 
-    return result;
-  });
+        return result;
+      }),
+    {
+      kind: SpanKind.CLIENT,
+      attributes: { "db.system": "postgresql", "db.operation": options.mutation.name },
+    },
+  );
 }

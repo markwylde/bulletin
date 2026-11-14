@@ -12,6 +12,7 @@ import {
   createServiceSql,
   startService,
 } from "@bulletin/config/server";
+import { initTracing, traceJobData } from "@bulletin/config/tracing";
 import {
   createEventWorker,
   createPgBossQueue,
@@ -68,6 +69,7 @@ import { createReputationEventHandler } from "./reputation.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "workers", level: config.logLevel });
+initTracing({ service: "workers" });
 const port = config.port;
 const databaseUrl = config.databaseUrl;
 const migrationUrl = Bun.env.MIGRATION_DATABASE_URL ?? databaseUrl;
@@ -162,25 +164,45 @@ const subscribers: EventSubscriber[] = [
 ];
 const relay = createRelay({ sql, subscribers, queue: boss.queue });
 const enqueueEmail = async (intentId: string): Promise<void> => {
-  await boss.boss.send("email", { intentId }, { singletonKey: `email:${intentId}` });
+  await boss.boss.send(
+    "email",
+    { intentId, ...traceJobData() },
+    { singletonKey: `email:${intentId}` },
+  );
 };
 const enqueueExport = async (requestId: string): Promise<void> => {
-  await boss.boss.send(EXPORT_QUEUE, { requestId }, { singletonKey: `export:${requestId}` });
+  await boss.boss.send(
+    EXPORT_QUEUE,
+    { requestId, ...traceJobData() },
+    { singletonKey: `export:${requestId}` },
+  );
 };
 const enqueueErasure = async (requestId: string): Promise<void> => {
-  await boss.boss.send(ERASURE_QUEUE, { requestId }, { singletonKey: `erasure:${requestId}` });
+  await boss.boss.send(
+    ERASURE_QUEUE,
+    { requestId, ...traceJobData() },
+    { singletonKey: `erasure:${requestId}` },
+  );
 };
 const enqueuePush = async (intentId: string): Promise<void> => {
-  await boss.boss.send("push", { intentId }, { singletonKey: `push:${intentId}` });
+  await boss.boss.send(
+    "push",
+    { intentId, ...traceJobData() },
+    { singletonKey: `push:${intentId}` },
+  );
 };
 const enqueueFanout = async (job: {
   eventId: string;
   afterMemberId: string;
   throughMemberId: string;
 }): Promise<void> => {
-  await boss.boss.send(NOTIFICATION_FANOUT_QUEUE, job, {
-    singletonKey: `fanout:${job.eventId}:${job.throughMemberId}`,
-  });
+  await boss.boss.send(
+    NOTIFICATION_FANOUT_QUEUE,
+    { ...job, ...traceJobData() },
+    {
+      singletonKey: `fanout:${job.eventId}:${job.throughMemberId}`,
+    },
+  );
 };
 const notificationFilters: readonly NotificationRecipientFilter[] = [
   async (context) =>

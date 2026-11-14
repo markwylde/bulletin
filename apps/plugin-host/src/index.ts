@@ -12,6 +12,7 @@ import {
   standardMetrics,
 } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
+import { initTracing } from "@bulletin/config/tracing";
 import {
   can,
   GUEST_PRINCIPAL,
@@ -41,6 +42,7 @@ import { SandboxSupervisor } from "./sandbox/supervisor.ts";
 const config = loadConfig();
 const sandboxConfig = loadPluginHostConfig(Bun.env);
 const logger = createLogger({ service: "plugin-host", level: config.logLevel });
+initTracing({ service: "plugin-host" });
 
 let cgroupRoot: string;
 

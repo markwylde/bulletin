@@ -2,6 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
 import { routeLabel, standardMetrics } from "@bulletin/config/metrics";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
+import { withServerSpan } from "@bulletin/config/tracing";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
 import { embedProviderOrigins, listEmbedProviders } from "@bulletin/domain/content";
@@ -84,15 +85,26 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const started = performance.now();
   let status = 500;
 
+  const route = context.routePattern || routeLabel(context.url.pathname);
+
   try {
-    const response = await handle(context, next);
+    const response = await withServerSpan(
+      context.request,
+      `${context.request.method} ${route}`,
+      async (span) => {
+        const result = await handle(context, next);
+        span.setAttribute("http.response.status_code", result.status);
+        return result;
+      },
+      { "http.route": route, "service.name": "user-app" },
+    );
     status = response.status;
     return response;
   } finally {
     if (!context.url.pathname.startsWith("/health/")) {
       standardMetrics.requestDuration.observe(
         {
-          route: context.routePattern || routeLabel(context.url.pathname),
+          route,
           method: context.request.method,
           status: String(status),
         },

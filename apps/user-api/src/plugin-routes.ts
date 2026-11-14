@@ -1,3 +1,4 @@
+import { tracedFetch } from "@bulletin/config/tracing";
 import type { ViewerContext } from "@bulletin/plugin-sdk/hooks";
 
 /** Forwards plugin API routes and iframe bridge calls to plugin-host (ADR 0009). */
@@ -40,7 +41,7 @@ async function forward(
 ): Promise<Response> {
   const base = (options.url ?? Bun.env.PLUGIN_HOST_INTERNAL_URL ?? DEFAULT_URL).replace(/\/+$/, "");
   const token = options.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
-  const fetcher = options.fetch ?? ((target, init) => globalThis.fetch(target, init));
+  const fetcher = options.fetch ?? tracedFetch;
   const url = new URL(request.url);
   const requestBody =
     request.method === "GET" || request.method === "HEAD" ? null : await request.text();

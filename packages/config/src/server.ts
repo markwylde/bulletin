@@ -17,6 +17,7 @@ import {
   standardMetrics,
 } from "./metrics.ts";
 import { applySecurityHeaders, createCspNonce, type SecurityHeadersConfig } from "./security.ts";
+import { shutdownTracing, withServerSpan } from "./tracing.ts";
 
 export interface HealthCheck {
   readonly name: string;
@@ -383,7 +384,16 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
 
       try {
         requestLogger.info("request.started");
-        const response = await options.fetch(request);
+        const response = await withServerSpan(
+          request,
+          `${request.method} ${route}`,
+          async (span) => {
+            const result = await options.fetch(request);
+            span.setAttribute("http.response.status_code", result.status);
+            return result;
+          },
+          { "http.route": route, "service.name": options.service },
+        );
         requestLogger.info("request.completed", { status: response.status });
         timer({ status: String(response.status) });
         return trackResponse(secure(response));
@@ -424,6 +434,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       server.stop(true);
       metricsServer?.stop(true);
       unregisterPool?.();
+      await shutdownTracing();
     })();
 
     return shutdownPromise;

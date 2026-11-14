@@ -1,4 +1,5 @@
 import type { Logger } from "@bulletin/config";
+import { SpanKind, withSpan } from "@bulletin/config/tracing";
 import { loadEvent, type StoredEvent } from "@bulletin/domain/events";
 import type { SQL } from "bun";
 import type { PgBoss } from "pg-boss";
@@ -6,6 +7,8 @@ import type { PgBoss } from "pg-boss";
 export interface EventJob {
   readonly eventId: string;
   readonly subscriber: string;
+  /** W3C trace context from the relay (ADR 0020); an opaque ID, never personal data. */
+  readonly traceparent?: string;
 }
 
 export type EventHandler = (event: StoredEvent) => Promise<void>;
@@ -42,18 +45,32 @@ export async function createEventWorker(options: EventWorkerOptions): Promise<Ev
         throw new Error(`No event handler registered for ${job.data.subscriber}`);
       }
 
-      const event = await loadEvent(options.sql, BigInt(job.data.eventId));
+      await withSpan(
+        `job ${queueName} ${job.data.subscriber}`,
+        async () => {
+          const event = await loadEvent(options.sql, BigInt(job.data.eventId));
 
-      if (event !== null) {
-        try {
-          jobLogger?.info("event.job.started");
-          await handler(event);
-          jobLogger?.info("event.job.completed");
-        } catch (error) {
-          jobLogger?.error("event.job.failed", { error });
-          throw error;
-        }
-      }
+          if (event !== null) {
+            try {
+              jobLogger?.info("event.job.started");
+              await handler(event);
+              jobLogger?.info("event.job.completed");
+            } catch (error) {
+              jobLogger?.error("event.job.failed", { error });
+              throw error;
+            }
+          }
+        },
+        {
+          kind: SpanKind.CONSUMER,
+          traceparent: job.data.traceparent ?? null,
+          attributes: {
+            "messaging.system": "pg-boss",
+            "messaging.destination.name": queueName,
+            "bulletin.subscriber": job.data.subscriber,
+          },
+        },
+      );
     }
   });
 

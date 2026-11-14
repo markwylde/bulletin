@@ -1,4 +1,5 @@
 import type { Logger } from "@bulletin/config";
+import { tracedFetch } from "@bulletin/config/tracing";
 
 /**
  * Core client for the plugin-host write hooks (ADR 0009). The plugin-host owns the 300 ms
@@ -58,7 +59,7 @@ export function createPluginWriteClient(options: PluginWriteClientOptions = {}):
   };
 
   const token = options.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
-  const request = options.fetch ?? ((input, init) => globalThis.fetch(input, init));
+  const request = options.fetch ?? tracedFetch;
   const timeoutMs = options.timeoutMs ?? 1_000;
   const defaultFailClosed =
     options.vetoFailMode === "closed" || Bun.env.PLUGIN_VETO_FAIL_MODE === "closed";

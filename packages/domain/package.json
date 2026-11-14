@@ -58,6 +58,7 @@
   },
   "dependencies": {
     "@bulletin/cache": "workspace:*",
+    "@bulletin/config": "workspace:*",
     "@bulletin/i18n": "workspace:*",
     "@bulletin/storage": "workspace:*",
     "@darkauth/client": "1.32.0",

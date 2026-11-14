@@ -240,6 +240,7 @@
       "name": "@bulletin/domain",
       "dependencies": {
         "@bulletin/cache": "workspace:*",
+        "@bulletin/config": "workspace:*",
         "@bulletin/content": "workspace:*",
         "@bulletin/i18n": "workspace:*",
         "@bulletin/plugin-sdk": "workspace:*",

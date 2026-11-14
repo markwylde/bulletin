@@ -11,7 +11,8 @@
     "./security": "./src/security.ts",
     "./storage": "./src/storage.ts",
     "./env": "./src/env.ts",
-    "./metrics": "./src/metrics.ts"
+    "./metrics": "./src/metrics.ts",
+    "./tracing": "./src/tracing.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

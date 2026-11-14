@@ -1,5 +1,6 @@
 import { metricsPortFromEnv, serveMetrics } from "@bulletin/config/metrics";
 import { registerDbPoolCollector } from "@bulletin/config/server";
+import { initTracing } from "@bulletin/config/tracing";
 import { readSql } from "./db.ts";
 
 const STARTED = Symbol.for("bulletin.user-app.metrics");
@@ -17,6 +18,7 @@ export function startUserAppMetrics(): void {
   }
 
   state[STARTED] = true;
+  initTracing({ service: "user-app" });
   const port = metricsPortFromEnv();
 
   if (port === null) {

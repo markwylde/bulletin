@@ -11,6 +11,7 @@ import {
   createServiceSql,
   startService,
 } from "@bulletin/config/server";
+import { initTracing } from "@bulletin/config/tracing";
 import { syncFlagDefinitions } from "@bulletin/db/flags";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
@@ -119,6 +120,7 @@ import {
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
+initTracing({ service: "user-api" });
 const port = config.port;
 const databaseUrl = config.databaseUrl;
 const migrationUrl = Bun.env.MIGRATION_DATABASE_URL ?? databaseUrl;

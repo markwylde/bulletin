@@ -1,4 +1,5 @@
 import type { Logger } from "@bulletin/config";
+import { tracedFetch } from "@bulletin/config/tracing";
 import {
   buildMemberExport,
   type PluginExportResult,
@@ -68,7 +69,7 @@ function pluginExporter(
     }
 
     try {
-      const response = await fetch(`${options.pluginHostUrl}/internal/gdpr`, {
+      const response = await tracedFetch(`${options.pluginHostUrl}/internal/gdpr`, {
         method: "POST",
         headers: {
           "content-type": "application/json",

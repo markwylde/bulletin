@@ -13,6 +13,7 @@ import {
   topicTag,
 } from "@bulletin/cache";
 import type { Logger } from "@bulletin/config";
+import { tracedFetch } from "@bulletin/config/tracing";
 import { redactQuoteSnapshots } from "@bulletin/domain/content";
 import { recomputeReactionSummary } from "@bulletin/domain/reactions";
 import { recountTopic, refreshForumLastPost } from "@bulletin/domain/topics";
@@ -144,7 +145,7 @@ function pluginEraser(options: ErasureJobOptions) {
     }
 
     try {
-      const response = await fetch(`${options.pluginHostUrl}/internal/gdpr`, {
+      const response = await tracedFetch(`${options.pluginHostUrl}/internal/gdpr`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
