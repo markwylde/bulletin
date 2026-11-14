@@ -359,6 +359,8 @@
   "staff.groups.permission.acpWarnings": "Gérer les motifs et seuils d’avertissement",
   "staff.groups.permission.acpWebhooks": "Gérer les webhooks sortants",
   "staff.groups.permission.acpApi": "Gérer les intégrations API",
+  "staff.groups.permission.privacyRequests": "Traiter les demandes d’exportation et d’effacement",
+  "staff.groups.permission.privacyAudit": "Consulter le journal d’accès aux données restreintes",
   "staff.groups.permission.bansIp": "Bannir des adresses et plages IP",
   "staff.groups.permission.boardViewOffline": "Voir le forum hors ligne",
   "staff.groups.permission.membersBadges": "Attribuer et retirer des badges",

@@ -437,6 +437,8 @@
   "staff.groups.permission.membersViewIps": "View member login IPs",
   "staff.groups.permission.membersViewList": "View the member list",
   "staff.groups.permission.membersViewNameHistory": "View display-name history",
+  "staff.groups.permission.privacyAudit": "View the restricted-data access log",
+  "staff.groups.permission.privacyRequests": "Process data export and erasure requests",
   "staff.groups.permission.reportsMembers": "View member reports",
   "staff.groups.permission.reportsPms": "View private-message reports",
   "staff.groups.permission.sessionsRevoke": "Revoke sessions",

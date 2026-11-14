@@ -359,6 +359,8 @@
   "staff.groups.permission.acpWarnings": "Manage warning reasons and thresholds",
   "staff.groups.permission.acpWebhooks": "Manage outbound webhooks",
   "staff.groups.permission.acpApi": "Manage API integrations",
+  "staff.groups.permission.privacyRequests": "Process data export and erasure requests",
+  "staff.groups.permission.privacyAudit": "View the restricted-data access log",
   "staff.groups.permission.bansIp": "Ban IP addresses and ranges",
   "staff.groups.permission.boardViewOffline": "View the board while offline",
   "staff.groups.permission.membersBadges": "Award and revoke badges",

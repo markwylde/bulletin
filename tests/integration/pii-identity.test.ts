@@ -8,6 +8,8 @@ const APP_ROLES = ["user_app", "user_api", "staff_api", "workers"] as const;
 const PII_TABLES = [
   "access_grants",
   "access_log",
+  "data_request_steps",
+  "data_requests",
   "identities",
   "ip_log",
   "post_ips",
