@@ -2,6 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+/**
+ * Browser-generated messages that are not page errors. Chrome fetches manifest icons in the
+ * background and logs this when navigation aborts that fetch; icon validity is covered by
+ * apps/user-app/src/pwa/manifest.test.ts.
+ */
+const BROWSER_NOISE: readonly RegExp[] = [
+  /^Error while trying to use the following icon from the Manifest: .*\/pwa\/icon-\d+\.png/,
+];
+
 export const VIEWPORTS = {
   mobile360: { width: 360, height: 780 },
   mobile390: { width: 390, height: 844 },
@@ -71,6 +80,7 @@ async function openPage(options: PageOptions): Promise<OpenPage> {
     errors.push(details?.exception?.description ?? details?.text ?? "Uncaught page exception");
   });
   const allowedConsoleError = (message: string): boolean =>
+    BROWSER_NOISE.some((pattern) => pattern.test(message)) ||
     (options.allowConsoleErrors ?? []).some((pattern) => pattern.test(message));
   candidate.addEventListener<{
     readonly type?: string;
