@@ -1,5 +1,5 @@
 import type { Logger } from "@bulletin/config";
-import { JOURNAL_PREFIX, RESTORE_WATERMARK_KEY } from "@bulletin/domain/operations";
+import { listJournalKeys, RESTORE_WATERMARK_KEY } from "@bulletin/domain/operations";
 import { AVATAR_VARIANTS, avatarKey, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { runAttachmentReconciliation } from "./attachments.ts";
@@ -19,7 +19,6 @@ import { type ErasureJobOptions, runErasureJob } from "./erasure.ts";
  * the workers keep in object storage: sequences never go backwards except through a restore.
  */
 
-const JOURNAL_ENTRY_KEY = /^journal\/\d{4}-\d{2}-\d{2}\/\d{12}\.json$/;
 const REPLAY_LOCK = "bulletin.erasure_journal_replay";
 
 export interface JournalEntry {
@@ -115,10 +114,7 @@ export async function replayErasureJournal(
 
 async function replayLocked(options: JournalReplayOptions): Promise<JournalReplayResult> {
   const { sql, storage } = options;
-  const keys = (await storage.list(JOURNAL_PREFIX))
-    .map((object) => object.key)
-    .filter((key) => JOURNAL_ENTRY_KEY.test(key))
-    .sort();
+  const keys = await listJournalKeys(storage);
 
   if (keys.length === 0) {
     return { replayed: 0, recorded: 0, skipped: [] };

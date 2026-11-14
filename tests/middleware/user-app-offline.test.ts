@@ -41,13 +41,13 @@ mock.module("../../apps/user-app/src/db.ts", () => ({
   closeReadSql: async () => undefined,
 }));
 
-// No journal HEAD: the board was never restored, so the restore gate is open. A test that
-// needs a restore in progress sets a HEAD the (empty) database has not applied.
-let journalHead: string | null = null;
+// No journal entries: the board was never restored, so the restore gate is open. A test that
+// needs a restore in progress lists an entry the (empty) database has not applied.
+let journalEntry: string | null = null;
 mock.module("../../apps/user-app/src/storage.ts", () => ({
   storage: {
-    exists: async (key: string) => key === "journal/HEAD" && journalHead !== null,
-    get: async () => new TextEncoder().encode(JSON.stringify({ key: journalHead })),
+    list: async () =>
+      journalEntry === null ? [] : [{ key: journalEntry, size: 1, lastModified: new Date() }],
   },
 }));
 
@@ -90,7 +90,7 @@ beforeEach(() => {
 // Runs first: once the journal has been applied, the gate stays open for the process.
 describe("user-app restore gate", () => {
   test("refuses pages and APIs until the erasure journal is applied, then opens", async () => {
-    journalHead = "journal/2026-11-14/000000000042.json";
+    journalEntry = "journal/2026-11-14/000000000042.json";
 
     const page = await onRequest(
       createContext("/topic/12-welcome", {
@@ -114,8 +114,8 @@ describe("user-app restore gate", () => {
     const live = await onRequest(createContext("/health/live"), next);
     expect(live.status).toBe(200);
 
-    // The replay finished (no unapplied HEAD); the closed result is reused for a second.
-    journalHead = null;
+    // The replay finished (nothing unapplied); the closed result is reused for a second.
+    journalEntry = null;
     await Bun.sleep(1_100);
     board.offline = false;
     const served = await onRequest(createContext("/"), next);

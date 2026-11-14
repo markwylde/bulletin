@@ -18,8 +18,8 @@ import {
 import type { SessionRecord } from "@bulletin/domain/auth";
 import {
   createJournalReadinessCheck,
-  JOURNAL_HEAD_KEY,
   journalApplied,
+  listJournalKeys,
 } from "@bulletin/domain/operations";
 import { createS3Handler } from "@bulletin/mock-s3/app";
 import { createMemoryStore } from "@bulletin/mock-s3/memory";
@@ -266,7 +266,7 @@ integrationDescribe("restore: erasure journal replay and reconciliation", () => 
         SELECT state FROM core.members WHERE id = ${fixture.aliceId}
       `) as Array<{ state: string }>;
       expect(before?.state).toBe("active");
-      expect(await storage.exists(JOURNAL_HEAD_KEY)).toBe(true);
+      expect(await listJournalKeys(storage)).toHaveLength(1);
       expect(await journalApplied(userApi, storage)).toBe(false);
       const readiness = createJournalReadinessCheck(userApi, storage);
       expect(await readiness.check()).toBe(false);
@@ -507,7 +507,6 @@ integrationDescribe("restore: several journal entries", () => {
     const userApi = new SQL(roleUrl(restoredUrl, "user_api"));
     const workers = new SQL(roleUrl(restoredUrl, "workers"));
     const [first, last] = requests;
-    const head = new TextDecoder().decode(await storage.get(JOURNAL_HEAD_KEY));
     const readinessBetween: boolean[] = [];
 
     // Observe readiness at the moment the second entry is read, i.e. after the first entry's
@@ -526,7 +525,7 @@ integrationDescribe("restore: several journal entries", () => {
 
     try {
       expect(first?.key).not.toBe(last?.key);
-      expect(head).toContain(last?.key ?? "missing");
+      expect(await listJournalKeys(storage)).toEqual([first?.key, last?.key]);
       expect(await journalApplied(userApi, storage)).toBe(false);
 
       const prepared = await prepareAfterRestore({
@@ -538,8 +537,6 @@ integrationDescribe("restore: several journal entries", () => {
 
       expect(prepared).toEqual({ restored: true, replayed: 2 });
       expect(readinessBetween).toEqual([false, false]);
-      // The replay never moves HEAD back to an older entry.
-      expect(new TextDecoder().decode(await storage.get(JOURNAL_HEAD_KEY))).toBe(head);
       expect(await journalApplied(userApi, storage)).toBe(true);
 
       const sessions = (await workers`
@@ -604,6 +601,100 @@ integrationDescribe("restore: several journal entries", () => {
       expect((await call("Ann Multi-token")).status).toBe(401);
     } finally {
       await service.shutdown();
+      await userApi.close();
+      await workers.close();
+    }
+  }, 120_000);
+});
+
+integrationDescribe("restore: erasures that complete out of order", () => {
+  let live: TestDatabase;
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const backupName = `bulletin_restore_order_backup_${suffix}`;
+  const restoredName = `bulletin_restore_order_restored_${suffix}`;
+  const { server, storage } = storageFor();
+  let earlier = { memberId: "", requestId: "" };
+
+  beforeAll(async () => {
+    live = await createTestDatabase({ adminUrl: adminUrl ?? "", prefix: "restore_order" });
+    await runSeeds({
+      sql: live.sql,
+      registry: new SeedRegistry([baseSeedModule, permissionFixtureSeedModule]),
+    });
+    const adminId = await member(live.sql, "Order Admin", ["administrators"]);
+    const staffToken = "restore-order-staff-token";
+    await live.sql`
+      INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at, last_auth_at)
+      VALUES (
+        ${adminId}, 'staff', sha256(convert_to(${staffToken}, 'UTF8')),
+        now() + interval '1 day', now()
+      )
+    `;
+    const requests: Array<{ memberId: string; requestId: string }> = [];
+
+    for (const name of ["Eve Order", "Fay Order"]) {
+      const memberId = await member(live.sql, name, ["members"]);
+      await live.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (
+          ${memberId}, 'user', sha256(convert_to(${`${name}-token`}, 'UTF8')),
+          now() + interval '1 day'
+        )
+      `;
+      const [request] = (await live.sql`
+        INSERT INTO pii.data_requests (member_id, kind, status, post_action)
+        VALUES (${memberId}, 'erasure', 'pending', 'anonymise')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      await live.sql`
+        SELECT pii.update_data_request(${staffToken}, ${request?.id ?? "0"}, 'process', 'Approved')
+      `;
+      requests.push({ memberId, requestId: request?.id ?? "" });
+    }
+
+    const [first, second] = requests as [typeof earlier, typeof earlier];
+    earlier = first;
+    const workers = new SQL(roleUrl(live.url, "workers"));
+
+    // Request 2 completes before the backup.
+    await runErasureJob(workers, storage, second.requestId, { pluginErase });
+    await writeRestoreWatermark(workers, storage);
+    await workers.close();
+    await live.sql.close();
+    await copyDatabase(live.name, backupName);
+
+    // Request 1, accepted earlier, completes only after the backup.
+    const after = new SQL(roleUrl(live.url, "workers"));
+    await runErasureJob(after, storage, first.requestId, { pluginErase });
+    await after.close();
+    await copyDatabase(backupName, restoredName);
+  }, 120_000);
+
+  afterAll(async () => {
+    server.stop(true);
+    await dropDatabase(restoredName);
+    await dropDatabase(backupName);
+    await live?.drop();
+  });
+
+  test("an earlier request completed after the backup keeps services unready until replayed", async () => {
+    const restoredUrl = databaseUrl(restoredName);
+    const userApi = new SQL(roleUrl(restoredUrl, "user_api"));
+    const workers = new SQL(roleUrl(restoredUrl, "workers"));
+
+    try {
+      expect(await journalApplied(userApi, storage)).toBe(false);
+      expect(await createJournalReadinessCheck(userApi, storage).check()).toBe(false);
+
+      await prepareAfterRestore({ sql: workers, storage, erasure: { pluginErase } });
+
+      expect(await journalApplied(userApi, storage)).toBe(true);
+      const [row] = (await workers`
+        SELECT count(*)::int AS live FROM core.sessions
+        WHERE member_id = ${earlier.memberId} AND revoked_at IS NULL
+      `) as Array<{ live: number }>;
+      expect(row?.live).toBe(0);
+    } finally {
       await userApi.close();
       await workers.close();
     }

@@ -69,7 +69,6 @@ The bucket also holds two operational prefixes. **Never** put lifecycle rules or
 | Key | Written by | Purpose |
 |---|---|---|
 | `journal/<date>/<request>.json` | the erasure job | The erasure journal (ADR 0012): IDs and timestamps of every completed erasure, with the sessions, API keys and push devices it revoked. It sits outside the database rollback set. |
-| `journal/HEAD` | the erasure job | Names the newest journal entry. Services stay unready while the database has not applied it. |
 | `ops/watermark.json` | workers, every minute | The outbox sequence the database has reached. A database behind it has been restored. |
 
 ## 2. What happens automatically after a restore
@@ -88,7 +87,7 @@ When workers start against a restored database, they work through these steps **
 
 Steps 2 to 4 also run on **every** workers start, even when no restore is detected. The watermark is written once a minute, so a backup taken after its latest write restores to a sequence equal to or ahead of it. Such a restore is not detected or recorded in `core.restore_runs`, but erasures are still replayed, orphaned objects removed and missing files listed. The workers log `restore.startup_reconciled` when that run changed anything.
 
-Meanwhile **user-api, user-app (through user-api) and staff-api fail `/health/ready`**. Their `journal` check passes only once the entry named by `journal/HEAD` is in `core.erasure_journal_applied`. Load balancers therefore send no traffic until erasures are re-applied. A proxy that keeps routing anyway gets nothing either: every request except `/health/*` is answered with `503`, `Cache-Control: no-store` and `Retry-After: 30`, so a restored session or API key of an erased member is never served.
+Meanwhile **user-api, user-app (through user-api) and staff-api fail `/health/ready`**. Their `journal` check passes only once **every** entry under `journal/` is in `core.erasure_journal_applied`. Entries complete in any order (an erasure accepted earlier can finish later), so no single "newest entry" pointer is trusted. Load balancers therefore send no traffic until erasures are re-applied. A proxy that keeps routing anyway gets nothing either: every request except `/health/*` is answered with `503`, `Cache-Control: no-store` and `Retry-After: 30`, so a restored session or API key of an erased member is never served.
 
 A replay that fails, for example because plugin-host is not up yet, is retried with backoff. The board stays unready in the meantime. Watch the workers' logs for `restore.startup_failed`.
 

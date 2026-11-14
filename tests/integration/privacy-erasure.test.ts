@@ -900,10 +900,8 @@ integrationDescribe("member erasure", () => {
         (key) => key.startsWith(fixture.journalPrefix) && key.endsWith(".json"),
       );
       expect(journalKeys).toHaveLength(1);
-      // HEAD names the newest entry, which this database has applied (ADR 0020 restores).
-      expect(JSON.parse(new TextDecoder().decode(storage.objects.get("journal/HEAD")))).toEqual({
-        key: journalKeys[0],
-      });
+      // No "newest entry" pointer: readiness checks every entry against the applied keys.
+      expect(storage.objects.has("journal/HEAD")).toBe(false);
       const journal = JSON.parse(
         new TextDecoder().decode(storage.objects.get(journalKeys[0] ?? "")),
       ) as Record<string, unknown>;

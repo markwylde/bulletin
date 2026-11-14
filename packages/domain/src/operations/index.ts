@@ -4,63 +4,43 @@ import type { SQL } from "bun";
 /**
  * Restore support shared by every service (ADR 0020, ADR 0012).
  *
- * The erasure journal lives in object storage, outside the database rollback set. Each erasure
- * records its key in `core.erasure_journal_applied` *before* writing the entry and then points
- * `journal/HEAD` at it, so in normal operation HEAD always names an applied key. After a
- * database restore to an earlier point, HEAD names a key the restored database has not applied:
- * services stay unready until the workers' startup replay has applied it.
+ * The erasure journal lives in object storage, outside the database rollback set. Every entry's
+ * key is recorded in `core.erasure_journal_applied` *before* the entry is written, so in normal
+ * operation every entry in storage is applied. After a database restore to an earlier point,
+ * entries written since are not: services stay unready until the workers' startup replay has
+ * applied every one of them. Readiness never relies on a single "newest" pointer, because
+ * entries complete in any order.
  */
 
 export const JOURNAL_PREFIX = "journal/";
-export const JOURNAL_HEAD_KEY = "journal/HEAD";
+/** Erasure entries: `journal/<accepted date>/<request id, 12 digits>.json`. */
+export const JOURNAL_ENTRY_KEY = /^journal\/\d{4}-\d{2}-\d{2}\/\d{12}\.json$/;
 /** Written by workers; a database whose outbox sequence is behind it was restored. */
 export const RESTORE_WATERMARK_KEY = "ops/watermark.json";
 
-export interface JournalHead {
-  readonly key: string;
+/** Every journal entry key in storage, oldest first. */
+export async function listJournalKeys(storage: StorageClient): Promise<string[]> {
+  return (await storage.list(JOURNAL_PREFIX))
+    .map((object) => object.key)
+    .filter((key) => JOURNAL_ENTRY_KEY.test(key))
+    .sort();
 }
 
-export function parseJournalHead(bytes: Uint8Array | string): JournalHead | null {
-  try {
-    const value = JSON.parse(
-      typeof bytes === "string" ? bytes : new TextDecoder().decode(bytes),
-    ) as unknown;
-
-    if (
-      typeof value === "object" &&
-      value !== null &&
-      typeof (value as { key?: unknown }).key === "string"
-    ) {
-      return { key: (value as { key: string }).key };
-    }
-  } catch {
-    // An unreadable HEAD is treated as absent; the workers' replay still lists every entry.
-  }
-
-  return null;
-}
-
-export async function readJournalHead(storage: StorageClient): Promise<JournalHead | null> {
-  if (!(await storage.exists(JOURNAL_HEAD_KEY))) {
-    return null;
-  }
-
-  return parseJournalHead(await storage.get(JOURNAL_HEAD_KEY));
-}
-
-/** True when the database has applied the newest journalled erasure. */
+/** True when the database has applied every journal entry in storage. */
 export async function journalApplied(sql: SQL, storage: StorageClient): Promise<boolean> {
-  const head = await readJournalHead(storage);
+  const keys = await listJournalKeys(storage);
 
-  if (head === null) {
+  if (keys.length === 0) {
     return true;
   }
 
-  const rows = (await sql`
-    SELECT 1 FROM core.erasure_journal_applied WHERE key = ${head.key}
-  `) as unknown[];
+  const [row] = (await sql`
+    SELECT count(*)::int AS applied
+    FROM core.erasure_journal_applied
+    WHERE key = ANY(${`{${keys.join(",")}}`}::text[])
+  `) as Array<{ applied: number }>;
 
-  return rows.length > 0;
+  return (row?.applied ?? 0) === keys.length;
 }
 
 export interface JournalReadinessCheck {
@@ -69,8 +49,9 @@ export interface JournalReadinessCheck {
 }
 
 /**
- * Readiness check for every service that serves requests. Once the journal has been applied
- * the result is cached: later erasures cannot make an already-running process unsafe.
+ * Readiness check for every service that serves requests. Once every entry has been applied
+ * the result is cached: later entries are applied before they are written, so they cannot make
+ * an already-running process unsafe.
  */
 export function createJournalReadinessCheck(
   sql: SQL,
