@@ -18,7 +18,8 @@ RUN mkdir -p /opt/plugin-rootfs/bin /opt/plugin-rootfs/lib /opt/plugin-rootfs/us
 
 WORKDIR /app
 COPY . .
-RUN bun install --frozen-lockfile \
+RUN --mount=type=cache,id=bulletin-bun-cache,target=/root/.bun/install/cache,sharing=locked \
+    bun install --frozen-lockfile \
  && chmod -R a+rX /app/apps/plugin-host/src/demo/plugin /app/apps/plugin-host/src/malicious/plugin
 
 FROM deps AS dev
