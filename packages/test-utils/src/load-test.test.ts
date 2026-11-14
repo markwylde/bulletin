@@ -4,8 +4,10 @@ import {
   evaluateLoad,
   formatLoadReport,
   type LoadConfig,
+  mergeObservations,
   mergeResults,
   newSamples,
+  observeMetrics,
   percentile,
   recordSample,
   runLoadTest,
@@ -52,6 +54,8 @@ describe("load test arithmetic", () => {
         maxQueueLagSeconds: 12,
         laggingQueue: "domain-events",
         variants: [{ route: "/topic/[id]", variants: 200 }],
+        scrapes: [{ url: "http://workers:9464/metrics", ok: true }],
+        families: ["bulletin_queue_lag_seconds", "bulletin_cache_variants"],
       },
       CAPACITY_THRESHOLDS,
       { writesPerSecond: 50, sseClients: 4 },
@@ -64,6 +68,88 @@ describe("load test arithmetic", () => {
       "queue domain-events: lag 12.0 s exceeds 5 s",
       "variants /topic/[id]: 200 exceeds the budget of 64",
     ]);
+  });
+});
+
+describe("load test metrics observations", () => {
+  const healthy = [
+    'bulletin_queue_lag_seconds{queue="domain-events"} 0.4',
+    'bulletin_cache_variants{route="/"} 3',
+  ].join("\n");
+
+  function stub(responses: Record<string, () => Response>): typeof fetch {
+    return (async (input: string | URL | Request) => {
+      const url = String(input);
+      const respond = responses[url];
+
+      if (respond === undefined) {
+        throw new TypeError("fetch failed");
+      }
+
+      return respond();
+    }) as typeof fetch;
+  }
+
+  function evaluate(observation: Awaited<ReturnType<typeof observeMetrics>>): string[] {
+    return evaluateLoad([], { opened: 0, failed: 0 }, observation, CAPACITY_THRESHOLDS, {
+      writesPerSecond: 0,
+      sseClients: 0,
+    });
+  }
+
+  test("a healthy scrape passes", async () => {
+    const observation = await observeMetrics(
+      ["http://a/metrics"],
+      stub({ "http://a/metrics": () => new Response(healthy) }),
+    );
+    expect(evaluate(observation)).toEqual([]);
+  });
+
+  test("unreachable or failing endpoints fail the run instead of reading as zero lag", async () => {
+    const observation = await observeMetrics(
+      ["http://down/metrics", "http://error/metrics"],
+      stub({ "http://error/metrics": () => new Response("no", { status: 503 }) }),
+    );
+    expect(observation.maxQueueLagSeconds).toBe(0);
+    expect(evaluate(observation)).toEqual([
+      "metrics http://down/metrics: unreachable",
+      "metrics http://error/metrics: HTTP 503",
+      "metrics bulletin_queue_lag_seconds: never reported",
+      "metrics bulletin_cache_variants: never reported",
+    ]);
+  });
+
+  test("empty and malformed scrapes fail the run", async () => {
+    const observation = await observeMetrics(
+      ["http://empty/metrics", "http://garbled/metrics"],
+      stub({
+        "http://empty/metrics": () => new Response("# nothing here\n"),
+        "http://garbled/metrics": () =>
+          new Response(`${healthy}\nbulletin_queue_lag_seconds{queue="x"} not-a-number`),
+      }),
+    );
+    expect(evaluate(observation)).toEqual([
+      "metrics http://empty/metrics: empty",
+      "metrics http://garbled/metrics: malformed",
+      "metrics bulletin_queue_lag_seconds: never reported",
+      "metrics bulletin_cache_variants: never reported",
+    ]);
+  });
+
+  test("no configured endpoints fail the run", async () => {
+    expect(evaluate(await observeMetrics([]))).toEqual(["metrics: no endpoints configured"]);
+  });
+
+  test("an endpoint that answered once during the run counts as observed", async () => {
+    let up = false;
+    const fetchImpl = stub({
+      "http://a/metrics": () => (up ? new Response(healthy) : new Response("", { status: 502 })),
+    });
+    const first = await observeMetrics(["http://a/metrics"], fetchImpl);
+    up = true;
+    const second = await observeMetrics(["http://a/metrics"], fetchImpl);
+    expect(evaluate(first)).toContain("metrics http://a/metrics: HTTP 502");
+    expect(evaluate(mergeObservations([first, second]))).toEqual([]);
   });
 });
 

@@ -120,11 +120,31 @@ export interface RouteResult {
   readonly perSecond: number;
 }
 
+export interface MetricsScrape {
+  readonly url: string;
+  readonly ok: boolean;
+  /** Why the scrape could not be used: unreachable, `HTTP <status>`, empty or malformed. */
+  readonly reason?: string;
+}
+
 export interface MetricsObservation {
   readonly maxQueueLagSeconds: number;
   readonly laggingQueue: string | null;
   readonly variants: ReadonlyArray<{ readonly route: string; readonly variants: number }>;
+  /** One entry per endpoint; merged observations keep an endpoint ok if any poll read it. */
+  readonly scrapes: readonly MetricsScrape[];
+  /** Metric families seen in usable scrapes. */
+  readonly families: readonly string[];
 }
+
+/**
+ * Families a capacity run cannot be judged without: zero lag or no variants must come from a
+ * service that reported them, never from a scrape that failed.
+ */
+export const REQUIRED_METRIC_FAMILIES: readonly string[] = [
+  METRIC_FAMILIES.queueLag,
+  METRIC_FAMILIES.cacheVariants,
+];
 
 export interface LoadReport {
   readonly startedAt: string;
@@ -243,30 +263,59 @@ export async function observeMetrics(
   let maxQueueLagSeconds = 0;
   let laggingQueue: string | null = null;
   const variants = new Map<string, number>();
+  const scrapes: MetricsScrape[] = [];
+  const families = new Set<string>();
 
   for (const url of urls) {
+    let text: string;
+
     try {
       const response = await fetchImpl(url, { signal: AbortSignal.timeout(5_000) });
 
       if (!response.ok) {
+        scrapes.push({ url, ok: false, reason: `HTTP ${response.status}` });
         continue;
       }
 
-      for (const sample of parsePrometheusText(await response.text())) {
-        if (sample.name === METRIC_FAMILIES.queueLag && sample.value > maxQueueLagSeconds) {
-          maxQueueLagSeconds = sample.value;
-          laggingQueue = sample.labels.queue ?? null;
-        }
-
-        if (sample.name === METRIC_FAMILIES.cacheVariants && sample.labels.route !== undefined) {
-          variants.set(
-            sample.labels.route,
-            Math.max(variants.get(sample.labels.route) ?? 0, sample.value),
-          );
-        }
-      }
+      text = await response.text();
     } catch {
-      // An unreachable metrics endpoint is reported by the missing observation, not a crash.
+      scrapes.push({ url, ok: false, reason: "unreachable" });
+      continue;
+    }
+
+    const lines = text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    const samples = parsePrometheusText(text);
+
+    if (lines.length === 0) {
+      scrapes.push({ url, ok: false, reason: "empty" });
+      continue;
+    }
+
+    // Every sample line must parse; a partly garbled exposition is not trusted at all.
+    if (samples.length !== lines.length) {
+      scrapes.push({ url, ok: false, reason: "malformed" });
+      continue;
+    }
+
+    scrapes.push({ url, ok: true });
+
+    for (const sample of samples) {
+      families.add(sample.name);
+
+      if (sample.name === METRIC_FAMILIES.queueLag && sample.value > maxQueueLagSeconds) {
+        maxQueueLagSeconds = sample.value;
+        laggingQueue = sample.labels.queue ?? null;
+      }
+
+      if (sample.name === METRIC_FAMILIES.cacheVariants && sample.labels.route !== undefined) {
+        variants.set(
+          sample.labels.route,
+          Math.max(variants.get(sample.labels.route) ?? 0, sample.value),
+        );
+      }
     }
   }
 
@@ -274,27 +323,45 @@ export async function observeMetrics(
     maxQueueLagSeconds,
     laggingQueue,
     variants: [...variants].map(([route, count]) => ({ route, variants: count })),
+    scrapes,
+    families: [...families],
   };
 }
 
 export function mergeObservations(observations: readonly MetricsObservation[]): MetricsObservation {
-  let worst: MetricsObservation = { maxQueueLagSeconds: 0, laggingQueue: null, variants: [] };
+  let maxQueueLagSeconds = 0;
+  let laggingQueue: string | null = null;
   const variants = new Map<string, number>();
+  const scrapes = new Map<string, MetricsScrape>();
+  const families = new Set<string>();
 
   for (const observation of observations) {
-    if (observation.maxQueueLagSeconds > worst.maxQueueLagSeconds) {
-      worst = observation;
+    if (observation.maxQueueLagSeconds > maxQueueLagSeconds) {
+      maxQueueLagSeconds = observation.maxQueueLagSeconds;
+      laggingQueue = observation.laggingQueue;
     }
 
     for (const entry of observation.variants) {
       variants.set(entry.route, Math.max(variants.get(entry.route) ?? 0, entry.variants));
     }
+
+    for (const scrape of observation.scrapes) {
+      if (scrapes.get(scrape.url)?.ok !== true) {
+        scrapes.set(scrape.url, scrape);
+      }
+    }
+
+    for (const family of observation.families) {
+      families.add(family);
+    }
   }
 
   return {
-    maxQueueLagSeconds: worst.maxQueueLagSeconds,
-    laggingQueue: worst.laggingQueue,
+    maxQueueLagSeconds,
+    laggingQueue,
     variants: [...variants].map(([route, count]) => ({ route, variants: count })),
+    scrapes: [...scrapes.values()],
+    families: [...families],
   };
 }
 
@@ -359,6 +426,22 @@ export function evaluateLoad(
         thresholds.maxQueueLagSeconds
       } s`,
     );
+  }
+
+  if (metrics.scrapes.length === 0) {
+    failures.push("metrics: no endpoints configured");
+  } else {
+    for (const scrape of metrics.scrapes) {
+      if (!scrape.ok) {
+        failures.push(`metrics ${scrape.url}: ${scrape.reason ?? "unavailable"}`);
+      }
+    }
+
+    for (const family of REQUIRED_METRIC_FAMILIES) {
+      if (!metrics.families.includes(family)) {
+        failures.push(`metrics ${family}: never reported`);
+      }
+    }
   }
 
   for (const entry of metrics.variants) {
