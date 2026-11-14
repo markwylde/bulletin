@@ -35,6 +35,15 @@ export const themeChooserSchema = v.strictObject({
   }),
 });
 
+export const feedLinksSchema = v.strictObject({
+  flags: v.strictObject({ feeds: v.boolean() }),
+  labels: v.strictObject({
+    label: v.pipe(v.string(), v.trim(), v.minLength(1)),
+    rss: v.pipe(v.string(), v.trim(), v.minLength(1)),
+    atom: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  }),
+});
+
 export const languageSwitcherSchema = v.strictObject({
   current: v.picklist(LOCALE_VALUES),
   options: v.pipe(v.array(languageOptionSchema), v.minLength(1)),
@@ -200,6 +209,7 @@ export const ISLAND_SCHEMAS = {
   Reactions: reactionsSchema,
   PostReputation: postReputationSchema,
   ThemeChooser: themeChooserSchema,
+  FeedLinks: feedLinksSchema,
   PluginApp: pluginAppSchema,
 } as const;
 

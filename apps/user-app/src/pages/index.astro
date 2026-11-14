@@ -69,6 +69,7 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
   title={result.title}
   locale={locale}
   body={result.html}
+  seo={result.seo}
   visitor={visitor}
   serverLocale={locale}
   localeSource={localeSource}

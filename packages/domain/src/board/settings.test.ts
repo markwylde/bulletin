@@ -89,3 +89,28 @@ describe("board attachment settings", () => {
     );
   });
 });
+
+describe("board robots.txt setting", () => {
+  test("defaults to empty and normalises CRLF line endings", () => {
+    expect(parseBoardSettingsInput(VALID)).toMatchObject({
+      ok: true,
+      value: { robotsTxt: "" },
+    });
+    expect(
+      parseBoardSettingsInput({
+        ...VALID,
+        robotsTxt: "User-agent: *\r\nDisallow: /search\r\n",
+      }),
+    ).toMatchObject({
+      ok: true,
+      value: { robotsTxt: "User-agent: *\nDisallow: /search\n" },
+    });
+  });
+
+  test("rejects a file over the storage limit", () => {
+    expect(parseBoardSettingsInput({ ...VALID, robotsTxt: "x".repeat(65_536) })).toEqual({
+      ok: false,
+      fields: ["robotsTxt"],
+    });
+  });
+});

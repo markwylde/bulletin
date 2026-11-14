@@ -1,0 +1,15 @@
+<title>{{ seo.title }}</title>
+<meta name="description" content="{{ seo.description }}">
+<meta name="robots" content="{{ seo.robots }}">
+<link rel="canonical" href="{{ seo.canonical }}">
+{%- for alternate in seo.alternates %}
+<link rel="alternate" hreflang="{{ alternate.hreflang }}" href="{{ alternate.href }}">
+{%- endfor %}
+<meta property="og:type" content="{{ seo.type }}">
+<meta property="og:title" content="{{ seo.title }}">
+<meta property="og:description" content="{{ seo.description }}">
+<meta property="og:url" content="{{ seo.canonical }}">
+<meta property="og:site_name" content="{{ boardName }}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{{ seo.title }}">
+<meta name="twitter:description" content="{{ seo.description }}">

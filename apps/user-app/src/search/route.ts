@@ -6,6 +6,7 @@ import {
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
 import { consumeSearchFlood, normalizeSearchQuery } from "@bulletin/domain/search";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import type { Locale, Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { searchContract, searchMemberContract, searchNewContract } from "../contracts.ts";
@@ -49,6 +50,7 @@ export type SearchRouteResult =
       readonly html: string;
       readonly title: string;
       readonly boardName: string;
+      readonly seo: SeoMetadata;
       readonly errors: readonly string[];
     }
   | { readonly kind: "redirect"; readonly status: 303; readonly location: string };
@@ -83,6 +85,20 @@ function breadcrumbsFor(
 export async function renderSearchRoute(input: SearchRouteInput): Promise<SearchRouteResult> {
   const contract = CONTRACTS[input.mode];
   const flags = await loadViewerFlags(input.sql, input.session);
+  const searchPath =
+    input.mode === "member"
+      ? `/search/member/${input.ref ?? ""}`
+      : input.mode === "new"
+        ? "/search/new"
+        : "/search";
+  const noindexSeo = (title: string, boardName: string): SeoMetadata =>
+    buildSeoMetadata({
+      title,
+      boardName,
+      description: input.translate("seo.search.description"),
+      canonicalPath: searchPath,
+      robots: "noindex",
+    });
 
   // ADR 0010: a disabled search is indistinguishable from a route that does not exist.
   if (flags.values.search !== true) {
@@ -94,7 +110,12 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
       route: contract,
     });
 
-    return { ...notFound, kind: "page", status: 404 };
+    return {
+      ...notFound,
+      kind: "page",
+      status: 404,
+      seo: noindexSeo(notFound.title, notFound.boardName),
+    };
   }
 
   if (input.mode === "new" && input.session === null) {
@@ -161,7 +182,12 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
       route: contract,
     });
 
-    return { ...notFound, kind: "page", status: 404 };
+    return {
+      ...notFound,
+      kind: "page",
+      status: 404,
+      seo: noindexSeo(notFound.title, notFound.boardName),
+    };
   }
 
   const page = await renderThemedPage({
@@ -171,7 +197,7 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
     locale: input.locale,
     translate: input.translate,
     template: contract.templates.page,
-    viewModel: { ...view, flags: flags.values },
+    viewModel: { ...view, flags: flags.values, seo: noindexSeo(view.title, boardName) },
     breadcrumbs: breadcrumbsFor(input.mode, view, input.translate),
     route: contract,
     theme,
@@ -183,6 +209,7 @@ export async function renderSearchRoute(input: SearchRouteInput): Promise<Search
     html: page.html,
     title: view.title,
     boardName,
+    seo: noindexSeo(view.title, boardName),
     errors: page.errors,
   };
 }

@@ -1,6 +1,7 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
 import { readBoardSettings } from "@bulletin/domain/board";
 import { can, GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -34,6 +35,7 @@ interface PageData {
   readonly page: MemberListView | null;
   readonly denied: boolean;
   readonly flags: ViewerFlags;
+  readonly seo: SeoMetadata;
 }
 
 const FORBIDDEN = "forbidden";
@@ -47,6 +49,7 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
   readonly variant: string;
   readonly tags: readonly string[];
   readonly etag: string | null;
+  readonly seo: SeoMetadata;
   readonly errors: readonly string[];
 }> {
   const flags = await loadViewerFlags(input.sql, input.session);
@@ -67,6 +70,13 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
       variant: "flag-off",
       tags: [],
       etag: null,
+      seo: buildSeoMetadata({
+        title: input.translate("members.title"),
+        boardName: "",
+        description: input.translate("seo.members.description"),
+        canonicalPath: "/members",
+        robots: "noindex",
+      }),
     };
   }
 
@@ -75,6 +85,7 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
   const canViewHidden = await can(input.sql, principal, "members.view_hidden");
   let title = input.translate("members.title");
   let boardName = "";
+  let latestSeo: SeoMetadata | null = null;
 
   const rendered = await renderCachedPage<PageData>({
     tags: contractTags(memberListContract, {}),
@@ -99,6 +110,13 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
 
       title = allowed ? (page?.title ?? title) : input.translate("theme.error.forbidden");
       boardName = name;
+      latestSeo = buildSeoMetadata({
+        title,
+        boardName: name,
+        description: input.translate("seo.members.description"),
+        canonicalPath: "/members",
+        robots: "noindex",
+      });
 
       return {
         variant: pageVariant({
@@ -119,7 +137,7 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
           colourScheme: input.colourScheme,
           renderFlagsHash: flags.hash,
         }),
-        data: { theme, boardName: name, page, denied: !allowed, flags },
+        data: { theme, boardName: name, page, denied: !allowed, flags, seo: latestSeo },
       };
     },
     render: async (data) => {
@@ -136,7 +154,7 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
               message: input.translate("theme.error.forbidden"),
               flags: data.flags.values,
             }
-          : { ...(data.page ?? {}), flags: data.flags.values },
+          : { ...(data.page ?? {}), seo: data.seo, flags: data.flags.values },
         breadcrumbs: data.denied ? [] : [{ label: input.translate("members.title"), href: null }],
         route: memberListContract,
         pluginsGeneration: input.pluginsGeneration,
@@ -152,5 +170,14 @@ export async function renderMemberListRoute(input: MemberListRouteInput): Promis
     title,
     boardName,
     status: allowed ? 200 : 403,
+    seo:
+      latestSeo ??
+      buildSeoMetadata({
+        title: allowed ? title : input.translate("theme.error.forbidden"),
+        boardName,
+        description: input.translate("seo.members.description"),
+        canonicalPath: "/members",
+        robots: "noindex",
+      }),
   };
 }

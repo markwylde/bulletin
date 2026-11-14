@@ -17,12 +17,14 @@ import {
   DEFAULT_THEME_TEMPLATE_NAMES,
   declaredHooks,
   declaredIslandsIn,
+  HEAD_TEMPLATE_NAME,
   HOOK_NAMES,
   loadDefaultThemeTokens,
   loadTheme,
   maskLiquid,
   type TemplateIssue,
   type ThemeTokens,
+  validateHeadTemplate,
   validateTemplateMarkup,
 } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -41,6 +43,18 @@ export type ThemeCheckIssue =
       readonly issues: readonly TemplateIssue[];
       readonly parseError: string | null;
       readonly unknownHooks: readonly string[];
+    }
+  | {
+      /** The `head` template must render a title, robots meta and canonical link (seo-feeds). */
+      readonly code: "missing_meta";
+      readonly template: string;
+      readonly meta: "canonical" | "robots" | "title";
+    }
+  | {
+      /** The `head` template may contain only title, meta and canonical/alternate links. */
+      readonly code: "head_element";
+      readonly template: string;
+      readonly element: string;
     }
   | {
       readonly code: "missing_island";
@@ -163,6 +177,16 @@ function checkTemplate(name: string, body: string): readonly ThemeCheckIssue[] {
   }
 
   issues.push(...staticLayoutIssues(name, body));
+
+  if (name === HEAD_TEMPLATE_NAME) {
+    for (const issue of validateHeadTemplate(body)) {
+      issues.push(
+        issue.code === "missing_meta"
+          ? { code: "missing_meta", template: name, meta: issue.meta }
+          : { code: "head_element", template: name, element: issue.element },
+      );
+    }
+  }
 
   const declared = new Set(declaredIslandsIn({ [name]: body }));
 

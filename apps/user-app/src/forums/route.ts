@@ -9,7 +9,8 @@ import {
   loadForumTree,
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
-import { parseResourcePath, resolveResourceUrl } from "@bulletin/domain/urls";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
+import { canonicalUrl, parseResourcePath, resolveResourceUrl } from "@bulletin/domain/urls";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -57,6 +58,7 @@ interface PageRouteResult {
   readonly tags: readonly string[];
   readonly etag: string | null;
   readonly hasUnlockGrant: boolean;
+  readonly seo: SeoMetadata;
   readonly errors: readonly string[];
 }
 
@@ -76,6 +78,7 @@ interface ForumRenderData {
   readonly page: Awaited<ReturnType<typeof buildForumPage>> | null;
   readonly error: { readonly status: 403 | 404; readonly code: "forbidden" | "not_found" } | null;
   readonly flags: ViewerFlags;
+  readonly seo: SeoMetadata;
 }
 
 async function renderErrorPage(
@@ -119,6 +122,13 @@ async function renderErrorPage(
     tags: [],
     etag: null,
     hasUnlockGrant: false,
+    seo: buildSeoMetadata({
+      title,
+      boardName,
+      description: input.translate("theme.error.title"),
+      canonicalPath: `/forum/${input.ref}`,
+      robots: "noindex",
+    }),
     errors: page.errors,
   };
 }
@@ -258,13 +268,38 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
       }
 
       const boardName = boardNameFrom(settings.boardName, input.translate);
+      const guestReadable =
+        freshForum !== null &&
+        !freshForum.passwordProtected &&
+        (await can(input.sql, GUEST_PRINCIPAL, "read", {
+          forumId: freshForum.id,
+          tree: freshTree,
+          sessionId: null,
+          snapshot: await loadPermissionSnapshot(input.sql, GUEST_PRINCIPAL, {
+            tree: freshTree,
+            sessionId: null,
+          }),
+        }));
+      const title = page?.viewModel.title ?? input.translate("theme.error.title");
       const data: ForumRenderData = {
         theme,
         boardName,
-        title: page?.viewModel.title ?? input.translate("theme.error.title"),
+        title,
         page,
         error,
         flags,
+        seo: buildSeoMetadata({
+          title,
+          boardName,
+          description:
+            freshForum?.description.trim() ||
+            input.translate("seo.forum.description", { forum: title }),
+          canonicalPath:
+            freshForum === null
+              ? `/forum/${input.ref}`
+              : canonicalUrl("forum", freshForum.id, freshForum.slug),
+          robots: error === null && guestReadable ? "index" : "noindex",
+        }),
       };
 
       latest = data;
@@ -301,6 +336,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
           data.error === null
             ? {
                 ...(data.page?.viewModel ?? {}),
+                seo: data.seo,
                 flags: { ...(data.page?.viewModel.flags ?? {}), ...data.flags.values },
               }
             : {
@@ -335,6 +371,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
     tags: rendered.tags,
     etag: rendered.etag,
     hasUnlockGrant: latest.page?.hasUnlockGrant ?? false,
+    seo: latest.seo,
     errors: rendered.errors,
   };
 }

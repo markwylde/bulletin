@@ -15,6 +15,7 @@ export const DEFAULT_THEME_NAME = "default";
 export const DEFAULT_THEME_VERSION = 1;
 
 export const DEFAULT_THEME_TEMPLATE_NAMES = [
+  "head",
   "header",
   "footer",
   "breadcrumbs",

@@ -47,6 +47,12 @@ const NON_PAGE_PREFIXES = [
   "/manifest.webmanifest",
   "/sw.js",
   "/pwa/",
+  // Sitemaps and RSS/Atom feeds are public XML documents, always evaluated as Guests; their
+  // routes apply the offline gate themselves (503 unless Guests may view offline). robots.txt
+  // stays available so crawlers keep their rules while the board is offline.
+  "/sitemap",
+  "/feed",
+  "/robots.txt",
 ];
 const DISPLAY_NAME_PATH = "/display-name";
 /** The service worker's offline fallback must load for every visitor, even mid-redirect. */
@@ -148,14 +154,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
         context.locals.localeSource = "member";
       } else {
         const bpValue = parseCookieHeader(cookieHeader)[BP_COOKIE_NAME];
+        // `?lang=` is part of the URL, so the CDN key (URL + `bp`) and the origin variant key
+        // (which includes the locale) already separate it; it never touches the cookie.
         const resolution = resolveRequestLocale({
           audience: "guest",
           bp: bpValue ?? null,
+          query: context.url.searchParams.get("lang"),
           boardDefaultLocale: board?.defaultLocale ?? null,
           acceptLanguage: context.request.headers.get("accept-language"),
         });
         context.locals.locale = resolution.locale;
         context.locals.localeSource = "guest";
+        context.locals.localeFromQuery = resolution.source === "query";
       }
 
       const requestedTheme = await resolveRequestTheme(readSql(), cookieHeader, sessionContext);
@@ -164,7 +174,15 @@ export const onRequest = defineMiddleware(async (context, next) => {
       context.locals.colourScheme = requestedTheme.scheme;
 
       if (requestedTheme.invalidGuestTheme) {
-        const locale = context.locals.locale ?? "en";
+        // A one-off `?lang=` view never becomes the guest's saved preference.
+        const locale =
+          context.locals.localeFromQuery === true
+            ? resolveRequestLocale({
+                audience: "guest",
+                bp: parseCookieHeader(cookieHeader)[BP_COOKIE_NAME] ?? null,
+                boardDefaultLocale: board?.defaultLocale ?? null,
+              }).locale
+            : (context.locals.locale ?? "en");
         context.locals.resetThemeCookie = `${BP_COOKIE_NAME}=${serializeBpCookie({
           locale,
           themeId: DEFAULT_BP_THEME_ID,
