@@ -84,6 +84,11 @@ jobs:
           echo "BUN_CHROME_PATH=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
           "${{ steps.setup-chrome.outputs.chrome-path }}" --version
 
+      - name: Pick a per-run proxy port
+        # Gitea job containers share the daemon host's network, so concurrent runs must not
+        # all publish 8080. The port flows into every origin via BULLETIN_HTTP_PORT.
+        run: echo "BULLETIN_HTTP_PORT=$((20000 + ${{ github.run_id }} % 20000))" >> "$GITHUB_ENV"
+
       - name: Start the full stack
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
@@ -92,20 +97,8 @@ jobs:
             docker compose up -d --build --wait --wait-timeout 300
           fi
 
-      - name: Reach the stack from the job container
-        # The job runs in its own container, so published ports are on the host, not on
-        # 127.0.0.1. Join the stack's network and point the local origins at the proxy.
-        run: |
-          engine=${{ matrix.engine }}
-          proxy=$($engine compose ps -q proxy)
-          network=$($engine inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$proxy")
-          # The job container's ID (its hostname is the runner's name on Gitea runners).
-          self=$(grep -oE 'containers/[0-9a-f]{64}' /proc/self/mountinfo | head -1 | cut -d/ -f2)
-          $engine network connect "$network" "${self:-$(hostname)}"
-          ip=$($engine inspect -f "{{(index .NetworkSettings.Networks \"$network\").IPAddress}}" "$proxy")
-          echo "$ip bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
-            | tee -a /etc/hosts
-          curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" http://bulletin.localhost:8080/
+      - name: Check the proxy is reachable
+        run: curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" "http://bulletin.localhost:$BULLETIN_HTTP_PORT/"
 
       - name: Measure sandbox spawn time and memory
         run: |

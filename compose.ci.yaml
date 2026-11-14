@@ -19,6 +19,7 @@ services:
         FROM caddy:2.11.9-alpine
         COPY apps/proxy/Caddyfile /etc/caddy/Caddyfile
     volumes: !reset []
-    # The job reaches the proxy over the stack network; publishing a host port would
-    # collide between runs that share a Docker daemon.
-    ports: !reset []
+    # Job containers share the daemon host's network; CI picks a per-run port and keeps it
+    # on loopback.
+    ports: !override
+      - "127.0.0.1:${BULLETIN_HTTP_PORT:-8080}:${BULLETIN_HTTP_PORT:-8080}"
