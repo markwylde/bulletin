@@ -1,4 +1,4 @@
-import { claimReauthDrafts } from "@bulletin/ui/islands/editor/drafts";
+import { claimReauthDrafts, clearReauthDrafts } from "@bulletin/ui/islands/editor/drafts";
 import {
   clearOfflineDrafts,
   listOfflineDrafts,
@@ -6,6 +6,7 @@ import {
   removeOfflineDraft,
 } from "@bulletin/ui/islands/editor/offline-drafts";
 import { currentMemberId, memberFetch } from "../auth/client.ts";
+import { clientFlag } from "../client-flags.ts";
 import { clientCsrfToken } from "../csrf.ts";
 
 /**
@@ -32,11 +33,38 @@ function banner(): Banner | null {
     : { root, message, send, discard };
 }
 
-const element = banner();
 const draftContextSelector = "[data-draft-context]";
+const documentRoot = document.documentElement;
+const element = banner();
+const memberIdFromShell = documentRoot.dataset.memberId ?? currentMemberId();
+const authPath = window.location.pathname.startsWith("/auth/");
 
-if (element !== null && document.documentElement.dataset.visitor === "member") {
-  let memberId = currentMemberId();
+/**
+ * Identity maintenance runs on every page, including guests and pages without an editor or
+ * banner. A guest page means the session ended (logout, revocation or an expired session), so
+ * member-scoped data is cleared. A different member id on any page is an account switch, and
+ * the previous member's drafts are discarded. Auth paths are the transient re-auth handoff
+ * where a just-saved local draft must survive.
+ */
+async function syncIdentity(memberId: string): Promise<void> {
+  if (memberId === "") {
+    if (!authPath) {
+      clearReauthDrafts();
+      await clearOfflineDrafts();
+    }
+
+    return;
+  }
+
+  if (claimReauthDrafts(memberId)) {
+    await clearOfflineDrafts();
+  }
+}
+
+void syncIdentity(memberIdFromShell);
+
+if (element !== null && clientFlag("pwa") && documentRoot.dataset.visitor === "member") {
+  let memberId = memberIdFromShell;
   let drafts: readonly OfflineDraft[] = [];
   let sending = false;
 
@@ -117,19 +145,6 @@ if (element !== null && document.documentElement.dataset.visitor === "member") {
     }
   };
 
-  const claim = async (): Promise<void> => {
-    if (memberId === "") {
-      return;
-    }
-
-    // A different account on this browser never inherits the previous member's queue.
-    if (claimReauthDrafts(memberId)) {
-      await clearOfflineDrafts();
-    }
-
-    await refresh();
-  };
-
   element.send.addEventListener("click", () => {
     void sendAll();
   });
@@ -153,10 +168,18 @@ if (element !== null && document.documentElement.dataset.visitor === "member") {
     const detail = (event as CustomEvent<{ readonly memberId?: unknown }>).detail;
     const next = typeof detail?.memberId === "string" ? detail.memberId : "";
     memberId = next;
-    void claim();
+
+    if (next === "") {
+      void syncIdentity("");
+      drafts = [];
+      render();
+      return;
+    }
+
+    void syncIdentity(next).then(refresh);
   });
 
-  void claim();
+  void refresh();
 }
 
 /** The editor context for a submission form, so a queued draft belongs to the right editor. */

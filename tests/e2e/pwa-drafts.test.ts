@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   clickSelector,
   loginAs,
@@ -317,4 +320,137 @@ integrationDescribe("offline drafts", () => {
       await setFlagRules("pwa", []);
     }
   }, 300_000);
+  test("clears member drafts on a later guest visit after revocation", async () => {
+    const profile = await mkdtemp(join(tmpdir(), "bulletin-pwa-revoke-"));
+    let memberId = "";
+
+    try {
+      await withPage(
+        { url: USER_URL, viewport: "mobile360", profileDirectory: profile },
+        async (view) => {
+          await loginAs(view, "member-1");
+          memberId = await view.evaluate<string>(
+            'fetch("/api/auth/session", { headers: { accept: "application/json" } }).then((response) => response.json()).then((body) => body.memberId)',
+          );
+          await seedDraft(view, memberId);
+          await view.evaluate(`localStorage.setItem(
+            "bulletin:draft:reauth:${memberId}:reply:topic:1",
+            JSON.stringify({ bodyMd: "private text" })
+          )`);
+        },
+      );
+
+      await withPage({ url: STAFF_URL, viewport: "desktop" }, async (view) => {
+        await loginAs(view, "admin");
+        const status = await view.evaluate<number>(`(async () => {
+          const session = await fetch("/api/auth/session", { headers: { accept: "application/json" } }).then((response) => response.json());
+          const response = await fetch("/api/staff/members/${memberId}/sessions/revoke", {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-bulletin-csrf": session.csrfToken },
+            body: "{}"
+          });
+          return response.status;
+        })()`);
+        expect(status).toBe(200);
+      });
+
+      // A fresh visit with the same profile is a guest page with no editor or index script.
+      await withPage(
+        { url: `${USER_URL}/members`, viewport: "mobile360", profileDirectory: profile },
+        async (view) => {
+          await waitForExpression(
+            view,
+            'document.documentElement.dataset.visitor === "guest"',
+            20_000,
+          );
+          await waitForExpression(view, `(${IDB_COUNT})().then((count) => count === 0)`, 20_000);
+          expect(
+            await view.evaluate<number>(
+              'Object.keys(localStorage).filter((key) => key.startsWith("bulletin:draft:")).length',
+            ),
+          ).toBe(0);
+        },
+      );
+    } finally {
+      await rm(profile, { recursive: true, force: true });
+    }
+  }, 300_000);
+
+  test("clears the previous member's drafts when the account switches on another page", async () => {
+    const profile = await mkdtemp(join(tmpdir(), "bulletin-pwa-switch-"));
+    let firstMember = "";
+
+    try {
+      await withPage(
+        { url: USER_URL, viewport: "mobile360", profileDirectory: profile },
+        async (view) => {
+          await loginAs(view, "member-1");
+          firstMember = await view.evaluate<string>(
+            'fetch("/api/auth/session", { headers: { accept: "application/json" } }).then((response) => response.json()).then((body) => body.memberId)',
+          );
+          await seedDraft(view, firstMember);
+          await view.evaluate(`localStorage.setItem(
+            "bulletin:draft:reauth:${firstMember}:reply:topic:1",
+            JSON.stringify({ bodyMd: "private text" })
+          )`);
+        },
+      );
+
+      await withPage(
+        { url: USER_URL, viewport: "mobile360", profileDirectory: profile },
+        async (view) => {
+          const switched = await view.evaluate<string | null>(`(async () => {
+            const response = await fetch("/api/test/session", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ sub: "member-2" })
+            });
+            if (!response.ok) return null;
+            const body = await response.json();
+            return typeof body.memberId === "string" ? body.memberId : null;
+          })()`);
+
+          if (switched === null || switched === firstMember) {
+            throw new Error("Could not switch to member-2");
+          }
+
+          await view.navigate(`${USER_URL}/members`);
+          await waitForExpression(
+            view,
+            `document.documentElement.dataset.memberId === ${JSON.stringify(switched)}`,
+            20_000,
+          );
+          await waitForExpression(view, `(${IDB_COUNT})().then((count) => count === 0)`, 20_000);
+          expect(
+            await view.evaluate<number>(
+              'Object.keys(localStorage).filter((key) => key.startsWith("bulletin:draft:reauth:")).length',
+            ),
+          ).toBe(0);
+        },
+      );
+    } finally {
+      await rm(profile, { recursive: true, force: true });
+    }
+  }, 300_000);
+
+  test("keeps reauth drafts during the auth handoff and clears them on a guest page", async () => {
+    const draftKey = "bulletin:draft:reauth:11:reply:topic:1";
+
+    await withPage({ url: `${USER_URL}/auth/login`, viewport: "mobile360" }, async (view) => {
+      await view.evaluate(
+        `localStorage.setItem(${JSON.stringify(draftKey)}, JSON.stringify({ bodyMd: "kept" }))`,
+      );
+      await view.navigate(`${USER_URL}/auth/login?handoff=1`);
+      expect(
+        await view.evaluate<boolean>(`localStorage.getItem(${JSON.stringify(draftKey)}) !== null`),
+      ).toBe(true);
+
+      await view.navigate(USER_URL);
+      await waitForExpression(
+        view,
+        `localStorage.getItem(${JSON.stringify(draftKey)}) === null`,
+        20_000,
+      );
+    });
+  }, 180_000);
 });

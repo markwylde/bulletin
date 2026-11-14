@@ -7,6 +7,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { setFlagRules } from "./support/flags.ts";
 
 // Run against the full stack:
 //   docker compose up -d --build --wait
@@ -173,6 +174,40 @@ integrationDescribe("PWA", () => {
       expect(themed.theme_color).not.toBe(manifest.theme_color);
     });
   }, 120_000);
+
+  test("the browser's manifest request carries the member's cookie", async () => {
+    // The pwa flag is off for guests only; a credentialed manifest request succeeds for the
+    // signed-in member, while a cookie-less one is a 404.
+    const guestOff = [{ type: "group", groups: ["guests"], value: false }];
+
+    try {
+      await setFlagRules("pwa", guestOff);
+
+      await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "member-1");
+        await view.cdp("Network.enable");
+        await view.cdp("Network.setCacheDisabled", { cacheDisabled: true });
+
+        let status = 0;
+        view.addEventListener<{
+          readonly response?: { readonly url?: string; readonly status?: number };
+        }>("Network.responseReceived", (event) => {
+          if ((event.data.response?.url ?? "").includes("/manifest.webmanifest")) {
+            status = event.data.response?.status ?? 0;
+          }
+        });
+
+        await view.navigate(USER_URL);
+        for (let attempt = 0; attempt < 100 && status === 0; attempt += 1) {
+          await Bun.sleep(100);
+        }
+
+        expect(status).toBe(200);
+      });
+    } finally {
+      await setFlagRules("pwa", []);
+    }
+  }, 180_000);
 
   test("caches only the shell and serves the offline page without forum content", async () => {
     await withPage(

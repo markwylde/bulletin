@@ -48,6 +48,7 @@ const clientFlags = (() => {
 })();
 const pwaEnabled = clientFlags.pwa === true;
 const pwa = pwaEnabled ? await pwaBuild() : null;
+const memberId = Astro.locals.session?.memberId ?? "";
 ---
 
 <!doctype html>
@@ -55,6 +56,7 @@ const pwa = pwaEnabled ? await pwaBuild() : null;
   lang={locale}
   data-auth-state={authState}
   data-visitor={visitor}
+  data-member-id={memberId}
   data-server-locale={serverLocale}
   data-locale-source={localeSource}
   data-client-flags={flagsJson}
@@ -65,7 +67,7 @@ const pwa = pwaEnabled ? await pwaBuild() : null;
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="data:," />
-    {pwaEnabled ? <link rel="manifest" href="/manifest.webmanifest" /> : null}
+    {pwaEnabled ? <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" /> : null}
     {pwaEnabled ? <link rel="apple-touch-icon" href="/pwa/icon-180.png" /> : null}
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {robots === "noindex" ? <meta name="robots" content="noindex" /> : null}
@@ -80,7 +82,7 @@ const pwa = pwaEnabled ? await pwaBuild() : null;
     <script>import "../plugins/bridge.ts";</script>
     <script>import "../visits.ts";</script>
     {pwaEnabled ? <script>import "../pwa/register.ts";</script> : null}
-    {pwaEnabled ? <script>import "../offline/client.ts";</script> : null}
+    <script>import "../offline/client.ts";</script>
     <script>import "../realtime/client.ts";</script>
     <script>import "../read-tracking/client.ts";</script>
   </body>

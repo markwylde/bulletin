@@ -302,6 +302,56 @@ integrationDescribe("push", () => {
       await setFlagRules("pwa", []);
     }
   }, 300_000);
+  test("lists and removes devices in a browser without PushManager", async () => {
+    await withPage(
+      { url: `${USER_URL}/account/notifications/preferences`, viewport: "mobile360" },
+      async (view) => {
+        await loginAs(view, "member-1");
+        await waitForSelector(view, "[data-push-settings]");
+
+        const session = await view.evaluate<{ csrfToken: string }>(
+          'fetch("/api/auth/session", { headers: { accept: "application/json" } }).then((response) => response.json())',
+        );
+        const subscribed = await view.evaluate<boolean>(`fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-bulletin-csrf": ${JSON.stringify(session.csrfToken)} },
+          body: JSON.stringify({
+            endpoint: "http://push:4003/push/e2e-unsupported",
+            keys: { p256dh: ${JSON.stringify(PUSH_TEST_KEYS.publicKey)}, auth: ${JSON.stringify(PUSH_TEST_KEYS.auth)} },
+            label: "Unsupported browser device"
+          })
+        }).then((response) => response.ok)`);
+        expect(subscribed).toBe(true);
+
+        await view.cdp("Page.addScriptToEvaluateOnNewDocument", {
+          source: "delete window.PushManager; delete globalThis.PushManager;",
+        });
+        await view.navigate(`${USER_URL}/account/notifications/preferences`);
+        await waitForSelector(view, "[data-push-settings]");
+        expect(await view.evaluate<boolean>('"PushManager" in window')).toBe(false);
+        await waitForText(view, "Unsupported browser device");
+        expect(
+          await view.evaluate<boolean>(
+            "document.querySelector('[data-push-enable]')?.hidden === true",
+          ),
+        ).toBe(true);
+
+        const removed = await view.evaluate<boolean>(`(() => {
+          const row = [...document.querySelectorAll("[data-push-device]")].find((candidate) => candidate.textContent?.includes("Unsupported browser device"));
+          const button = row?.querySelector("[data-push-remove]");
+          if (!(button instanceof HTMLButtonElement) || button.disabled) return false;
+          button.click();
+          return true;
+        })()`);
+        expect(removed).toBe(true);
+        await waitForExpression(
+          view,
+          `[...document.querySelectorAll("[data-push-device]")].every((row) => !row.textContent?.includes("Unsupported browser device"))`,
+          20_000,
+        );
+      },
+    );
+  }, 180_000);
 });
 
 /** Dispatches a real notificationclick event inside the active service worker. */

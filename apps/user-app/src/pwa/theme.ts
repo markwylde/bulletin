@@ -1,7 +1,8 @@
-import { loadThemeResources } from "@bulletin/domain/themes";
+import { can, GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
+import { loadThemeResources, previewThemeForSession } from "@bulletin/domain/themes";
 import type { ColorScheme } from "@bulletin/i18n";
 import type { SQL } from "bun";
-import { currentSessionContext } from "../session.ts";
+import { readSessionContext, type UserAppSessionContext } from "../session.ts";
 import { loadActiveTheme } from "../theme/render.ts";
 import { resolveRequestTheme } from "../theme/request-theme.ts";
 import {
@@ -16,6 +17,22 @@ export interface PwaTheme {
   readonly scheme: ColorScheme;
   /** A member session or staff preview theme must never be shared by the HTTP cache. */
   readonly privateResponse: boolean;
+}
+
+async function themeAllowed(
+  sql: SQL,
+  session: UserAppSessionContext | null,
+  themeId: string,
+): Promise<boolean> {
+  if (session === null) {
+    return can(sql, GUEST_PRINCIPAL, "use_theme", { themeId });
+  }
+
+  if ((await previewThemeForSession(sql, session.sessionId, session.memberId)) === themeId) {
+    return true;
+  }
+
+  return can(sql, session.memberId, "use_theme", { themeId });
 }
 
 async function tokensFor(
@@ -51,13 +68,17 @@ export async function resolvePwaTheme(
   cookieHeader: string | null,
   reference: ThemeReference | null,
 ): Promise<PwaTheme> {
-  const session = await currentSessionContext(cookieHeader).catch(() => null);
+  const session = await readSessionContext(sql, cookieHeader).catch(() => null);
+  const explicit =
+    reference !== null && (await themeAllowed(sql, session, reference.id).catch(() => false))
+      ? reference
+      : null;
 
-  if (reference !== null) {
+  if (explicit !== null) {
     // A versioned URL is how the manifest and icons stay cacheable across theme edits.
-    const { theme, tokens } = await tokensFor(sql, reference.id, "light");
-    const id = theme?.theme.id ?? reference.id;
-    const version = theme?.theme.version ?? reference.version ?? 0;
+    const { theme, tokens } = await tokensFor(sql, explicit.id, "light");
+    const id = theme?.theme.id ?? explicit.id;
+    const version = theme?.theme.version ?? explicit.version ?? 0;
 
     return {
       manifest: { id, version, tokens },

@@ -57,7 +57,7 @@ if (root !== null) {
   const enable = root.querySelector<HTMLButtonElement>("[data-push-enable]");
   const list = root.querySelector<HTMLElement>("[data-push-devices]");
   const empty = root.querySelector<HTMLElement>("[data-push-empty]");
-  const supported =
+  const canSubscribe =
     "serviceWorker" in navigator &&
     "PushManager" in window &&
     "Notification" in window &&
@@ -236,29 +236,28 @@ if (root !== null) {
     }
   };
 
-  if (!supported) {
+  if (!canSubscribe) {
     setStatus(labels.labelUnsupported ?? "");
-  } else {
-    if (enable !== null) {
-      enable.hidden = false;
-    }
-
-    enable?.addEventListener("click", () => {
+  } else if (enable !== null) {
+    enable.hidden = false;
+    enable.addEventListener("click", () => {
       void enableHere();
     });
-    list?.addEventListener("click", (event) => {
-      const target = event.target;
-
-      if (!(target instanceof Element)) {
-        return;
-      }
-
-      const button = target.closest<HTMLButtonElement>("[data-push-remove]");
-
-      if (button !== null && button.dataset.pushRemove !== undefined) {
-        void removeDevice(button, button.dataset.pushRemove);
-      }
-    });
-    void loadDevices();
   }
+
+  // Device management is server-side and must work even where this browser cannot subscribe.
+  list?.addEventListener("click", (event) => {
+    const target = event.target;
+
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const button = target.closest<HTMLButtonElement>("[data-push-remove]");
+
+    if (button !== null && button.dataset.pushRemove !== undefined) {
+      void removeDevice(button, button.dataset.pushRemove);
+    }
+  });
+  void loadDevices();
 }
