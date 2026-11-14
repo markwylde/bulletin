@@ -69,6 +69,7 @@ The bucket also holds two operational prefixes. **Never** put lifecycle rules or
 | Key | Written by | Purpose |
 |---|---|---|
 | `journal/<date>/<request>.json` | the erasure job | The erasure journal (ADR 0012): IDs and timestamps of every completed erasure, with the sessions, API keys and push devices it revoked. It sits outside the database rollback set. |
+| `journal/<date>/rev-<time>-<id>.json` | workers, every 2 seconds | Batches of standalone revocations: sessions revoked or deleted (logouts included), API keys revoked or deleted, push devices removed or re-assigned to another member. IDs only. Database triggers record each change, whatever code path made it. |
 | `ops/watermark.json` | workers, every minute | The outbox sequence the database has reached. A database behind it has been restored. |
 
 ## 2. What happens automatically after a restore
@@ -76,10 +77,11 @@ The bucket also holds two operational prefixes. **Never** put lifecycle rules or
 When workers start against a restored database, they work through these steps **before they report ready or start any job**:
 
 1. **Detect the restore.** The outbox sequence `core.events_id_seq` is behind `ops/watermark.json`. Sequences only go backwards through a restore.
-2. **Replay the erasure journal.** Every entry under `journal/` that is missing from `core.erasure_journal_applied` is replayed through `pii.replay_erasure`:
+2. **Replay the journal.** Every entry under `journal/` that is missing from `core.erasure_journal_applied` is replayed through `pii.replay_erasure`:
    - The erasure request is recreated if the restore point predates it.
    - The sessions, API keys and push devices named in the entry are revoked again.
    - The normal erasure job then runs to completion.
+   Revocation batches are replayed through `pii.replay_revocations`: the sessions and API keys they name are revoked again, and the push devices are removed (the browser subscribes again).
    No email, push or webhook can reach an erased member, because delivery jobs only start after this step.
 3. **Reconcile storage.** Objects that no database row references are deleted (ADR 0019 reconciliation; uploads from the last 15 minutes are spared).
 4. **List missing objects.** Ready attachments and current avatars whose object is gone are written to `core.missing_objects`. They appear in the staff app under **Overview → Missing files**. Downloading such an attachment returns `410 attachment_missing` with a readable message.
@@ -87,7 +89,7 @@ When workers start against a restored database, they work through these steps **
 
 Steps 2 to 4 also run on **every** workers start, even when no restore is detected. The watermark is written once a minute, so a backup taken after its latest write restores to a sequence equal to or ahead of it. Such a restore is not detected or recorded in `core.restore_runs`, but erasures are still replayed, orphaned objects removed and missing files listed. The workers log `restore.startup_reconciled` when that run changed anything.
 
-Meanwhile **user-api, user-app (through user-api) and staff-api fail `/health/ready`**. Their `journal` check passes only once **every** entry under `journal/` is in `core.erasure_journal_applied`. Entries complete in any order (an erasure accepted earlier can finish later), so no single "newest entry" pointer is trusted. Load balancers therefore send no traffic until erasures are re-applied. A proxy that keeps routing anyway gets nothing either: every request except `/health/*` is answered with `503`, `Cache-Control: no-store` and `Retry-After: 30`, so a restored session or API key of an erased member is never served.
+Meanwhile **user-api, user-app (through user-api) and staff-api fail `/health/ready`**. Their `journal` check passes only once **every** entry under `journal/` is in `core.erasure_journal_applied`. Entries complete in any order (an erasure accepted earlier can finish later), so no single "newest entry" pointer is trusted. Load balancers therefore send no traffic until erasures and revocations are re-applied. A proxy that keeps routing anyway gets nothing either: every request except `/health/*` is answered with `503`, `Cache-Control: no-store` and `Retry-After: 30`, so a restored session or API key of an erased member is never served.
 
 A replay that fails, for example because plugin-host is not up yet, is retried with backoff. The board stays unready in the meantime. Watch the workers' logs for `restore.startup_failed`.
 
@@ -170,3 +172,7 @@ bun scripts/restore-drill.ts --mode=staging --report=drill-$(date +%F).json
 ```
 
 `--target` defaults to 24 hours ago. File the JSON report with the quarter's operations review, and record how long the board took to report ready (the recovery time).
+
+## 6. Journal retention
+
+Workers prune journal entries older than 36 days (the 35-day recovery window plus a day), together with their rows in `core.erasure_journal_applied`. No restore can need an older entry: its effect is already in any backup the window allows. A revocation reaches the journal within a few seconds, so only one made in the last seconds before the database was lost can be missing from it.

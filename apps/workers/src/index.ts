@@ -42,9 +42,12 @@ import {
   createWarningJobs,
   createWebhookEventHandler,
   createWebhookJobs,
+  drainRevocationJournal,
   ERASURE_QUEUE,
   EXPORT_QUEUE,
   prepareAfterRestore,
+  pruneJournal,
+  replayErasureJournal,
   writeRestoreWatermark,
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
@@ -121,11 +124,37 @@ for (let attempt = 1; ; attempt += 1) {
   }
 }
 
+let watermarkTicks = 0;
 const watermarkTimer = setInterval(() => {
+  watermarkTicks += 1;
   void writeRestoreWatermark(sql, storage).catch((error: unknown) => {
     logger.warn("restore.watermark_failed", { error });
   });
+  // An entry whose upload succeeded but whose commit failed is not applied here; replaying it
+  // keeps new processes from waiting for the next restart to become ready.
+  void replayErasureJournal({ sql, storage, logger, erasure: erasureOptions }).catch(
+    (error: unknown) => {
+      logger.warn("restore.journal_replay_failed", { error });
+    },
+  );
+
+  if (watermarkTicks % 60 === 0) {
+    void pruneJournal(sql, storage).catch((error: unknown) => {
+      logger.warn("restore.journal_prune_failed", { error });
+    });
+  }
 }, 60_000);
+
+// Revoked sessions and API keys and removed push devices reach the journal within seconds, so
+// a restore cannot bring them back (ADR 0020, ADR 0012).
+let revocationDrain: Promise<unknown> = Promise.resolve();
+const revocationTimer = setInterval(() => {
+  revocationDrain = revocationDrain
+    .then(() => drainRevocationJournal(sql, storage))
+    .catch((error: unknown) => {
+      logger.warn("restore.revocation_journal_failed", { error });
+    });
+}, 2_000);
 const boss = await createPgBossQueue({
   connectionString: Bun.env.PG_BOSS_DATABASE_URL ?? databaseUrl,
   schema: "pgboss",
@@ -392,6 +421,8 @@ await startService({
   onShutdown: async () => {
     clearInterval(relayTimer);
     clearInterval(watermarkTimer);
+    clearInterval(revocationTimer);
+    await revocationDrain;
     await relayInFlight;
     await listener.close();
     await notificationFanout.stop();
@@ -422,6 +453,8 @@ await startService({
   },
 }).catch(async (error: unknown) => {
   clearInterval(relayTimer);
+  clearInterval(watermarkTimer);
+  clearInterval(revocationTimer);
   await listener.close();
   await notificationFanout.stop();
   await digestJobs.stop();

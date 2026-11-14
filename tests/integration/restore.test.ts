@@ -3,7 +3,9 @@ import { createLogger } from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
 import {
   detectRestore,
+  drainRevocationJournal,
   prepareAfterRestore,
+  pruneJournal,
   runErasureJob,
   runPostRestore,
   scanMissingObjects,
@@ -413,7 +415,7 @@ integrationDescribe("restore: erasure journal replay and reconciliation", () => 
         trigger: "manual",
         erasure: { pluginErase },
       });
-      expect(result.replay).toEqual({ replayed: 0, recorded: 0, skipped: [] });
+      expect(result.replay).toEqual({ replayed: 0, recorded: 0, revocations: 0, skipped: [] });
       expect(result.missing).toEqual({ missing: 0, resolved: 0 });
     } finally {
       await workers.close();
@@ -697,6 +699,160 @@ integrationDescribe("restore: erasures that complete out of order", () => {
     } finally {
       await userApi.close();
       await workers.close();
+    }
+  }, 120_000);
+});
+
+integrationDescribe("restore: standalone revocations", () => {
+  let live: TestDatabase;
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const backupName = `bulletin_restore_revoke_backup_${suffix}`;
+  const restoredName = `bulletin_restore_revoke_restored_${suffix}`;
+  const { server, storage } = storageFor();
+  const ids: Record<string, string> = {};
+
+  async function insertSession(sql: SQL, memberId: string, token: string): Promise<string> {
+    const [row] = (await sql`
+      INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+      VALUES (${memberId}, 'user', sha256(convert_to(${token}, 'UTF8')), now() + interval '1 day')
+      RETURNING id::text AS id
+    `) as Array<{ id: string }>;
+    return row?.id ?? "";
+  }
+
+  async function insertKey(sql: SQL, memberId: string, prefix: string): Promise<string> {
+    const [row] = (await sql`
+      INSERT INTO core.api_keys (prefix, hash, principal_member_id, kind, label)
+      VALUES (${prefix}, sha256(convert_to(${prefix}, 'UTF8')), ${memberId}, 'personal', 'Key')
+      RETURNING id::text AS id
+    `) as Array<{ id: string }>;
+    return row?.id ?? "";
+  }
+
+  async function insertDevice(sql: SQL, memberId: string, endpoint: string): Promise<string> {
+    const [row] = (await sql`
+      INSERT INTO pii.push_subscriptions (member_id, endpoint, p256dh, auth_secret, label)
+      VALUES (${memberId}, ${endpoint}, 'key', 'auth', 'Phone')
+      RETURNING id::text AS id
+    `) as Array<{ id: string }>;
+    return row?.id ?? "";
+  }
+
+  beforeAll(async () => {
+    live = await createTestDatabase({ adminUrl: adminUrl ?? "", prefix: "restore_revoke" });
+    await runSeeds({
+      sql: live.sql,
+      registry: new SeedRegistry([baseSeedModule, permissionFixtureSeedModule]),
+    });
+    const gus = await member(live.sql, "Gus Revoke", ["members"]);
+    const hal = await member(live.sql, "Hal Revoke", ["members"]);
+    ids.loggedOut = await insertSession(live.sql, gus, "gus-logged-out");
+    ids.deletedSession = await insertSession(live.sql, gus, "gus-deleted");
+    ids.keptSession = await insertSession(live.sql, gus, "gus-kept");
+    ids.revokedKey = await insertKey(live.sql, gus, "gusrevok");
+    ids.deletedKey = await insertKey(live.sql, gus, "gusdelet");
+    ids.removedDevice = await insertDevice(live.sql, gus, "https://push.test/gus-removed");
+    ids.movedDevice = await insertDevice(live.sql, gus, "https://push.test/gus-moved");
+    ids.hal = hal;
+
+    const workers = new SQL(roleUrl(live.url, "workers"));
+    await writeRestoreWatermark(workers, storage);
+    await workers.close();
+    await live.sql.close();
+    await copyDatabase(live.name, backupName);
+
+    // After the backup, through whatever code path: a logout, a deleted session, a revoked and
+    // a deleted API key, a removed device and an endpoint re-assigned to another member.
+    const userApi = new SQL(roleUrl(live.url, "user_api"));
+    await userApi`UPDATE core.sessions SET revoked_at = now() WHERE id = ${ids.loggedOut}`;
+    await userApi`DELETE FROM core.sessions WHERE id = ${ids.deletedSession}`;
+    await userApi`UPDATE core.api_keys SET revoked_at = now() WHERE id = ${ids.revokedKey}`;
+    await userApi`DELETE FROM core.api_keys WHERE id = ${ids.deletedKey}`;
+    await userApi.close();
+    const admin = new SQL(live.url);
+    await admin`DELETE FROM pii.push_subscriptions WHERE id = ${ids.removedDevice}`;
+    await admin`UPDATE pii.push_subscriptions SET member_id = ${hal} WHERE id = ${ids.movedDevice}`;
+    await admin.close();
+
+    const afterWorkers = new SQL(roleUrl(live.url, "workers"));
+    expect(await drainRevocationJournal(afterWorkers, storage)).toBe(6);
+    expect(await drainRevocationJournal(afterWorkers, storage)).toBe(0);
+    await afterWorkers.close();
+    await copyDatabase(backupName, restoredName);
+  }, 120_000);
+
+  afterAll(async () => {
+    server.stop(true);
+    await dropDatabase(restoredName);
+    await dropDatabase(backupName);
+    await live?.drop();
+  });
+
+  test("the journal entry holds IDs only", async () => {
+    const keys = await listJournalKeys(storage);
+    expect(keys).toHaveLength(1);
+    const entry = JSON.parse(new TextDecoder().decode(await storage.get(keys[0] ?? ""))) as Record<
+      string,
+      unknown
+    >;
+    expect(Object.keys(entry).sort()).toEqual([
+      "apiKeyIds",
+      "kind",
+      "pushDeviceIds",
+      "sessionIds",
+      "writtenAt",
+    ]);
+    expect(entry.kind).toBe("revocations");
+    expect(entry.sessionIds).toEqual([ids.loggedOut, ids.deletedSession]);
+    expect(entry.apiKeyIds).toEqual([ids.revokedKey, ids.deletedKey]);
+    expect(entry.pushDeviceIds).toEqual([ids.removedDevice, ids.movedDevice]);
+  });
+
+  test("revoked sessions, API keys and removed devices stay unusable after restore and replay", async () => {
+    const restoredUrl = databaseUrl(restoredName);
+    const userApi = new SQL(roleUrl(restoredUrl, "user_api"));
+    const workers = new SQL(roleUrl(restoredUrl, "workers"));
+    const admin = new SQL(restoredUrl);
+    const usable = async () =>
+      (await admin`
+        SELECT
+          (SELECT array_agg(id::text ORDER BY id) FROM core.sessions
+            WHERE id IN (${ids.loggedOut}, ${ids.deletedSession}, ${ids.keptSession})
+              AND revoked_at IS NULL) AS sessions,
+          (SELECT array_agg(id::text ORDER BY id) FROM core.api_keys
+            WHERE id IN (${ids.revokedKey}, ${ids.deletedKey}) AND revoked_at IS NULL) AS keys,
+          (SELECT array_agg(id::text ORDER BY id) FROM pii.push_subscriptions
+            WHERE id IN (${ids.removedDevice}, ${ids.movedDevice})) AS devices
+      `) as Array<{ sessions: string[] | null; keys: string[] | null; devices: string[] | null }>;
+
+    try {
+      // The backup predates every revocation: all of them are live again.
+      expect((await usable())[0]?.sessions).toHaveLength(3);
+      expect(await journalApplied(userApi, storage)).toBe(false);
+
+      await prepareAfterRestore({ sql: workers, storage, erasure: { pluginErase } });
+
+      expect(await journalApplied(userApi, storage)).toBe(true);
+      expect((await usable())[0]).toEqual({
+        sessions: [ids.keptSession],
+        keys: null,
+        devices: null,
+      });
+
+      // Entries older than the 35-day recovery window are pruned with their applied rows.
+      expect(await pruneJournal(workers, storage)).toBe(0);
+      expect(
+        await pruneJournal(workers, storage, { now: new Date(Date.now() + 37 * 86_400_000) }),
+      ).toBe(1);
+      expect(await listJournalKeys(storage)).toEqual([]);
+      const [left] = (await workers`
+        SELECT count(*)::int AS applied FROM core.erasure_journal_applied
+      `) as Array<{ applied: number }>;
+      expect(left?.applied).toBe(0);
+    } finally {
+      await userApi.close();
+      await workers.close();
+      await admin.close();
     }
   }, 120_000);
 });

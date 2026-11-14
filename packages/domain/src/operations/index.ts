@@ -4,7 +4,8 @@ import type { SQL } from "bun";
 /**
  * Restore support shared by every service (ADR 0020, ADR 0012).
  *
- * The erasure journal lives in object storage, outside the database rollback set. Every entry's
+ * The journal lives in object storage, outside the database rollback set: completed erasures,
+ * and batches of revoked sessions and API keys and removed push devices. Every entry's
  * key is recorded in `core.erasure_journal_applied` *before* the entry is written, so in normal
  * operation every entry in storage is applied. After a database restore to an earlier point,
  * entries written since are not: services stay unready until the workers' startup replay has
@@ -13,8 +14,12 @@ import type { SQL } from "bun";
  */
 
 export const JOURNAL_PREFIX = "journal/";
-/** Erasure entries: `journal/<accepted date>/<request id, 12 digits>.json`. */
-export const JOURNAL_ENTRY_KEY = /^journal\/\d{4}-\d{2}-\d{2}\/\d{12}\.json$/;
+/**
+ * Erasure entries are `journal/<accepted date>/<request id, 12 digits>.json`; revocation batches
+ * are `journal/<date>/rev-<epoch ms, 13 digits>-<first pending id, 12 digits>.json`.
+ */
+export const JOURNAL_ENTRY_KEY =
+  /^journal\/\d{4}-\d{2}-\d{2}\/(?:\d{12}|rev-\d{13}-\d{12})\.json$/;
 /** Written by workers; a database whose outbox sequence is behind it was restored. */
 export const RESTORE_WATERMARK_KEY = "ops/watermark.json";
 

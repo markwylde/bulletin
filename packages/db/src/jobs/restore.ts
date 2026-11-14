@@ -1,5 +1,10 @@
 import type { Logger } from "@bulletin/config";
-import { listJournalKeys, RESTORE_WATERMARK_KEY } from "@bulletin/domain/operations";
+import {
+  JOURNAL_ENTRY_KEY,
+  JOURNAL_PREFIX,
+  listJournalKeys,
+  RESTORE_WATERMARK_KEY,
+} from "@bulletin/domain/operations";
 import { AVATAR_VARIANTS, avatarKey, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { runAttachmentReconciliation } from "./attachments.ts";
@@ -30,13 +35,21 @@ export interface JournalEntry {
   readonly pushDeviceIds: readonly string[];
 }
 
+/** A batch of standalone revocations: IDs only, never personal data (ADR 0011, 0012). */
+export interface RevocationJournalEntry {
+  readonly kind: "revocations";
+  readonly sessionIds: readonly string[];
+  readonly apiKeyIds: readonly string[];
+  readonly pushDeviceIds: readonly string[];
+}
+
 function ids(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string" && /^\d+$/.test(entry))
     : [];
 }
 
-export function parseJournalEntry(bytes: Uint8Array | string): JournalEntry | null {
+function parseRecord(bytes: Uint8Array | string): Record<string, unknown> | null {
   let value: unknown;
 
   try {
@@ -45,13 +58,14 @@ export function parseJournalEntry(bytes: Uint8Array | string): JournalEntry | nu
     return null;
   }
 
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+}
 
-  const record = value as Record<string, unknown>;
+export function parseJournalEntry(bytes: Uint8Array | string): JournalEntry | null {
+  const record = parseRecord(bytes);
 
   if (
+    record === null ||
     typeof record.requestId !== "string" ||
     !/^\d+$/.test(record.requestId) ||
     typeof record.memberId !== "string" ||
@@ -71,6 +85,25 @@ export function parseJournalEntry(bytes: Uint8Array | string): JournalEntry | nu
   };
 }
 
+export function parseRevocationEntry(bytes: Uint8Array | string): RevocationJournalEntry | null {
+  const record = parseRecord(bytes);
+
+  if (record === null || record.kind !== "revocations") {
+    return null;
+  }
+
+  return {
+    kind: "revocations",
+    sessionIds: ids(record.sessionIds),
+    apiKeyIds: ids(record.apiKeyIds),
+    pushDeviceIds: ids(record.pushDeviceIds),
+  };
+}
+
+function isRevocationKey(key: string): boolean {
+  return /\/rev-\d{13}-\d{12}\.json$/.test(key);
+}
+
 function pgBigintArray(values: readonly string[]): string {
   return `{${values.join(",")}}`;
 }
@@ -83,10 +116,12 @@ export interface JournalReplayOptions {
 }
 
 export interface JournalReplayResult {
-  /** Entries whose erasure ran again on this database. */
+  /** Erasure entries whose erasure ran again on this database. */
   readonly replayed: number;
-  /** Entries already reflected here (completed, or the member postdates the restore point). */
+  /** Erasure entries already reflected here (completed, or the member postdates the restore). */
   readonly recorded: number;
+  /** Revocation batches applied again. */
+  readonly revocations: number;
   readonly skipped: readonly string[];
 }
 
@@ -117,7 +152,7 @@ async function replayLocked(options: JournalReplayOptions): Promise<JournalRepla
   const keys = await listJournalKeys(storage);
 
   if (keys.length === 0) {
-    return { replayed: 0, recorded: 0, skipped: [] };
+    return { replayed: 0, recorded: 0, revocations: 0, skipped: [] };
   }
 
   const appliedRows = (await sql`
@@ -126,6 +161,7 @@ async function replayLocked(options: JournalReplayOptions): Promise<JournalRepla
   const applied = new Set(appliedRows.map((row) => row.key));
   let replayed = 0;
   let recorded = 0;
+  let revocations = 0;
   const skipped: string[] = [];
 
   for (const key of keys) {
@@ -133,7 +169,34 @@ async function replayLocked(options: JournalReplayOptions): Promise<JournalRepla
       continue;
     }
 
-    const entry = parseJournalEntry(await storage.get(key));
+    const bytes = await storage.get(key);
+
+    if (isRevocationKey(key)) {
+      const batch = parseRevocationEntry(bytes);
+
+      if (batch === null) {
+        options.logger?.warn("restore.journal_entry_unreadable", { key });
+        skipped.push(key);
+        continue;
+      }
+
+      await sql`
+        SELECT pii.replay_revocations(
+          ${pgBigintArray(batch.sessionIds)}::bigint[],
+          ${pgBigintArray(batch.apiKeyIds)}::bigint[],
+          ${pgBigintArray(batch.pushDeviceIds)}::bigint[]
+        )
+      `;
+      await sql`
+        INSERT INTO core.erasure_journal_applied (key, request_id, replayed)
+        VALUES (${key}, NULL, true)
+        ON CONFLICT (key) DO UPDATE SET replayed = true
+      `;
+      revocations += 1;
+      continue;
+    }
+
+    const entry = parseJournalEntry(bytes);
 
     if (entry === null) {
       options.logger?.warn("restore.journal_entry_unreadable", { key });
@@ -173,11 +236,11 @@ async function replayLocked(options: JournalReplayOptions): Promise<JournalRepla
     `;
   }
 
-  if (replayed > 0 || recorded > 0) {
-    options.logger?.info("restore.journal_replayed", { replayed, recorded });
+  if (replayed > 0 || recorded > 0 || revocations > 0) {
+    options.logger?.info("restore.journal_replayed", { replayed, recorded, revocations });
   }
 
-  return { replayed, recorded, skipped };
+  return { replayed, recorded, revocations, skipped };
 }
 
 export interface MissingObjectScanResult {
@@ -393,4 +456,95 @@ export async function prepareAfterRestore(
   }
 
   return { restored: false, replayed: replay.replayed };
+}
+
+const REVOCATION_BATCH = 1_000;
+
+/**
+ * Moves pending revocations (written by triggers on sessions, API keys and push devices) into one
+ * journal entry. The applied row and the entry are written inside the transaction that deletes
+ * the pending rows: a failed upload leaves them pending, and an entry whose commit failed is
+ * re-applied by the next replay. Returns the number of revocations journalled.
+ */
+export async function drainRevocationJournal(
+  sql: SQL,
+  storage: StorageClient,
+  options: { readonly now?: Date; readonly limit?: number } = {},
+): Promise<number> {
+  return sql.begin(async (tx) => {
+    const rows = (await tx`
+      SELECT id::text AS id, kind, target_id::text AS target_id
+      FROM core.revocation_journal_pending
+      ORDER BY id
+      LIMIT ${options.limit ?? REVOCATION_BATCH}
+      FOR UPDATE SKIP LOCKED
+    `) as Array<{ id: string; kind: string; target_id: string }>;
+
+    if (rows.length === 0) {
+      return 0;
+    }
+
+    const now = options.now ?? new Date();
+    const unique = (kind: string) => [
+      ...new Set(rows.filter((row) => row.kind === kind).map((row) => row.target_id)),
+    ];
+    const key = `journal/${now.toISOString().slice(0, 10)}/rev-${String(now.getTime()).padStart(
+      13,
+      "0",
+    )}-${(rows[0]?.id ?? "0").padStart(12, "0")}.json`;
+
+    await tx`
+      INSERT INTO core.erasure_journal_applied (key, request_id)
+      VALUES (${key}, NULL)
+      ON CONFLICT (key) DO NOTHING
+    `;
+    await storage.put(
+      key,
+      `${JSON.stringify({
+        kind: "revocations",
+        sessionIds: unique("session"),
+        apiKeyIds: unique("api_key"),
+        pushDeviceIds: unique("push_device"),
+        writtenAt: now.toISOString(),
+      })}\n`,
+      { contentType: "application/json" },
+    );
+    await tx`
+      DELETE FROM core.revocation_journal_pending
+      WHERE id = ANY(${pgBigintArray(rows.map((row) => row.id))}::bigint[])
+    `;
+
+    return rows.length;
+  });
+}
+
+/** Recovery window plus a day: no restore can need an entry older than this. */
+export const JOURNAL_RETENTION_DAYS = 36;
+
+/** Removes journal entries (and their applied rows) older than the recovery window. */
+export async function pruneJournal(
+  sql: SQL,
+  storage: StorageClient,
+  options: { readonly now?: Date; readonly retentionDays?: number } = {},
+): Promise<number> {
+  const cutoff =
+    (options.now ?? new Date()).getTime() -
+    (options.retentionDays ?? JOURNAL_RETENTION_DAYS) * 86_400_000;
+  const expired = (await storage.list(JOURNAL_PREFIX))
+    .filter((object) => JOURNAL_ENTRY_KEY.test(object.key))
+    .filter((object) => object.lastModified.getTime() < cutoff)
+    .map((object) => object.key);
+
+  for (const key of expired) {
+    await storage.delete(key);
+  }
+
+  if (expired.length > 0) {
+    await sql`
+      DELETE FROM core.erasure_journal_applied
+      WHERE key = ANY(${`{${expired.join(",")}}`}::text[])
+    `;
+  }
+
+  return expired.length;
 }
