@@ -75,6 +75,7 @@ jobs:
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: 131.0.6778.85
+          install-dependencies: true
 
       - name: Point Bun.WebView at the pinned Chrome
         run: |
