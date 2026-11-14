@@ -3,8 +3,11 @@ import {
   AccessDeniedError,
   CSRF_STORAGE_KEY,
   type LogoutStorage,
+  loadSession,
   logout,
   performLogout,
+  ReauthRequiredError,
+  SessionRevokedError,
   submitIdToken,
 } from "./browser.ts";
 
@@ -197,6 +200,35 @@ describe("logout() global wrapper", () => {
       globals.sessionStorage = original.sessionStorage;
       globals.location = original.location;
     }
+  });
+});
+
+describe("session bootstrap failures", () => {
+  async function withSessionResponse(
+    body: unknown,
+    status: number,
+    run: () => Promise<void>,
+  ): Promise<void> {
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () => Response.json(body, { status })) as unknown as typeof fetch;
+
+    try {
+      await run();
+    } finally {
+      globalThis.fetch = original;
+    }
+  }
+
+  test("a reauth_required 401 asks the member to continue", async () => {
+    await withSessionResponse({ code: "reauth_required" }, 401, async () => {
+      await expect(loadSession()).rejects.toBeInstanceOf(ReauthRequiredError);
+    });
+  });
+
+  test("a 401 without reauth_required means the session was revoked", async () => {
+    await withSessionResponse({ code: "session_revoked" }, 401, async () => {
+      await expect(loadSession()).rejects.toBeInstanceOf(SessionRevokedError);
+    });
   });
 });
 
