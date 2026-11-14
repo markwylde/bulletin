@@ -72,6 +72,39 @@ describe("tracing", () => {
     expect(span?.events[0]?.name).toBe("exception");
   });
 
+  test("exceptions, statuses and attributes are redacted before export (ADR 0012)", async () => {
+    const exporter = new InMemorySpanExporter();
+    initTracing({ service: "test", exporter });
+    const secret =
+      "lookup failed for jane.doe@example.org from 203.0.113.7 with Bearer abc.def.ghi token=s3cr3t";
+    const failure = Object.assign(new Error(secret), { code: "E_LOOKUP" });
+
+    await expect(
+      withSpan(
+        "job",
+        (span) => {
+          span.setAttribute("bulletin.note", "owner jane.doe@example.org");
+          span.addEvent("retry", { "retry.reason": "from 203.0.113.7" });
+          span.setStatus({ code: 2, message: secret });
+          throw failure;
+        },
+        { attributes: { "bulletin.client": "198.51.100.23" } },
+      ),
+    ).rejects.toThrow("jane.doe@example.org");
+
+    const exported = JSON.stringify(exporter.spans);
+    expect(exported).not.toContain("jane.doe@example.org");
+    expect(exported).not.toContain("203.0.113.7");
+    expect(exported).not.toContain("198.51.100.23");
+    expect(exported).not.toContain("abc.def.ghi");
+    expect(exported).not.toContain("s3cr3t");
+
+    const exception = exporter.spans[0]?.events.find((event) => event.name === "exception");
+    expect(exception?.attributes?.["exception.type"]).toBe("Error");
+    expect(String(exception?.attributes?.["exception.message"])).toContain("lookup failed for");
+    expect(String(exception?.attributes?.["exception.stacktrace"])).toContain("lookup failed for");
+  });
+
   test("the server span continues an incoming traceparent", async () => {
     const exporter = new InMemorySpanExporter();
     initTracing({ service: "test", exporter });

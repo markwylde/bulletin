@@ -36,6 +36,7 @@ import {
   type TracerProvider,
   trace,
 } from "@opentelemetry/api";
+import { redactText } from "./log.ts";
 
 export { SpanKind, SpanStatusCode };
 
@@ -185,6 +186,32 @@ export function parseTraceparent(value: string): SpanContext | null {
   return isSpanContextValid(spanContext) ? spanContext : null;
 }
 
+/**
+ * ADR 0012: exported spans pass through the same redaction as logs. Exception messages and
+ * stacks, status messages and string attributes can carry an email, an IP address or a token.
+ */
+function redactAttributes(attributes: Attributes | undefined): Attributes | undefined {
+  if (attributes === undefined) {
+    return undefined;
+  }
+
+  const redacted: Attributes = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    redacted[key] =
+      typeof value === "string"
+        ? redactText(value)
+        : Array.isArray(value)
+          ? (value.map((item) => (typeof item === "string" ? redactText(item) : item)) as
+              | string[]
+              | number[]
+              | boolean[])
+          : value;
+  }
+
+  return redacted;
+}
+
 class RecordingSpan implements Span {
   readonly #context: SpanContext;
   readonly #parentSpanId: string | null;
@@ -295,9 +322,16 @@ class RecordingSpan implements Span {
       parentSpanId: this.#parentSpanId,
       startTimeMs: this.#startTimeMs,
       endTimeMs: toMs(endTime),
-      attributes: { ...this.#attributes },
-      status: this.#status,
-      events: [...this.#events],
+      attributes: redactAttributes(this.#attributes) ?? {},
+      status:
+        this.#status.message === undefined
+          ? this.#status
+          : { ...this.#status, message: redactText(this.#status.message) },
+      events: this.#events.map((event) =>
+        event.attributes === undefined
+          ? event
+          : { ...event, attributes: redactAttributes(event.attributes) ?? {} },
+      ),
       links: [...this.#links],
     });
   }
@@ -319,7 +353,25 @@ class RecordingSpan implements Span {
         : exception instanceof Error
           ? exception.name
           : String(exception.name ?? "Error");
-    this.addEvent("exception", { "exception.type": type, "exception.message": message }, time);
+    const stack =
+      typeof exception === "string"
+        ? undefined
+        : exception instanceof Error
+          ? exception.stack
+          : typeof exception.stack === "string"
+            ? exception.stack
+            : undefined;
+    // Redacted again at export with every other attribute; done here as well so nothing
+    // unredacted is held on the span.
+    this.addEvent(
+      "exception",
+      {
+        "exception.type": type,
+        "exception.message": redactText(message),
+        ...(stack === undefined ? {} : { "exception.stacktrace": redactText(stack) }),
+      },
+      time,
+    );
   }
 }
 
