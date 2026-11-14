@@ -221,9 +221,10 @@ integrationDescribe("conversation inbox and folders", () => {
           expect(await withinWidth(view)).toBe(true);
 
           await view.navigate(new URL(`/conversations/${conversationId}`, USER_URL).toString());
+          // Leave only once the read marker is saved; navigating sooner races it.
           await waitForSelector(
             view,
-            '[data-conversation-page][data-conversation-ready="true"]',
+            '[data-conversation-page][data-conversation-ready="true"][data-conversation-read="true"]',
             20_000,
           );
           await view.navigate(new URL("/conversations", USER_URL).toString());

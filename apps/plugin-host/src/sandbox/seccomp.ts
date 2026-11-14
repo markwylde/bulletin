@@ -136,6 +136,35 @@ const ARCH_SYSCALLS: Readonly<Record<SandboxArch, Readonly<Record<string, number
     uname: 160,
   },
   x64: {
+    // x86_64 keeps legacy syscalls that arm64 never had. Bun and its libc use them on x64
+    // (arch_prctl for thread-local storage at startup, and the non-*at file, pipe and poll
+    // forms). Each is the legacy spelling of a call already allowed above (openat, pipe2,
+    // ppoll, dup3, epoll_pwait, getdents64, ...), so none adds a capability.
+    access: 21,
+    arch_prctl: 158,
+    chmod: 90,
+    creat: 85,
+    dup2: 33,
+    epoll_create: 213,
+    epoll_wait: 232,
+    eventfd: 284,
+    getdents: 78,
+    lstat: 6,
+    mkdir: 83,
+    open: 2,
+    pipe: 22,
+    poll: 7,
+    readlink: 89,
+    rename: 82,
+    rmdir: 84,
+    select: 23,
+    stat: 4,
+    // Bun links /tmp/bun-node-*/node to itself at startup.
+    symlink: 88,
+    time: 201,
+    unlink: 87,
+    // Bun.spawn uses vfork(); musl issues the vfork syscall on x86_64 and clone on arm64.
+    vfork: 58,
     clone3: 435,
     close_range: 436,
     epoll_pwait2: 441,

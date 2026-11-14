@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import sharp from "sharp";
 import {
   buildManifest,
   iconLetter,
@@ -75,5 +76,20 @@ describe("web app manifest", () => {
     expect(parseThemeReference("../../etc")).toBeNull();
     expect(parseThemeReference(null)).toBeNull();
     expect(themeQuery(theme)).toBe("theme=7%403");
+  });
+});
+
+describe("pwa icon raster", () => {
+  test.each([180, 192, 512])("renders a valid %ipx PNG", async (size) => {
+    const png = await sharp(Buffer.from(iconSvg({ size, tokens, letter: "B" }), "utf8"))
+      .resize(size, size)
+      .png()
+      .toBuffer();
+    const meta = await sharp(png).metadata();
+
+    expect([...png.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(meta.format).toBe("png");
+    expect(meta.width).toBe(size);
+    expect(meta.height).toBe(size);
   });
 });

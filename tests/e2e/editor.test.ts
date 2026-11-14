@@ -346,7 +346,8 @@ integrationDescribe("post editor", () => {
       for (const type of ["keyDown", "keyUp"] as const) {
         await view.cdp("Input.dispatchKeyEvent", {
           type,
-          modifiers: 4,
+          // ProseMirror's Mod is Cmd (Meta = 4) on macOS and Ctrl (2) elsewhere.
+          modifiers: process.platform === "darwin" ? 4 : 2,
           key: "b",
           code: "KeyB",
           windowsVirtualKeyCode: 66,

@@ -15,10 +15,11 @@ interface SuggestedMember {
 
 const SEARCH_DELAY_MS = 180;
 
-async function postJson(url: string, body: unknown): Promise<Response> {
+async function postJson(url: string, body: unknown, init: RequestInit = {}): Promise<Response> {
   const token = await clientCsrfToken();
 
   return memberFetch(url, {
+    ...init,
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -453,10 +454,18 @@ function markRead(container: HTMLElement): void {
   const messages = [...container.querySelectorAll<HTMLElement>("[data-conversation-message]")];
   const messageId = messages[messages.length - 1]?.dataset.conversationMessage;
 
+  // keepalive: a member who opens a conversation and leaves at once is still marked read.
   void postJson(
     `/api/conversations/${conversationId}/read`,
     messageId === undefined ? {} : { messageId },
-  ).catch(() => undefined);
+    { keepalive: true },
+  )
+    .then((response) => {
+      if (response.ok) {
+        container.dataset.conversationRead = "true";
+      }
+    })
+    .catch(() => undefined);
 }
 
 for (const picker of document.querySelectorAll<HTMLElement>("[data-recipient-picker]")) {

@@ -10,4 +10,6 @@ RUN bun install --frozen-lockfile
 
 FROM deps AS test
 
-CMD ["bun", "test"]
+# Shared CI runners are slower than a dev laptop; DB tests that create schemas or pg-boss
+# queues sometimes exceed Bun's 5 s default there without being wrong.
+CMD ["bun", "test", "--timeout", "15000"]

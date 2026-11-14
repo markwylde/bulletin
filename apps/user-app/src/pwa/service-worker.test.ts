@@ -28,6 +28,10 @@ describe("service worker source", () => {
     expect(source).not.toContain("/not-an-asset.json");
   });
 
+  test("precaches the shell without cookies so a member install keeps the public theme", () => {
+    expect(source).toContain('credentials: "omit"');
+  });
+
   test("navigations are network-only with the offline page as the fallback", () => {
     expect(source).toContain('request.mode === "navigate"');
     expect(source).toContain("networkWithOfflineFallback(request)");

@@ -39,6 +39,8 @@ integrationDescribe("push", () => {
         await loginAs(view, "member-1");
         await waitForSelector(view, "[data-push-settings]");
         await waitForSelector(view, "[data-push-enable]:not([hidden])");
+        // The device list arrives by fetch after the page renders; count it once loaded.
+        await waitForSelector(view, "[data-push-devices-loaded]");
         const before = await view.evaluate<number>(
           "document.querySelectorAll('[data-push-device]').length",
         );
