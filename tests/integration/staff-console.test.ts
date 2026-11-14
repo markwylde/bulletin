@@ -631,6 +631,54 @@ integrationDescribe("staff API permission guard", () => {
     });
   }, 30_000);
 
+  test("saves the privacy policy and enforces privacy.manage", async () => {
+    await withDb("staff_privacy_policy", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const admin = await createSession(
+          database,
+          await createMember(database, "Policy Administrator", ["administrators"]),
+        );
+        const moderator = await createSession(
+          database,
+          await createMember(database, "Policy Moderator", ["members", "super_moderators"]),
+        );
+
+        const before = await callRoute(api, route("privacy.policy"), admin);
+        expect(before.status).toBe(200);
+        expect(await before.json()).toMatchObject({ markdown: "" });
+
+        expect(await callRoute(api, route("privacy.policy"), moderator)).toHaveProperty(
+          "status",
+          403,
+        );
+        expect(
+          await callRoute(api, route("privacy.policy.update"), moderator, {
+            markdown: "Denied",
+          }),
+        ).toHaveProperty("status", 403);
+
+        const saved = await callRoute(api, route("privacy.policy.update"), admin, {
+          markdown: "We keep **only** what we need.",
+        });
+        expect(saved.status).toBe(200);
+        const policy = (await saved.json()) as { markdown: string; html: string };
+        expect(policy.markdown).toContain("We keep **only** what we need.");
+        expect(policy.html).toContain("<strong>only</strong>");
+
+        const [stored] = (await database.sql`
+          SELECT policy_md, policy_html FROM core.privacy_settings WHERE id = 1
+        `) as Array<{ policy_md: string; policy_html: string }>;
+        expect(stored?.policy_md).toContain("We keep");
+        expect(stored?.policy_html).toContain("<strong>only</strong>");
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
   test("shows the data request queue and enforces privacy.requests", async () => {
     await withDb("staff_privacy_requests", async (database) => {
       const { api, auth, sql } = await createStaffApiFor(database);

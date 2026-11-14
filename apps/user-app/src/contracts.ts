@@ -172,6 +172,29 @@ export const accountContract = defineContract<AccountViewModel>({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+/** The member's privacy controls: personal, never shared (ADR 0006, 0012). */
+export const privacyContract = defineContract<AccountViewModel>({
+  route: "/account/privacy",
+  templates: {
+    page: "account-privacy",
+    regions: ["header", "breadcrumbs", "empty", "footer"],
+  },
+  deps: [],
+  tags: (model) => [`member:${model.memberId}`],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
+/** The admin-managed privacy policy is public but always rendered fresh. */
+export const privacyPolicyContract = defineContract({
+  route: "/privacy",
+  templates: { page: "privacy-policy", regions: ["header", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 /** The member's own profile editor: personal, never shared (ADR 0006). */
 export const profileEditContract = defineContract<AccountViewModel>({
   route: "/account/profile",
@@ -471,6 +494,8 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [topicContract.route]: topicContract,
   [displayNameContract.route]: displayNameContract,
   [accountContract.route]: accountContract,
+  [privacyContract.route]: privacyContract,
+  [privacyPolicyContract.route]: privacyPolicyContract,
   [profileEditContract.route]: profileEditContract,
   [profileContract.route]: profileContract,
   [memberListContract.route]: memberListContract,

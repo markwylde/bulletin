@@ -98,8 +98,10 @@ import {
   accessLogResponse,
   dataRequestsResponse,
   loadPrivacyRetention,
+  privacyPolicyResponse,
   savePrivacyRetention,
   updateDataRequestResponse,
+  updatePrivacyPolicyResponse,
 } from "./privacy.ts";
 import { listProfileFieldsForStaff, mutateProfileFieldForStaff } from "./profile-fields.ts";
 import { mutateMemberProfileForStaff, readMemberProfileForStaff } from "./profiles.ts";
@@ -1446,6 +1448,21 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/privacy/retention",
     permission: "privacy.manage",
     handler: updatePrivacyRetention,
+  },
+  {
+    id: "privacy.policy",
+    method: "GET",
+    path: "/api/staff/privacy/policy",
+    permission: "privacy.manage",
+    handler: async ({ sql }) => privacyPolicyResponse(sql),
+  },
+  {
+    id: "privacy.policy.update",
+    method: "POST",
+    path: "/api/staff/privacy/policy",
+    permission: "privacy.manage",
+    handler: async ({ sql, session, request }) =>
+      updatePrivacyPolicyResponse(sql, session.memberId, request),
   },
   {
     id: "privacy.requests",

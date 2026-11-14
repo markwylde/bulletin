@@ -1,0 +1,14 @@
+{{ header }}
+<main id="main" class="bl-main" data-privacy-policy-page>
+  {{ breadcrumbs }}
+  <h1 class="bl-page__title">{% t "privacy.policy.title" %}</h1>
+  <p class="bl-muted">{% t "privacy.policy.intro" %}</p>
+  {% if hasPolicy %}
+    <section class="bl-card bl-content" data-privacy-policy>
+      {{ policyHtml }}
+    </section>
+  {% else %}
+    <p class="bl-muted" data-privacy-policy-empty>{% t "privacy.policy.empty" %}</p>
+  {% endif %}
+</main>
+{{ footer }}

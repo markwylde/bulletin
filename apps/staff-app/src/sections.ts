@@ -110,6 +110,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     labelKey: "staff.nav.privacyRetention",
   },
   {
+    id: "privacyPolicy",
+    path: "/privacy/policy",
+    navGroup: "configuration",
+    permission: "privacy.manage",
+    icon: "settings",
+    labelKey: "staff.nav.privacyPolicy",
+  },
+  {
     id: "privacyRequests",
     path: "/privacy/requests",
     navGroup: "overview",

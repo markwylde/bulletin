@@ -10,7 +10,9 @@ import {
 import {
   type PrivacySettings,
   parsePrivacySettingsInput,
+  readPrivacyPolicy,
   readPrivacySettings,
+  savePrivacyPolicy,
 } from "@bulletin/domain/privacy";
 import type { SQL } from "bun";
 import { writeAdminLog } from "./admin-log.ts";
@@ -236,4 +238,31 @@ export async function accessLogResponse(sql: SQL, request: Request): Promise<Res
       createdAt: entry.createdAt.toISOString(),
     })),
   });
+}
+
+export async function privacyPolicyResponse(sql: SQL): Promise<Response> {
+  return json(await readPrivacyPolicy(sql));
+}
+
+export async function updatePrivacyPolicyResponse(
+  sql: SQL,
+  actorId: string,
+  request: Request,
+): Promise<Response> {
+  const body: unknown = await request.json().catch(() => null);
+
+  if (!isRecord(body) || typeof body.markdown !== "string" || body.markdown.length > 100_000) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const policy = await savePrivacyPolicy(sql, actorId, body.markdown);
+  await writeAdminLog(sql, {
+    actorMemberId: actorId,
+    action: "privacy.policy.update",
+    targetType: "privacy_settings",
+    targetId: "1",
+    summary: { characters: body.markdown.length },
+  });
+
+  return json(policy);
 }

@@ -363,3 +363,42 @@ export async function readAccessLog(
     createdAt: row.created_at,
   }));
 }
+
+export interface OwnDataRequest {
+  readonly id: string;
+  readonly kind: string;
+  readonly status: string;
+  readonly createdAt: Date;
+  readonly dueAt: Date;
+  readonly completedAt: Date | null;
+  readonly exportExpiresAt: Date | null;
+}
+
+/** The member's own export/erasure requests, derived from their user session token. */
+export async function ownDataRequests(
+  sql: SQL,
+  sessionToken: string,
+): Promise<readonly OwnDataRequest[]> {
+  const rows = (await sql`
+    SELECT id::text AS id, kind, status, created_at, due_at, completed_at, export_expires_at
+    FROM pii.own_data_requests(${sessionToken})
+  `) as Array<{
+    id: string;
+    kind: string;
+    status: string;
+    created_at: Date;
+    due_at: Date;
+    completed_at: Date | null;
+    export_expires_at: Date | null;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    createdAt: row.created_at,
+    dueAt: row.due_at,
+    completedAt: row.completed_at,
+    exportExpiresAt: row.export_expires_at,
+  }));
+}

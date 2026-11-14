@@ -28,6 +28,6 @@
 
 ## 6. Member pages, strings and seed
 
-- [ ] 6.1 Member privacy page (export, erasure, retained-data explanation) and an admin-managed privacy policy page; E2E at all viewports
-- [ ] 6.2 Add en/es/fr strings for privacy UI, emails and staff screens; verify completeness
-- [ ] 6.3 Seed one completed export, one pending erasure request and PII access log entries; verify after `docker compose up --watch`
+- [x] 6.1 Member privacy page (export, erasure, retained-data explanation) and an admin-managed privacy policy page; E2E at all viewports
+- [x] 6.2 Add en/es/fr strings for privacy UI, emails and staff screens; verify completeness
+- [x] 6.3 Seed one completed export, one pending erasure request and PII access log entries; verify after `docker compose up --watch`

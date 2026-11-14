@@ -1,0 +1,48 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { readPrivacyPolicy } from "@bulletin/domain/privacy";
+import { safeHtml } from "@bulletin/templates";
+import { USER_CATALOGS } from "../catalogs.ts";
+import { privacyPolicyContract } from "../contracts.ts";
+import { readSql } from "../db.ts";
+import ThemeLayout from "../layouts/ThemeLayout.astro";
+import { boardNameFrom, renderThemedPage } from "../theme/render.ts";
+
+const locale = Astro.locals.locale ?? "en";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const sql = readSql();
+const policy = await readPrivacyPolicy(sql);
+const title = translate("privacy.policy.title");
+const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+const result = await renderThemedPage({
+  sql,
+  themeId: Astro.locals.themeId,
+  boardName,
+  locale,
+  translate,
+  template: privacyPolicyContract.templates.page,
+  viewModel: {
+    hasPolicy: policy.html.trim() !== "",
+    policyHtml: safeHtml(policy.html),
+    updatedAt: policy.updatedAt?.toISOString() ?? null,
+  },
+  breadcrumbs: [
+    { label: translate("theme.home"), href: "/" },
+    { label: title, href: null },
+  ],
+  route: privacyPolicyContract,
+});
+
+Astro.response.headers.set("cache-control", "private, no-store");
+const authProps =
+  Astro.locals.session === null ? {} : ({ authState: "authenticated" } as const);
+---
+
+<ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
+  title={`${title} · ${boardName}`}
+  locale={locale}
+  body={result.html}
+  {...authProps}
+  visitor={Astro.locals.session === null ? "guest" : "member"}
+/>

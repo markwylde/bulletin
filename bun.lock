@@ -226,6 +226,7 @@
         "@bulletin/i18n": "workspace:*",
         "@bulletin/storage": "workspace:*",
         "@bulletin/templates": "workspace:*",
+        "fflate": "0.8.3",
         "pg-boss": "12.38.1",
       },
     },

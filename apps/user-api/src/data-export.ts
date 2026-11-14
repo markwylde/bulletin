@@ -1,4 +1,5 @@
 import type { AuthNodeEnv } from "@bulletin/domain/auth";
+import { ownDataRequests } from "@bulletin/domain/pii";
 import { requestDataExport } from "@bulletin/domain/privacy";
 import { PRESIGN_GET_EXPIRES_IN, type StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
@@ -65,5 +66,30 @@ export async function dataExportDownloadResponse(
   return new Response(null, {
     status: 303,
     headers: { location, ...NO_STORE },
+  });
+}
+
+/** `GET /api/me/data-requests`: the caller's own export and erasure requests. */
+export async function ownDataRequestsResponse(
+  sql: SQL,
+  request: Request,
+  nodeEnv: AuthNodeEnv,
+): Promise<Response> {
+  const token = userSessionToken(request, nodeEnv);
+
+  if (token === null) {
+    return json({ code: "unauthenticated" }, 401);
+  }
+
+  const requests = await ownDataRequests(sql, token);
+
+  return json({
+    requests: requests.map((entry) => ({
+      ...entry,
+      createdAt: entry.createdAt.toISOString(),
+      dueAt: entry.dueAt.toISOString(),
+      completedAt: entry.completedAt?.toISOString() ?? null,
+      exportExpiresAt: entry.exportExpiresAt?.toISOString() ?? null,
+    })),
   });
 }
