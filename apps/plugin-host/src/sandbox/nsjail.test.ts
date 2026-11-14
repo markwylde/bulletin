@@ -84,6 +84,7 @@ describe("nsjail arguments", () => {
     expect(args).toContain("--use_cgroupv2");
     expect(firstValue(args, "--cgroupv2_mount")).toBe("/sys/fs/cgroup");
     expect(firstValue(args, "--cgroup_mem_max")).toBe(String(DEFAULT_SANDBOX_LIMITS.memoryBytes));
+    expect(firstValue(args, "--cgroup_mem_swap_max")).toBe("0");
     expect(firstValue(args, "--cgroup_pids_max")).toBe(String(DEFAULT_SANDBOX_LIMITS.pids));
     expect(firstValue(args, "--cgroup_cpu_ms_per_sec")).toBe(
       String(DEFAULT_SANDBOX_LIMITS.cpuMsPerSecond),

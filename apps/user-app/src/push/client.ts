@@ -131,6 +131,8 @@ if (root !== null) {
       const body = (await response.json()) as { devices?: readonly PushDevice[] };
       renderDevices(body.devices ?? []);
       setError(false);
+      // Lets tests (and styles) tell a loaded empty list from one still loading.
+      root.dataset.pushDevicesLoaded = "true";
     } catch {
       setError(true);
     }

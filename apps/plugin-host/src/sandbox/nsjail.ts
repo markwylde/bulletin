@@ -130,6 +130,10 @@ export function buildNsjailArgs(sandbox: NsjailSandbox): string[] {
     nonEmpty(sandbox.cgroupV2Mount, "cgroupV2Mount"),
     "--cgroup_mem_max",
     String(positiveInteger(limits.memoryBytes, "memoryBytes")),
+    // No swap: on a host with swap, memory.max alone lets a plugin page out past its limit
+    // and thrash instead of hitting the OOM killer.
+    "--cgroup_mem_swap_max",
+    "0",
     "--cgroup_pids_max",
     String(positiveInteger(limits.pids, "pids")),
     "--cgroup_cpu_ms_per_sec",

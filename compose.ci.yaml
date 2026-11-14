@@ -1,0 +1,25 @@
+# CI-only overrides for container-based runners (Gitea act runners).
+#
+# Jobs run inside a container that talks to the host's Docker daemon, so bind mounts of
+# files from the job's checkout resolve on the host and come up empty. These services
+# read their config from the image (or a tiny build) instead. Used via COMPOSE_FILE in
+# .github/workflows/ci.yml; local development keeps the bind mounts in compose.yaml.
+services:
+  darkauth-mock:
+    volumes: !reset []
+    environment:
+      # The mock image already contains the whole repository at /app.
+      DARKAUTH_MOCK_CONFIG: /app/darkauth-mock.yaml
+
+  proxy:
+    image: !reset null
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM caddy:2.11.9-alpine
+        COPY apps/proxy/Caddyfile /etc/caddy/Caddyfile
+    volumes: !reset []
+    # Job containers share the daemon host's network; CI picks a per-run port and keeps it
+    # on loopback.
+    ports: !override
+      - "127.0.0.1:${BULLETIN_HTTP_PORT:-8080}:${BULLETIN_HTTP_PORT:-8080}"

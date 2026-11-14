@@ -2,6 +2,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+/**
+ * Browser-generated messages that are not page errors. Chrome fetches manifest icons in the
+ * background and logs this when navigation aborts that fetch; icon validity is covered by
+ * apps/user-app/src/pwa/manifest.test.ts.
+ */
+const BROWSER_NOISE: readonly RegExp[] = [
+  /^Error while trying to use the following icon from the Manifest: .*\/pwa\/icon-\d+\.png/,
+];
+
 export const VIEWPORTS = {
   mobile360: { width: 360, height: 780 },
   mobile390: { width: 390, height: 844 },
@@ -30,6 +39,19 @@ interface OpenPage {
   readonly ownsProfile: boolean;
 }
 
+/**
+ * Extra Chrome flags for CI containers. Chrome refuses to start as root with its sandbox on
+ * (container CI jobs run as root), and /dev/shm there is too small for its shared memory.
+ * Developer machines run as a normal user and keep the sandbox.
+ */
+function chromeArgv(): string[] {
+  // Linux Chrome draws classic 15 px scrollbars; macOS overlays them. Hide them so a
+  // 1440 px viewport has a 1440 px layout everywhere, as the viewport tests assert.
+  const argv = process.platform === "linux" ? ["--hide-scrollbars"] : [];
+
+  return process.getuid?.() === 0 ? [...argv, "--no-sandbox", "--disable-dev-shm-usage"] : argv;
+}
+
 /** Opens one page with error capture. The caller owns the process-wide view lifecycle. */
 async function openPage(options: PageOptions): Promise<OpenPage> {
   const viewport = resolveViewport(options.viewport);
@@ -38,7 +60,7 @@ async function openPage(options: PageOptions): Promise<OpenPage> {
   const ownsProfile = options.profileDirectory === undefined;
   const errors: string[] = [];
   const candidate = new Bun.WebView({
-    backend: { type: "chrome", url: false },
+    backend: { type: "chrome", url: false, argv: chromeArgv() },
     width: viewport.width,
     height: viewport.height,
     dataStore: { directory: profileDirectory },
@@ -58,6 +80,7 @@ async function openPage(options: PageOptions): Promise<OpenPage> {
     errors.push(details?.exception?.description ?? details?.text ?? "Uncaught page exception");
   });
   const allowedConsoleError = (message: string): boolean =>
+    BROWSER_NOISE.some((pattern) => pattern.test(message)) ||
     (options.allowConsoleErrors ?? []).some((pattern) => pattern.test(message));
   candidate.addEventListener<{
     readonly type?: string;

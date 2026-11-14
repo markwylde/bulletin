@@ -45,7 +45,9 @@ stackDescribe("HTTP cache contract", () => {
     expect(response.headers.get("cache-control")).toBe(
       "public, s-maxage=15, stale-while-revalidate=15",
     );
-    expect(response.headers.get("surrogate-key")).toBe("board");
+    // The board tag plus one per home-page block (announcements, leaderboards, online, plugin
+    // fragments); the board tag is the contract, the block set grows with features.
+    expect(response.headers.get("surrogate-key")?.split(" ")).toContain("board");
     expect(etag).toMatch(/^"[0-9a-f]{64}"$/);
     expect(["HIT", "MISS", "BYPASS"]).toContain(response.headers.get("x-cache"));
     expect(response.headers.get("x-cache-key")).toBeString();

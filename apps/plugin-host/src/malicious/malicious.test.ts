@@ -70,6 +70,14 @@ let broker: Broker | undefined;
 let logger: ReturnType<typeof createLogger>;
 const lines: string[] = [];
 
+/** The last log lines worth reading on a failure: debug chatter (quota polls) hides the cause. */
+function recentLogs(count = 12): string {
+  return lines
+    .filter((line) => !line.includes('"level":"debug"'))
+    .slice(-count)
+    .join("\n");
+}
+
 function parseLine(line: string): LogRecord | undefined {
   try {
     return JSON.parse(line) as LogRecord;
@@ -140,9 +148,7 @@ async function waitForResult(
     return undefined;
   }
 
-  throw new Error(
-    `Timed out waiting for malicious case ${caseName}. Last logs:\n${lines.slice(-8).join("\n")}`,
-  );
+  throw new Error(`Timed out waiting for malicious case ${caseName}. Last logs:\n${recentLogs()}`);
 }
 
 function parseCounters(text: string | undefined): Map<string, number> {
@@ -279,15 +285,15 @@ async function withCase(
     }
 
     monitor = startCgroupMonitor(supervisor);
-    void channel.request("job.run", { name: "run", payload: {} }, 5_000).catch(() => undefined);
+    // The broker revokes a job's invocation context when the job request times out, so the
+    // job must live as long as the test waits for its result (quota-abuse takes ~5s on CI).
+    const resultTimeoutMs = options.resultTimeoutMs ?? 15_000;
+    void channel
+      .request("job.run", { name: "run", payload: {} }, resultTimeoutMs)
+      .catch(() => undefined);
     await waitForStarted(caseName);
 
-    const result = await waitForResult(
-      caseName,
-      supervisor,
-      options,
-      options.resultTimeoutMs ?? 15_000,
-    );
+    const result = await waitForResult(caseName, supervisor, options, resultTimeoutMs);
 
     await run({ result, supervisor, monitor });
   } finally {
@@ -332,7 +338,7 @@ async function waitForDemoDatabaseSuccess(
 
   throw new Error(
     `Timed out waiting for the benign sandbox's database operation. Last logs:
-${lines.slice(-8).join("\n")}`,
+${recentLogs()}`,
   );
 }
 
@@ -655,9 +661,21 @@ sandboxDescribe("malicious plugin cases", () => {
         restart: { initialDelayMs: 20, maxDelayMs: 20, maxRestarts: 2 },
       },
       async ({ supervisor }) => {
-        await Bun.sleep(800);
+        // The sandbox is killed every 300 ms, so a single sample can land mid-restart. Wait
+        // until it has been killed at least once and is serving again.
+        const deadline = Date.now() + 10_000;
+        let restarted = false;
+
+        while (!restarted && Date.now() < deadline) {
+          restarted = supervisor.status().restarts > 0 && supervisor.ready;
+
+          if (!restarted) {
+            await Bun.sleep(10);
+          }
+        }
+
         expect(supervisor.status().restarts).toBeGreaterThan(0);
-        expect(supervisor.ready).toBe(true);
+        expect(restarted).toBe(true);
       },
     );
   }, 30_000);

@@ -197,6 +197,10 @@ export class PluginDatabase {
     let migrator: SQL | undefined;
 
     try {
+      // Provisioning revokes on the core/pii schemas and alters shared roles. Hold the core
+      // migration runner's session lock so it never races a migration granting on the same
+      // catalog rows ("tuple concurrently updated"). Closing `admin` releases it.
+      await admin`SELECT pg_advisory_lock(hashtext('bulletin.migrate'))`;
       await ensureRole(admin, identifiers.ownerRole, false, options.pluginId);
       await ensureRole(admin, identifiers.runtimeRole, true, options.pluginId);
 

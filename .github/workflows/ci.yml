@@ -1,7 +1,11 @@
 name: CI
 
 on:
+  # Branches are tested through their pull request; pushing to a PR branch must not start a
+  # second, identical run (all runners share one Docker host and every E2E shard starts a
+  # full stack).
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -27,6 +31,8 @@ jobs:
   integration:
     name: Compose database/integration tests
     runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-integration
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -34,18 +40,32 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - name: Run the test service
-        run: docker compose -f compose.yaml -f compose.test.yaml --profile test run --rm test
+        run: docker compose -f compose.yaml -f compose.test.yaml --profile test run --rm --build test
       - name: Stop the stack
         if: always()
-        run: docker compose -f compose.yaml -f compose.test.yaml down -v
+        run: docker compose -f compose.yaml -f compose.test.yaml down -v --rmi local
 
   e2e:
-    name: Full-stack E2E (${{ matrix.engine }})
+    # Shard 0 runs the full-stack checks (sandbox, integration, benchmark); shards 1-8 split
+    # the browser E2E files between them. Each shard brings up its own stack.
+    name: ${{ matrix.shard == 0 && 'Full-stack checks' || format('E2E {0}/8', matrix.shard) }} (${{ matrix.engine }})
     runs-on: ubuntu-latest
+    env:
+      # Container runners cannot bind-mount files from the job checkout (compose.ci.yaml).
+      COMPOSE_FILE: compose.yaml:compose.ci.yaml
+      # Runners on one host share its Docker daemon: isolate each shard's containers,
+      # images and volumes. (Runners span several hosts, so images can't be shared between
+      # jobs without a registry; each shard builds from the host's layer cache.)
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-e2e-${{ matrix.engine }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
+      # Every shard runs a full stack and Chrome on a runner host's Docker daemon; more than
+      # four at once starves them and turns the suite into timeouts.
+      max-parallel: 4
       matrix:
-        engine: [docker, podman]
+        # Podman needs a runner that can run containers inside the job; run it on demand.
+        engine: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["docker","podman"]') || fromJSON('["docker"]') }}
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -56,39 +76,58 @@ jobs:
       - name: Install Podman and the Compose v2 provider
         if: matrix.engine == 'podman'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y podman
-          sudo curl -fsSL \
+          apt-get update
+          apt-get install -y podman
+          curl -fsSL \
             https://github.com/docker/compose/releases/download/v2.30.3/docker-compose-linux-x86_64 \
             -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
           podman info
 
-      - name: Add local origins to /etc/hosts
-        run: |
-          echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
-            | sudo tee -a /etc/hosts
-
       - name: Install pinned Chrome for E2E
+        if: matrix.shard != 0
         id: setup-chrome
         uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: 131.0.6778.85
+          install-dependencies: true
 
       - name: Point Bun.WebView at the pinned Chrome
+        if: matrix.shard != 0
         run: |
           echo "BUN_CHROME_PATH=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
           "${{ steps.setup-chrome.outputs.chrome-path }}" --version
 
+      - name: Pick a per-shard proxy port
+        # Gitea job containers share the daemon host's network, so concurrent runs and shards
+        # must not all publish 8080. The port flows into every origin via BULLETIN_HTTP_PORT.
+        run: |
+          echo "BULLETIN_HTTP_PORT=$((20000 + (${{ github.run_id }} % 4000) * 10 + ${{ matrix.shard }}))" >> "$GITHUB_ENV"
+
       - name: Start the full stack
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
-            podman compose up -d --wait --wait-timeout 300
+            podman compose up -d --build --wait --wait-timeout 300
           else
-            docker compose up -d --wait --wait-timeout 300
+            docker compose up -d --build --wait --wait-timeout 300
           fi
 
+      - name: Resolve the local origins
+        # glibc does not resolve *.localhost subdomains, but Bun's fetch in the suites needs them.
+        run: |
+          echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
+            | tee -a /etc/hosts
+
+      - name: Check the proxy is reachable
+        run: |
+          curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" "http://bulletin.localhost:$BULLETIN_HTTP_PORT/"
+          # The PWA icon is rendered by sharp's native build for this architecture.
+          curl -sS -o /tmp/icon.png -w "pwa icon: %{http_code} %{content_type} %{size_download} bytes\n" \
+            "http://bulletin.localhost:$BULLETIN_HTTP_PORT/pwa/icon-192.png"
+          head -c 8 /tmp/icon.png | od -An -tx1
+
       - name: Measure sandbox spawn time and memory
+        if: matrix.shard == 0
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
             podman compose exec -T \
@@ -101,6 +140,7 @@ jobs:
           fi
 
       - name: Run malicious-plugin suite
+        if: matrix.shard == 0
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
             podman compose exec -T -e BULLETIN_SANDBOX_TESTS=1 plugin-host \
@@ -111,13 +151,16 @@ jobs:
           fi
 
       - name: Run full-stack integration suites
+        if: matrix.shard == 0
         run: bun run test:integration
 
-      - name: Latency benchmark (ADR 0006)
-        run: bun run benchmark
+      - name: Run E2E shard
+        if: matrix.shard != 0
+        run: bun run test:e2e --shard=${{ matrix.shard }}/8
 
-      - name: Run E2E smoke and locale tests
-        run: bun run test:e2e
+      - name: Diagnose plugin sandbox syscalls
+        if: failure()
+        run: ${{ matrix.engine }} compose exec -T plugin-host sh < scripts/ci/diagnose-sandbox.sh || true
 
       - name: Collect logs
         if: failure()
@@ -132,7 +175,47 @@ jobs:
         if: always()
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
-            podman compose down -v
+            podman compose down -v --rmi local
           else
-            docker compose down -v
+            docker compose down -v --rmi local
           fi
+
+  benchmark:
+    # Latency is measured on its own once the E2E shards have finished: with up to four
+    # stacks and Chrome sharing a runner host, p95 measures the host's contention rather
+    # than the code. The ADR 0006 thresholds are still enforced.
+    name: Latency benchmark (ADR 0006)
+    needs: e2e
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: compose.yaml:compose.ci.yaml
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-benchmark
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+
+      - name: Pick a proxy port
+        run: |
+          echo "BULLETIN_HTTP_PORT=$((20000 + (${{ github.run_id }} % 4000) * 10 + 9))" >> "$GITHUB_ENV"
+
+      - name: Start the full stack
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Resolve the local origins
+        run: |
+          echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
+            | tee -a /etc/hosts
+
+      - name: Latency benchmark
+        run: bun run benchmark --samples=100 --warmup=10
+
+      - name: Collect logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v --rmi local

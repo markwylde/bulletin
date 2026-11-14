@@ -63,7 +63,9 @@ self.addEventListener("install", (event) => {
       await Promise.all(
         SHELL.map(async (url) => {
           try {
-            const response = await fetch(new Request(url, { cache: "reload" }));
+            // Without cookies: the shell must hold the public copy even when a member installs
+            // the worker (a member's theme CSS is private and would never be cached).
+            const response = await fetch(new Request(url, { cache: "reload", credentials: "omit" }));
 
             if (cacheable(url, response)) {
               await cache.put(url, response);
