@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ENABLED = Bun.env.BULLETIN_INTEGRATION === "1";
@@ -46,6 +48,7 @@ integrationDescribe("frontend SIGTERM drain", () => {
     const port = probe.port;
     probe.stop(true);
     const origin = `http://127.0.0.1:${port}`;
+    const stdoutPath = join(tmpdir(), `bulletin-drain-${port}.log`);
 
     const child = Bun.spawn(
       [
@@ -64,8 +67,9 @@ integrationDescribe("frontend SIGTERM drain", () => {
           STAFF_API_INTERNAL_URL: `http://127.0.0.1:${stalledApi.port}`,
           BULLETIN_DRAIN_TIMEOUT_MS: "100",
         },
-        // Never "pipe" an unread stream: a cold vite start logs enough to fill the pipe and block.
-        stdout: "ignore",
+        // Never "pipe" an unread stream: a cold vite start logs enough to fill the pipe and
+        // block. A file keeps the output for the failure message instead.
+        stdout: Bun.file(stdoutPath),
         stderr: "pipe",
       },
     );
@@ -75,7 +79,12 @@ integrationDescribe("frontend SIGTERM drain", () => {
       await waitFor(`${origin}/health/live`, 60_000).catch(async (error: unknown) => {
         child.kill();
         const stderr = await new Response(child.stderr).text();
-        throw new Error(`${error instanceof Error ? error.message : String(error)}\n${stderr}`);
+        const stdout = await Bun.file(stdoutPath)
+          .text()
+          .catch(() => "");
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+        );
       });
 
       const pending = fetch(`${origin}/health/ready`).catch(() => null);
