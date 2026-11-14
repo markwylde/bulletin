@@ -1,6 +1,7 @@
 ---
 import "../theme/default.css";
 import { configuredPluginOrigin } from "../plugins/config.ts";
+import { pwaBuild } from "../pwa/build.ts";
 
 interface Props {
   readonly title: string;
@@ -35,6 +36,7 @@ const {
 const flagsJson =
   clientFlagsJson ??
   (Astro.locals.clientFlags === undefined ? undefined : JSON.stringify(Astro.locals.clientFlags));
+const pwa = await pwaBuild();
 ---
 
 <!doctype html>
@@ -47,10 +49,13 @@ const flagsJson =
   data-client-flags={flagsJson}
   data-scheme={colourScheme}
   data-plugins-origin={configuredPluginOrigin()}
+  data-pwa-version={pwa.version}
 >
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="data:," />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/pwa/icon-180.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {robots === "noindex" ? <meta name="robots" content="noindex" /> : null}
     <title>{title}</title>
@@ -63,6 +68,8 @@ const flagsJson =
     <script>import "../islands.ts";</script>
     <script>import "../plugins/bridge.ts";</script>
     <script>import "../visits.ts";</script>
+    <script>import "../pwa/register.ts";</script>
+    <script>import "../offline/client.ts";</script>
     <script>import "../realtime/client.ts";</script>
     <script>import "../read-tracking/client.ts";</script>
   </body>

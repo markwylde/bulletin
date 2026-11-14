@@ -22,6 +22,8 @@ describe("security headers", () => {
     expect(csp).toContain("img-src 'self' data: http://files.bulletin.localhost:8080");
     expect(csp).toContain("frame-src https://www.youtube-nocookie.com https://player.vimeo.com");
     expect(csp).not.toContain("frame-src *");
+    expect(csp).toContain("manifest-src 'self'");
+    expect(csp).toContain("worker-src 'self'");
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).not.toContain("strict-transport-security");
   });

@@ -43,6 +43,10 @@ const NON_PAGE_PREFIXES = [
   "/favicon.ico",
   "/theme-css",
   "/theme-assets/",
+  // The PWA manifest, generated icons and service worker are not themed pages.
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/pwa/",
 ];
 const DISPLAY_NAME_PATH = "/display-name";
 

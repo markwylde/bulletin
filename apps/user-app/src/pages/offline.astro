@@ -1,0 +1,52 @@
+---
+import { createServerT } from "@bulletin/i18n";
+import { renderAuthRoute } from "../auth/route.ts";
+import { cacheRuntime } from "../cache-runtime.ts";
+import { USER_CATALOGS } from "../catalogs.ts";
+import { offlineContract } from "../contracts.ts";
+import { readSql } from "../db.ts";
+import ThemeLayout from "../layouts/ThemeLayout.astro";
+import {
+  boardNameFrom,
+  loadPluginsGeneration,
+  requestColourScheme,
+} from "../theme/render.ts";
+
+const sql = readSql();
+const pluginsGeneration = await loadPluginsGeneration(sql);
+const locale = Astro.locals.locale ?? "en";
+const localeSource = Astro.locals.localeSource ?? "guest";
+const translate = createServerT(locale, { shipped: USER_CATALOGS });
+const runtime = await cacheRuntime(sql);
+const rendered = await renderAuthRoute({
+  sql,
+  themeId: Astro.locals.themeId,
+  preview: Astro.locals.previewTheme === true,
+  boardName: boardNameFrom(Astro.locals.board?.boardName, translate),
+  locale,
+  translate,
+  template: offlineContract.templates.page,
+  contract: offlineContract,
+  pluginsGeneration: pluginsGeneration,
+  colourScheme:
+    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
+  cache: runtime.cache,
+  // The cached offline shell is shared by every visitor; no member state is rendered.
+  shell: { visitor: "guest", localeSource: "guest" },
+});
+
+Astro.response.headers.set("cache-control", "private, no-store");
+---
+
+<ThemeLayout
+  colourScheme={Astro.locals.colourScheme ?? "system"}
+  title={translate("pwa.offline.title")}
+  locale={locale}
+  body={rendered.html}
+  visitor="guest"
+  serverLocale={locale}
+  localeSource={localeSource}
+>
+  <div hidden data-i18n-catalog>{JSON.stringify(USER_CATALOGS)}</div>
+  <script>import "../locale-bootstrap.ts";</script>
+</ThemeLayout>

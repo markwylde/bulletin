@@ -2,9 +2,9 @@
 
 ## 1. PWA
 
-- [ ] 1.1 Per-theme manifest and icons, with a test that the manifest reflects theme colours
-- [ ] 1.2 Service worker (shell precache, hashed assets, network-only content, offline page, versioned activation), with E2E tests for the offline-navigation, no-content-cached and new-version scenarios
-- [ ] 1.3 Offline draft queue and reconnect prompt, plus local data clearing on logout, account switch, SSE `session_revoked` and non-reauth 401s, while keeping drafts on SSE `reauth_required` or `401 reauth_required`; E2E tests for the reconnect, revoked-session and reauth-keeps-draft scenarios
+- [x] 1.1 Per-theme manifest and icons, with a test that the manifest reflects theme colours
+- [x] 1.2 Service worker (shell precache, hashed assets, network-only content, offline page, versioned activation), with E2E tests for the offline-navigation, no-content-cached and new-version scenarios
+- [x] 1.3 Offline draft queue and reconnect prompt, plus local data clearing on logout, account switch, SSE `session_revoked` and non-reauth 401s, while keeping drafts on SSE `reauth_required` or `401 reauth_required`; E2E tests for the reconnect, revoked-session and reauth-keeps-draft scenarios
 
 ## 2. Push
 

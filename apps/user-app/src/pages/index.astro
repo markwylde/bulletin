@@ -97,9 +97,10 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
       logout,
       reauthUrl,
       ReauthRequiredError,
+      SessionRevokedError,
       takeStashedRequest,
     } from "@bulletin/domain/auth/browser";
-    import { clearReauthDrafts } from "@bulletin/ui/islands/editor/drafts";
+    import { clearLocalMemberData, rememberMember, sessionRevoked } from "../auth/client.ts";
     import { resumeStashedRequest } from "../resume.ts";
 
     const root = document.querySelector<HTMLElement>("[data-auth]");
@@ -140,12 +141,16 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
       onReauthRequired: () => {
         updateReauthPrompt(false);
       },
+      onSessionRevoked: () => {
+        sessionRevoked();
+      },
     });
 
     async function refresh(): Promise<void> {
       try {
         const session = await loadSession();
         currentMemberId = session.authenticated ? (session.memberId ?? null) : null;
+        rememberMember(currentMemberId ?? "");
 
         if (session.authenticated) {
           document.documentElement.dataset.localeSource = "member";
@@ -196,6 +201,11 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
           return;
         }
 
+        if (error instanceof SessionRevokedError) {
+          sessionRevoked();
+          return;
+        }
+
         root?.setAttribute("data-auth-state", "error");
         showError();
 
@@ -218,7 +228,7 @@ if (isNotModified(Astro.request.headers.get("if-none-match"), result.etag)) {
     if (logoutButton !== null) {
       logoutButton.addEventListener("click", () => {
         logoutButton.disabled = true;
-        void logout({ clearLocalData: clearReauthDrafts }).then((ok) => {
+        void logout({ clearLocalData: clearLocalMemberData }).then((ok) => {
           if (!ok) {
             if (logoutError !== null) {
               logoutError.hidden = false;

@@ -6,7 +6,7 @@ import {
   type StreamNewRepliesPayload,
   type StreamNotificationPayload,
 } from "@bulletin/domain/events/stream";
-import { clearReauthDrafts } from "@bulletin/ui/islands/editor/drafts";
+import { clearLocalMemberData, showReauthPrompt } from "../auth/client.ts";
 import { drainLiveMessages } from "../conversations/drain.ts";
 import { clientCsrfToken } from "../csrf.ts";
 
@@ -235,24 +235,7 @@ async function refreshCounts(): Promise<void> {
   }
 }
 
-function showReauthPrompt(): void {
-  // Editors keep unsaved text locally before the grace window makes draft autosave fail.
-  window.dispatchEvent(new CustomEvent("bulletin:reauth"));
-  const banner = document.querySelector<HTMLElement>("[data-stream-reauth]");
-  const link = document.querySelector<HTMLAnchorElement>("[data-stream-reauth-continue]");
-
-  if (link !== null) {
-    link.href = `/api/auth/refresh?return_to=${encodeURIComponent(
-      window.location.pathname + window.location.search,
-    )}`;
-  }
-
-  if (banner !== null) {
-    banner.hidden = false;
-  }
-}
-
-function reloadLoggedOut(): void {
+async function reloadLoggedOut(): Promise<void> {
   try {
     sessionStorage.removeItem(CSRF_STORAGE_KEY);
   } catch {
@@ -260,7 +243,7 @@ function reloadLoggedOut(): void {
   }
 
   // A revoked session clears member-scoped local drafts (ADR 0014).
-  clearReauthDrafts();
+  await clearLocalMemberData();
   window.location.reload();
 }
 
@@ -317,7 +300,7 @@ if (
     source.close();
     activeStream = null;
     document.documentElement.dataset.stream = "revoked";
-    reloadLoggedOut();
+    void reloadLoggedOut();
   });
 
   source.addEventListener(STREAM_CONTROL_EVENTS[2], () => {

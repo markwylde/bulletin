@@ -10,6 +10,7 @@
     "./islands": "./src/islands/index.ts",
     "./islands/client": "./src/islands/client.ts",
     "./islands/editor/drafts": "./src/islands/editor/drafts.ts",
+    "./islands/editor/offline-drafts": "./src/islands/editor/offline-drafts.ts",
     "./islands/reactions/store": "./src/islands/reactions/store.ts",
     "./islands/reputation/store": "./src/islands/reputation/store.ts",
     "./islands/runtime": "./src/islands/runtime.ts",

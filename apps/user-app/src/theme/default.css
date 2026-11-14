@@ -1361,6 +1361,26 @@ html[data-hide-signatures] [data-signature] {
   flex: 1 1 14rem;
 }
 
+/* PWA reconnect prompt (ADR 0014): touch-sized actions, wraps at 360 px. */
+.bl-offline-drafts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bl-space-small);
+  padding: var(--bl-space-small);
+  border-top: 1px solid var(--bl-border);
+  background: var(--bl-accent-soft);
+}
+
+.bl-offline-drafts p {
+  margin: 0;
+  flex: 1 1 14rem;
+}
+
+.bl-offline-drafts .bl-actions {
+  margin: 0;
+}
+
 /* Reactions (task 1.2): one bar per post, its own cached fragment, touch-friendly at 360 px. */
 .bl-reactions {
   display: flex;

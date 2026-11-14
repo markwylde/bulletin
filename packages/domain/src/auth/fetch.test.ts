@@ -163,20 +163,47 @@ describe("auth fetch wrapper", () => {
     expect(takeStashedRequest("member-a", storage)).toBeNull();
   });
 
-  test("passes normal and non-reauth failures through unchanged", async () => {
+  test("passes normal failures through and reports a revoked session", async () => {
     const storage = new MemoryStorage();
+    let revoked = 0;
     const ok = createAuthFetch({
       storage,
       fetch: async () => Response.json({ ok: true }),
+      onSessionRevoked: () => {
+        revoked += 1;
+      },
     });
     expect((await ok("/api/anything")).status).toBe(200);
+    expect(revoked).toBe(0);
 
     const denied = createAuthFetch({
       storage,
       fetch: async () => Response.json({ code: "forbidden" }, { status: 401 }),
+      onSessionRevoked: () => {
+        revoked += 1;
+      },
     });
     expect((await denied("/api/anything")).status).toBe(401);
+    expect(revoked).toBe(1);
     expect(takeStashedRequest("member-1", storage)).toBeNull();
+  });
+
+  test("a re-auth 401 keeps drafts and does not report a revoked session", async () => {
+    const storage = new MemoryStorage();
+    let revoked = 0;
+    const authFetch = createAuthFetch({
+      storage,
+      ownerId: () => "member-1",
+      fetch: async () => Response.json({ code: "reauth_required" }, { status: 401 }),
+      onSessionRevoked: () => {
+        revoked += 1;
+      },
+    });
+
+    await authFetch("/api/topics/1/replies", { method: "POST", body: "{}" });
+
+    expect(revoked).toBe(0);
+    expect(takeStashedRequest("member-1", storage)).not.toBeNull();
   });
 
   test("builds a safe re-auth URL for same-origin paths only", () => {

@@ -1,4 +1,6 @@
 import { CSRF_STORAGE_KEY } from "@bulletin/domain/auth/browser";
+import { memberFetch } from "../auth/client.ts";
+import { isNetworkFailure, queueOfflineSubmission } from "../offline/submit.ts";
 
 async function csrfToken(): Promise<string | null> {
   try {
@@ -35,7 +37,7 @@ async function csrfToken(): Promise<string | null> {
 async function postJson(url: string, body: unknown): Promise<Response> {
   const token = await csrfToken();
 
-  return fetch(url, {
+  return memberFetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -227,28 +229,35 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
   const bodyMd = data.get("bodyMd");
   const button = submitButton(form);
   const poll = form.matches("[data-new-topic-form]") ? collectPoll(form) : null;
-  const request = form.matches("[data-new-topic-form]")
-    ? postJson(`/api/forums/${form.dataset.forumId ?? ""}/topics`, {
-        title: String(data.get("title") ?? ""),
-        bodyMd: String(bodyMd ?? ""),
-        ...(String(data.get("prefixId") ?? "") === ""
-          ? {}
-          : { prefixId: String(data.get("prefixId")) }),
-        ...(poll === null ? {} : { poll }),
-      })
-    : form.matches("[data-reply-form]")
-      ? postJson(`/api/topics/${form.dataset.topicId ?? ""}/replies`, {
+  const submission = form.matches("[data-new-topic-form]")
+    ? {
+        url: `/api/forums/${form.dataset.forumId ?? ""}/topics`,
+        payload: {
+          title: String(data.get("title") ?? ""),
           bodyMd: String(bodyMd ?? ""),
-        })
-      : postJson(`/api/posts/${form.dataset.postId ?? ""}/edit`, {
-          bodyMd: String(bodyMd ?? ""),
-          ...(form.querySelector<HTMLInputElement>("input[name=redact]") === null
+          ...(String(data.get("prefixId") ?? "") === ""
             ? {}
-            : {
-                redact:
-                  form.querySelector<HTMLInputElement>("input[name=redact]")?.checked === true,
-              }),
-        });
+            : { prefixId: String(data.get("prefixId")) }),
+          ...(poll === null ? {} : { poll }),
+        },
+      }
+    : form.matches("[data-reply-form]")
+      ? {
+          url: `/api/topics/${form.dataset.topicId ?? ""}/replies`,
+          payload: { bodyMd: String(bodyMd ?? "") },
+        }
+      : {
+          url: `/api/posts/${form.dataset.postId ?? ""}/edit`,
+          payload: {
+            bodyMd: String(bodyMd ?? ""),
+            ...(form.querySelector<HTMLInputElement>("input[name=redact]") === null
+              ? {}
+              : {
+                  redact:
+                    form.querySelector<HTMLInputElement>("input[name=redact]")?.checked === true,
+                }),
+          },
+        };
 
   if (button !== null) {
     button.disabled = true;
@@ -256,7 +265,12 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
   showError(form, false);
 
   try {
-    const response = await request;
+    const response = await postJson(submission.url, submission.payload);
+
+    // Re-auth and revocation are handled by the member fetch wrapper; it kept the text.
+    if (response.status === 401) {
+      return;
+    }
 
     if (!response.ok) {
       const failure = (await response.json().catch(() => ({}))) as { readonly code?: string };
@@ -291,7 +305,15 @@ async function submitForm(form: HTMLFormElement): Promise<void> {
     }
 
     window.location.reload();
-  } catch {
+  } catch (error) {
+    if (
+      isNetworkFailure(error) &&
+      (await queueOfflineSubmission(form, submission.url, submission.payload))
+    ) {
+      // The reconnect banner takes over; the editor's text stays on the device.
+      return;
+    }
+
     showError(form, true);
   } finally {
     if (button !== null) {

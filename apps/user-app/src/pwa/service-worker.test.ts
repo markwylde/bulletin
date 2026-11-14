@@ -1,0 +1,39 @@
+import { describe, expect, test } from "bun:test";
+import { serviceWorkerSource } from "./service-worker.ts";
+
+describe("service worker source", () => {
+  const source = serviceWorkerSource({
+    version: "abc123",
+    assets: ["/_astro/app-1.js", "/_astro/app-2.css", "/not-an-asset.json"],
+  });
+
+  test("is versioned by the registration URL and drops old shell caches", () => {
+    expect(source).toContain('const BUILD_VERSION = "abc123";');
+    expect(source).toContain('new URL(self.location.href).searchParams.get("v")');
+    expect(source).toContain('"bulletin-shell-" + VERSION');
+    expect(source).toContain('key.startsWith("bulletin-shell-") && key !== CACHE_NAME');
+    expect(source).toContain("self.skipWaiting()");
+    expect(source).toContain("self.clients.claim()");
+  });
+
+  test("precaches only the shell, offline page and hashed client assets", () => {
+    expect(source).toContain('"/offline"');
+    expect(source).toContain('"/theme-css"');
+    expect(source).toContain('"/_astro/app-1.js"');
+    expect(source).toContain('"/_astro/app-2.css"');
+    expect(source).not.toContain("/not-an-asset.json");
+  });
+
+  test("navigations are network-only with the offline page as the fallback", () => {
+    expect(source).toContain('request.mode === "navigate"');
+    expect(source).toContain("networkWithOfflineFallback(request)");
+    expect(source).toContain("caches.match(OFFLINE_URL)");
+    // No content cache path: only the asset prefix is cache-first.
+    expect(source).toContain("url.pathname.startsWith(ASSET_PREFIX)");
+  });
+
+  test("handles a clear message without deleting the shell cache", () => {
+    expect(source).toContain('event.data === "clear"');
+    expect(source).toContain('key.startsWith("bulletin-") && key !== CACHE_NAME');
+  });
+});

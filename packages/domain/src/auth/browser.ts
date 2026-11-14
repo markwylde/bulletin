@@ -247,6 +247,14 @@ export class AccessDeniedError extends Error {
   }
 }
 
+/** The session was revoked; local member data must be cleared (ADR 0014, ADR 0018). */
+export class SessionRevokedError extends Error {
+  constructor() {
+    super("The session has been revoked");
+    this.name = "SessionRevokedError";
+  }
+}
+
 export async function loadSession(): Promise<BrowserSessionView> {
   const response = await fetch("/api/auth/session", {
     credentials: "include",
@@ -272,6 +280,8 @@ export async function loadSession(): Promise<BrowserSessionView> {
 
       throw new ReauthRequiredError();
     }
+
+    throw new SessionRevokedError();
   }
 
   if (response.status === 403) {
@@ -304,8 +314,11 @@ export interface LogoutDependencies {
   readonly storage: LogoutStorage;
   readonly redirect: (url: string) => void;
   readonly clearStashed: () => void;
-  /** Clears member-scoped client data (local drafts); called before the redirect (ADR 0014). */
-  readonly clearLocalData?: () => void;
+  /**
+   * Clears member-scoped client data (local and IndexedDB drafts); awaited before the redirect
+   * so a navigation cannot interrupt the wipe (ADR 0014).
+   */
+  readonly clearLocalData?: () => void | Promise<void>;
 }
 
 /**
@@ -372,14 +385,14 @@ export async function performLogout(dependencies: LogoutDependencies): Promise<b
 
   dependencies.storage.removeItem(CSRF_STORAGE_KEY);
   dependencies.clearStashed();
-  dependencies.clearLocalData?.();
+  await dependencies.clearLocalData?.();
   dependencies.redirect("/");
   return true;
 }
 
 export interface LogoutOptions {
   /** Extra member-scoped local data to discard after the server revoked the session. */
-  readonly clearLocalData?: () => void;
+  readonly clearLocalData?: () => void | Promise<void>;
 }
 
 /** Logout clears local data only after the server has confirmed revocation (ADR 0018). */

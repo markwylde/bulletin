@@ -25,6 +25,11 @@ export interface CreateAuthFetchOptions {
   readonly fetch?: AuthFetch;
   readonly storage?: AuthFetchStorage;
   readonly onReauthRequired?: (request: StashedRequest) => void;
+  /**
+   * A 401 without `reauth_required` means the session is gone; member-scoped local data must
+   * be cleared (ADR 0014, ADR 0018). A re-auth 401 keeps drafts because the same member returns.
+   */
+  readonly onSessionRevoked?: () => void | Promise<void>;
   /** Resolves the current member so a stash can never be reused by another account. */
   readonly ownerId?: () => string | null | Promise<string | null>;
 }
@@ -210,12 +215,13 @@ export function createAuthFetch(options: CreateAuthFetchOptions = {}): AuthFetch
       .clone()
       .json()
       .catch(() => null);
+    const code =
+      typeof payload === "object" && payload !== null
+        ? (payload as Record<string, unknown>).code
+        : undefined;
 
-    if (typeof payload !== "object" || payload === null) {
-      return response;
-    }
-
-    if ((payload as Record<string, unknown>).code !== "reauth_required") {
+    if (code !== "reauth_required") {
+      await options.onSessionRevoked?.();
       return response;
     }
 

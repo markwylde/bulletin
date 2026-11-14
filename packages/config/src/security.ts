@@ -36,6 +36,9 @@ export function contentSecurityPolicy(options: SecurityHeadersOptions): string {
     "font-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     `script-src 'self' 'nonce-${options.nonce}'`,
+    // The PWA manifest is same-origin and the service worker is our own script (ADR 0014).
+    "manifest-src 'self'",
+    "worker-src 'self'",
     frameSrc === null || frameSrc === "" ? "frame-src 'none'" : `frame-src ${frameSrc}`,
     "base-uri 'none'",
     "form-action 'self'",

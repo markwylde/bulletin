@@ -1,4 +1,6 @@
+import { memberFetch } from "../auth/client.ts";
 import { clientCsrfToken } from "../csrf.ts";
+import { isNetworkFailure, queueOfflineSubmission } from "../offline/submit.ts";
 import { type ConversationErrorLabels, conversationErrorPresentation } from "./errors.ts";
 
 interface PickedMember {
@@ -16,7 +18,7 @@ const SEARCH_DELAY_MS = 180;
 async function postJson(url: string, body: unknown): Promise<Response> {
   const token = await clientCsrfToken();
 
-  return fetch(url, {
+  return memberFetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -248,18 +250,23 @@ function newConversation(form: HTMLFormElement): void {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const recipientIds = selected().map((member) => member.id);
+    const payload = {
+      title: inputValue(form, "title"),
+      bodyMd: inputValue(form, "bodyMd"),
+      recipientIds,
+    };
 
     if (submit !== null) {
       submit.disabled = true;
     }
     showError(error, false);
 
-    void postJson("/api/conversations", {
-      title: inputValue(form, "title"),
-      bodyMd: inputValue(form, "bodyMd"),
-      recipientIds,
-    })
+    void postJson("/api/conversations", payload)
       .then(async (response) => {
+        if (response.status === 401) {
+          return;
+        }
+
         if (!response.ok) {
           await showApiFailure(response, form, error);
           return;
@@ -272,7 +279,16 @@ function newConversation(form: HTMLFormElement): void {
             : "/conversations",
         );
       })
-      .catch(() => showError(error, true))
+      .catch(async (failure: unknown) => {
+        if (
+          isNetworkFailure(failure) &&
+          (await queueOfflineSubmission(form, "/api/conversations", payload))
+        ) {
+          return;
+        }
+
+        showError(error, true);
+      })
       .finally(() => {
         if (submit !== null) {
           submit.disabled = false;
@@ -288,16 +304,20 @@ function reply(form: HTMLFormElement): void {
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    const url = `/api/conversations/${conversationId}/replies`;
+    const payload = { bodyMd: inputValue(form, "bodyMd") };
 
     if (submit !== null) {
       submit.disabled = true;
     }
     showError(error, false);
 
-    void postJson(`/api/conversations/${conversationId}/replies`, {
-      bodyMd: inputValue(form, "bodyMd"),
-    })
+    void postJson(url, payload)
       .then(async (response) => {
+        if (response.status === 401) {
+          return;
+        }
+
         if (!response.ok) {
           await showApiFailure(response, form, error);
           return;
@@ -305,7 +325,13 @@ function reply(form: HTMLFormElement): void {
 
         window.location.reload();
       })
-      .catch(() => showError(error, true))
+      .catch(async (failure: unknown) => {
+        if (isNetworkFailure(failure) && (await queueOfflineSubmission(form, url, payload))) {
+          return;
+        }
+
+        showError(error, true);
+      })
       .finally(() => {
         if (submit !== null) {
           submit.disabled = false;

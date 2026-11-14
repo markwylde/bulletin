@@ -13,6 +13,7 @@ import {
   writeDraft,
   writeReauthDraft,
 } from "./editor/drafts.ts";
+import { clearOfflineDrafts } from "./editor/offline-drafts.ts";
 import type { EditorCommand, EditorController, EditorMode, EditorProps } from "./editor/types.ts";
 import { uploadErrorMessage } from "./editor/upload-errors.ts";
 
@@ -181,7 +182,14 @@ function EditorContent({
       }
 
       // A different account on this browser must never see a previous member's local draft.
-      claimReauthDrafts(session.memberId);
+      if (claimReauthDrafts(session.memberId)) {
+        void clearOfflineDrafts();
+      }
+
+      document.documentElement.dataset.memberId = session.memberId;
+      window.dispatchEvent(
+        new CustomEvent("bulletin:member", { detail: { memberId: session.memberId } }),
+      );
       setMemberId(session.memberId);
       setCsrfToken(session.csrfToken);
       void readDraft(contextKey).then((value) => {

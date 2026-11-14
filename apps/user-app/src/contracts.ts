@@ -78,6 +78,15 @@ export const loginContract = defineContract({
   requiredIslands: ["LanguageSwitcher"],
 });
 
+export const offlineContract = defineContract({
+  route: "/offline",
+  templates: { page: "offline", regions: ["header", "footer"] },
+  deps: [],
+  tags: [],
+  cdnCacheable: false,
+  requiredIslands: ["LanguageSwitcher"],
+});
+
 export const callbackContract = defineContract({
   route: "/auth/callback",
   templates: { page: "callback", regions: ["header", "footer"] },
@@ -455,6 +464,7 @@ export const ROUTE_CONTRACTS: ViewModelContractRegistry = {
   [apiDocsContract.route]: apiDocsContract,
   [apiKeysContract.route]: apiKeysContract,
   [loginContract.route]: loginContract,
+  [offlineContract.route]: offlineContract,
   [callbackContract.route]: callbackContract,
   [demoContract.route]: demoContract,
   [forumContract.route]: forumContract,
