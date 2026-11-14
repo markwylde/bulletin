@@ -90,6 +90,8 @@ describe("seccomp profile", () => {
     // Bun creates /tmp/bun-node-*/node with symlink(2) on x86_64; a killed main thread left
     // the plugin hung before its handshake.
     expect(buildSeccompPolicy("x64")).toContain("#define SYS_symlink 88");
+    // Bun.spawn's vfork() is a real syscall on x86_64; without it a spawning plugin hangs.
+    expect(buildSeccompPolicy("x64")).toContain("#define SYS_vfork 58");
     expect(buildSeccompPolicy("arm64")).not.toContain("arch_prctl");
   });
 

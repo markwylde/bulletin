@@ -163,6 +163,8 @@ const ARCH_SYSCALLS: Readonly<Record<SandboxArch, Readonly<Record<string, number
     symlink: 88,
     time: 201,
     unlink: 87,
+    // Bun.spawn uses vfork(); musl issues the vfork syscall on x86_64 and clone on arm64.
+    vfork: 58,
     clone3: 435,
     close_range: 436,
     epoll_pwait2: 441,
