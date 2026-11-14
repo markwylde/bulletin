@@ -26,7 +26,13 @@ cd /app/apps/plugin-host && bun -e '
 cd /app/apps/plugin-host
 PLUGIN_HOST_MEASURE_ITERATIONS=1 timeout 60 strace -f -qq -o /tmp/sandbox-trace.txt \
   bun src/demo/measure.ts >/tmp/measure.out 2>&1
-echo "--- seccomp kills ---"
-grep -E "SIGSYS|SYS_SECCOMP" /tmp/sandbox-trace.txt | head -5
-echo "--- calls just before each kill ---"
-grep -B4 "SIGSYS" /tmp/sandbox-trace.txt | head -20
+echo "--- measure output ---"
+tail -15 /tmp/measure.out
+echo "--- killed / exited processes ---"
+grep -E "\+\+\+ (killed|exited)|si_code=SYS_SECCOMP" /tmp/sandbox-trace.txt | head -20
+echo "--- last calls of each killed process ---"
+for pid in $(grep -E "\+\+\+ killed" /tmp/sandbox-trace.txt | awk '{print $1}' | head -3); do
+  echo "pid $pid:"; grep -E "^$pid " /tmp/sandbox-trace.txt | tail -8
+done
+echo "--- execve calls ---"
+grep -E "execve\(" /tmp/sandbox-trace.txt | cut -c1-300 | head -10
