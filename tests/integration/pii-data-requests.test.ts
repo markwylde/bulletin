@@ -349,7 +349,9 @@ integrationDescribe("data subject requests", () => {
       await updateRequest(database, "decision-admin", requestId, "reject", "Too late");
       expect((await requestRow(database, requestId)).status).toBe("completed");
 
-      const second = await createRequest(database, "decision-alice", "erasure");
+      const secondMember = await createMember(database, "Decision Second");
+      await createSession(database, secondMember, "user", "decision-second");
+      const second = await createRequest(database, "decision-second", "erasure");
       expect(second).not.toBe(requestId);
       await updateRequest(database, "decision-admin", second, "reject", "Duplicate request");
       expect(await requestRow(database, second)).toMatchObject({

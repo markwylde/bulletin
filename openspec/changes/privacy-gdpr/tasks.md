@@ -16,10 +16,10 @@
 
 ## 4. Erasure
 
-- [ ] 4.1 Erasure request and confirmation listing retained categories, with a test for the active-ban scenario
-- [ ] 4.2 Erasure job (ordered idempotent steps, plugin `gdpr.erase`, anonymise or delete posts), with tests for both post choices and the plugin scenario, and a test that no restricted data remains
-- [ ] 4.3 Erasure fence (`members.state = 'erasing'`, credential revocation, login/write/intent/job refusal) with tests for both new scenarios
-- [ ] 4.4 Erasure coverage for name history, profile slugs, mention re-render, quote snapshot redaction before post handling, poll votes, reputation recount, badges, ignores and API keys, plus the erasure journal append; a test that a seeded member with data in every table is fully erased
+- [x] 4.1 Erasure request and confirmation listing retained categories, with a test for the active-ban scenario
+- [x] 4.2 Erasure job (ordered idempotent steps, plugin `gdpr.erase`, anonymise or delete posts), with tests for both post choices and the plugin scenario, and a test that no restricted data remains
+- [x] 4.3 Erasure fence (`members.state = 'erasing'`, credential revocation, login/write/intent/job refusal) with tests for both new scenarios
+- [x] 4.4 Erasure coverage for name history, profile slugs, mention re-render, quote snapshot redaction before post handling, poll votes, reputation recount, badges, ignores and API keys, plus the erasure journal append; a test that a seeded member with data in every table is fully erased
 
 ## 5. Staff tools
 

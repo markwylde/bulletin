@@ -10,6 +10,7 @@ const PII_TABLES = [
   "access_log",
   "data_request_steps",
   "data_requests",
+  "erasure_fences",
   "identities",
   "ip_log",
   "post_ips",

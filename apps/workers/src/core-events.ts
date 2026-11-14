@@ -10,6 +10,8 @@ export interface CoreEventHandlerOptions {
   readonly purger?: CdnPurger;
   /** Enqueues the export job after the member's request commits. */
   readonly enqueueExport?: (requestId: string) => Promise<void>;
+  /** Enqueues the erasure job after the approving fence commits. */
+  readonly enqueueErasure?: (requestId: string) => Promise<void>;
   readonly logger?: Logger;
 }
 
@@ -30,6 +32,20 @@ export function createCoreEventHandler(
 
       if (options.enqueueExport !== undefined) {
         await options.enqueueExport(requestId);
+      }
+
+      return;
+    }
+
+    if (event.type === "privacy.erasure.accepted") {
+      const requestId = event.payloadIds.requestId;
+
+      if (requestId === undefined) {
+        throw new Error("privacy.erasure.accepted has no request id");
+      }
+
+      if (options.enqueueErasure !== undefined) {
+        await options.enqueueErasure(requestId);
       }
 
       return;

@@ -20,6 +20,7 @@ import {
   createBanJobs,
   createContentJobs,
   createConversationJobs,
+  createErasureJobs,
   createExportJobs,
   createForumJobs,
   createLeaderboardJobs,
@@ -32,6 +33,7 @@ import {
   createWarningJobs,
   createWebhookEventHandler,
   createWebhookJobs,
+  ERASURE_QUEUE,
   EXPORT_QUEUE,
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
@@ -157,6 +159,9 @@ const enqueueEmail = async (intentId: string): Promise<void> => {
 const enqueueExport = async (requestId: string): Promise<void> => {
   await boss.boss.send(EXPORT_QUEUE, { requestId }, { singletonKey: `export:${requestId}` });
 };
+const enqueueErasure = async (requestId: string): Promise<void> => {
+  await boss.boss.send(ERASURE_QUEUE, { requestId }, { singletonKey: `erasure:${requestId}` });
+};
 const enqueuePush = async (intentId: string): Promise<void> => {
   await boss.boss.send("push", { intentId }, { singletonKey: `push:${intentId}` });
 };
@@ -210,6 +215,14 @@ const exportJobs = await createExportJobs({
   enqueueEmail,
   logger,
 });
+const erasureJobs = await createErasureJobs({
+  boss: boss.boss,
+  sql,
+  storage,
+  pluginHostUrl: Bun.env.PLUGIN_HOST_INTERNAL_URL ?? "http://plugin-host:3004",
+  pluginToken: Bun.env.PLUGIN_INTERNAL_TOKEN ?? "bulletin-development-only-internal-token",
+  logger,
+});
 const eventWorker = await createEventWorker({
   boss: boss.boss,
   sql,
@@ -218,6 +231,7 @@ const eventWorker = await createEventWorker({
       sql,
       ...(purger === undefined ? {} : { purger }),
       enqueueExport,
+      enqueueErasure,
       logger,
     }),
     reputation: createReputationEventHandler({ boss: boss.boss, logger }),
@@ -314,6 +328,7 @@ await startService({
     await emailJobs.stop();
     await pushJobs.stop();
     await exportJobs.stop();
+    await erasureJobs.stop();
     await maintenanceJobs.stop();
     await retentionJobs.stop();
     await leaderboardJobs.stop();
@@ -342,6 +357,7 @@ await startService({
   await emailJobs.stop();
   await pushJobs.stop();
   await exportJobs.stop();
+  await erasureJobs.stop();
   await maintenanceJobs.stop();
   await retentionJobs.stop();
   await leaderboardJobs.stop();

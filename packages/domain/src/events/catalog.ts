@@ -104,6 +104,10 @@ export const EVENT_CATALOG = {
     aggregateType: "data_request",
     payloadIds: ["requestId", "memberId"],
   },
+  "privacy.erasure.accepted": {
+    aggregateType: "data_request",
+    payloadIds: ["requestId", "memberId"],
+  },
   // A forum's visibility may have changed for some group; workers purge its CDN subtree.
   "forum.visibility.changed": {
     aggregateType: "forum",
