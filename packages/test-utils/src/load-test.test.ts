@@ -1,0 +1,165 @@
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  CAPACITY_THRESHOLDS,
+  evaluateLoad,
+  formatLoadReport,
+  type LoadConfig,
+  mergeResults,
+  newSamples,
+  percentile,
+  recordSample,
+  runLoadTest,
+  splitUsers,
+} from "./load-test.ts";
+
+describe("load test arithmetic", () => {
+  test("percentiles come from 0.1 ms buckets", () => {
+    const samples = newSamples("guest", "/");
+
+    for (let index = 1; index <= 100; index += 1) {
+      recordSample(samples, index, true);
+    }
+
+    recordSample(samples, 5, false);
+    expect(samples.count).toBe(101);
+    expect(samples.errors).toBe(1);
+    expect(percentile(samples.buckets, 0.5)).toBe(50);
+    expect(percentile(samples.buckets, 0.95)).toBe(95);
+  });
+
+  test("users split across threads keep their totals", () => {
+    const shares = splitUsers(
+      { guests: 10, cdnGuests: 1, members: 3, sseClients: 0, writesPerSecond: 50 },
+      4,
+    );
+    expect(shares.reduce((total, share) => total + share.guests, 0)).toBe(10);
+    expect(shares.reduce((total, share) => total + share.members, 0)).toBe(3);
+    expect(shares.reduce((total, share) => total + share.writesPerSecond, 0)).toBe(50);
+  });
+
+  test("throttled writes, lagging queues and variant blow-ups fail the run", () => {
+    const writes = newSamples("writer", "/api/topics/[id]/replies");
+
+    for (let index = 0; index < 100; index += 1) {
+      recordSample(writes, 20, index % 2 === 0);
+    }
+
+    const merged = mergeResults([{ routes: [writes], sseOpened: 3, sseFailed: 1 }], 10_000);
+    const failures = evaluateLoad(
+      merged.routes,
+      merged.sse,
+      {
+        maxQueueLagSeconds: 12,
+        laggingQueue: "domain-events",
+        variants: [{ route: "/topic/[id]", variants: 200 }],
+      },
+      CAPACITY_THRESHOLDS,
+      { writesPerSecond: 50, sseClients: 4 },
+    );
+
+    expect(failures).toEqual([
+      "error rate 50.00% exceeds 1.00%",
+      "writes: 5.0/s sustained, below 50/s",
+      "sse: 3 of 4 streams opened",
+      "queue domain-events: lag 12.0 s exceeds 5 s",
+      "variants /topic/[id]: 200 exceeds the budget of 64",
+    ]);
+  });
+});
+
+describe("load test against a stand-in origin", () => {
+  let server: ReturnType<typeof Bun.serve>;
+  let replies = 0;
+
+  beforeAll(() => {
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      async fetch(request) {
+        const { pathname } = new URL(request.url);
+
+        if (pathname === "/slow") {
+          // The planted latency regression.
+          await Bun.sleep(45);
+        }
+
+        if (pathname === "/metrics") {
+          return new Response(
+            [
+              'bulletin_queue_lag_seconds{queue="domain-events"} 0.4',
+              'bulletin_cache_variants{route="/"} 3',
+            ].join("\n"),
+          );
+        }
+
+        if (pathname === "/api/auth/session") {
+          return Response.json({ csrfToken: "token" });
+        }
+
+        if (pathname.endsWith("/replies")) {
+          replies += 1;
+          return request.headers.get("x-bulletin-csrf") === "token"
+            ? Response.json({ ok: true }, { status: 201 })
+            : Response.json({ code: "csrf" }, { status: 403 });
+        }
+
+        return new Response("<p>ok</p>", { headers: { "content-type": "text/html" } });
+      },
+    });
+  });
+
+  afterAll(() => {
+    server.stop(true);
+  });
+
+  function config(guestPaths: readonly string[]): LoadConfig {
+    const baseUrl = `http://127.0.0.1:${server.port}`;
+
+    return {
+      baseUrl,
+      durationMs: 1_500,
+      warmupMs: 200,
+      thinkMs: 20,
+      users: { guests: 4, cdnGuests: 0, members: 2, sseClients: 0, writesPerSecond: 10 },
+      guestPaths,
+      memberPaths: ["/"],
+      overlayContexts: ["board"],
+      sessions: [{ cookie: "bl_session=a" }],
+      writerSessions: [{ cookie: "bl_session=b" }],
+      replyTopicIds: ["1"],
+      threads: 2,
+      metricsUrls: [`${baseUrl}/metrics`],
+    };
+  }
+
+  test("passes when every route meets its threshold", async () => {
+    const report = await runLoadTest(config(["/", "/fast"]), {
+      ...CAPACITY_THRESHOLDS,
+      writesPerSecond: 10,
+    });
+
+    expect(report.failures).toEqual([]);
+    expect(report.passed).toBe(true);
+    expect(report.routes.map((route) => `${route.role} ${route.route}`)).toEqual([
+      "guest /",
+      "guest /fast",
+      "member /",
+      "member /api/me/overlay",
+      "writer /api/topics/[id]/replies",
+    ]);
+    expect(replies).toBeGreaterThan(10);
+    expect(report.metrics.maxQueueLagSeconds).toBe(0.4);
+  }, 15_000);
+
+  test("fails on a planted latency regression and names the route", async () => {
+    const report = await runLoadTest(config(["/", "/slow"]), {
+      ...CAPACITY_THRESHOLDS,
+      writesPerSecond: 10,
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.failures).toHaveLength(1);
+    expect(report.failures[0]).toMatch(/^guest \/slow: p95 \d+\.\d ms exceeds 30 ms$/);
+    expect(formatLoadReport(report)).toContain("FAIL guest /slow");
+  }, 15_000);
+});

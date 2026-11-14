@@ -12,7 +12,7 @@
 ## 3. Capacity
 
 - [x] 3.1 Implement the `SEED_SIZE=large` profile (1M posts) and verify it seeds deterministically
-- [ ] 3.2 Implement the load test script with thresholds, and the nightly CI job; verify it fails on a planted latency regression
+- [x] 3.2 Implement the load test script with thresholds, and the nightly CI job; verify it fails on a planted latency regression
 
 ## 4. Backups and docs
 

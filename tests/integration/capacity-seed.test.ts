@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   baseSeedModule,
   CAPACITY_PROFILES,
+  CAPACITY_WRITER_SUBS,
   type CapacityProfile,
   capacityPlan,
   capacitySeedModule,
@@ -122,6 +123,16 @@ integrationDescribe("capacity seed", () => {
           primaries: 40,
           bad_forums: 0,
         });
+
+        // The load-test writers post without the flood interval (min merge over groups).
+        const writers = (await database.sql`
+          SELECT count(*)::int AS members, min(s.value::text) AS flood
+          FROM core.member_groups mg
+          JOIN core.groups g ON g.id = mg.group_id AND g.key = 'load_writers'
+          JOIN core.group_settings s
+            ON s.group_id = g.id AND s.key = 'posting.flood_control_seconds'
+        `) as Array<{ members: number; flood: string }>;
+        expect(writers[0]).toEqual({ members: CAPACITY_WRITER_SUBS.length, flood: "0" });
 
         digests.push(await capacityDigest(database));
       });

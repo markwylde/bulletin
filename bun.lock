@@ -290,6 +290,7 @@
       "name": "@bulletin/test-utils",
       "dependencies": {
         "@bulletin/cache": "workspace:*",
+        "@bulletin/config": "workspace:*",
         "@bulletin/db": "workspace:*",
       },
     },

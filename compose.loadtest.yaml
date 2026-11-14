@@ -1,0 +1,18 @@
+# Nightly capacity run (operations-observability task 3.2): the large seed plus the services'
+# internal /metrics ports published on loopback, so scripts/load-test.ts can read queue lag
+# and cache variants while it drives load. Never used for production.
+#
+#   SEED_SIZE=large docker compose -f compose.yaml -f compose.loadtest.yaml up -d --build --wait
+services:
+  user-app:
+    ports:
+      - "127.0.0.1:19464:9464"
+  user-api:
+    ports:
+      - "127.0.0.1:19465:9464"
+  workers:
+    ports:
+      - "127.0.0.1:19466:9464"
+  plugin-host:
+    ports:
+      - "127.0.0.1:19467:9464"

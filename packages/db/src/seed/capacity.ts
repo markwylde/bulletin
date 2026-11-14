@@ -3,6 +3,7 @@ import { renderContent } from "@bulletin/content";
 import { displayNameSkeleton } from "@bulletin/domain/member";
 import type { SQL } from "bun";
 import type { SeedModule } from "./framework.ts";
+import { SEEDED_PROFILES } from "./members.ts";
 
 /**
  * The `SEED_SIZE=large` capacity dataset (ADR 0020): 1M posts and enough authors to drive the
@@ -32,6 +33,19 @@ const BODIES = [
   "A capacity test post.\n\nIt is long enough to look like a real reply, with a second paragraph that talks about everyday forum things: bookmarks, notifications and a calm inbox.",
   "Another reply in the capacity dataset.\n\n- one point\n- another point\n\nThanks for reading.",
   "Short and sweet: **agreed**, and thanks for sharing the link earlier in the thread.",
+] as const;
+
+/**
+ * Seeded subjects the load test posts as. They join a `load_writers` secondary group with
+ * flood control off (the `min` merge rule), so 50 writes/s measures the write path rather than
+ * the per-member flood interval. Only the capacity profile creates this group.
+ */
+export const CAPACITY_WRITER_SUBS = [
+  "member-1",
+  "member-2",
+  "member-es",
+  "member-fr",
+  "vip-member",
 ] as const;
 
 /** A Postgres array literal; Bun SQL does not bind JS arrays as array parameters. */
@@ -98,7 +112,37 @@ async function seedCapacityMembers(sql: SQL, total: number): Promise<string[]> {
  * Seeds capacity topics and posts until the database holds `profile.posts` posts, then
  * recomputes the topic, forum and member counters for what it added.
  */
+async function seedLoadWriters(sql: SQL): Promise<void> {
+  const names = SEEDED_PROFILES.filter((profile) =>
+    (CAPACITY_WRITER_SUBS as readonly string[]).includes(profile.sub),
+  ).flatMap((profile) => (profile.name === null ? [] : [profile.name]));
+  const [group] = (await sql`
+    INSERT INTO core.groups (key, title, is_system, display_order)
+    VALUES ('load_writers', 'Load test writers', false, 900)
+    ON CONFLICT (key) DO UPDATE SET title = EXCLUDED.title
+    RETURNING id
+  `) as Array<{ id: string }>;
+
+  if (group === undefined) {
+    return;
+  }
+
+  await sql`
+    INSERT INTO core.group_settings (group_id, key, value)
+    VALUES (${group.id}, 'posting.flood_control_seconds', '0'::jsonb)
+    ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+  `;
+  await sql`
+    INSERT INTO core.member_groups (member_id, group_id, is_primary)
+    SELECT m.id, ${group.id}, false
+    FROM core.members m
+    WHERE m.display_name = ANY(${pgArray(names)}::text[])
+    ON CONFLICT DO NOTHING
+  `;
+}
+
 export async function seedCapacity(sql: SQL, profile: CapacityProfile): Promise<CapacityPlan> {
+  await seedLoadWriters(sql);
   const plan = capacityPlan(profile, await count(sql, "posts"));
 
   if (plan.posts === 0) {
