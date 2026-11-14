@@ -24,6 +24,7 @@ import { WarningsPage } from "./moderation/WarningsPage.tsx";
 import { ModeratorsPage } from "./moderators/ModeratorsPage.tsx";
 import { MasksPage } from "./permissions/MasksPage.tsx";
 import { PluginsPage } from "./plugins/PluginsPage.tsx";
+import { RetentionPage } from "./privacy/RetentionPage.tsx";
 import { PromotionsPage } from "./promotions/PromotionsPage.tsx";
 import { RanksPage } from "./ranks/RanksPage.tsx";
 import { ReactionsPage } from "./reactions/ReactionsPage.tsx";
@@ -44,6 +45,7 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   adminLog: AdminLogPage,
   deadLetters: DeadLettersPage,
   boardSettings: BoardSettingsPage,
+  privacyRetention: RetentionPage,
   emoticons: EmoticonsPage,
   filters: FiltersPage,
   stringOverrides: StringOverridesPage,

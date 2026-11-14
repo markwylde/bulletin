@@ -25,6 +25,7 @@ import {
   createMaintenanceJobs,
   createPromotionJobs,
   createReputationJobs,
+  createRetentionJobs,
   createSearchJobs,
   createUnfurlJobs,
   createWarningJobs,
@@ -237,6 +238,7 @@ const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger }
 const reputationJobs = await createReputationJobs({ boss: boss.boss, sql, logger });
 const searchJobs = await createSearchJobs({ boss: boss.boss, sql, logger });
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
+const retentionJobs = await createRetentionJobs({ boss: boss.boss, sql, storage, logger });
 const forumJobs = await createForumJobs({ boss: boss.boss, sql, logger });
 const contentJobs = await createContentJobs({ boss: boss.boss, sql, logger });
 const unfurlJobs = await createUnfurlJobs({ boss: boss.boss, sql, logger, storage });
@@ -297,6 +299,7 @@ await startService({
     await emailJobs.stop();
     await pushJobs.stop();
     await maintenanceJobs.stop();
+    await retentionJobs.stop();
     await leaderboardJobs.stop();
     await badgeJobs.stop();
     await forumJobs.stop();
@@ -323,6 +326,7 @@ await startService({
   await emailJobs.stop();
   await pushJobs.stop();
   await maintenanceJobs.stop();
+  await retentionJobs.stop();
   await leaderboardJobs.stop();
   await badgeJobs.stop();
   await forumJobs.stop();

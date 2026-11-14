@@ -349,6 +349,15 @@ const PERMISSION_DEFINITIONS = [
     labelKey: "staff.groups.permission.privacyAudit",
   },
   {
+    key: "privacy.manage",
+    kind: "permission",
+    type: "bool",
+    merge: "allow-any",
+    defaultValue: false,
+    section: "acp",
+    labelKey: "staff.groups.permission.privacyManage",
+  },
+  {
     key: "reports.members",
     kind: "permission",
     type: "bool",

@@ -540,6 +540,97 @@ integrationDescribe("staff API permission guard", () => {
     });
   }, 30_000);
 
+  test("manages privacy retention settings and denies a moderator", async () => {
+    await withDb("staff_privacy_retention", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Privacy Administrator", ["administrators"]);
+        const admin = await createSession(database, adminId);
+        const moderatorId = await createMember(database, "Privacy Moderator", [
+          "members",
+          "super_moderators",
+        ]);
+        const moderator = await createSession(database, moderatorId);
+
+        const before = await callRoute(api, route("privacy.retention"), admin);
+        expect(before.status).toBe(200);
+        expect(await before.json()).toEqual({
+          ipLogDays: 90,
+          sessionMetaDays: 30,
+          revokedSessionDays: 7,
+          accessLogDays: 730,
+          exportDays: 7,
+          ipBanDays: 365,
+        });
+
+        expect(await callRoute(api, route("privacy.retention"), moderator)).toHaveProperty(
+          "status",
+          403,
+        );
+        expect(
+          await callRoute(api, route("privacy.retention.update"), moderator, {
+            ipLogDays: 10,
+          }),
+        ).toHaveProperty("status", 403);
+
+        const saved = await callRoute(api, route("privacy.retention.update"), admin, {
+          ipLogDays: 120,
+          sessionMetaDays: 45,
+          revokedSessionDays: 10,
+          accessLogDays: 1_000,
+          exportDays: 14,
+          ipBanDays: 500,
+        });
+        expect(saved.status).toBe(200);
+        expect(await saved.json()).toEqual({
+          ipLogDays: 120,
+          sessionMetaDays: 45,
+          revokedSessionDays: 10,
+          accessLogDays: 1_000,
+          exportDays: 14,
+          ipBanDays: 500,
+        });
+
+        const invalid = await callRoute(api, route("privacy.retention.update"), admin, {
+          ipLogDays: 0,
+        });
+        expect(invalid.status).toBe(400);
+        expect(await invalid.json()).toEqual({
+          code: "invalid_settings",
+          fields: ["ipLogDays"],
+        });
+
+        const after = await callRoute(api, route("privacy.retention"), admin);
+        expect(await after.json()).toMatchObject({ ipLogDays: 120, ipBanDays: 500 });
+
+        const [entry] = (await database.sql`
+          SELECT actor_member_id, action, summary->'before'->>'ipLogDays' AS before_ip_days,
+            summary->'after'->>'ipLogDays' AS after_ip_days
+          FROM core.admin_log
+          WHERE action = 'privacy.retention.update'
+          ORDER BY id DESC
+          LIMIT 1
+        `) as Array<{
+          actor_member_id: string;
+          action: string;
+          before_ip_days: string;
+          after_ip_days: string;
+        }>;
+
+        expect(entry).toMatchObject({
+          actor_member_id: adminId,
+          action: "privacy.retention.update",
+          before_ip_days: "90",
+          after_ip_days: "120",
+        });
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
   test("saves, lists and reverts string overrides with admin log entries", async () => {
     await withDb("staff_string_overrides", async (database) => {
       const { api, auth, sql } = await createStaffApiFor(database);

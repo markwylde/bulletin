@@ -8,7 +8,7 @@
 
 ## 2. Retention
 
-- [ ] 2.1 Retention settings (staff screen, defaults) and the nightly purge job across `pii` and core categories; integration tests for each category expiring
+- [x] 2.1 Retention settings (staff screen, defaults) and the nightly purge job across `pii` and core categories; integration tests for each category expiring
 
 ## 3. Export
 

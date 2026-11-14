@@ -111,15 +111,22 @@ export async function recordPostIp(sql: SQL, postId: string, ip: string | null):
   await sql`SELECT pii.record_post_ip(${postId}, ${ip}::inet)`;
 }
 
-export async function purgeExpiredPii(
-  sql: SQL,
-): Promise<{ readonly postIps: number; readonly loginIps: number; readonly accessLog: number }> {
+export interface PiiPurgeResult {
+  readonly postIps: number;
+  readonly loginIps: number;
+  readonly accessLog: number;
+  readonly sessionMeta: number;
+}
+
+export async function purgeExpiredPii(sql: SQL, now: Date = new Date()): Promise<PiiPurgeResult> {
   const rows = (await sql`
-    SELECT post_ips, login_ips, access_log FROM pii.purge_expired()
+    SELECT post_ips, login_ips, access_log, session_meta
+    FROM pii.purge_expired(${now})
   `) as Array<{
     post_ips: string | number;
     login_ips: string | number;
     access_log: string | number;
+    session_meta: string | number;
   }>;
   const row = rows[0];
 
@@ -127,5 +134,35 @@ export async function purgeExpiredPii(
     postIps: Number(row?.post_ips ?? 0),
     loginIps: Number(row?.login_ips ?? 0),
     accessLog: Number(row?.access_log ?? 0),
+    sessionMeta: Number(row?.session_meta ?? 0),
   };
+}
+
+export interface ExpiredExport {
+  readonly requestId: string;
+  readonly exportKey: string;
+}
+
+export async function readExpiredExports(
+  sql: SQL,
+  now: Date = new Date(),
+): Promise<readonly ExpiredExport[]> {
+  const rows = (await sql`
+    SELECT request_id::text AS request_id, export_key
+    FROM pii.expired_exports(${now})
+  `) as Array<{ request_id: string; export_key: string }>;
+
+  return rows.map((row) => ({ requestId: row.request_id, exportKey: row.export_key }));
+}
+
+export async function clearExpiredExport(
+  sql: SQL,
+  requestId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const rows = (await sql`
+    SELECT pii.clear_expired_export(${requestId}, ${now}) AS cleared
+  `) as Array<{ cleared: boolean }>;
+
+  return rows[0]?.cleared === true;
 }

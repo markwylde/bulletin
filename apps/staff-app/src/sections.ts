@@ -1,4 +1,4 @@
-import type { AcpPermission } from "@bulletin/domain/permissions";
+import type { PermissionKey } from "@bulletin/domain/permissions";
 
 export type StaffNavGroup = "overview" | "configuration";
 
@@ -22,7 +22,7 @@ export interface StaffSection {
   readonly id: string;
   readonly path: string;
   readonly navGroup: StaffNavGroup;
-  readonly permission: AcpPermission;
+  readonly permission: PermissionKey;
   readonly icon: StaffIcon;
   readonly labelKey: string;
 }
@@ -100,6 +100,14 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     permission: "acp.settings",
     icon: "settings",
     labelKey: "staff.nav.boardSettings",
+  },
+  {
+    id: "privacyRetention",
+    path: "/privacy/retention",
+    navGroup: "configuration",
+    permission: "privacy.manage",
+    icon: "settings",
+    labelKey: "staff.nav.privacyRetention",
   },
   {
     id: "filters",

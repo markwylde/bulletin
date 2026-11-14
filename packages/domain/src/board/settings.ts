@@ -25,8 +25,6 @@ export interface BoardSettings {
   readonly publicEditHistory: boolean;
   /** Hold a new member's first N approved posts and topics; zero is off. */
   readonly newMemberApprovalPosts: number;
-  /** How long post and login IP records are kept (ADR 0012). */
-  readonly ipRetentionDays: number;
   readonly attachmentAllowedTypes: readonly AttachmentContentType[];
   /** Reactions with a non-zero weight add reputation entries (reputation spec). */
   readonly reactionsAffectReputation: boolean;
@@ -50,8 +48,6 @@ export interface BoardSettingsInput {
   readonly publicEditHistory: boolean;
   /** Hold a new member's first N approved posts and topics; zero is off. */
   readonly newMemberApprovalPosts: number;
-  /** How long post and login IP records are kept (ADR 0012). */
-  readonly ipRetentionDays: number;
   readonly attachmentAllowedTypes: readonly AttachmentContentType[];
   readonly reactionsAffectReputation: boolean;
   readonly reputationDisplay: boolean;
@@ -70,7 +66,6 @@ export const EMPTY_BOARD_SETTINGS: BoardSettings = {
   postsPerPage: 20,
   publicEditHistory: false,
   newMemberApprovalPosts: 0,
-  ipRetentionDays: 90,
   attachmentAllowedTypes: DEFAULT_ATTACHMENT_TYPES,
   reactionsAffectReputation: false,
   reputationDisplay: true,
@@ -83,7 +78,7 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
   const rows = (await sql`
     SELECT board_name, board_description, default_locale, offline, offline_message,
       topics_per_page, posts_per_page, public_edit_history, new_member_approval_posts,
-      ip_retention_days, attachment_allowed_types, reactions_affect_reputation, reputation_display,
+      attachment_allowed_types, reactions_affect_reputation, reputation_display,
       reputation_label_scale, api_key_rate_limit_per_minute, api_ip_rate_limit_per_minute
     FROM core.board_settings
     WHERE id = 1
@@ -97,7 +92,6 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     posts_per_page: number;
     public_edit_history: boolean;
     new_member_approval_posts: number;
-    ip_retention_days: number;
     attachment_allowed_types: string[] | null;
     reactions_affect_reputation: boolean;
     reputation_display: boolean;
@@ -117,7 +111,6 @@ export async function readBoardSettings(sql: SQL): Promise<BoardSettings> {
     postsPerPage: row?.posts_per_page ?? 20,
     publicEditHistory: row?.public_edit_history ?? false,
     newMemberApprovalPosts: row?.new_member_approval_posts ?? 0,
-    ipRetentionDays: row?.ip_retention_days ?? 90,
     attachmentAllowedTypes:
       row?.attachment_allowed_types === null || row?.attachment_allowed_types === undefined
         ? DEFAULT_ATTACHMENT_TYPES
@@ -243,16 +236,6 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
           approvalValue <= 1_000
         ? approvalValue
         : null;
-  const retention = value.ipRetentionDays;
-  const ipRetentionDays =
-    retention === undefined
-      ? 90
-      : typeof retention === "number" &&
-          Number.isInteger(retention) &&
-          retention >= 1 &&
-          retention <= 3_650
-        ? retention
-        : null;
   const reactionsAffectReputation = value.reactionsAffectReputation === true;
   const reputationDisplay = value.reputationDisplay !== false;
   const apiKeyRateLimitPerMinute = rateLimit(value.apiKeyRateLimitPerMinute, 60);
@@ -298,10 +281,6 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
     fields.push("newMemberApprovalPosts");
   }
 
-  if (ipRetentionDays === null) {
-    fields.push("ipRetentionDays");
-  }
-
   if (apiKeyRateLimitPerMinute === null) {
     fields.push("apiKeyRateLimitPerMinute");
   }
@@ -330,7 +309,6 @@ export function parseBoardSettingsInput(value: unknown): BoardSettingsParseResul
       postsPerPage: postsPerPage ?? 20,
       publicEditHistory,
       newMemberApprovalPosts: newMemberApprovalPosts ?? 0,
-      ipRetentionDays: ipRetentionDays ?? 90,
       attachmentAllowedTypes,
       reactionsAffectReputation,
       reputationDisplay,
