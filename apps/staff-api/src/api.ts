@@ -94,7 +94,13 @@ import {
   uninstallPlugin,
 } from "./plugin-manager.ts";
 import { deletePrefix, listPrefixesAdmin, type PrefixMutation, savePrefix } from "./prefixes.ts";
-import { loadPrivacyRetention, savePrivacyRetention } from "./privacy.ts";
+import {
+  accessLogResponse,
+  dataRequestsResponse,
+  loadPrivacyRetention,
+  savePrivacyRetention,
+  updateDataRequestResponse,
+} from "./privacy.ts";
 import { listProfileFieldsForStaff, mutateProfileFieldForStaff } from "./profile-fields.ts";
 import { mutateMemberProfileForStaff, readMemberProfileForStaff } from "./profiles.ts";
 import {
@@ -1440,6 +1446,28 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/privacy/retention",
     permission: "privacy.manage",
     handler: updatePrivacyRetention,
+  },
+  {
+    id: "privacy.requests",
+    method: "GET",
+    path: "/api/staff/privacy/requests",
+    permission: "privacy.requests",
+    handler: async ({ sql, request }) => dataRequestsResponse(sql, request),
+  },
+  {
+    id: "privacy.requests.update",
+    method: "POST",
+    path: "/api/staff/privacy/requests",
+    permission: "privacy.requests",
+    handler: async ({ sql, session, request }) =>
+      updateDataRequestResponse(sql, session.memberId, request),
+  },
+  {
+    id: "privacy.accessLog",
+    method: "GET",
+    path: "/api/staff/privacy/access-log",
+    permission: "privacy.audit",
+    handler: async ({ sql, request }) => accessLogResponse(sql, request),
   },
   {
     id: "settings.embeds",

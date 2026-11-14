@@ -1154,6 +1154,22 @@ textarea.form-input {
   background: color-mix(in srgb, var(--warning) 8%, transparent);
 }
 
+.data-row-overdue {
+  background: color-mix(in srgb, var(--danger, #b42318) 8%, transparent);
+}
+
+.data-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.data-request-actions input {
+  min-width: 8rem;
+  max-width: 12rem;
+}
+
 .flag-meta {
   display: grid;
   gap: 0.45rem;

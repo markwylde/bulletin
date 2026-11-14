@@ -24,6 +24,8 @@ import { WarningsPage } from "./moderation/WarningsPage.tsx";
 import { ModeratorsPage } from "./moderators/ModeratorsPage.tsx";
 import { MasksPage } from "./permissions/MasksPage.tsx";
 import { PluginsPage } from "./plugins/PluginsPage.tsx";
+import { DataRequestsPage } from "./privacy/DataRequestsPage.tsx";
+import { PiiAccessLogPage } from "./privacy/PiiAccessLogPage.tsx";
 import { RetentionPage } from "./privacy/RetentionPage.tsx";
 import { PromotionsPage } from "./promotions/PromotionsPage.tsx";
 import { RanksPage } from "./ranks/RanksPage.tsx";
@@ -46,6 +48,8 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   deadLetters: DeadLettersPage,
   boardSettings: BoardSettingsPage,
   privacyRetention: RetentionPage,
+  privacyRequests: DataRequestsPage,
+  privacyAudit: PiiAccessLogPage,
   emoticons: EmoticonsPage,
   filters: FiltersPage,
   stringOverrides: StringOverridesPage,

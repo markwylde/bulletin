@@ -16,7 +16,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function sessionToken(request: Request): string | null {
+export function staffSessionToken(request: Request): string | null {
   const env = process.env.NODE_ENV === "production" ? "production" : "development";
   return parseCookieHeader(request.headers.get("cookie"))[sessionCookieName("staff", env)] ?? null;
 }
@@ -38,7 +38,7 @@ export async function openIpAccessResponse(
     return json({ code: "invalid_request" }, 400);
   }
 
-  const token = sessionToken(request);
+  const token = staffSessionToken(request);
 
   if (token === null) {
     return json({ code: "unauthenticated" }, 401);
@@ -77,7 +77,7 @@ export async function readIpAccessResponse(sql: SQL, request: Request): Promise<
     return json({ code: "invalid_request" }, 400);
   }
 
-  const token = sessionToken(request);
+  const token = staffSessionToken(request);
 
   if (token === null) {
     return json({ code: "unauthenticated" }, 401);

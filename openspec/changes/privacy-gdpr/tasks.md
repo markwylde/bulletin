@@ -23,8 +23,8 @@
 
 ## 5. Staff tools
 
-- [ ] 5.1 Data request queue (status, due dates, overdue highlight, process/reject), with permission-denial tests; E2E at 360
-- [ ] 5.2 PII access log viewer (`privacy.audit`) with filters, with permission-denial tests
+- [x] 5.1 Data request queue (status, due dates, overdue highlight, process/reject), with permission-denial tests; E2E at 360
+- [x] 5.2 PII access log viewer (`privacy.audit`) with filters, with permission-denial tests
 
 ## 6. Member pages, strings and seed
 

@@ -1,5 +1,10 @@
 import type { SQL } from "bun";
-import { type AcpPermission, isAcpPermissionKey, PERMISSION_KEYS } from "./registry.ts";
+import {
+  type AcpPermission,
+  isAcpPermissionKey,
+  PERMISSION_KEYS,
+  type PermissionKey,
+} from "./registry.ts";
 
 /**
  * The ACP permission set from the typed registry (ADR 0005). `groups-permissions` replaced the
@@ -37,4 +42,22 @@ export async function acpPermissionsFor(sql: SQL, memberId: string): Promise<Acp
   const granted = new Set(rows.map((row) => row.key));
 
   return ACP_PERMISSIONS.filter((permission) => granted.has(permission));
+}
+
+/**
+ * The staff-session permission list: ACP sections plus the privacy permissions whose screens
+ * are staff-only but are not `acp.*` (ADR 0012, ADR 0005).
+ */
+export async function staffPermissionsFor(sql: SQL, memberId: string): Promise<PermissionKey[]> {
+  const rows = (await sql`
+    SELECT DISTINCT s.key
+    FROM core.member_groups mg
+    JOIN core.group_settings s ON s.group_id = mg.group_id
+    WHERE mg.member_id = ${memberId}
+      AND (s.key LIKE 'acp.%' OR s.key LIKE 'privacy.%')
+      AND s.value = 'true'::jsonb
+  `) as Array<{ key: string }>;
+  const granted = new Set(rows.map((row) => row.key));
+
+  return PERMISSION_KEYS.filter((permission) => granted.has(permission));
 }
