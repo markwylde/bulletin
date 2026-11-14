@@ -154,10 +154,6 @@ jobs:
         if: matrix.shard == 0
         run: bun run test:integration
 
-      - name: Latency benchmark (ADR 0006)
-        if: matrix.shard == 0
-        run: bun run benchmark
-
       - name: Run E2E shard
         if: matrix.shard != 0
         run: bun run test:e2e --shard=${{ matrix.shard }}/8
@@ -183,3 +179,43 @@ jobs:
           else
             docker compose down -v --rmi local
           fi
+
+  benchmark:
+    # Latency is measured on its own once the E2E shards have finished: with up to four
+    # stacks and Chrome sharing a runner host, p95 measures the host's contention rather
+    # than the code. The ADR 0006 thresholds are still enforced.
+    name: Latency benchmark (ADR 0006)
+    needs: e2e
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE_FILE: compose.yaml:compose.ci.yaml
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-benchmark
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+
+      - name: Pick a proxy port
+        run: |
+          echo "BULLETIN_HTTP_PORT=$((20000 + (${{ github.run_id }} % 4000) * 10 + 9))" >> "$GITHUB_ENV"
+
+      - name: Start the full stack
+        run: docker compose up -d --build --wait --wait-timeout 300
+
+      - name: Resolve the local origins
+        run: |
+          echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
+            | tee -a /etc/hosts
+
+      - name: Latency benchmark
+        run: bun run benchmark --samples=100 --warmup=10
+
+      - name: Collect logs
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v --rmi local
