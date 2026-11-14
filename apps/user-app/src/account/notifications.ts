@@ -97,6 +97,8 @@ function notificationText(translate: Translator, entry: NotificationEntry): stri
       });
     case "webhook.disabled":
       return translate("notification.text.webhook.disabled");
+    case "data.export.ready":
+      return translate("notification.text.data.export.ready");
     case "post.mention":
       return entry.count > 1
         ? translate("notification.text.post.mentionMany", { count: entry.count, topic })
@@ -190,16 +192,18 @@ export async function buildNotificationsPage(
     const href =
       entry.conversationId !== null
         ? `/conversations/${entry.conversationId}`
-        : entry.topicId !== null && entry.topicSlug !== null
-          ? canonicalUrl(
-              "topic",
-              entry.topicId,
-              entry.topicSlug,
-              entry.postId === null ? {} : { postId: entry.postId },
-            )
-          : entry.type === "warning.issued"
-            ? "/account/warnings"
-            : null;
+        : entry.type === "data.export.ready" && entry.dataRequestId !== null
+          ? `/api/me/data-export/${entry.dataRequestId}`
+          : entry.topicId !== null && entry.topicSlug !== null
+            ? canonicalUrl(
+                "topic",
+                entry.topicId,
+                entry.topicSlug,
+                entry.postId === null ? {} : { postId: entry.postId },
+              )
+            : entry.type === "warning.issued"
+              ? "/account/warnings"
+              : null;
 
     sections.get(key)?.push({
       id: entry.id,

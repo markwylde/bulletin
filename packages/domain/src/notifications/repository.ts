@@ -26,7 +26,11 @@ export const NOTIFICATION_TYPES = [
   "report.rejected",
   "warning.issued",
   "webhook.disabled",
+  "data.export.ready",
 ] as const;
+
+/** Legal/system notifications that cannot be turned off (ADR 0012). */
+export const SYSTEM_NOTIFICATION_TYPES = ["data.export.ready"] as const;
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -333,6 +337,7 @@ export async function eventRecipients(
     "post.approved": 0,
     "report.resolved": 0,
     "report.rejected": 0,
+    "data.export.ready": 0,
     "warning.issued": 0,
     "webhook.disabled": 0,
   };
@@ -715,6 +720,7 @@ export interface NotificationEntry {
   readonly warningId: string | null;
   readonly warningReason: string | null;
   readonly warningNote: string | null;
+  readonly dataRequestId: string | null;
   readonly count: number;
   readonly read: boolean;
   readonly createdAt: Date;
@@ -736,6 +742,7 @@ interface NotificationListRow {
   readonly warning_id: string | null;
   readonly warning_reason: string | null;
   readonly warning_note: string | null;
+  readonly data_request_id: string | null;
   readonly count: number;
   readonly read_at: Date | string | null;
   readonly created_at: Date | string;
@@ -795,6 +802,7 @@ export async function listNotifications(
            WHERE wl.reason_id = w.reason_id AND wl.locale = 'en')
         ) AS warning_reason,
         w.member_note AS warning_note,
+        n.data_request_id::text AS data_request_id,
         n.count,
         n.read_at,
         n.created_at,
@@ -868,6 +876,7 @@ export async function listNotifications(
         warningId: row.warning_id,
         warningReason: row.warning_reason,
         warningNote: row.warning_note,
+        dataRequestId: row.data_request_id,
         count: row.count,
         read: row.read_at !== null,
         createdAt: new Date(row.created_at),
@@ -1302,6 +1311,7 @@ export interface NotificationEmailContext {
   readonly postId: string | null;
   readonly conversationId: string | null;
   readonly conversationTitle: string | null;
+  readonly dataRequestId: string | null;
 }
 
 /**
@@ -1323,7 +1333,8 @@ export async function notificationDeliveryContext(
       i.source_event_id::text AS source_event_id,
       n.actor_id::text AS actor_id,
       n.topic_id::text AS topic_id,
-      n.post_id::text AS post_id
+      n.post_id::text AS post_id,
+      n.data_request_id::text AS data_request_id
     FROM core.delivery_intents i
     JOIN core.notifications n ON n.id = i.ref_id AND n.member_id = i.member_id
     JOIN core.members m ON m.id = i.member_id
@@ -1341,6 +1352,7 @@ export async function notificationDeliveryContext(
     actor_id: string | null;
     topic_id: string | null;
     post_id: string | null;
+    data_request_id: string | null;
   }>;
 
   if (base === undefined || !isNotificationTypeValue(base.type)) {
@@ -1421,6 +1433,7 @@ export async function notificationDeliveryContext(
         postId: post.post_id,
         conversationId: null,
         conversationTitle: null,
+        dataRequestId: base.data_request_id,
       };
     }
   }
@@ -1435,7 +1448,8 @@ export async function notificationDeliveryContext(
       t.slug AS topic_slug,
       n.post_id::text AS post_id,
       n.conversation_id::text AS conversation_id,
-      c.title AS conversation_title
+      c.title AS conversation_title,
+      n.data_request_id::text AS data_request_id
     FROM core.notifications n
     JOIN core.delivery_intents i ON i.id = ${intentId} AND i.ref_id = n.id
     LEFT JOIN core.members a ON a.id = n.actor_id
@@ -1464,6 +1478,7 @@ export async function notificationDeliveryContext(
     post_id: string | null;
     conversation_id: string | null;
     conversation_title: string | null;
+    data_request_id: string | null;
   }>;
 
   const row = rows[0];
@@ -1500,6 +1515,7 @@ export async function notificationDeliveryContext(
     postId: row.post_id,
     conversationId: row.conversation_id,
     conversationTitle: row.conversation_title,
+    dataRequestId: row.data_request_id,
   };
 }
 

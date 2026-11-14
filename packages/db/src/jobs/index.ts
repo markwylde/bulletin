@@ -3,6 +3,7 @@ export * from "./badges.ts";
 export * from "./bans.ts";
 export * from "./content.ts";
 export * from "./conversations.ts";
+export * from "./exports.ts";
 export * from "./forums.ts";
 export * from "./leaderboards.ts";
 export * from "./maintenance.ts";

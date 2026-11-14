@@ -23,6 +23,7 @@ import {
   notificationChannels,
   notificationEmailContext,
   notificationPreferenceMatrix,
+  SYSTEM_NOTIFICATION_TYPES,
   setNotificationPreference,
   unreadNotificationCount,
 } from "@bulletin/domain/notifications";
@@ -687,7 +688,9 @@ integrationDescribe("notification centre", () => {
         pushEnabled: true,
       });
 
-      expect(page.viewModel.types).toHaveLength(NOTIFICATION_TYPES.length);
+      expect(page.viewModel.types).toHaveLength(
+        NOTIFICATION_TYPES.length - SYSTEM_NOTIFICATION_TYPES.length,
+      );
       expect(
         page.viewModel.types.every((type) => type.channels.length === NOTIFICATION_CHANNELS.length),
       ).toBe(true);

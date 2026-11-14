@@ -67,6 +67,7 @@
     "parse5": "8.1.1",
     "sharp": "0.35.5",
     "lightningcss": "1.30.2",
-    "@bulletin/plugin-sdk": "workspace:*"
+    "@bulletin/plugin-sdk": "workspace:*",
+    "fflate": "0.8.3"
   }
 }

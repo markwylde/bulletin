@@ -87,6 +87,8 @@ function subjectFor(translate: Translator, type: NotificationType, topic: string
       return translate("email.subject.warning.issued");
     case "webhook.disabled":
       return translate("email.subject.webhook.disabled");
+    case "data.export.ready":
+      return translate("email.subject.data.export.ready");
   }
 }
 
@@ -127,6 +129,8 @@ function bodyFor(
       return translate("email.body.warning.issued", { actor });
     case "webhook.disabled":
       return translate("email.body.webhook.disabled");
+    case "data.export.ready":
+      return translate("email.body.data.export.ready");
   }
 }
 
@@ -149,16 +153,18 @@ export function buildNotificationEmail(input: {
   });
   const summary = bodyFor(translate, type, actor, topic);
   const openUrl =
-    input.row.conversationId !== null
-      ? `${input.options.userOrigin}/conversations/${input.row.conversationId}`
-      : input.row.topicId !== null && input.row.topicSlug !== null
-        ? `${input.options.userOrigin}${canonicalUrl(
-            "topic",
-            input.row.topicId,
-            input.row.topicSlug,
-            input.row.postId === null ? {} : { postId: input.row.postId },
-          )}`
-        : null;
+    input.row.type === "data.export.ready" && input.row.dataRequestId !== null
+      ? `${input.options.userOrigin}/api/me/data-export/${input.row.dataRequestId}`
+      : input.row.conversationId !== null
+        ? `${input.options.userOrigin}/conversations/${input.row.conversationId}`
+        : input.row.topicId !== null && input.row.topicSlug !== null
+          ? `${input.options.userOrigin}${canonicalUrl(
+              "topic",
+              input.row.topicId,
+              input.row.topicSlug,
+              input.row.postId === null ? {} : { postId: input.row.postId },
+            )}`
+          : null;
   const token = createUnsubscribeToken(input.options.unsubscribeSecret, {
     memberId: input.row.memberId,
     type,

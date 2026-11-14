@@ -279,6 +279,44 @@ async function readInternal(
       return json({ html: html.join("") });
     }
 
+    case "/internal/gdpr": {
+      if (
+        typeof input.pluginId !== "string" ||
+        (input.operation !== "export" && input.operation !== "erase") ||
+        typeof input.memberId !== "string"
+      ) {
+        return json({ code: "invalid_request" }, 400);
+      }
+
+      const plugin = options.registry.get(input.pluginId);
+      const transport = transportFor(input.pluginId);
+
+      if (
+        plugin === undefined ||
+        !plugin.enabled ||
+        transport === undefined ||
+        (options.isPluginActive !== undefined && !(await options.isPluginActive(input.pluginId)))
+      ) {
+        return json({ ok: false, error: "plugin unavailable" }, 404);
+      }
+
+      try {
+        const result = await transport.request(
+          input.operation === "export" ? "gdpr.export" : "gdpr.erase",
+          { memberId: input.memberId },
+          30_000,
+        );
+        return json({ ok: true, data: result });
+      } catch (error) {
+        options.logger.warn("plugin.gdpr_failed", {
+          pluginId: input.pluginId,
+          operation: input.operation,
+          error,
+        });
+        return json({ ok: false, error: "handler failed" }, 500);
+      }
+    }
+
     case "/internal/routes":
     case "/internal/bridge": {
       if (typeof input.pluginId !== "string" || typeof input.path !== "string") {

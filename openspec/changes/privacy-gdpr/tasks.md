@@ -12,7 +12,7 @@
 
 ## 3. Export
 
-- [ ] 3.1 Export request (member settings), job (all sections, plugin `gdpr.export`, attachments), notification/email and the expiring authenticated download; tests for the ready and expired scenarios
+- [x] 3.1 Export request (member settings), job (all sections, plugin `gdpr.export`, attachments), notification/email and the expiring authenticated download; tests for the ready and expired scenarios
 
 ## 4. Erasure
 

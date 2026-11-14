@@ -2,6 +2,7 @@ import {
   isDigestFrequency,
   isNotificationChannel,
   isNotificationTypeValue,
+  isSystemNotificationType,
   markAllNotificationsRead,
   markNotificationRead,
   setDigestFrequency,
@@ -75,6 +76,10 @@ export async function notificationPreferencesResponse(
     !isNotificationChannel(body.channel) ||
     typeof body.enabled !== "boolean"
   ) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  if (isSystemNotificationType(body.type)) {
     return json({ code: "invalid_request" }, 400);
   }
 

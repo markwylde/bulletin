@@ -20,6 +20,7 @@ import {
   createBanJobs,
   createContentJobs,
   createConversationJobs,
+  createExportJobs,
   createForumJobs,
   createLeaderboardJobs,
   createMaintenanceJobs,
@@ -31,6 +32,7 @@ import {
   createWarningJobs,
   createWebhookEventHandler,
   createWebhookJobs,
+  EXPORT_QUEUE,
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
@@ -152,6 +154,9 @@ const relay = createRelay({ sql, subscribers, queue: boss.queue });
 const enqueueEmail = async (intentId: string): Promise<void> => {
   await boss.boss.send("email", { intentId }, { singletonKey: `email:${intentId}` });
 };
+const enqueueExport = async (requestId: string): Promise<void> => {
+  await boss.boss.send(EXPORT_QUEUE, { requestId }, { singletonKey: `export:${requestId}` });
+};
 const enqueuePush = async (intentId: string): Promise<void> => {
   await boss.boss.send("push", { intentId }, { singletonKey: `push:${intentId}` });
 };
@@ -196,6 +201,15 @@ const pushJobs = await createPushJobs({
   logger,
   flags: workerFlags,
 });
+const exportJobs = await createExportJobs({
+  boss: boss.boss,
+  sql,
+  storage,
+  pluginHostUrl: Bun.env.PLUGIN_HOST_INTERNAL_URL ?? "http://plugin-host:3004",
+  pluginToken: Bun.env.PLUGIN_INTERNAL_TOKEN ?? "bulletin-development-only-internal-token",
+  enqueueEmail,
+  logger,
+});
 const eventWorker = await createEventWorker({
   boss: boss.boss,
   sql,
@@ -203,6 +217,7 @@ const eventWorker = await createEventWorker({
     core: createCoreEventHandler({
       sql,
       ...(purger === undefined ? {} : { purger }),
+      enqueueExport,
       logger,
     }),
     reputation: createReputationEventHandler({ boss: boss.boss, logger }),
@@ -298,6 +313,7 @@ await startService({
     await digestJobs.stop();
     await emailJobs.stop();
     await pushJobs.stop();
+    await exportJobs.stop();
     await maintenanceJobs.stop();
     await retentionJobs.stop();
     await leaderboardJobs.stop();
@@ -325,6 +341,7 @@ await startService({
   await digestJobs.stop();
   await emailJobs.stop();
   await pushJobs.stop();
+  await exportJobs.stop();
   await maintenanceJobs.stop();
   await retentionJobs.stop();
   await leaderboardJobs.stop();

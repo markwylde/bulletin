@@ -100,6 +100,10 @@ export const EVENT_CATALOG = {
     aggregateType: "member",
     payloadIds: ["memberId"],
   },
+  "privacy.export.requested": {
+    aggregateType: "data_request",
+    payloadIds: ["requestId", "memberId"],
+  },
   // A forum's visibility may have changed for some group; workers purge its CDN subtree.
   "forum.visibility.changed": {
     aggregateType: "forum",

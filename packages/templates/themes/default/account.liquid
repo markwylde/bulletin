@@ -36,6 +36,14 @@
     </div>
   </section>
 
+  <section class="bl-card" data-account-export>
+    <h2 class="bl-card__title">{% t "account.export.title" %}</h2>
+    <p class="bl-muted">{% t "account.export.body" %}</p>
+    <button class="bl-button" type="button" data-account-export-request>{% t "account.export.request" %}</button>
+    <p class="bl-muted" data-account-export-status hidden></p>
+    <p class="bl-error-text" data-account-export-error hidden></p>
+  </section>
+
   {% if flags.avatar_upload %}
   <section class="bl-card" data-account-avatar>
     <h2 class="bl-card__title">{% t "account.avatar.title" %}</h2>

@@ -11,6 +11,8 @@ interface Labels {
   readonly current: string;
   readonly lastSeen: string;
   readonly unknownBrowser: string;
+  readonly exportRequested: string;
+  readonly exportError: string;
   readonly browsers: Readonly<Record<string, string>>;
 }
 
@@ -176,6 +178,60 @@ async function loadSessions(): Promise<void> {
   }
 }
 
+async function requestExport(): Promise<void> {
+  const button = document.querySelector<HTMLButtonElement>("[data-account-export-request]");
+  const status = document.querySelector<HTMLElement>("[data-account-export-status]");
+  const error = document.querySelector<HTMLElement>("[data-account-export-error]");
+
+  if (button !== null) {
+    button.disabled = true;
+  }
+
+  if (status !== null) {
+    status.hidden = true;
+  }
+
+  if (error !== null) {
+    error.hidden = true;
+  }
+
+  try {
+    const session = await readClientSession();
+
+    if (!session.authenticated || session.csrfToken === null) {
+      window.location.assign("/auth/login?return_to=%2Faccount");
+      return;
+    }
+
+    const response = await fetch("/api/me/data-export", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-bulletin-csrf": session.csrfToken,
+      },
+      body: "{}",
+    });
+
+    if (!response.ok) {
+      throw new Error("export request failed");
+    }
+
+    if (status !== null) {
+      status.textContent = labels?.exportRequested ?? "";
+      status.hidden = false;
+    }
+  } catch {
+    if (error !== null) {
+      error.textContent = labels?.exportError ?? "";
+      error.hidden = false;
+    }
+  } finally {
+    if (button !== null) {
+      button.disabled = false;
+    }
+  }
+}
+
 const nameForm = document.querySelector<HTMLFormElement>("[data-account-name-form]");
 
 if (nameForm !== null) {
@@ -183,6 +239,12 @@ if (nameForm !== null) {
     event.preventDefault();
     void submitName();
   });
+}
+
+const exportButton = document.querySelector<HTMLButtonElement>("[data-account-export-request]");
+
+if (exportButton !== null) {
+  exportButton.addEventListener("click", () => void requestExport());
 }
 
 void loadSessions();
