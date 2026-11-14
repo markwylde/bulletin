@@ -27,12 +27,12 @@ export interface SeoAccess {
 export async function loadGuestSeoAccess(sql: SQL): Promise<SeoAccess> {
   const tree = await loadForumTree(sql);
   const snapshot = await loadPermissionSnapshot(sql, GUEST_PRINCIPAL, { tree, sessionId: null });
-  const view = new CapabilityView({ ...snapshot, view: "seo" });
+  const capability = new CapabilityView({ ...snapshot, view: "seo" });
   const readableForumIds = tree.ids.filter(
-    (forumId) => view.read(forumId) && tree.get(forumId)?.passwordProtected !== true,
+    (forumId) => capability.read(forumId) && tree.get(forumId)?.passwordProtected !== true,
   );
 
-  return { tree, snapshot, view, readableForumIds };
+  return { tree, snapshot, view: capability, readableForumIds };
 }
 
 function idArray(ids: readonly string[]): string {
