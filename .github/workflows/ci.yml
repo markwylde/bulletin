@@ -132,6 +132,10 @@ jobs:
       - name: Run E2E smoke and locale tests
         run: bun run test:e2e
 
+      - name: Diagnose plugin sandbox syscalls
+        if: failure()
+        run: ${{ matrix.engine }} compose exec -T plugin-host sh < scripts/ci/diagnose-sandbox.sh || true
+
       - name: Collect logs
         if: failure()
         run: |
