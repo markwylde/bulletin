@@ -110,12 +110,17 @@ export function localeFromBp(value: string | null | undefined): Locale {
   return parseBpCookie(value).locale;
 }
 
-export type LocaleSource = "member" | "cookie" | "board" | "default";
+export type LocaleSource = "member" | "query" | "cookie" | "board" | "default";
 
 export interface LocaleRequest {
   readonly audience: "member" | "guest";
   readonly memberLocale?: string | null;
   readonly bp?: string | null;
+  /**
+   * A guest's explicit `?lang=` (the URL `hreflang` alternates advertise). It is part of the
+   * URL, so the CDN key and the origin variant key both separate it (ADR 0006, 0013).
+   */
+  readonly query?: string | null;
   readonly boardDefaultLocale?: string | null;
   readonly acceptLanguage?: string | null;
 }
@@ -171,8 +176,9 @@ export function suggestLocale(
 }
 
 /**
- * Resolves a member's locale from their preference, or a guest's from the `bp` cookie, then the
- * board default. `Accept-Language` is only ever returned as a client-side suggestion.
+ * Resolves a member's locale from their preference, or a guest's from an explicit `?lang=`,
+ * then the `bp` cookie, then the board default. `Accept-Language` is only ever returned as a
+ * client-side suggestion, so a cached guest page stays a function of its URL and `bp`.
  */
 export function resolveRequestLocale(request: LocaleRequest): LocaleResolution {
   const board = isLocale(request.boardDefaultLocale) ? request.boardDefaultLocale : null;
@@ -185,7 +191,10 @@ export function resolveRequestLocale(request: LocaleRequest): LocaleResolution {
   } else if (request.audience === "guest") {
     const cookie = localeFromBpCookie(request.bp);
 
-    if (cookie !== null) {
+    if (isLocale(request.query)) {
+      locale = request.query;
+      source = "query";
+    } else if (cookie !== null) {
       locale = cookie;
       source = "cookie";
     } else if (board !== null) {

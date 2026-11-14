@@ -18,7 +18,10 @@ export interface SeoMetadata {
   readonly canonicalPath: string;
   readonly robots: SeoRobots;
   readonly type: SeoOpenGraphType;
-  /** Locale variants link to the same path with `?lang=` (the app's locale selector). */
+  /**
+   * Locale variants link to the same path with `?lang=`, which the server resolves for guests
+   * (ADR 0013). `localiseSeoMetadata` points the board default locale at the clean path.
+   */
   readonly alternates: readonly SeoAlternate[];
   readonly jsonLd: Readonly<Record<string, unknown>> | null;
 }
@@ -46,6 +49,48 @@ function cleanPath(value: string): string {
 
 function localeHref(path: string, locale: string): string {
   return `${path}?lang=${locale}`;
+}
+
+function localeAlternates(
+  canonicalPath: string,
+  boardDefaultLocale: string | null,
+): readonly SeoAlternate[] {
+  return [
+    ...SEO_LOCALES.map((locale) => ({
+      hreflang: locale,
+      path: locale === boardDefaultLocale ? canonicalPath : localeHref(canonicalPath, locale),
+    })),
+    { hreflang: "x-default", path: canonicalPath },
+  ];
+}
+
+/**
+ * Adapts route metadata to the locale this response was rendered in. The clean URL is the
+ * board default locale (what a cookie-less crawler receives) and `x-default`; every other
+ * locale is its `?lang=` URL. A page rendered from an explicit `?lang=` for a non-default
+ * locale is its own canonical, so each advertised alternate is self-canonical and its
+ * `hreflang` cluster is reciprocal.
+ */
+export function localiseSeoMetadata(
+  seo: SeoMetadata,
+  input: {
+    readonly locale: string;
+    /** True when the locale came from the request's `?lang=`, not the cookie or a default. */
+    readonly explicitLocale: boolean;
+    readonly boardDefaultLocale: string | null;
+  },
+): SeoMetadata {
+  const base = cleanPath(seo.canonicalPath);
+  const canonicalPath =
+    input.explicitLocale && input.locale !== input.boardDefaultLocale
+      ? localeHref(base, input.locale)
+      : base;
+
+  return {
+    ...seo,
+    canonicalPath,
+    alternates: localeAlternates(base, input.boardDefaultLocale),
+  };
 }
 
 /**
@@ -77,13 +122,7 @@ export function buildSeoMetadata(input: {
     canonicalPath,
     robots: input.robots ?? "index",
     type: input.type ?? "website",
-    alternates: [
-      ...SEO_LOCALES.map((locale) => ({
-        hreflang: locale,
-        path: localeHref(canonicalPath, locale),
-      })),
-      { hreflang: "x-default", path: canonicalPath },
-    ],
+    alternates: localeAlternates(canonicalPath, null),
     jsonLd: input.jsonLd ?? null,
   };
 }

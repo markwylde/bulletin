@@ -1,5 +1,5 @@
 ---
-import type { SeoMetadata } from "@bulletin/domain/seo";
+import { localiseSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import "../theme/default.css";
 import { configuredPluginOrigin } from "../plugins/config.ts";
 import { pwaBuild } from "../pwa/build.ts";
@@ -36,8 +36,17 @@ const {
   robots,
   clientFlagsJson,
   colourScheme = "system",
-  seo,
+  seo: routeSeo,
 } = Astro.props;
+// Canonical and hreflang follow the locale this response was rendered in (ADR 0013).
+const seo =
+  routeSeo === undefined
+    ? undefined
+    : localiseSeoMetadata(routeSeo, {
+        locale,
+        explicitLocale: Astro.locals.localeFromQuery === true,
+        boardDefaultLocale: Astro.locals.board?.defaultLocale ?? null,
+      });
 const origin = Astro.url.origin;
 const canonical = seo === undefined ? null : new URL(seo.canonicalPath, origin).toString();
 const jsonLd =

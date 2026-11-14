@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { buildSeoMetadata, SEO_DESCRIPTION_MAX, seoDescription } from "./metadata.ts";
+import {
+  buildSeoMetadata,
+  localiseSeoMetadata,
+  SEO_DESCRIPTION_MAX,
+  seoDescription,
+} from "./metadata.ts";
 
 describe("page metadata", () => {
   test("suffixes the board name once and keeps a clean canonical path", () => {
@@ -61,5 +66,56 @@ describe("page metadata", () => {
     expect(seo.robots).toBe("noindex");
     expect(seo.type).toBe("article");
     expect(seo.jsonLd).toEqual({ "@type": "Thing" });
+  });
+});
+
+describe("localised metadata", () => {
+  const seo = buildSeoMetadata({
+    title: "Discusión",
+    boardName: "Bulletin",
+    description: "Texto.",
+    canonicalPath: "/topic/12-general/page/2",
+  });
+
+  test("the board default locale is the clean URL and x-default", () => {
+    const localised = localiseSeoMetadata(seo, {
+      locale: "en",
+      explicitLocale: false,
+      boardDefaultLocale: "en",
+    });
+
+    expect(localised.canonicalPath).toBe("/topic/12-general/page/2");
+    expect(localised.alternates).toEqual([
+      { hreflang: "en", path: "/topic/12-general/page/2" },
+      { hreflang: "es", path: "/topic/12-general/page/2?lang=es" },
+      { hreflang: "fr", path: "/topic/12-general/page/2?lang=fr" },
+      { hreflang: "x-default", path: "/topic/12-general/page/2" },
+    ]);
+  });
+
+  test("an explicit ?lang= variant is self-canonical", () => {
+    const localised = localiseSeoMetadata(seo, {
+      locale: "es",
+      explicitLocale: true,
+      boardDefaultLocale: "en",
+    });
+
+    expect(localised.canonicalPath).toBe("/topic/12-general/page/2?lang=es");
+    expect(localised.alternates).toContainEqual({
+      hreflang: "es",
+      path: "/topic/12-general/page/2?lang=es",
+    });
+    expect(localised.title).toBe(seo.title);
+  });
+
+  test("?lang= for the default locale and cookie locales canonicalise to the clean URL", () => {
+    expect(
+      localiseSeoMetadata(seo, { locale: "fr", explicitLocale: true, boardDefaultLocale: "fr" })
+        .canonicalPath,
+    ).toBe("/topic/12-general/page/2");
+    expect(
+      localiseSeoMetadata(seo, { locale: "es", explicitLocale: false, boardDefaultLocale: "en" })
+        .canonicalPath,
+    ).toBe("/topic/12-general/page/2");
   });
 });
