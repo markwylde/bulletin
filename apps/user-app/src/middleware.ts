@@ -49,6 +49,8 @@ const NON_PAGE_PREFIXES = [
   "/pwa/",
 ];
 const DISPLAY_NAME_PATH = "/display-name";
+/** The service worker's offline fallback must load for every visitor, even mid-redirect. */
+const OFFLINE_SHELL_PATH = "/offline";
 
 if (import.meta.env.DEV) {
   process.once("SIGTERM", () => {
@@ -184,6 +186,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
       if (
         isNavigation &&
+        context.url.pathname !== OFFLINE_SHELL_PATH &&
         shouldRedirectToReauth({
           method: "GET",
           secFetchMode: "navigate",
@@ -201,7 +204,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
         isNavigation &&
         sessionContext !== null &&
         sessionContext.displayName === null &&
-        context.url.pathname !== DISPLAY_NAME_PATH
+        context.url.pathname !== DISPLAY_NAME_PATH &&
+        context.url.pathname !== OFFLINE_SHELL_PATH
       ) {
         const returnTo = `${context.url.pathname}${context.url.search}`;
         return secure(
@@ -209,8 +213,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
         );
       }
 
-      // Fail closed: if the board state cannot be read, do not serve the forum.
-      if (boardFailed) {
+      // Fail closed: if the board state cannot be read, do not serve the forum. The cached
+      // offline shell is the exception, so the PWA can still explain an outage.
+      if (boardFailed && context.url.pathname !== OFFLINE_SHELL_PATH) {
         return secure(
           offlinePage({
             locale: context.locals.locale ?? "en",
@@ -221,7 +226,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
         );
       }
 
-      if (board?.offline === true) {
+      if (board?.offline === true && context.url.pathname !== OFFLINE_SHELL_PATH) {
         let allowed = false;
 
         if (sessionContext !== null) {

@@ -69,6 +69,8 @@ async function openReplyEditor(view: Bun.WebView, topicUrl: string): Promise<voi
   await waitForSelector(view, "[data-reply-toggle]", 20_000);
   await clickSelector(view, "[data-reply-toggle]");
   await waitForSelector(view, "[data-reply-form] [data-editor-ready='true']", 20_000);
+  // Let the WYSIWYG chunk finish loading; going offline mid-import is not what this test is about.
+  await waitForSelector(view, "[data-editor-wysiwyg] .ProseMirror", 30_000);
   await waitForSelector(view, '[data-editor-mode="source"]', 20_000);
   await clickSelector(view, '[data-editor-mode="source"]');
   await waitForSelector(view, "[data-editor-source]", 20_000);
