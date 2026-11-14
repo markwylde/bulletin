@@ -50,6 +50,7 @@ const NON_PAGE_PREFIXES = [
   // Sitemaps and RSS/Atom feeds are public XML documents, always evaluated as Guests.
   "/sitemap",
   "/feed",
+  "/robots.txt",
 ];
 const DISPLAY_NAME_PATH = "/display-name";
 /** The service worker's offline fallback must load for every visitor, even mid-redirect. */

@@ -467,6 +467,7 @@ integrationDescribe("staff API permission guard", () => {
           defaultLocale: "fr",
           offline: true,
           offlineMessage: "Down for maintenance",
+          robotsTxt: "User-agent: *\nDisallow: /private\n",
         });
         expect(saved.status).toBe(200);
         expect(await saved.json()).toMatchObject({
@@ -474,6 +475,7 @@ integrationDescribe("staff API permission guard", () => {
           defaultLocale: "fr",
           offline: true,
           offlineMessage: "Down for maintenance",
+          robotsTxt: "User-agent: *\nDisallow: /private\n",
         });
 
         const denied = await callRoute(api, route("settings.board.update"), moderator, {
@@ -482,8 +484,14 @@ integrationDescribe("staff API permission guard", () => {
           defaultLocale: "en",
           offline: false,
           offlineMessage: "",
+          robotsTxt: "User-agent: *\nDisallow: /\n",
         });
         expect(denied.status).toBe(403);
+
+        const [robots] = (await database.sql`
+          SELECT robots_txt FROM core.board_settings WHERE id = 1
+        `) as Array<{ robots_txt: string }>;
+        expect(robots?.robots_txt).toBe("User-agent: *\nDisallow: /private\n");
 
         const [entry] = (await database.sql`
           SELECT
