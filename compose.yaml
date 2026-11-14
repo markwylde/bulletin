@@ -32,6 +32,8 @@ x-app-environment: &app-environment
   SEED_SIZE: "${SEED_SIZE:-default}"
   # The seeded demo webhook points at the local webhooks mock (task 5.2).
   BULLETIN_SEED_WEBHOOK_URL: "http://webhooks:4004/hook"
+  # The seeded device's push subscription points at the local push mock (task 4.2).
+  BULLETIN_SEED_PUSH_ENDPOINT: "http://push:4003/push/seed/member-1"
 
 x-depends-on-postgres: &depends-on-postgres
   postgres:

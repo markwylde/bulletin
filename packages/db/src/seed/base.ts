@@ -18,6 +18,7 @@ import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
 import { notificationsSeedModule } from "./notifications.ts";
 import { pluginSeedModule } from "./plugins.ts";
 import { profilesSeedModule } from "./profiles.ts";
+import { pushSeedModule } from "./push.ts";
 import { reactionsSeedModule } from "./reactions.ts";
 import { reputationSeedModule } from "./reputation.ts";
 import { syncDefaultTheme, themesSeedModule } from "./themes.ts";
@@ -72,6 +73,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         reputationSeedModule,
         profilesSeedModule,
         notificationsSeedModule,
+        pushSeedModule,
         attachmentSeedModule,
         conversationSeedModule,
         moderationSeedModule,

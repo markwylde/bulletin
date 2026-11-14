@@ -19,8 +19,8 @@
 
 ## 4. Strings and seed
 
-- [ ] 4.1 Add en/es/fr strings for offline page, push titles, device list and prompts; verify completeness
-- [ ] 4.2 Seed a push subscription for one seeded member against `mocks/push`, and verify a seeded PM triggers a captured push after `docker compose up --watch`
+- [x] 4.1 Add en/es/fr strings for offline page, push titles, device list and prompts; verify completeness
+- [x] 4.2 Seed a push subscription for one seeded member against `mocks/push`, and verify a seeded PM triggers a captured push after `docker compose up --watch`
 
 ## 5. Feature flag
 

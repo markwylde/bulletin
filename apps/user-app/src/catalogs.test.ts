@@ -167,3 +167,61 @@ describe("public API catalogs", () => {
     }
   });
 });
+
+const REQUIRED_PWA_KEYS = [
+  "pwa.manifest.description",
+  "pwa.offline.title",
+  "pwa.offline.body",
+  "pwa.offline.retry",
+  "pwa.drafts.offline",
+  "pwa.drafts.online",
+  "pwa.drafts.send",
+  "pwa.drafts.discard",
+  "pwa.drafts.sending",
+  "notification.preferences.push",
+  "push.settings.title",
+  "push.settings.intro",
+  "push.settings.devices",
+  "push.settings.enable",
+  "push.settings.enabling",
+  "push.settings.enabled",
+  "push.settings.unsupported",
+  "push.settings.permissionDenied",
+  "push.settings.noDevices",
+  "push.settings.remove",
+  "push.settings.removing",
+  "push.settings.removed",
+  "push.settings.removeFailed",
+  "push.settings.enableFailed",
+  "push.settings.loadFailed",
+  "push.settings.created",
+  "push.settings.lastUsed",
+  "push.settings.neverUsed",
+  "push.settings.unknownDevice",
+  "push.title.generic",
+  "push.title.topicReply",
+  "push.title.topicCreated",
+  "push.title.postMention",
+  "push.title.postQuote",
+  "push.title.memberPromoted",
+  "push.title.reaction",
+  "push.title.reputation",
+  "push.title.friendAccepted",
+  "push.title.badgeAwarded",
+  "push.title.conversation",
+  "push.title.postApproved",
+  "push.title.reportResolved",
+  "push.title.reportRejected",
+  "push.title.warning",
+  "push.title.webhookDisabled",
+] as const;
+
+describe("PWA and push catalogs", () => {
+  test("translate the offline page, prompts, push titles and device list", () => {
+    for (const locale of LOCALES) {
+      for (const key of REQUIRED_PWA_KEYS) {
+        expect(USER_CATALOGS[locale][key]?.trim().length ?? 0).toBeGreaterThan(0);
+      }
+    }
+  });
+});
