@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  createRenderCache,
+  createTagVersions,
   GLOBAL_CACHE_TAGS,
   memberTag,
+  pollResultsTag,
+  pollTag,
   postReactionsTag,
   postTag,
   readTagVersion,
@@ -19,13 +23,17 @@ import { sessionCookieName } from "@bulletin/domain/auth";
 import { saveDraft } from "@bulletin/domain/content";
 import { createNotification } from "@bulletin/domain/notifications";
 import { requestDataErasure, requestDataExport } from "@bulletin/domain/privacy";
+import { createServerT } from "@bulletin/i18n";
 import { avatarKey, type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
 import { requestDataErasureResponse } from "../../apps/user-api/src/data-erasure.ts";
+import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
+import { renderPollFragment } from "../../apps/user-app/src/polls/fragment.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
+const translate = createServerT("en", { shipped: USER_CATALOGS });
 
 async function withDb(
   prefix: string,
@@ -131,6 +139,7 @@ interface ErasureFixture {
   readonly topicId: string;
   readonly postId: string;
   readonly mentionPostId: string;
+  readonly pollId: string;
   readonly attachmentKey: string;
   readonly avatarHash: string;
   readonly sessionId: string;
@@ -526,6 +535,7 @@ async function createFixtures(database: TestDatabase): Promise<ErasureFixture> {
     topicId: topic.id,
     postId,
     mentionPostId,
+    pollId: poll.id,
     attachmentKey,
     avatarHash: "b".repeat(64),
     sessionId: session.id,
@@ -1251,6 +1261,68 @@ integrationDescribe("member erasure", () => {
         WHERE post_id = ${fixture.postId} AND member_id = ${fixture.otherId}
       `) as Array<{ count: number }>;
       expect(retained?.count).toBe(1);
+    });
+  }, 120_000);
+
+  test("invalidates a warmed poll fragment when the member's votes are erased", async () => {
+    await withDb("privacy_erasure_poll_cache", async (database) => {
+      const fixture = await createFixtures(database);
+      const storage = createStorage();
+      await database.sql`
+        UPDATE core.polls SET results_visible_before_voting = true WHERE id = ${fixture.pollId}
+      `;
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const warm = await renderPollFragment(database.sql, cache, fixture.pollId, "en", translate);
+        expect(warm).toContain("<span data-poll-total>1</span>");
+        const warmVersion = versions.version(pollTag(fixture.pollId));
+
+        const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+        if (request === null) {
+          throw new Error("erasure request was not created");
+        }
+
+        await approveErasure(database, fixture, request.requestId);
+        const resultsVersion = await readTagVersion(database.sql, pollResultsTag(fixture.pollId));
+        await runErasureJob(database.sql, storage.storage, request.requestId, {
+          pluginErase: async () => ({ ok: true }),
+        });
+
+        expect(
+          Number(await readTagVersion(database.sql, pollResultsTag(fixture.pollId))),
+        ).toBeGreaterThan(Number(resultsVersion));
+        expect(Number(await readTagVersion(database.sql, pollTag(fixture.pollId)))).toBeGreaterThan(
+          Number(warmVersion),
+        );
+
+        // The listener applies the NOTIFY asynchronously; wait for the version it serves.
+        for (
+          let attempt = 0;
+          attempt < 100 && versions.version(pollTag(fixture.pollId)) === warmVersion;
+          attempt += 1
+        ) {
+          await Bun.sleep(10);
+        }
+
+        const refreshed = await renderPollFragment(
+          database.sql,
+          cache,
+          fixture.pollId,
+          "en",
+          translate,
+        );
+        expect(refreshed).toContain("<span data-poll-total>0</span>");
+        expect(refreshed).not.toContain("<span data-poll-total>1</span>");
+      } finally {
+        await versions.close();
+      }
     });
   }, 120_000);
 

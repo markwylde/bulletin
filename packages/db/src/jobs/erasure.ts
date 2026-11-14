@@ -4,6 +4,8 @@ import {
   forumTag,
   GLOBAL_CACHE_TAGS,
   memberTag,
+  pollResultsTag,
+  pollTag,
   postReactionsTag,
   postSnapshotsTag,
   postTag,
@@ -434,8 +436,24 @@ export async function runErasureJob(
   });
 
   await runStep(sql, requestId, "poll_votes", completed, async () => {
-    await sql`DELETE FROM core.poll_vote_choices WHERE member_id = ${memberId}`;
-    await sql`DELETE FROM core.poll_votes WHERE member_id = ${memberId}`;
+    // The votes and both poll fragments' versions commit together, so a retry after a
+    // failure still knows which polls to invalidate.
+    await sql.begin(async (tx) => {
+      const polls = (await tx`
+        SELECT DISTINCT poll_id::text AS poll_id
+        FROM core.poll_votes WHERE member_id = ${memberId}
+      `) as Array<{ poll_id: string }>;
+
+      await tx`DELETE FROM core.poll_vote_choices WHERE member_id = ${memberId}`;
+      await tx`DELETE FROM core.poll_votes WHERE member_id = ${memberId}`;
+
+      if (polls.length > 0) {
+        await bumpCacheTags(
+          tx,
+          polls.flatMap((poll) => [pollTag(poll.poll_id), pollResultsTag(poll.poll_id)]),
+        );
+      }
+    });
   });
 
   await runStep(sql, requestId, "reactions", completed, async () => {

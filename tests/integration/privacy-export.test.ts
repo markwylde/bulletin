@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { runExportJob, runRetention } from "@bulletin/db/jobs";
 import { sessionCookieName } from "@bulletin/domain/auth";
 import { notificationDeliveryContext } from "@bulletin/domain/notifications";
-import { forumActionMask } from "@bulletin/domain/permissions";
+import { can, forumActionMask, loadForumTree } from "@bulletin/domain/permissions";
 import { createServerT } from "@bulletin/i18n";
 import { PRESIGN_GET_EXPIRES_IN, type StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -85,6 +85,7 @@ interface ExportFixtures {
   readonly memberId: string;
   readonly token: string;
   readonly conversationId: string;
+  readonly forumId: string;
   readonly attachmentKey: string;
   readonly attachmentBytes: Uint8Array;
 }
@@ -267,15 +268,55 @@ async function createFixtures(database: TestDatabase): Promise<ExportFixtures> {
     memberId: member.id,
     token,
     conversationId: conversation.id,
+    forumId: forum.id,
     attachmentKey,
     attachmentBytes,
   };
+}
+
+async function grantForumRead(
+  database: TestDatabase,
+  memberId: string,
+  forumId: string,
+): Promise<string> {
+  const [group] = (await database.sql`
+    SELECT id::text AS id FROM core.groups WHERE key = 'members'
+  `) as Array<{ id: string }>;
+  await database.sql`
+    INSERT INTO core.member_groups (member_id, group_id, is_primary)
+    VALUES (${memberId}, ${group?.id}, true)
+    ON CONFLICT DO NOTHING
+  `;
+  const [mask] = (await database.sql`
+    INSERT INTO core.masks (key, title) VALUES ('export_read', 'Export read')
+    ON CONFLICT (key) DO UPDATE SET title = EXCLUDED.title
+    RETURNING id::text AS id
+  `) as Array<{ id: string }>;
+
+  if (mask === undefined) {
+    throw new Error("Could not create the export read mask");
+  }
+
+  await database.sql`
+    INSERT INTO core.group_masks (group_id, mask_id)
+    VALUES (${group?.id}, ${mask.id})
+    ON CONFLICT DO NOTHING
+  `;
+  await database.sql`
+    INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+    VALUES (${forumId}, ${mask.id}, ${forumActionMask(["show", "read"])}, false)
+    ON CONFLICT (forum_id, mask_id) DO UPDATE
+      SET actions = EXCLUDED.actions, inherits = EXCLUDED.inherits
+  `;
+
+  return mask.id;
 }
 
 integrationDescribe("member data export", () => {
   test("builds the archive, notifies the member and serves the expiring link", async () => {
     await withDb("privacy_export", async (database) => {
       const fixtures = await createFixtures(database);
+      await grantForumRead(database, fixtures.memberId, fixtures.forumId);
       const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
       const cookie = `${sessionCookieName("user", "test")}=${fixtures.token}`;
       const requested = await requestDataExportResponse(
@@ -609,28 +650,7 @@ integrationDescribe("member data export", () => {
     await withDb("privacy_export_visibility", async (database) => {
       const fixtures = await createFixtures(database);
       const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
-      const membersGroup = (await database.sql`
-        SELECT id::text AS id FROM core.groups WHERE key = 'members'
-      `) as Array<{ id: string }>;
-      await database.sql`
-        INSERT INTO core.member_groups (member_id, group_id, is_primary)
-        VALUES (${fixtures.memberId}, ${membersGroup[0]?.id}, true)
-      `;
-      const [mask] = (await database.sql`
-        INSERT INTO core.masks (key, title) VALUES ('export_read', 'Export read')
-        RETURNING id::text AS id
-      `) as Array<{ id: string }>;
-      await database.sql`
-        INSERT INTO core.group_masks (group_id, mask_id)
-        VALUES (${membersGroup[0]?.id}, ${mask?.id})
-      `;
-      const [fixtureForum] = (await database.sql`
-        SELECT id::text AS id FROM core.forums WHERE slug = 'export-forum'
-      `) as Array<{ id: string }>;
-      await database.sql`
-        INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
-        VALUES (${fixtureForum?.id}, ${mask?.id}, ${forumActionMask(["show", "read"])}, false)
-      `;
+      await grantForumRead(database, fixtures.memberId, fixtures.forumId);
       const [restrictedForum] = (await database.sql`
         INSERT INTO core.forums (type, title, slug)
         VALUES ('forum', 'Hidden Export Forum', 'hidden-export-forum')
@@ -698,6 +718,62 @@ integrationDescribe("member data export", () => {
       expect(reactions).not.toContain("Hidden export topic");
       expect(posts).toContain("Hidden body");
       expect(posts).not.toContain('"topic_title": "Hidden export topic"');
+    });
+  }, 60_000);
+
+  test("redacts poll text after read access to its forum is revoked", async () => {
+    await withDb("privacy_export_poll_revoked", async (database) => {
+      const fixtures = await createFixtures(database);
+      const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
+      const maskId = await grantForumRead(database, fixtures.memberId, fixtures.forumId);
+      const tree = await loadForumTree(database.sql);
+      expect(
+        await can(database.sql, fixtures.memberId, "read", {
+          forumId: fixtures.forumId,
+          tree,
+        }),
+      ).toBe(true);
+      // The member voted in the poll before losing read access to its forum.
+      await database.sql`
+        UPDATE core.forum_permissions
+        SET actions = 0
+        WHERE forum_id = ${fixtures.forumId} AND mask_id = ${maskId}
+      `;
+      expect(
+        await can(database.sql, fixtures.memberId, "read", {
+          forumId: fixtures.forumId,
+          tree,
+        }),
+      ).toBe(false);
+
+      const cookie = `${sessionCookieName("user", "test")}=${fixtures.token}`;
+      const requested = await requestDataExportResponse(
+        database.sql,
+        fixtures.memberId,
+        new Request("http://bulletin.test/api/me/data-export", {
+          method: "POST",
+          headers: { cookie },
+        }),
+        "test",
+      );
+      const requestId = ((await requested.json()) as { requestId: string }).requestId;
+      const result = await runExportJob(database.sql, storage.storage, requestId, {
+        pluginExport: async () => ({ ok: true, data: {} }),
+      });
+      const archive = storage.objects.get(result?.exportKey ?? "");
+
+      if (archive === undefined) {
+        throw new Error("export archive was not uploaded");
+      }
+
+      const files = unzipSync(archive);
+      const polls = strFromU8(files["polls.json"] ?? new Uint8Array());
+      // The vote itself is still the member's data; only the restricted poll text goes.
+      expect(polls).toContain('"poll_id"');
+      expect(polls).not.toContain("Seeded poll prompt");
+      expect(polls).not.toContain("Seeded poll choice");
+      expect(polls).not.toContain('"topic_title": "Export topic"');
+      expect(polls).not.toContain('"topic_slug": "export-topic"');
     });
   }, 60_000);
 

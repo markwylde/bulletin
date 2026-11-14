@@ -352,7 +352,7 @@ export async function buildMemberExport(
     }
   }
 
-  const choicesByPoll = new Map<string, unknown[]>();
+  const choicesByPoll = new Map<string, Array<Record<string, unknown>>>();
 
   for (const choice of pollChoices as Array<Record<string, unknown>>) {
     const pollId = typeof choice.poll_id === "string" ? choice.poll_id : "";
@@ -371,13 +371,16 @@ export async function buildMemberExport(
     const forumId = typeof vote.forum_id === "string" ? vote.forum_id : null;
     const allowed = await readable(forumId, "read");
     const pollId = typeof vote.poll_id === "string" ? vote.poll_id : "";
+    const choices = choicesByPoll.get(pollId) ?? [];
     polls.push({
       poll_id: vote.poll_id,
       topic_id: vote.topic_id,
       topic_title: allowed ? vote.topic_title : null,
       topic_slug: allowed ? vote.topic_slug : null,
       created_at: vote.created_at,
-      choices: choicesByPoll.get(pollId) ?? [],
+      choices: allowed
+        ? choices
+        : choices.map((choice) => ({ ...choice, prompt: null, label: null })),
     });
   }
 
