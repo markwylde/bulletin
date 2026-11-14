@@ -1,12 +1,12 @@
 import { forumTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
 import { readBoardSettings } from "@bulletin/domain/board";
-import { showVisibleForum } from "@bulletin/domain/forums";
 import {
   type FeedDocument,
   type FeedTopicRecord,
   loadGuestSeoAccess,
   readBoardFeed,
   readForumFeed,
+  readGuestFeedForum,
   renderAtomFeed,
   renderRssFeed,
 } from "@bulletin/domain/seo";
@@ -140,9 +140,9 @@ export async function feedDocumentFor(input: {
     };
   }
 
-  const forum = await showVisibleForum(input.sql, access.view, forumId);
+  const forum = await readGuestFeedForum(input.sql, access, forumId);
 
-  if (forum === null || forum.type === "redirect" || !access.readableForumIds.includes(forum.id)) {
+  if (forum === null) {
     return notFoundDocument();
   }
 

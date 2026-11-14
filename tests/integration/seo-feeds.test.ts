@@ -11,7 +11,13 @@ import {
   SeedRegistry,
   topicsSeedModule,
 } from "@bulletin/db/seed";
-import { loadGuestSeoAccess, readForumFeed } from "@bulletin/domain/seo";
+import { can, GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
+import {
+  guestCanReadForum,
+  loadGuestSeoAccess,
+  readForumFeed,
+  readGuestFeedForum,
+} from "@bulletin/domain/seo";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { feedDocumentFor } from "../../apps/user-app/src/seo/feeds.ts";
 
@@ -238,6 +244,60 @@ integrationDescribe("feeds", () => {
         forumRef: "999999-missing",
       });
       expect(missing.status).toBe(404);
+    });
+  });
+
+  test("guest readability is decided by can() and denies member-only and password forums", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const staffRoom = await forumId(database, "staff-room");
+      const generalDiscussion = await forumId(database, "general-discussion");
+      const access = await loadGuestSeoAccess(database.sql);
+
+      // Every forum's verdict matches can() on the Guests snapshot (ADR 0005).
+      for (const id of access.tree.ids) {
+        const expected =
+          access.tree.get(id)?.passwordProtected !== true &&
+          (await can(database.sql, GUEST_PRINCIPAL, "read", {
+            forumId: id,
+            tree: access.tree,
+            sessionId: null,
+            snapshot: access.snapshot,
+          }));
+
+        expect(access.readableForumIds.includes(id)).toBe(expected);
+        expect(await guestCanReadForum(database.sql, access, id)).toBe(expected);
+      }
+
+      expect(access.readableForumIds).toContain(offTopic);
+      expect(access.readableForumIds).not.toContain(staffRoom);
+      expect(access.readableForumIds).not.toContain(generalDiscussion);
+      expect(await readGuestFeedForum(database.sql, access, staffRoom)).toBeNull();
+      expect(await readGuestFeedForum(database.sql, access, "999999")).toBeNull();
+      expect(await readGuestFeedForum(database.sql, access, offTopic)).toMatchObject({
+        id: offTopic,
+        slug: "off-topic",
+      });
+
+      // A password forum is never public, even when its masks let guests read it.
+      await database.sql`
+        UPDATE core.forums SET password_hash = 'not-a-real-hash' WHERE id = ${offTopic}
+      `;
+      const locked = await loadGuestSeoAccess(database.sql);
+
+      expect(locked.readableForumIds).not.toContain(offTopic);
+      expect(await readGuestFeedForum(database.sql, locked, offTopic)).toBeNull();
+
+      const denied = await feedDocumentFor({
+        sql: database.sql,
+        origin: ORIGIN,
+        format: "atom",
+        forumRef: `${offTopic}-off-topic`,
+      });
+      expect(denied.status).toBe(404);
+
+      const board = await feedDocumentFor({ sql: database.sql, origin: ORIGIN, format: "rss" });
+      expect(board.tags).not.toContain(`forum:${offTopic}`);
     });
   });
 

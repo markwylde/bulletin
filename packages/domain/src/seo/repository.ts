@@ -1,6 +1,6 @@
 import type { SQL } from "bun";
 import {
-  CapabilityView,
+  can,
   GUEST_PRINCIPAL,
   loadPermissionSnapshot,
   type PermissionSnapshot,
@@ -15,9 +15,32 @@ export const SITEMAP_URLS_PER_FILE = 10_000;
 export interface SeoAccess {
   readonly tree: ForumTree;
   readonly snapshot: PermissionSnapshot;
-  readonly view: CapabilityView;
   /** Forums guests may read and that are not password-protected, ordered by the forum tree. */
   readonly readableForumIds: readonly string[];
+}
+
+/**
+ * Guest readability of one forum, through `can()` (ADR 0005) with the already loaded Guests
+ * snapshot so the check stays O(1). A password forum is never public: its `read` bit needs a
+ * session unlock, which a sitemap or feed request never carries.
+ */
+export async function guestCanReadForum(
+  sql: SQL,
+  access: Pick<SeoAccess, "tree" | "snapshot">,
+  forumId: string,
+): Promise<boolean> {
+  const forum = access.tree.get(forumId);
+
+  if (forum === undefined || forum.passwordProtected) {
+    return false;
+  }
+
+  return can(sql, GUEST_PRINCIPAL, "read", {
+    forumId,
+    tree: access.tree,
+    sessionId: null,
+    snapshot: access.snapshot,
+  });
 }
 
 /**
@@ -27,12 +50,15 @@ export interface SeoAccess {
 export async function loadGuestSeoAccess(sql: SQL): Promise<SeoAccess> {
   const tree = await loadForumTree(sql);
   const snapshot = await loadPermissionSnapshot(sql, GUEST_PRINCIPAL, { tree, sessionId: null });
-  const capability = new CapabilityView({ ...snapshot, view: "seo" });
-  const readableForumIds = tree.ids.filter(
-    (forumId) => capability.read(forumId) && tree.get(forumId)?.passwordProtected !== true,
-  );
+  const readableForumIds: string[] = [];
 
-  return { tree, snapshot, view: capability, readableForumIds };
+  for (const forumId of tree.ids) {
+    if (await guestCanReadForum(sql, { tree, snapshot }, forumId)) {
+      readableForumIds.push(forumId);
+    }
+  }
+
+  return { tree, snapshot, readableForumIds };
 }
 
 function idArray(ids: readonly string[]): string {
@@ -214,6 +240,36 @@ export async function readSitemapMemberPage(
   `) as SitemapMemberRow[];
 
   return rows.map((row) => ({ id: row.id, displayName: row.display_name }));
+}
+
+export interface FeedForumRecord {
+  readonly id: string;
+  readonly slug: string;
+  readonly title: string;
+}
+
+/**
+ * The forum a per-forum feed describes, or null when it does not exist, is a redirect, or
+ * guests cannot read it (spec: Private forum feed answers 404). Authorised through `can()`.
+ */
+export async function readGuestFeedForum(
+  sql: SQL,
+  access: SeoAccess,
+  forumId: string,
+): Promise<FeedForumRecord | null> {
+  if (!/^\d+$/.test(forumId) || !(await guestCanReadForum(sql, access, forumId))) {
+    return null;
+  }
+
+  const [row] = (await sql`
+    SELECT id::text AS id, slug, title, type
+    FROM core.forums
+    WHERE id = ${forumId}
+  `) as Array<{ id: string; slug: string; title: string; type: string }>;
+
+  return row === undefined || row.type === "redirect"
+    ? null
+    : { id: row.id, slug: row.slug, title: row.title };
 }
 
 /** One feed entry: the topic, its first visible post's quote-free text and its forum. */
