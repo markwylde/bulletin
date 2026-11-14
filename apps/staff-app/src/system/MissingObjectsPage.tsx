@@ -1,7 +1,7 @@
 import { formatDate, formatNumber } from "@bulletin/i18n";
 import { useLocale, useT } from "@bulletin/ui";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { apiGet } from "../api.ts";
 
 export interface MissingObjectItem {
@@ -16,6 +16,7 @@ export interface MissingObjectItem {
 export interface MissingObjectsReport {
   readonly total: number;
   readonly items: readonly MissingObjectItem[];
+  readonly nextCursor: string | null;
   readonly lastRun: {
     readonly id: string;
     readonly trigger: "detected" | "manual";
@@ -32,10 +33,20 @@ export interface MissingObjectsReport {
 export function MissingObjectsPage() {
   const t = useT();
   const locale = useLocale();
-  const query = useQuery({
+  // The API returns 200 rows a page; older rows load on demand with the page's cursor.
+  const query = useInfiniteQuery({
     queryKey: ["staff", "system", "missing-objects"],
-    queryFn: () => apiGet<MissingObjectsReport>("/api/staff/system/missing-objects"),
+    queryFn: ({ pageParam }) =>
+      apiGet<MissingObjectsReport>(
+        pageParam === null
+          ? "/api/staff/system/missing-objects"
+          : `/api/staff/system/missing-objects?cursor=${encodeURIComponent(pageParam)}`,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
+  const first = query.data?.pages[0];
+  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
   const date = (value: string) =>
     formatDate(new Date(value), locale, { dateStyle: "medium", timeStyle: "short" });
   const columns: readonly DataTableColumn<MissingObjectItem>[] = [
@@ -88,44 +99,44 @@ export function MissingObjectsPage() {
           </button>
         </div>
       ) : null}
-      {query.isSuccess ? (
+      {query.isSuccess && first !== undefined ? (
         <>
           <section className="widget" data-missing-last-run>
             <h2>{t("staff.missingObjects.lastRun")}</h2>
-            {query.data.lastRun === null ? (
+            {first.lastRun === null ? (
               <p className="widget-muted">{t("staff.missingObjects.noRuns")}</p>
             ) : (
               <dl className="stat-grid">
                 <div>
                   <dt>{t("staff.missingObjects.runStarted")}</dt>
-                  <dd>{date(query.data.lastRun.startedAt)}</dd>
+                  <dd>{date(first.lastRun.startedAt)}</dd>
                 </div>
                 <div>
                   <dt>{t("staff.missingObjects.runStatus")}</dt>
-                  <dd data-run-status={query.data.lastRun.status}>
-                    {query.data.lastRun.status === "completed"
+                  <dd data-run-status={first.lastRun.status}>
+                    {first.lastRun.status === "completed"
                       ? t("staff.missingObjects.statusCompleted")
-                      : query.data.lastRun.status === "failed"
+                      : first.lastRun.status === "failed"
                         ? t("staff.missingObjects.statusFailed")
                         : t("staff.missingObjects.statusRunning")}
                   </dd>
                 </div>
                 <div>
                   <dt>{t("staff.missingObjects.replayed")}</dt>
-                  <dd>{formatNumber(query.data.lastRun.replayed, locale)}</dd>
+                  <dd>{formatNumber(first.lastRun.replayed, locale)}</dd>
                 </div>
                 <div>
                   <dt>{t("staff.missingObjects.removed")}</dt>
-                  <dd>{formatNumber(query.data.lastRun.removedObjects, locale)}</dd>
+                  <dd>{formatNumber(first.lastRun.removedObjects, locale)}</dd>
                 </div>
               </dl>
             )}
           </section>
-          <p className="widget-muted" data-missing-total={query.data.total}>
-            {t("staff.missingObjects.total", { count: query.data.total })}
+          <p className="widget-muted" data-missing-total={first.total}>
+            {t("staff.missingObjects.total", { count: first.total })}
           </p>
           <DataTable
-            rows={query.data.items}
+            rows={items}
             columns={columns}
             getRowId={(item) => item.id}
             getRowLabel={(item) => item.storageKey}
@@ -133,6 +144,20 @@ export function MissingObjectsPage() {
             emptyKey="staff.missingObjects.empty"
             pageSize={25}
           />
+          {query.hasNextPage ? (
+            <div className="log-load-more">
+              <button
+                type="button"
+                data-missing-load-more
+                disabled={query.isFetchingNextPage}
+                onClick={() => void query.fetchNextPage()}
+              >
+                {query.isFetchingNextPage
+                  ? t("staff.widget.loading")
+                  : t("staff.missingObjects.loadMore", { loaded: items.length })}
+              </button>
+            </div>
+          ) : null}
         </>
       ) : null}
     </div>

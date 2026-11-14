@@ -953,6 +953,73 @@ integrationDescribe("restore: backup taken after the latest watermark", () => {
   }
 });
 
+integrationDescribe("missing files listing beyond one page", () => {
+  test("acp.system pages through every missing file with a cursor", async () => {
+    const database = await createTestDatabase({
+      adminUrl: adminUrl ?? "",
+      prefix: "missing_pages",
+    });
+
+    try {
+      await runSeeds({
+        sql: database.sql,
+        registry: new SeedRegistry([baseSeedModule, permissionFixtureSeedModule]),
+      });
+      const adminId = await member(database.sql, "Pages Admin", ["administrators"]);
+      const moderatorId = await member(database.sql, "Pages Moderator", [
+        "members",
+        "super_moderators",
+      ]);
+      await database.sql`
+        INSERT INTO core.missing_objects (kind, resource_id, storage_key)
+        SELECT 'attachment', n, 'att/' || lpad(n::text, 64, '0')
+        FROM generate_series(1, 230) AS n
+      `;
+      const staffSql = new SQL(roleUrl(database.url, "staff_api"));
+      const route = STAFF_ROUTES.find(
+        (candidate) => candidate.id === "system.missingObjects",
+      ) as StaffRoute;
+      const call = async (memberId: string, cursor?: string) => {
+        const url = new URL("http://staff.test/api/staff/system/missing-objects");
+
+        if (cursor !== undefined) {
+          url.searchParams.set("cursor", cursor);
+        }
+
+        return authorizeStaffRoute(route, {
+          request: new Request(url),
+          url,
+          session: { id: "1", memberId, lastAuthAt: new Date() } as unknown as SessionRecord,
+          sql: staffSql,
+        });
+      };
+
+      try {
+        const first = (await (await call(adminId)).json()) as MissingObjectsReport;
+        expect(first.total).toBe(230);
+        expect(first.items).toHaveLength(200);
+        expect(first.nextCursor).not.toBeNull();
+
+        const second = (await (
+          await call(adminId, first.nextCursor ?? "")
+        ).json()) as MissingObjectsReport;
+        expect(second.items).toHaveLength(30);
+        expect(second.nextCursor).toBeNull();
+
+        const keys = new Set([...first.items, ...second.items].map((item) => item.storageKey));
+        expect(keys.size).toBe(230);
+
+        expect((await call(adminId, "not-a-cursor")).status).toBe(400);
+        expect((await call(moderatorId, first.nextCursor ?? "")).status).toBe(403);
+      } finally {
+        await staffSql.close();
+      }
+    } finally {
+      await database.drop();
+    }
+  }, 60_000);
+});
+
 describe("bucket versioning (35 days)", () => {
   test("a file deleted 3 days ago can be restored; one deleted 36 days ago cannot", async () => {
     let clock = Date.now();

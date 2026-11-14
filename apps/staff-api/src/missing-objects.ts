@@ -6,6 +6,7 @@ import type { SQL } from "bun";
  * recover from bucket versions, or what to tell the affected members.
  */
 
+/** Rows per page; staff page through the rest with `?cursor=`. */
 export const MISSING_OBJECTS_LIMIT = 200;
 
 export interface MissingObjectItem {
@@ -32,6 +33,8 @@ export interface RestoreRunSummary {
 export interface MissingObjectsReport {
   readonly total: number;
   readonly items: readonly MissingObjectItem[];
+  /** Pass as `?cursor=` for the next, older page; null on the last page. */
+  readonly nextCursor: string | null;
   readonly lastRun: RestoreRunSummary | null;
 }
 
@@ -39,7 +42,25 @@ function iso(value: Date | string | null): string | null {
   return value === null ? null : new Date(value).toISOString();
 }
 
-export async function readMissingObjects(sql: SQL): Promise<MissingObjectsReport> {
+/** A cursor is the id of the last row of the previous page; anything else is rejected. */
+export function parseMissingObjectsCursor(value: string | null): string | null | undefined {
+  if (value === null || value === "") {
+    return null;
+  }
+
+  return /^[1-9]\d{0,18}$/.test(value) ? value : undefined;
+}
+
+/**
+ * One page of missing objects, newest first. Rows are keyed by id, which grows with each scan,
+ * so the order matches detection time and a cursor stays stable while rows are added.
+ */
+export async function readMissingObjects(
+  sql: SQL,
+  options: { readonly cursor?: string | null; readonly limit?: number } = {},
+): Promise<MissingObjectsReport> {
+  const limit = options.limit ?? MISSING_OBJECTS_LIMIT;
+  const cursor = options.cursor ?? null;
   const [count] = (await sql`
     SELECT count(*)::int AS total FROM core.missing_objects
   `) as Array<{ total: number }>;
@@ -56,8 +77,9 @@ export async function readMissingObjects(sql: SQL): Promise<MissingObjectsReport
         WHERE m.kind = 'attachment' AND pa.attachment_id = m.resource_id
       ) AS post_id
     FROM core.missing_objects m
-    ORDER BY m.detected_at DESC, m.id DESC
-    LIMIT ${MISSING_OBJECTS_LIMIT}
+    WHERE ${cursor}::bigint IS NULL OR m.id < ${cursor}::bigint
+    ORDER BY m.id DESC
+    LIMIT ${limit + 1}
   `) as Array<{
     id: string;
     kind: "attachment" | "avatar";
@@ -83,9 +105,12 @@ export async function readMissingObjects(sql: SQL): Promise<MissingObjectsReport
     missing_objects: number;
   }>;
 
+  const page = rows.slice(0, limit);
+
   return {
     total: count?.total ?? 0,
-    items: rows.map((row) => ({
+    nextCursor: rows.length > limit ? (page.at(-1)?.id ?? null) : null,
+    items: page.map((row) => ({
       id: row.id,
       kind: row.kind,
       resourceId: row.resource_id,

@@ -595,6 +595,7 @@
   "staff.missingObjects.kindAvatar": "Avatar",
   "staff.missingObjects.lastRun": "Última comprobación tras restauración",
   "staff.missingObjects.loadError": "No se pudieron cargar los archivos que faltan.",
+  "staff.missingObjects.loadMore": "Cargar archivos faltantes más antiguos ({loaded, plural, one {# mostrado} other {# mostrados}})",
   "staff.missingObjects.memberRef": "Miembro {id}",
   "staff.missingObjects.noRuns": "Todavía no se ha comprobado ninguna restauración.",
   "staff.missingObjects.removed": "Archivos sin referencia eliminados",

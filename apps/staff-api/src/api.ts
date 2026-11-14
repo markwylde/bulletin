@@ -65,7 +65,7 @@ import {
   saveMatrixCell,
 } from "./masks.ts";
 import { removeMemberAvatarForStaff } from "./members.ts";
-import { readMissingObjects } from "./missing-objects.ts";
+import { parseMissingObjectsCursor, readMissingObjects } from "./missing-objects.ts";
 import {
   staffModerationActionResponse,
   staffQueueCountResponse,
@@ -1906,7 +1906,13 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     method: "GET",
     path: "/api/staff/system/missing-objects",
     permission: "acp.system",
-    handler: async ({ sql }) => json(await readMissingObjects(sql)),
+    handler: async ({ sql, url }) => {
+      const cursor = parseMissingObjectsCursor(url.searchParams.get("cursor"));
+
+      return cursor === undefined
+        ? json({ code: "invalid_cursor" }, 400)
+        : json(await readMissingObjects(sql, { cursor }));
+    },
   },
   {
     id: "events.deadLetters.list",

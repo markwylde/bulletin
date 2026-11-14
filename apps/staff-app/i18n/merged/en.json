@@ -633,6 +633,7 @@
   "staff.missingObjects.kindAvatar": "Avatar",
   "staff.missingObjects.lastRun": "Last post-restore check",
   "staff.missingObjects.loadError": "Could not load the missing files.",
+  "staff.missingObjects.loadMore": "Load older missing files ({loaded, plural, one {# shown} other {# shown}})",
   "staff.missingObjects.memberRef": "Member {id}",
   "staff.missingObjects.noRuns": "No restore has been checked yet.",
   "staff.missingObjects.removed": "Unreferenced files removed",

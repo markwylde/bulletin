@@ -7,7 +7,10 @@ import { MissingObjectsPage, type MissingObjectsReport } from "./MissingObjectsP
 
 function render(report: MissingObjectsReport): string {
   const client = new QueryClient();
-  client.setQueryData(["staff", "system", "missing-objects"], report);
+  client.setQueryData(["staff", "system", "missing-objects"], {
+    pages: [report],
+    pageParams: [null],
+  });
 
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
@@ -22,6 +25,7 @@ describe("missing files listing", () => {
   test("lists a restored attachment whose object is gone, with the last restore run", () => {
     const html = render({
       total: 1,
+      nextCursor: null,
       items: [
         {
           id: "1",
@@ -52,10 +56,29 @@ describe("missing files listing", () => {
   });
 
   test("says when nothing is missing and no restore was checked", () => {
-    const html = render({ total: 0, items: [], lastRun: null });
+    const html = render({ total: 0, items: [], nextCursor: null, lastRun: null });
 
     expect(html).toContain("No missing files");
     expect(html).toContain("No restore has been checked yet.");
     expect(html).toContain("Every stored file is present.");
+  });
+
+  test("offers older rows when the API has another page", () => {
+    const items = Array.from({ length: 200 }, (_, index) => ({
+      id: String(400 - index),
+      kind: "avatar" as const,
+      resourceId: String(index + 1),
+      storageKey: `av/${index}`,
+      detectedAt: "2026-11-14T12:00:00.000Z",
+      postId: null,
+    }));
+    const html = render({ total: 230, items, nextCursor: "201", lastRun: null });
+
+    expect(html).toContain("230 missing files");
+    expect(html).toContain("data-missing-load-more");
+    expect(html).toContain("Load older missing files (200 shown)");
+    expect(render({ total: 1, items: [], nextCursor: null, lastRun: null })).not.toContain(
+      "data-missing-load-more",
+    );
   });
 });

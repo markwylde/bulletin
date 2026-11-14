@@ -633,6 +633,7 @@
   "staff.missingObjects.kindAvatar": "Avatar",
   "staff.missingObjects.lastRun": "Dernière vérification après restauration",
   "staff.missingObjects.loadError": "Impossible de charger les fichiers manquants.",
+  "staff.missingObjects.loadMore": "Charger des fichiers manquants plus anciens ({loaded, plural, one {# affiché} other {# affichés}})",
   "staff.missingObjects.memberRef": "Membre {id}",
   "staff.missingObjects.noRuns": "Aucune restauration n’a encore été vérifiée.",
   "staff.missingObjects.removed": "Fichiers non référencés supprimés",

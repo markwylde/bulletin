@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  clickSelector,
   loginAs,
   type ViewportName,
   waitForExpression,
@@ -7,6 +8,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { staffBaseUrl } from "@bulletin/test-utils/urls";
+import { composeSql } from "./support/database.ts";
 
 // Run against the full stack:
 //   docker compose up -d --build --wait
@@ -66,6 +68,57 @@ integrationDescribe("staff system health panel (ADR 0020)", () => {
       });
     }, 120_000);
   }
+
+  test("loads missing files beyond the first API page at 360px", async () => {
+    // More rows than one 200-row API page, under keys no real object uses; removed afterwards.
+    await composeSql(`
+      INSERT INTO core.missing_objects (kind, resource_id, storage_key)
+      SELECT 'avatar', n, 'av/e2e-missing-page/' || n
+      FROM generate_series(1, 230) AS n
+      ON CONFLICT DO NOTHING
+    `);
+
+    try {
+      await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "admin");
+        await waitForSelector(view, '[data-auth-state="authenticated"]');
+        await view.navigate(`${STAFF_URL}/system/missing-objects`);
+        await waitForSelector(view, "[data-missing-total]");
+        const total = Number(
+          await view.evaluate<string>(
+            'document.querySelector("[data-missing-total]")?.getAttribute("data-missing-total") ?? "0"',
+          ),
+        );
+        expect(total).toBeGreaterThanOrEqual(230);
+        await waitForSelector(view, '[data-table][data-page-count="8"]');
+
+        while (
+          await view.evaluate<boolean>(
+            'document.querySelector("[data-missing-load-more]") !== null',
+          )
+        ) {
+          await waitForSelector(view, "[data-missing-load-more]:not([disabled])");
+          await clickSelector(view, "[data-missing-load-more]");
+          await Bun.sleep(250);
+        }
+
+        await waitForSelector(
+          view,
+          `[data-table][data-page-count="${Math.ceil(total / 25)}"]`,
+          20_000,
+        );
+        expect(
+          await view.evaluate<boolean>(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
+          ),
+        ).toBe(true);
+      });
+    } finally {
+      await composeSql(
+        "DELETE FROM core.missing_objects WHERE storage_key LIKE 'av/e2e-missing-page/%'",
+      );
+    }
+  }, 120_000);
 
   test("hides the panel from a member without acp.system", async () => {
     await withPage(
