@@ -173,22 +173,39 @@ export async function createListenerCheck(
   };
 }
 
+/** Identifies this process's query pool among the replicas that share a login role. */
+const PROCESS_POOL_ID = randomUUID().slice(0, 12);
+
 /**
- * Records this service's database connections by state on every scrape (ADR 0020 "DB pool
- * saturation"). Each service has its own login role, so the role's sessions are its pool plus
- * its LISTEN (and, for workers, pg-boss) connections across replicas.
+ * The Postgres `application_name` of this process's query pool. Replicas share their service's
+ * login role, so pool saturation is measured by this name, never by the role.
+ */
+export function poolApplicationName(service: string): string {
+  return `bulletin/${service}/${PROCESS_POOL_ID}`;
+}
+
+/**
+ * Records this process's query pool connections by state on every scrape (ADR 0020 "DB pool
+ * saturation"), against the same process's pool size. Connections are matched by the pool's
+ * `application_name`: counting the whole login role would add every other replica's pool and
+ * the LISTEN and pg-boss connections, and report two replicas at 6 of 10 as 120%.
  */
 export function registerDbPoolCollector(
   sql: SQL,
   service: ServiceName,
   registry: MetricsRegistry = metrics,
   connections?: Partial<Record<ServiceName, ConnectionShare>>,
+  options: { readonly applicationName?: string; readonly poolMax?: number } = {},
 ): () => void {
+  const applicationName = options.applicationName ?? poolApplicationName(service);
+
   return registry.addCollector(async () => {
     const rows = (await sql`
       SELECT COALESCE(state, 'unknown') AS state, count(*)::int AS connections
       FROM pg_stat_activity
-      WHERE usename = current_user AND backend_type = 'client backend'
+      WHERE usename = current_user
+        AND application_name = ${applicationName}
+        AND backend_type = 'client backend'
       GROUP BY 1
     `) as Array<{ state: string; connections: number }>;
     const byState = new Map<string, number>([
@@ -204,7 +221,7 @@ export function registerDbPoolCollector(
     standardMetrics.dbPoolConnections.replace(
       [...byState].map(([state, value]) => [{ state }, value] as const),
     );
-    standardMetrics.dbPoolMax.set({}, connectionPoolSize(service, connections));
+    standardMetrics.dbPoolMax.set({}, options.poolMax ?? connectionPoolSize(service, connections));
   });
 }
 
@@ -235,10 +252,12 @@ export function createServiceSql(
   service: ServiceName,
   databaseUrl: string,
   connections?: Partial<Record<ServiceName, ConnectionShare>>,
+  options: { readonly applicationName?: string } = {},
 ): SQL {
   return new Bun.SQL(databaseUrl, {
     max: connectionPoolSize(service, connections),
     connectionTimeout: 5,
+    connection: { application_name: options.applicationName ?? poolApplicationName(service) },
   });
 }
 

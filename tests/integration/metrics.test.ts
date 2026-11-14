@@ -3,10 +3,11 @@ import { createRenderCache } from "@bulletin/cache";
 import {
   exposedFamilies,
   METRIC_FAMILIES,
+  metrics,
   parsePrometheusText,
   standardMetrics,
 } from "@bulletin/config/metrics";
-import { startService } from "@bulletin/config/server";
+import { createServiceSql, registerDbPoolCollector, startService } from "@bulletin/config/server";
 import { createPgBossQueue, registerQueueCollector } from "@bulletin/db/events";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
@@ -112,6 +113,56 @@ integrationDescribe("metrics endpoint (ADR 0020)", () => {
         await service.shutdown();
         await boss.stop();
         await workersSql.close();
+      }
+    });
+  }, 60_000);
+
+  test("pool saturation counts this process's pool only, not every replica of the role", async () => {
+    await withDb(async (database) => {
+      const url = roleUrl(database.url, "staff_api");
+      // Two staff-api replicas: same login role, separate processes (application names).
+      const replicaA = createServiceSql("staff-api", url, undefined, {
+        applicationName: "bulletin/staff-api/replica-a",
+      });
+      const replicaB = createServiceSql("staff-api", url, undefined, {
+        applicationName: "bulletin/staff-api/replica-b",
+      });
+      const held: Array<Awaited<ReturnType<SQL["reserve"]>>> = [];
+      metrics.resetValues();
+      const unregister = registerDbPoolCollector(replicaA, "staff-api", metrics, undefined, {
+        applicationName: "bulletin/staff-api/replica-a",
+      });
+
+      try {
+        for (const pool of [replicaA, replicaB]) {
+          for (let index = 0; index < 3; index += 1) {
+            const connection = await pool.reserve();
+            await connection`SELECT 1`;
+            held.push(connection);
+          }
+        }
+
+        const samples = parsePrometheusText(await metrics.expose());
+        const open = samples
+          .filter((sample) => sample.name === METRIC_FAMILIES.dbPoolConnections)
+          .reduce((total, sample) => total + sample.value, 0);
+        const max = samples.find((sample) => sample.name === METRIC_FAMILIES.dbPoolMax)?.value;
+
+        expect(max).toBe(5);
+        // Replica A's held connections and whatever else its own pool opened; never replica
+        // B's, so saturation cannot pass 100% (it read 10 of 5 when counted by role).
+        expect(open).toBeGreaterThanOrEqual(3);
+        expect(open).toBeLessThanOrEqual(max ?? 0);
+      } finally {
+        unregister();
+        metrics.resetValues();
+
+        for (const connection of held) {
+          connection.release();
+        }
+
+        await replicaA.close();
+        await replicaB.close();
       }
     });
   }, 60_000);

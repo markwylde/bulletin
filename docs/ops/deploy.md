@@ -109,7 +109,7 @@ A transaction-mode pooler drops `LISTEN` state between transactions. So when `DA
 | `PG_BOSS_DATABASE_URL` | Postgres directly | pg-boss (workers) |
 | `MIGRATION_DATABASE_URL` | Postgres directly, owner role | Migrations at startup |
 
-Each service connects as its own login role: `user_app`, `user_api`, `staff_api`, `workers`, `plugin_host`. Keep those roles. Pool saturation in the staff health panel is measured per role.
+Each service connects as its own login role: `user_app`, `user_api`, `staff_api`, `workers`, `plugin_host`. Keep those roles. Pool saturation is measured **per process**: each process names its query pool `bulletin/<service>/<process id>` (`application_name`) and reports it against its own pool size, so replicas sharing a role never add up past 100%. Do not override `application_name` in the connection URL.
 
 ## 4. Object storage
 

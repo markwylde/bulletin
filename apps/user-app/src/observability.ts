@@ -1,7 +1,7 @@
 import { metricsPortFromEnv, serveMetrics } from "@bulletin/config/metrics";
 import { registerDbPoolCollector } from "@bulletin/config/server";
 import { initTracing } from "@bulletin/config/tracing";
-import { readSql } from "./db.ts";
+import { READ_POOL_MAX, readSql } from "./db.ts";
 
 const STARTED = Symbol.for("bulletin.user-app.metrics");
 
@@ -25,7 +25,7 @@ export function startUserAppMetrics(): void {
     return;
   }
 
-  registerDbPoolCollector(readSql(), "user-app");
+  registerDbPoolCollector(readSql(), "user-app", undefined, undefined, { poolMax: READ_POOL_MAX });
 
   try {
     serveMetrics({ port });
