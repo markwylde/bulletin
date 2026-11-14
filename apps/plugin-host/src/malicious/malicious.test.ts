@@ -285,15 +285,15 @@ async function withCase(
     }
 
     monitor = startCgroupMonitor(supervisor);
-    void channel.request("job.run", { name: "run", payload: {} }, 5_000).catch(() => undefined);
+    // The broker revokes a job's invocation context when the job request times out, so the
+    // job must live as long as the test waits for its result (quota-abuse takes ~5s on CI).
+    const resultTimeoutMs = options.resultTimeoutMs ?? 15_000;
+    void channel
+      .request("job.run", { name: "run", payload: {} }, resultTimeoutMs)
+      .catch(() => undefined);
     await waitForStarted(caseName);
 
-    const result = await waitForResult(
-      caseName,
-      supervisor,
-      options,
-      options.resultTimeoutMs ?? 15_000,
-    );
+    const result = await waitForResult(caseName, supervisor, options, resultTimeoutMs);
 
     await run({ result, supervisor, monitor });
   } finally {
