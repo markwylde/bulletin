@@ -19,10 +19,14 @@ export function seoHttpResponse(
     "x-content-type-options": "nosniff",
   });
 
-  if (document.status === 404) {
+  if (document.status === 404 || document.status === 503) {
     headers.set("cache-control", "no-store");
 
-    return new Response(document.body, { status: 404, headers });
+    if (document.status === 503) {
+      headers.set("retry-after", "3600");
+    }
+
+    return new Response(document.body, { status: document.status, headers });
   }
 
   const etag = hash(document.body);

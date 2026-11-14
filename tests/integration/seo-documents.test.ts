@@ -13,6 +13,7 @@ import {
 } from "@bulletin/db/seed";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { feedDocumentFor } from "../../apps/user-app/src/seo/feeds.ts";
+import { seoHttpResponse } from "../../apps/user-app/src/seo/http.ts";
 import {
   type SitemapKind,
   sitemapIndexDocument,
@@ -186,4 +187,72 @@ integrationDescribe("generated XML documents", () => {
       expect(list(forumChannel.item).length).toBeGreaterThan(0);
     });
   }, 60_000);
+
+  test("an offline board serves no feed or sitemap to anyone unless Guests may view offline", async () => {
+    await withSeededDb(async (database) => {
+      const [forum] = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE slug = 'announcements'
+      `) as Array<{ id: string }>;
+      const documents = () =>
+        Promise.all([
+          feedDocumentFor({ sql: database.sql, origin: ORIGIN, format: "rss" }),
+          feedDocumentFor({ sql: database.sql, origin: ORIGIN, format: "atom" }),
+          feedDocumentFor({
+            sql: database.sql,
+            origin: ORIGIN,
+            format: "rss",
+            forumRef: `${forum?.id}-announcements`,
+          }),
+          sitemapIndexDocument({ sql: database.sql, origin: ORIGIN }),
+          sitemapPageDocument({ sql: database.sql, origin: ORIGIN, kind: "forums", page: 1 }),
+          sitemapPageDocument({ sql: database.sql, origin: ORIGIN, kind: "topics", page: 1 }),
+          sitemapPageDocument({ sql: database.sql, origin: ORIGIN, kind: "members", page: 1 }),
+        ]);
+
+      const online = await documents();
+      expect(online.map((document) => document.status)).toEqual([
+        200, 200, 200, 200, 200, 200, 200,
+      ]);
+      // Every document carries `board`, so taking the board offline purges it from the CDN.
+      for (const document of online) {
+        expect(document.tags).toContain("board");
+      }
+
+      await database.sql`UPDATE core.board_settings SET offline = true WHERE id = 1`;
+
+      const offline = await documents();
+      for (const document of offline) {
+        expect(document.status).toBe(503);
+        expect(document.body).toBe("");
+        expect(document.tags).toEqual([]);
+      }
+
+      // A member's request (session cookie) gets the same guest verdict, never cached.
+      const [offlineFeed] = offline;
+
+      if (offlineFeed === undefined) {
+        throw new Error("Expected the offline feed document");
+      }
+
+      const response = seoHttpResponse(
+        offlineFeed,
+        new Request(`${ORIGIN}/feed.xml`, { headers: { cookie: "bulletin_session=member" } }),
+        { dev: false, nodeEnv: "test" },
+      );
+      expect(response.status).toBe(503);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("retry-after")).toBe("3600");
+
+      // `board.view_offline` for Guests, through can(), is the only bypass.
+      await database.sql`
+        INSERT INTO core.group_settings (group_id, key, value)
+        SELECT id, 'board.view_offline', 'true'::jsonb FROM core.groups WHERE key = 'guests'
+        ON CONFLICT (group_id, key) DO UPDATE SET value = EXCLUDED.value
+      `;
+      const bypassed = await documents();
+      expect(bypassed.map((document) => document.status)).toEqual([
+        200, 200, 200, 200, 200, 200, 200,
+      ]);
+    });
+  });
 });

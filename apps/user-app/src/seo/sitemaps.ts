@@ -1,5 +1,6 @@
 import { forumTag, GLOBAL_CACHE_TAGS } from "@bulletin/cache";
 import {
+  guestSeoAvailable,
   loadGuestSeoAccess,
   readSitemapBounds,
   readSitemapForumPage,
@@ -11,7 +12,12 @@ import {
 } from "@bulletin/domain/seo";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { SQL } from "bun";
-import { notFoundDocument, type SeoDocument, SITEMAP_CONTENT_TYPE } from "./document.ts";
+import {
+  notFoundDocument,
+  type SeoDocument,
+  SITEMAP_CONTENT_TYPE,
+  unavailableDocument,
+} from "./document.ts";
 
 export const SITEMAP_KINDS = ["forums", "topics", "members"] as const;
 export type SitemapKind = (typeof SITEMAP_KINDS)[number];
@@ -20,8 +26,9 @@ export function sitemapPath(kind: SitemapKind, page: number): string {
   return `/sitemap/${kind}/${page}.xml`;
 }
 
+/** `board` covers offline mode: taking the board offline bumps it and purges every sitemap. */
 function sitemapTags(forumIds: readonly string[]): readonly string[] {
-  return [GLOBAL_CACHE_TAGS.perm, ...new Set(forumIds.map(forumTag))];
+  return [GLOBAL_CACHE_TAGS.perm, GLOBAL_CACHE_TAGS.board, ...new Set(forumIds.map(forumTag))];
 }
 
 /**
@@ -32,6 +39,10 @@ export async function sitemapIndexDocument(input: {
   readonly sql: SQL;
   readonly origin: string;
 }): Promise<SeoDocument> {
+  if (!(await guestSeoAvailable(input.sql))) {
+    return unavailableDocument();
+  }
+
   const access = await loadGuestSeoAccess(input.sql);
   const bounds = await readSitemapBounds(input.sql, access);
   const entries: Array<{ readonly loc: string }> = [];
@@ -62,6 +73,10 @@ export async function sitemapPageDocument(input: {
   readonly kind: SitemapKind;
   readonly page: number;
 }): Promise<SeoDocument> {
+  if (!(await guestSeoAvailable(input.sql))) {
+    return unavailableDocument();
+  }
+
   const access = await loadGuestSeoAccess(input.sql);
   const bounds = await readSitemapBounds(input.sql, access);
 
@@ -111,6 +126,6 @@ export async function sitemapPageDocument(input: {
       })),
     ),
     contentType: SITEMAP_CONTENT_TYPE,
-    tags: [GLOBAL_CACHE_TAGS.perm, GLOBAL_CACHE_TAGS.directory],
+    tags: [GLOBAL_CACHE_TAGS.perm, GLOBAL_CACHE_TAGS.board, GLOBAL_CACHE_TAGS.directory],
   };
 }

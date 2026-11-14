@@ -3,6 +3,7 @@ import { readBoardSettings } from "@bulletin/domain/board";
 import {
   type FeedDocument,
   type FeedTopicRecord,
+  guestSeoAvailable,
   loadGuestSeoAccess,
   readBoardFeed,
   readForumFeed,
@@ -14,7 +15,7 @@ import { canonicalUrl, parseResourcePath, slugify } from "@bulletin/domain/urls"
 import { createServerT, type Locale, type Translator } from "@bulletin/i18n";
 import type { SQL } from "bun";
 import { USER_CATALOGS } from "../catalogs.ts";
-import { notFoundDocument, type SeoDocument } from "./document.ts";
+import { notFoundDocument, type SeoDocument, unavailableDocument } from "./document.ts";
 
 export const FEED_FORMATS = ["rss", "atom"] as const;
 export type FeedFormat = (typeof FEED_FORMATS)[number];
@@ -115,6 +116,10 @@ export async function feedDocumentFor(input: {
   readonly format: FeedFormat;
   readonly forumRef?: string | null;
 }): Promise<SeoDocument> {
+  if (!(await guestSeoAvailable(input.sql))) {
+    return unavailableDocument();
+  }
+
   const access = await loadGuestSeoAccess(input.sql);
   const settings = await readBoardSettings(input.sql);
   const translate = createServerT(settings.defaultLocale, { shipped: USER_CATALOGS });

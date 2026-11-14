@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { readBoardSettings } from "../board/settings.ts";
 import {
   can,
   GUEST_PRINCIPAL,
@@ -41,6 +42,17 @@ export async function guestCanReadForum(
     sessionId: null,
     snapshot: access.snapshot,
   });
+}
+
+/**
+ * Whether guest documents (feeds, sitemaps) may be served at all. While the board is offline
+ * only `board.view_offline` may browse; these documents always evaluate as Guests, so they are
+ * unavailable unless Guests hold that permission, whoever asks (ADR 0005, `can()` only).
+ */
+export async function guestSeoAvailable(sql: SQL): Promise<boolean> {
+  const settings = await readBoardSettings(sql);
+
+  return !settings.offline || (await can(sql, GUEST_PRINCIPAL, "board.view_offline"));
 }
 
 /**

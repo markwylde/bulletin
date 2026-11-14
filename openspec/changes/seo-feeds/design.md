@@ -15,6 +15,10 @@ Uses the Guests permission snapshot and CDN caching rules (ADR 0006).
 - **Guest-only queries**: sitemaps and feeds always evaluate with the Guests snapshot,
   regardless of the requester (there is no member variant). Routes are `cdnCacheable` and
   tagged with the forums they include.
+- **Offline board**: while the board is offline, feeds and sitemaps answer `503` with
+  `Retry-After` and `no-store` to everyone (they are Guests documents), unless Guests hold
+  `board.view_offline` via `can()`. Every feed and sitemap carries the `board` tag, so going
+  offline invalidates cached copies. `robots.txt` keeps being served.
 - **Sitemap pagination**: 10,000 URLs per file, keyset-paginated by topic ID.
   `lastmod` = `last_post_at`.
 - **Excerpts**: the first 300 characters of the first post's `body_text` (quote-free).

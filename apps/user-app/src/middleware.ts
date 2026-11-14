@@ -47,7 +47,9 @@ const NON_PAGE_PREFIXES = [
   "/manifest.webmanifest",
   "/sw.js",
   "/pwa/",
-  // Sitemaps and RSS/Atom feeds are public XML documents, always evaluated as Guests.
+  // Sitemaps and RSS/Atom feeds are public XML documents, always evaluated as Guests; their
+  // routes apply the offline gate themselves (503 unless Guests may view offline). robots.txt
+  // stays available so crawlers keep their rules while the board is offline.
   "/sitemap",
   "/feed",
   "/robots.txt",
