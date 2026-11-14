@@ -1313,6 +1313,15 @@ integrationDescribe("permanent conversation removal", () => {
       expect(recording.deleted).not.toContain(held.storageKey);
       expect(await storageUsedBytes(database, starter)).toBe(140);
 
+      // Only the conversation, held messages and their attachments remain: participant
+      // folders, read markers and membership history are removed with the unheld content.
+      const [participants] = (await database.sql`
+        SELECT count(*)::int AS count
+        FROM core.conversation_participants
+        WHERE conversation_id = ${conversationId}
+      `) as Array<{ count: number }>;
+      expect(participants?.count).toBe(0);
+
       const stillKept = await runConversationRemoval(database.sql, recording.storage);
       expect(stillKept.kept).toBe(1);
       expect(stillKept.messagesDeleted).toBe(0);
