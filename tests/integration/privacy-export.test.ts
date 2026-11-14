@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { runExportJob, runRetention } from "@bulletin/db/jobs";
 import { sessionCookieName } from "@bulletin/domain/auth";
 import { notificationDeliveryContext } from "@bulletin/domain/notifications";
+import { forumActionMask } from "@bulletin/domain/permissions";
 import { createServerT } from "@bulletin/i18n";
 import { PRESIGN_GET_EXPIRES_IN, type StorageClient } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -466,6 +467,55 @@ integrationDescribe("member data export", () => {
     });
   }, 60_000);
 
+  test("reuses a persisted upload key and reconciles an abandoned archive", async () => {
+    await withDb("privacy_export_upload_recovery", async (database) => {
+      const fixtures = await createFixtures(database);
+      const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
+      const cookie = `${sessionCookieName("user", "test")}=${fixtures.token}`;
+      const requested = await requestDataExportResponse(
+        database.sql,
+        fixtures.memberId,
+        new Request("http://bulletin.test/api/me/data-export", {
+          method: "POST",
+          headers: { cookie },
+        }),
+        "test",
+      );
+      const requestId = ((await requested.json()) as { requestId: string }).requestId;
+      const fixedKey = "export/11111111-1111-1111-1111-111111111111.zip";
+
+      await database.sql`SELECT pii.begin_export(${requestId})`;
+      const [reserved] = (await database.sql`
+        SELECT pii.reserve_export_key(${requestId}, ${fixedKey}) AS key
+      `) as Array<{ key: string }>;
+      expect(reserved?.key).toBe(fixedKey);
+      storage.objects.set(fixedKey, new TextEncoder().encode("partial"));
+
+      const completed = await runExportJob(database.sql, storage.storage, requestId, {
+        pluginExport: async () => ({ ok: true, data: {} }),
+      });
+      expect(completed?.exportKey).toBe(fixedKey);
+      expect([...storage.objects.keys()].filter((key) => key.startsWith("export/"))).toEqual([
+        fixedKey,
+      ]);
+
+      await database.sql`
+        INSERT INTO pii.data_requests (
+          member_id, kind, status, export_key, export_started_at
+        ) VALUES (
+          ${fixtures.memberId}, 'export', 'processing',
+          'export/22222222-2222-2222-2222-222222222222.zip', now() - interval '2 days'
+        )
+      `;
+      storage.objects.set(
+        "export/22222222-2222-2222-2222-222222222222.zip",
+        new TextEncoder().encode("abandoned"),
+      );
+      await runRetention(database.sql, storage.storage);
+      expect(storage.deleted).toContain("export/22222222-2222-2222-2222-222222222222.zip");
+    });
+  }, 60_000);
+
   test("recovers an export-ready email whose enqueue failed", async () => {
     await withDb("privacy_export_email_recovery", async (database) => {
       const fixtures = await createFixtures(database);
@@ -511,6 +561,102 @@ integrationDescribe("member data export", () => {
       });
       expect(recovered).toBeNull();
       expect(enqueued).toEqual([intent?.id]);
+    });
+  }, 60_000);
+
+  test("omits followed and reacted content the member can no longer read", async () => {
+    await withDb("privacy_export_visibility", async (database) => {
+      const fixtures = await createFixtures(database);
+      const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
+      const membersGroup = (await database.sql`
+        SELECT id::text AS id FROM core.groups WHERE key = 'members'
+      `) as Array<{ id: string }>;
+      await database.sql`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        VALUES (${fixtures.memberId}, ${membersGroup[0]?.id}, true)
+      `;
+      const [mask] = (await database.sql`
+        INSERT INTO core.masks (key, title) VALUES ('export_read', 'Export read')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      await database.sql`
+        INSERT INTO core.group_masks (group_id, mask_id)
+        VALUES (${membersGroup[0]?.id}, ${mask?.id})
+      `;
+      const [fixtureForum] = (await database.sql`
+        SELECT id::text AS id FROM core.forums WHERE slug = 'export-forum'
+      `) as Array<{ id: string }>;
+      await database.sql`
+        INSERT INTO core.forum_permissions (forum_id, mask_id, actions, inherits)
+        VALUES (${fixtureForum?.id}, ${mask?.id}, ${forumActionMask(["show", "read"])}, false)
+      `;
+      const [restrictedForum] = (await database.sql`
+        INSERT INTO core.forums (type, title, slug)
+        VALUES ('forum', 'Hidden Export Forum', 'hidden-export-forum')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [restrictedTopic] = (await database.sql`
+        INSERT INTO core.topics (forum_id, title, slug, starter_id)
+        VALUES (${restrictedForum?.id}, 'Hidden export topic', 'hidden-export-topic', ${fixtures.memberId})
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [restrictedPost] = (await database.sql`
+        INSERT INTO core.posts (
+          topic_id, author_id, body_md, body_html, body_text, render_version,
+          sanitiser_version, position
+        ) VALUES (
+          ${restrictedTopic?.id}, ${fixtures.memberId}, 'Hidden body',
+          '<p>Hidden body</p>', 'Hidden body', 1, 1, 1
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [reaction] = (await database.sql`
+        SELECT id::text AS id FROM core.reactions LIMIT 1
+      `) as Array<{ id: string }>;
+      await database.sql`
+        INSERT INTO core.post_reactions (post_id, member_id, reaction_id)
+        VALUES (${restrictedPost?.id}, ${fixtures.memberId}, ${reaction?.id})
+      `;
+      await database.sql`
+        INSERT INTO core.followed_forums (member_id, forum_id)
+        VALUES (${fixtures.memberId}, ${restrictedForum?.id})
+      `;
+      await database.sql`
+        INSERT INTO core.followed_topics (member_id, topic_id)
+        VALUES (${fixtures.memberId}, ${restrictedTopic?.id})
+      `;
+
+      const cookie = `${sessionCookieName("user", "test")}=${fixtures.token}`;
+      const requested = await requestDataExportResponse(
+        database.sql,
+        fixtures.memberId,
+        new Request("http://bulletin.test/api/me/data-export", {
+          method: "POST",
+          headers: { cookie },
+        }),
+        "test",
+      );
+      const requestId = ((await requested.json()) as { requestId: string }).requestId;
+      const result = await runExportJob(database.sql, storage.storage, requestId, {
+        pluginExport: async () => ({ ok: true, data: {} }),
+      });
+      const archive = storage.objects.get(result?.exportKey ?? "");
+
+      if (archive === undefined) {
+        throw new Error("export archive was not uploaded");
+      }
+
+      const files = unzipSync(archive);
+      const follows = strFromU8(files["follows.json"] ?? new Uint8Array());
+      const reactions = strFromU8(files["reactions.json"] ?? new Uint8Array());
+      const posts = strFromU8(files["posts.json"] ?? new Uint8Array());
+      expect(follows).toContain("Export Forum");
+      expect(follows).toContain("Export topic");
+      expect(follows).not.toContain("Hidden Export Forum");
+      expect(follows).not.toContain("Hidden export topic");
+      expect(reactions).not.toContain("Hidden export topic");
+      expect(posts).toContain("Hidden body");
+      expect(posts).not.toContain('"topic_title": "Hidden export topic"');
     });
   }, 60_000);
 
@@ -575,7 +721,8 @@ integrationDescribe("member data export", () => {
       const [row] = (await database.sql`
         SELECT status, export_key, last_error FROM pii.data_requests WHERE id = ${requestId}
       `) as Array<{ status: string; export_key: string | null; last_error: string | null }>;
-      expect(row).toMatchObject({ status: "processing", export_key: null });
+      expect(row?.status).toBe("processing");
+      expect(row?.export_key).toMatch(/^export\/[0-9a-f-]+\.zip$/);
       expect(row?.last_error).toContain("plugin down");
       const [notification] = (await database.sql`
         SELECT count(*)::int AS count FROM core.notifications

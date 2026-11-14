@@ -120,6 +120,16 @@ export async function runExportJob(
   }
 
   const memberId = started.member_id;
+  const candidateKey = `export/${crypto.randomUUID()}.zip`;
+  const [reserved] = (await sql`
+    SELECT pii.reserve_export_key(${requestId}, ${candidateKey}) AS export_key
+  `) as Array<{ export_key: string | null }>;
+
+  if (reserved?.export_key === null || reserved?.export_key === undefined) {
+    return null;
+  }
+
+  const exportKey = reserved.export_key;
   const settings = await readPrivacySettings(sql);
   let bundle: Awaited<ReturnType<typeof buildMemberExport>>;
 
@@ -133,7 +143,6 @@ export async function runExportJob(
     throw error;
   }
 
-  const exportKey = `export/${crypto.randomUUID()}.zip`;
   const expiresAt = new Date(Date.now() + settings.exportDays * 24 * 60 * 60 * 1_000);
   let sizeBytes: number;
 

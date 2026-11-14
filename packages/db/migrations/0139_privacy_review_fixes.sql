@@ -17,8 +17,14 @@ ALTER TABLE pii.data_requests
 ALTER TABLE pii.data_requests
   ADD COLUMN IF NOT EXISTS last_error text;
 
+ALTER TABLE pii.data_requests
+  ADD COLUMN IF NOT EXISTS export_started_at timestamptz;
+
 COMMENT ON COLUMN pii.data_requests.last_error
   IS '@personal class=restricted';
+
+COMMENT ON COLUMN pii.data_requests.export_started_at
+  IS '@personal class=personal-content';
 
 ALTER TABLE pii.erasure_fences
   ADD COLUMN IF NOT EXISTS old_names text[] NOT NULL DEFAULT '{}';
@@ -196,6 +202,56 @@ BEGIN
     'apiKeyIds', to_jsonb(v_fence.api_key_ids::text[]),
     'pushDeviceIds', to_jsonb(v_fence.push_device_ids::text[])
   );
+END;
+$$;
+
+-- Persist the object key before the upload. A retry reuses the key, and retention can find
+-- archives whose completion transaction never ran.
+CREATE OR REPLACE FUNCTION pii.reserve_export_key(
+  p_request_id bigint,
+  p_export_key text
+) RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pii, pg_temp
+AS $$
+DECLARE
+  v_member_id bigint;
+  v_status text;
+  v_existing text;
+  v_state text;
+BEGIN
+  IF p_export_key IS NULL OR p_export_key !~ '^export/[0-9a-f-]+\.zip$' THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT r.member_id, r.status, r.export_key
+    INTO v_member_id, v_status, v_existing
+    FROM pii.data_requests r
+   WHERE r.id = p_request_id AND r.kind = 'export'
+   FOR UPDATE;
+
+  IF NOT FOUND OR v_status <> 'processing' THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT state INTO v_state FROM core.members WHERE id = v_member_id;
+
+  IF v_state IS DISTINCT FROM 'active' THEN
+    RETURN NULL;
+  END IF;
+
+  IF v_existing IS NOT NULL THEN
+    RETURN v_existing;
+  END IF;
+
+  UPDATE pii.data_requests
+     SET export_key = p_export_key,
+         export_started_at = now(),
+         updated_at = now()
+   WHERE id = p_request_id;
+
+  RETURN p_export_key;
 END;
 $$;
 
@@ -461,8 +517,14 @@ BEGIN
     SELECT r.id, r.export_key
       FROM pii.data_requests r
      WHERE r.export_key IS NOT NULL
-       AND r.export_expires_at IS NOT NULL
-       AND r.export_expires_at <= p_now
+       AND (
+         (r.status = 'completed'
+           AND r.export_expires_at IS NOT NULL
+           AND r.export_expires_at <= p_now)
+         OR (r.status = 'processing'
+           AND r.export_started_at IS NOT NULL
+           AND r.export_started_at <= p_now - interval '1 day')
+       )
      ORDER BY r.id;
 END;
 $$;
@@ -482,8 +544,14 @@ BEGIN
          updated_at = p_now
    WHERE r.id = p_request_id
      AND r.export_key IS NOT NULL
-     AND r.export_expires_at IS NOT NULL
-     AND r.export_expires_at <= p_now;
+     AND (
+       (r.status = 'completed'
+         AND r.export_expires_at IS NOT NULL
+         AND r.export_expires_at <= p_now)
+       OR (r.status = 'processing'
+         AND r.export_started_at IS NOT NULL
+         AND r.export_started_at <= p_now - interval '1 day')
+     );
 
   RETURN FOUND;
 END;
@@ -607,6 +675,7 @@ REVOKE ALL ON FUNCTION pii.apply_erasure_fence(bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.erasure_fence(bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.begin_erasure(bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.complete_export(bigint, text, timestamptz) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pii.reserve_export_key(bigint, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.export_failed(bigint, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.export_email_intent(bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.list_data_requests(text, jsonb) FROM PUBLIC;
@@ -622,6 +691,7 @@ GRANT EXECUTE ON FUNCTION pii.apply_erasure_fence(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.erasure_fence(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.begin_erasure(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.complete_export(bigint, text, timestamptz) TO workers;
+GRANT EXECUTE ON FUNCTION pii.reserve_export_key(bigint, text) TO workers;
 GRANT EXECUTE ON FUNCTION pii.export_failed(bigint, text) TO workers;
 GRANT EXECUTE ON FUNCTION pii.export_email_intent(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.list_data_requests(text, jsonb) TO staff_api;

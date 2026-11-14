@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { postTag, readTagVersion, topicTag } from "@bulletin/cache";
+import { GLOBAL_CACHE_TAGS, memberTag, postTag, readTagVersion, topicTag } from "@bulletin/cache";
 import { currentContentVersions } from "@bulletin/content";
 import {
   ERASURE_STEPS,
@@ -10,6 +10,7 @@ import {
 } from "@bulletin/db/jobs";
 import { sessionCookieName } from "@bulletin/domain/auth";
 import { saveDraft } from "@bulletin/domain/content";
+import { createNotification } from "@bulletin/domain/notifications";
 import { requestDataErasure, requestDataExport } from "@bulletin/domain/privacy";
 import { avatarKey, type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -682,12 +683,34 @@ integrationDescribe("member erasure", () => {
       expect(blockedExport?.member_id).toBeNull();
 
       const pluginCalls: string[] = [];
+      const memberVersion = await readTagVersion(database.sql, memberTag(fixture.memberId));
+      const directoryVersion = await readTagVersion(database.sql, GLOBAL_CACHE_TAGS.directory);
+      const purged: string[][] = [];
       const result = await runErasureJob(database.sql, storage.storage, request.requestId, {
         pluginErase: async (pluginId) => {
           pluginCalls.push(pluginId);
           return { ok: true };
         },
+        purge: {
+          async purge(tags) {
+            purged.push([...tags]);
+            return { tags, ok: true };
+          },
+        },
       });
+      expect(
+        Number(await readTagVersion(database.sql, memberTag(fixture.memberId))),
+      ).toBeGreaterThan(Number(memberVersion));
+      expect(
+        Number(await readTagVersion(database.sql, GLOBAL_CACHE_TAGS.directory)),
+      ).toBeGreaterThan(Number(directoryVersion));
+      expect(purged.flat()).toEqual(
+        expect.arrayContaining([
+          memberTag(fixture.memberId),
+          GLOBAL_CACHE_TAGS.directory,
+          GLOBAL_CACHE_TAGS.online,
+        ]),
+      );
       expect(result?.memberId).toBe(fixture.memberId);
       expect(result?.postAction).toBe("anonymise");
       expect(result?.steps).toEqual(ERASURE_STEPS);
@@ -949,6 +972,42 @@ integrationDescribe("member erasure", () => {
         WHERE member_id = ${fixture.memberId} AND body_md = 'recreated after the fence'
       `) as Array<{ count: number }>;
       expect(drafts[0]?.count).toBe(0);
+    });
+  }, 60_000);
+
+  test("refuses a notification write selected before the fence", async () => {
+    await withDb("privacy_erasure_notification_fence", async (database) => {
+      const fixture = await createFixtures(database);
+      const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+      if (request === null) {
+        throw new Error("erasure request was not created");
+      }
+
+      await approveErasure(database, fixture, request.requestId);
+      const [event] = (await database.sql`
+        INSERT INTO core.events (type, aggregate_type, aggregate_id, aggregate_version, payload_ids)
+        VALUES ('member.created', 'member', ${fixture.memberId}, 2, '{}'::jsonb)
+        RETURNING id
+      `) as Array<{ id: bigint | string }>;
+      const worker = new SQL(roleUrl(database, "workers"));
+
+      try {
+        const created = await createNotification(worker, {
+          memberId: fixture.memberId,
+          type: "topic.reply",
+          eventId: BigInt(event?.id ?? 0),
+        });
+        expect(created).toBeNull();
+      } finally {
+        await worker.close();
+      }
+
+      const [count] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.notifications
+        WHERE member_id = ${fixture.memberId} AND event_id = ${event?.id ?? 0}
+      `) as Array<{ count: number }>;
+      expect(count?.count).toBe(0);
     });
   }, 60_000);
 

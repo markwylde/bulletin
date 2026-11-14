@@ -221,6 +221,7 @@ const erasureJobs = await createErasureJobs({
   storage,
   pluginHostUrl: Bun.env.PLUGIN_HOST_INTERNAL_URL ?? "http://plugin-host:3004",
   pluginToken: Bun.env.PLUGIN_INTERNAL_TOKEN ?? "bulletin-development-only-internal-token",
+  ...(purger === undefined ? {} : { purge: purger }),
   logger,
 });
 const eventWorker = await createEventWorker({

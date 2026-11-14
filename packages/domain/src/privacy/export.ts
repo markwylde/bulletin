@@ -5,6 +5,9 @@ import type { StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
 import { strToU8, Zip, ZipDeflate } from "fflate";
 import { emit } from "../events/outbox.ts";
+import { can } from "../permissions/can.ts";
+import { loadPermissionSnapshot } from "../permissions/snapshot.ts";
+import { loadForumTree } from "../permissions/tree-store.ts";
 import { listMemberWarnings } from "../warnings/repository.ts";
 
 /** Plugin export hook result (ADR 0009, ADR 0012). */
@@ -145,14 +148,15 @@ export async function buildMemberExport(
       FROM core.follow_settings WHERE member_id = ${memberId}
     ` as Promise<unknown[]>,
     sql`
-      SELECT ft.topic_id::text AS topic_id, t.title, ft.created_at
+      SELECT ft.topic_id::text AS topic_id, t.title, t.forum_id::text AS forum_id,
+        ft.created_at
       FROM core.followed_topics ft
       LEFT JOIN core.topics t ON t.id = ft.topic_id
       WHERE ft.member_id = ${memberId}
       ORDER BY ft.created_at, ft.topic_id
     ` as Promise<unknown[]>,
     sql`
-      SELECT ff.forum_id::text AS forum_id, f.title, ff.created_at
+      SELECT ff.forum_id::text AS forum_id, f.title, f.type, ff.created_at
       FROM core.followed_forums ff
       LEFT JOIN core.forums f ON f.id = ff.forum_id
       WHERE ff.member_id = ${memberId}
@@ -166,7 +170,8 @@ export async function buildMemberExport(
       ORDER BY fm.created_at, fm.followed_id
     ` as Promise<unknown[]>,
     sql`
-      SELECT p.id::text AS id, p.topic_id::text AS topic_id, t.title AS topic_title,
+      SELECT p.id::text AS id, p.topic_id::text AS topic_id,
+        t.forum_id::text AS forum_id, t.title AS topic_title,
         t.slug AS topic_slug, p.body_md, p.body_html, p.visibility, p.created_at,
         p.edited_at, p.hold_reason
       FROM core.posts p
@@ -205,7 +210,8 @@ export async function buildMemberExport(
     ` as Promise<unknown[]>,
     sql`
       SELECT pr.post_id::text AS post_id, p.topic_id::text AS topic_id,
-        t.title AS topic_title, r.key AS reaction, pr.created_at
+        t.forum_id::text AS forum_id, t.title AS topic_title, r.key AS reaction,
+        pr.created_at
       FROM core.post_reactions pr
       JOIN core.reactions r ON r.id = pr.reaction_id
       JOIN core.posts p ON p.id = pr.post_id
@@ -235,6 +241,76 @@ export async function buildMemberExport(
   const member = asRecord(members[0]);
   const locale = typeof member?.locale === "string" ? member.locale : "en";
   const warnings = await listMemberWarnings(sql, memberId, locale);
+  const tree = await loadForumTree(sql);
+  const snapshot = await loadPermissionSnapshot(sql, memberId, { tree, sessionId: null });
+  const access = new Map<string, boolean>();
+  const readable = async (forumId: string | null, action: "show" | "read"): Promise<boolean> => {
+    if (forumId === null) {
+      return false;
+    }
+
+    const key = `${action}:${forumId}`;
+    const cached = access.get(key);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const allowed = await can(sql, memberId, action, { forumId, tree, snapshot });
+    access.set(key, allowed);
+    return allowed;
+  };
+  const visibleFollowedTopics: unknown[] = [];
+
+  for (const topic of followedTopics as Array<Record<string, unknown>>) {
+    const forumId = typeof topic.forum_id === "string" ? topic.forum_id : null;
+
+    if (await readable(forumId, "read")) {
+      visibleFollowedTopics.push({
+        topic_id: topic.topic_id,
+        title: topic.title,
+        created_at: topic.created_at,
+      });
+    }
+  }
+
+  const visibleFollowedForums: unknown[] = [];
+
+  for (const forum of followedForums as Array<Record<string, unknown>>) {
+    const forumId = typeof forum.forum_id === "string" ? forum.forum_id : null;
+
+    if (await readable(forumId, "show")) {
+      visibleFollowedForums.push({
+        forum_id: forum.forum_id,
+        title: forum.title,
+        type: forum.type,
+        created_at: forum.created_at,
+      });
+    }
+  }
+
+  const visiblePosts = [];
+  for (const post of posts as Array<Record<string, unknown>>) {
+    const forumId = typeof post.forum_id === "string" ? post.forum_id : null;
+    const allowed = await readable(forumId, "read");
+    visiblePosts.push(allowed ? post : { ...post, topic_title: null, topic_slug: null });
+  }
+
+  const visibleReactions: unknown[] = [];
+  for (const reaction of reactions as Array<Record<string, unknown>>) {
+    const forumId = typeof reaction.forum_id === "string" ? reaction.forum_id : null;
+
+    if (await readable(forumId, "read")) {
+      visibleReactions.push({
+        post_id: reaction.post_id,
+        topic_id: reaction.topic_id,
+        topic_title: reaction.topic_title,
+        reaction: reaction.reaction,
+        created_at: reaction.created_at,
+      });
+    }
+  }
+
   const directory = await mkdtemp(join(tmpdir(), "bulletin-export-"));
   const path = join(directory, "export.zip");
   const writer = Bun.file(path).writer();
@@ -284,14 +360,14 @@ export async function buildMemberExport(
     add(
       "follows.json",
       jsonBytes({
-        topics: followedTopics,
-        forums: followedForums,
+        topics: visibleFollowedTopics,
+        forums: visibleFollowedForums,
         members: followedMembers,
       }),
     );
-    add("posts.json", jsonBytes({ posts, revisions }));
+    add("posts.json", jsonBytes({ posts: visiblePosts, revisions }));
     add("conversations.json", jsonBytes({ conversations, messages }));
-    add("reactions.json", jsonBytes({ reactions }));
+    add("reactions.json", jsonBytes({ reactions: visibleReactions }));
     add("warnings.json", jsonBytes({ warnings }));
     add("restricted.json", jsonBytes(restricted));
     const attachmentMetadata: Array<Record<string, unknown>> = [];

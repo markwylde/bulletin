@@ -100,6 +100,18 @@ export async function createNotification(
   sql: SQL,
   input: NotificationWrite,
 ): Promise<bigint | null> {
+  // Lock the recipient in this write transaction: a member who entered erasure after the
+  // worker selected them must not receive a new notification row.
+  const active = (await sql`
+    SELECT 1 FROM core.members
+    WHERE id = ${input.memberId} AND state = 'active'
+    FOR SHARE
+  `) as unknown[];
+
+  if (active.length === 0) {
+    return null;
+  }
+
   const claimed = (await sql`
     INSERT INTO core.notification_events (event_id, member_id)
     VALUES (${input.eventId}, ${input.memberId})

@@ -1,6 +1,9 @@
 import {
   bumpCacheTags,
+  type CdnPurger,
   forumTag,
+  GLOBAL_CACHE_TAGS,
+  memberTag,
   postSnapshotsTag,
   postTag,
   topicPagesTag,
@@ -62,6 +65,7 @@ export interface ErasureJobOptions {
   readonly pluginToken?: string;
   readonly logger?: Logger;
   readonly now?: Date;
+  readonly purge?: CdnPurger;
 }
 
 export interface ErasureResult {
@@ -556,8 +560,9 @@ export async function runErasureJob(
   });
 
   await runStep(sql, requestId, "anonymise_member", completed, async () => {
-    await sql`DELETE FROM core.member_groups WHERE member_id = ${memberId}`;
-    await sql`
+    await sql.begin(async (tx) => {
+      await tx`DELETE FROM core.member_groups WHERE member_id = ${memberId}`;
+      await tx`
       UPDATE core.members
       SET state = 'erased',
           display_name = ${newName},
@@ -582,7 +587,25 @@ export async function runErasureJob(
           reputation = 0,
           post_count = 0
       WHERE id = ${memberId}
-    `;
+      `;
+      await bumpCacheTags(tx, [
+        memberTag(memberId),
+        GLOBAL_CACHE_TAGS.directory,
+        GLOBAL_CACHE_TAGS.online,
+      ]);
+    });
+
+    if (options.purge !== undefined) {
+      const purged = await options.purge.purge([
+        memberTag(memberId),
+        GLOBAL_CACHE_TAGS.directory,
+        GLOBAL_CACHE_TAGS.online,
+      ]);
+
+      if (!purged.ok) {
+        throw new Error("CDN purge failed after member anonymisation");
+      }
+    }
   });
 
   await runStep(sql, requestId, "mentions_rerender", completed, async () => {
@@ -668,6 +691,7 @@ export interface ErasureJobsOptions {
   readonly pluginHostUrl?: string;
   readonly pluginToken?: string;
   readonly logger?: Logger;
+  readonly purge?: CdnPurger;
 }
 
 export interface ErasureJobs {
@@ -683,6 +707,7 @@ export async function createErasureJobs(options: ErasureJobsOptions): Promise<Er
         ...(options.pluginHostUrl === undefined ? {} : { pluginHostUrl: options.pluginHostUrl }),
         ...(options.pluginToken === undefined ? {} : { pluginToken: options.pluginToken }),
         ...(options.logger === undefined ? {} : { logger: options.logger }),
+        ...(options.purge === undefined ? {} : { purge: options.purge }),
       });
 
       if (result === null) {
