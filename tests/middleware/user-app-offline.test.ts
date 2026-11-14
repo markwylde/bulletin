@@ -36,8 +36,19 @@ mock.module("../../apps/user-app/src/board.ts", () => ({
 
 const fakeSql = (() => Promise.resolve([])) as unknown;
 mock.module("../../apps/user-app/src/db.ts", () => ({
+  READ_POOL_MAX: 1,
   readSql: () => fakeSql,
   closeReadSql: async () => undefined,
+}));
+
+// No journal HEAD: the board was never restored, so the restore gate is open. A test that
+// needs a restore in progress sets a HEAD the (empty) database has not applied.
+let journalHead: string | null = null;
+mock.module("../../apps/user-app/src/storage.ts", () => ({
+  storage: {
+    exists: async (key: string) => key === "journal/HEAD" && journalHead !== null,
+    get: async () => new TextEncoder().encode(JSON.stringify({ key: journalHead })),
+  },
 }));
 
 const { onRequest } = (await import("../../apps/user-app/src/middleware.ts")) as {
@@ -74,6 +85,43 @@ beforeEach(() => {
   boardFails = false;
   canViewOffline = false;
   nextCalls = 0;
+});
+
+// Runs first: once the journal has been applied, the gate stays open for the process.
+describe("user-app restore gate", () => {
+  test("refuses pages and APIs until the erasure journal is applied, then opens", async () => {
+    journalHead = "journal/2026-11-14/000000000042.json";
+
+    const page = await onRequest(
+      createContext("/topic/12-welcome", {
+        accept: "text/html",
+        cookie: "bl_session=restored; bp=fr.1.light",
+      }),
+      next,
+    );
+    expect(page.status).toBe(503);
+    expect(page.headers.get("cache-control")).toBe("no-store");
+    expect(page.headers.get("retry-after")).toBe("30");
+    expect(await page.text()).toBe(
+      "Le forum est en cours de restauration depuis une sauvegarde et sera de retour dans quelques minutes.",
+    );
+
+    const api = await onRequest(createContext("/api/me/overlay"), next);
+    expect(api.status).toBe(503);
+    expect(await api.json()).toEqual({ code: "restoring" });
+    expect(nextCalls).toBe(0);
+
+    const live = await onRequest(createContext("/health/live"), next);
+    expect(live.status).toBe(200);
+
+    // The replay finished (no unapplied HEAD); the closed result is reused for a second.
+    journalHead = null;
+    await Bun.sleep(1_100);
+    board.offline = false;
+    const served = await onRequest(createContext("/"), next);
+    expect(served.status).toBe(200);
+    expect(nextCalls).toBe(1);
+  });
 });
 
 describe("user-app offline middleware", () => {
