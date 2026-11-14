@@ -141,7 +141,8 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
     return renderErrorPage(input, 404);
   }
 
-  const slug = resolveResourceUrl(parsed, profile.displayName);
+  const displayName = profile.displayName;
+  const slug = resolveResourceUrl(parsed, displayName);
 
   if (slug.status === 301 && slug.location !== null) {
     return { kind: "redirect", status: 301, location: slug.location };
@@ -195,7 +196,9 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
         profile.aboutMd.trim() ||
         profile.customTitle?.trim() ||
         input.translate("seo.profile.description", { name: title });
-      const canonicalPath = canonicalUrl("profile", profile.id, title);
+      // The slug must match what route resolution compares against (the stored display
+      // name), not the word-filtered page title, or the canonical would point at a redirect.
+      const canonicalPath = canonicalUrl("profile", profile.id, displayName);
       latestSeo = buildSeoMetadata({
         title,
         boardName,
@@ -269,7 +272,7 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
         title,
         boardName,
         description: input.translate("seo.profile.description", { name: title }),
-        canonicalPath: canonicalUrl("profile", profile.id, title),
+        canonicalPath: canonicalUrl("profile", profile.id, displayName),
         robots: "noindex",
         type: "profile",
       }),

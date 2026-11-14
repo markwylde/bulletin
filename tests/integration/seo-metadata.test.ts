@@ -13,11 +13,13 @@ import {
   themesSeedModule,
   topicsSeedModule,
 } from "@bulletin/db/seed";
+import { canonicalUrl } from "@bulletin/domain/urls";
 import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { saveBoardSettings } from "../../apps/staff-api/src/board-settings.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { renderForumRoute } from "../../apps/user-app/src/forums/route.ts";
+import { renderProfileRoute } from "../../apps/user-app/src/profiles/route.ts";
 import type { UserAppSessionContext } from "../../apps/user-app/src/session.ts";
 import { renderTopicRoute } from "../../apps/user-app/src/topics/route.ts";
 
@@ -226,6 +228,67 @@ integrationDescribe("route metadata", () => {
         expect(publicResult.seo.canonicalPath).toBe(`/forum/${announcements}-announcements`);
         expect(staffResult.status).toBe(200);
         expect(staffResult.seo.robots).toBe("noindex");
+      } finally {
+        await versions.close();
+      }
+    });
+  }, 60_000);
+
+  test("a word-filtered display name keeps the profile canonical on the resolvable URL", async () => {
+    await withSeededDb(async (database) => {
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name, name_skeleton)
+        VALUES ('Frobnicator Smith', 'frobnicator-smith-seo')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined) {
+        throw new Error("Could not insert the profile member");
+      }
+
+      await database.sql`
+        INSERT INTO core.filter_words (word, mode, replacement, match_mode)
+        VALUES ('frobnicator', 'replace', 'Hidden', 'whole')
+      `;
+
+      const versions = await createTagVersions({
+        sql: database.sql,
+        heartbeatMs: 100,
+        heartbeatTimeoutMs: 1_000,
+      });
+
+      try {
+        const cache = createRenderCache({ tags: versions });
+        const canonical = canonicalUrl("profile", member.id, "Frobnicator Smith");
+        const render = (ref: string) =>
+          renderProfileRoute({
+            sql: database.sql,
+            locale: "en",
+            translate,
+            session: null,
+            ref,
+            pluginsGeneration: 1,
+            colourScheme: "system",
+            cache,
+            tagVersions: versions,
+          });
+        const result = await render(canonical.slice("/profile/".length));
+
+        expect(result.kind).toBe("page");
+
+        if (result.kind !== "page") {
+          throw new Error("Expected the profile page");
+        }
+
+        // The page title is filtered, the canonical slug comes from the stored name.
+        expect(result.title).toContain("Hidden");
+        expect(result.seo.canonicalPath).toBe(canonical);
+        expect(result.seo.canonicalPath).not.toContain("hidden");
+        expect(result.seo.jsonLd).toMatchObject({ url: canonical });
+
+        // The canonical is served directly; the filtered slug is the one that redirects.
+        const filtered = await render(`${member.id}-hidden-smith`);
+        expect(filtered).toMatchObject({ kind: "redirect", status: 301, location: canonical });
       } finally {
         await versions.close();
       }
