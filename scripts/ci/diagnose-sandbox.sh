@@ -46,5 +46,8 @@ echo "--- clone/thread failures and CPU count ---"
 echo "nproc=$(nproc) getconf=$(getconf _NPROCESSORS_ONLN)"
 grep -E "clone3?\(.*= -1|clone3?.*EAGAIN" /tmp/sandbox-trace.txt | cut -c1-200 | head -5
 grep -cE "clone3?\(" /tmp/sandbox-trace.txt
+echo "--- socket/connect/open activity after the jail exec ---"
+start=$(grep -nE "prctl\(PR_SET_SECCOMP" /tmp/sandbox-trace.txt | head -1 | cut -d: -f1)
+tail -n +"${start:-1}" /tmp/sandbox-trace.txt | grep -vE "futex|sched_yield|rt_sig|mmap|munmap|mprotect|madvise|clock_gettime|getpid|gettid" | head -120 | cut -c1-220
 echo "--- execve calls ---"
 grep -E "execve\(" /tmp/sandbox-trace.txt | cut -c1-300 | head -10
