@@ -52,6 +52,9 @@ function isAllowed(file: SourceFile): boolean {
     // The search language rebuild only rewrites per-row `lang` metadata; result queries apply
     // the permission filter (ADR 0005, 0017).
     file.path === "packages/db/src/jobs/search.ts" ||
+    // The post-restore scan compares attachment storage keys with the bucket to list missing
+    // objects for staff; it never serves content to a viewer (ADR 0020).
+    file.path === "packages/db/src/jobs/restore.ts" ||
     // Badge rules count a member's own content to award a badge; they never serve a viewer.
     file.path.startsWith("packages/domain/src/badges/") ||
     isPermissionRepository(file)

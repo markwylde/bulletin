@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { SQL } from "bun";
-import { SQL as BunSQL } from "bun";
 import {
   assertConnectionBudget,
   type ConnectionBudgetResult,
@@ -77,7 +76,7 @@ export function listenSqlFromEnv(
 ): SQL {
   const url = env.LISTEN_DATABASE_URL?.trim();
 
-  return url === undefined || url === "" ? sql : new BunSQL(url, { max: 1 });
+  return url === undefined || url === "" ? sql : new Bun.SQL(url, { max: 1 });
 }
 
 export function createDatabaseCheck(sql: SQL): HealthCheck {
@@ -223,7 +222,7 @@ export function createServiceSql(
   databaseUrl: string,
   connections?: Partial<Record<ServiceName, ConnectionShare>>,
 ): SQL {
-  return new BunSQL(databaseUrl, {
+  return new Bun.SQL(databaseUrl, {
     max: connectionPoolSize(service, connections),
     connectionTimeout: 5,
   });
