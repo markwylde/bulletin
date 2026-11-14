@@ -4,6 +4,7 @@ import { SQL } from "bun";
 import { adminLogSeedModule } from "./admin-log.ts";
 import { apiSeedModule } from "./api.ts";
 import { attachmentSeedModule } from "./attachments.ts";
+import { capacitySeedModule } from "./capacity.ts";
 import { conversationSeedModule } from "./conversations.ts";
 import { demoThemesSeedModule } from "./demo-themes.ts";
 import { emoticonSeedModule } from "./emoticons.ts";
@@ -84,6 +85,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         themesSeedModule,
         demoThemesSeedModule,
         pluginSeedModule,
+        capacitySeedModule,
       ]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",
