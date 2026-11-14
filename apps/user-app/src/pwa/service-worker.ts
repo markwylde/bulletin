@@ -41,6 +41,7 @@ const LOCALE = new URL(self.location.href).searchParams.get("l") || ${literal(in
 const SHELL = ${literal(shell)};
 const TITLES = ${literal(input.titles)};
 const ASSET_PREFIX = ${literal(ASSET_PREFIX)};
+const SHELL_ASSETS = ["/theme-css"];
 const OFFLINE_URL = ${literal(OFFLINE_URL)};
 
 self.addEventListener("install", (event) => {
@@ -287,8 +288,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Only content-hashed build assets are cache-first; a new HTML shell names new hashes.
-  if (url.pathname.startsWith(ASSET_PREFIX)) {
+  // Content-hashed build assets and the precached theme CSS are cache-first; a new HTML shell
+  // names new hashes, and the offline page still needs the active theme's tokens.
+  if (url.pathname.startsWith(ASSET_PREFIX) || SHELL_ASSETS.includes(url.pathname)) {
     event.respondWith(cacheFirst(request));
     return;
   }

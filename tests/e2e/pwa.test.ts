@@ -258,6 +258,11 @@ integrationDescribe("PWA", () => {
         const text = await view.evaluate<string>("document.body.innerText");
         expect(text).not.toContain(topic.title.trim());
         expect(text).toContain("Forum content is never stored on this device");
+        // The theme stylesheet is precached and must still resolve without the network.
+        const themeCss = await view.evaluate<string>(
+          "fetch('/theme-css').then((response) => response.text())",
+        );
+        expect(themeCss).toContain("--bl-");
 
         await setOffline(false);
       },

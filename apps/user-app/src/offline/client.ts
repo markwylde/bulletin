@@ -39,29 +39,72 @@ const element = banner();
 const memberIdFromShell = documentRoot.dataset.memberId ?? currentMemberId();
 const authPath = window.location.pathname.startsWith("/auth/");
 
-/**
- * Identity maintenance runs on every page, including guests and pages without an editor or
- * banner. A guest page means the session ended (logout, revocation or an expired session), so
- * member-scoped data is cleared. A different member id on any page is an account switch, and
- * the previous member's drafts are discarded. Auth paths are the transient re-auth handoff
- * where a just-saved local draft must survive.
- */
-async function syncIdentity(memberId: string): Promise<void> {
-  if (memberId === "") {
-    if (!authPath) {
-      clearReauthDrafts();
-      await clearOfflineDrafts();
-    }
+async function clearMemberDrafts(): Promise<void> {
+  clearReauthDrafts();
+  await clearOfflineDrafts();
+}
 
-    return;
-  }
-
+async function claimMember(memberId: string): Promise<void> {
   if (claimReauthDrafts(memberId)) {
     await clearOfflineDrafts();
   }
 }
 
-void syncIdentity(memberIdFromShell);
+/**
+ * The shell may have been cached while installed as a guest or another account, so its embedded
+ * identity cannot authorise a destructive cleanup while offline. Confirm the live session over
+ * the network first; a network error leaves the device data untouched.
+ */
+async function confirmIdentity(): Promise<void> {
+  if (!navigator.onLine || authPath) {
+    return;
+  }
+
+  try {
+    const response = await fetch("/api/auth/session", {
+      credentials: "include",
+      headers: { accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        const payload = (await response
+          .clone()
+          .json()
+          .catch(() => null)) as {
+          readonly code?: unknown;
+        } | null;
+
+        if (payload?.code !== "reauth_required") {
+          await clearMemberDrafts();
+        }
+      }
+
+      return;
+    }
+
+    const session = (await response.json()) as {
+      readonly authenticated?: boolean;
+      readonly memberId?: string | null;
+    };
+
+    if (session.authenticated === true && typeof session.memberId === "string") {
+      documentRoot.dataset.memberId = session.memberId;
+      await claimMember(session.memberId);
+      window.dispatchEvent(
+        new CustomEvent("bulletin:member", { detail: { memberId: session.memberId } }),
+      );
+      return;
+    }
+
+    delete documentRoot.dataset.memberId;
+    await clearMemberDrafts();
+  } catch {
+    // Identity is unknown without a successful response; keep drafts for the next online visit.
+  }
+}
+
+void confirmIdentity();
 
 if (element !== null && clientFlag("pwa") && documentRoot.dataset.visitor === "member") {
   let memberId = memberIdFromShell;
@@ -156,7 +199,7 @@ if (element !== null && clientFlag("pwa") && documentRoot.dataset.visitor === "m
   });
 
   window.addEventListener("online", () => {
-    void refresh();
+    void confirmIdentity().then(refresh);
   });
   window.addEventListener("offline", () => {
     render();
@@ -170,13 +213,13 @@ if (element !== null && clientFlag("pwa") && documentRoot.dataset.visitor === "m
     memberId = next;
 
     if (next === "") {
-      void syncIdentity("");
+      void clearMemberDrafts();
       drafts = [];
       render();
       return;
     }
 
-    void syncIdentity(next).then(refresh);
+    void claimMember(next).then(refresh);
   });
 
   void refresh();

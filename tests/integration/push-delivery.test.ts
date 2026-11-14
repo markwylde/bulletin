@@ -19,6 +19,7 @@ import {
   notificationPreview,
   setNotificationPreference,
 } from "@bulletin/domain/notifications";
+import { bumpPermVersion, forumActionMask } from "@bulletin/domain/permissions";
 import { loadVapidConfig, pushPayload } from "@bulletin/domain/push";
 import { reply, startTopic } from "@bulletin/domain/topics";
 import { createPushHandler, createPushStore } from "@bulletin/mock-push/server";
@@ -220,6 +221,17 @@ async function topicNotification(
   return { notificationId, intentId };
 }
 
+/** Keep the forum and topics visible, but remove read access from the standard mask. */
+async function revokeStandardRead(database: TestDatabase): Promise<void> {
+  await database.sql`
+    UPDATE core.forum_permissions fp
+    SET actions = ${forumActionMask(["show"])}
+    FROM core.masks m
+    WHERE fp.mask_id = m.id AND m.key = 'standard'
+  `;
+  await bumpPermVersion(database.sql);
+}
+
 function deliveryOptions() {
   return {
     vapid: loadVapidConfig({}, "development"),
@@ -324,9 +336,7 @@ integrationDescribe("push delivery", () => {
       await sessionToken(database, recipient, "push-lost-session");
       await saveDevice(database, "push-lost-session", `${base}/push/lost`);
       const { intentId } = await topicNotification(database, fixture);
-      await database.sql`
-        UPDATE core.topics SET visibility = 'soft_deleted' WHERE id = ${fixture.topicId}
-      `;
+      await revokeStandardRead(database);
 
       const result = await deliverNotificationPush(
         database.sql,
@@ -382,9 +392,11 @@ integrationDescribe("push delivery", () => {
       });
       expect(preview?.url).toContain(`/topic/${fixture.topicId}-`);
 
-      await database.sql`
-        UPDATE core.topics SET visibility = 'soft_deleted' WHERE id = ${fixture.topicId}
-      `;
+      await revokeStandardRead(database);
+      const [topic] = (await database.sql`
+        SELECT visibility FROM core.topics WHERE id = ${fixture.topicId}
+      `) as Array<{ visibility: string }>;
+      expect(topic?.visibility).toBe("visible");
       expect(
         await notificationPreview(database.sql, fixture.starter, notificationId.toString()),
       ).toBeNull();

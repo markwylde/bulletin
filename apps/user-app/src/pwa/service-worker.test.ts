@@ -23,6 +23,7 @@ describe("service worker source", () => {
   test("precaches only the shell, offline page and hashed client assets", () => {
     expect(source).toContain('"/offline"');
     expect(source).toContain('"/theme-css"');
+    expect(source).toContain('const SHELL_ASSETS = ["/theme-css"]');
     expect(source).toContain('"/_astro/app-1.js"');
     expect(source).toContain('"/_astro/app-2.css"');
     expect(source).not.toContain("/not-an-asset.json");
@@ -32,8 +33,9 @@ describe("service worker source", () => {
     expect(source).toContain('request.mode === "navigate"');
     expect(source).toContain("networkWithOfflineFallback(request)");
     expect(source).toContain("caches.match(OFFLINE_URL)");
-    // No content cache path: only the asset prefix is cache-first.
+    // No content cache path: only hashed assets and the precached theme CSS are cache-first.
     expect(source).toContain("url.pathname.startsWith(ASSET_PREFIX)");
+    expect(source).toContain("SHELL_ASSETS.includes(url.pathname)");
   });
 
   test("shows a content-free push after fetching an authenticated preview", () => {

@@ -96,6 +96,62 @@ async function draftCount(view: Bun.WebView): Promise<number> {
   return view.evaluate<number>(`(${IDB_COUNT})()`);
 }
 
+interface AttachedTarget {
+  readonly sessionId?: string;
+  readonly targetInfo?: { readonly type?: string; readonly url?: string };
+}
+
+/** Chrome's page-target emulation does not cover the service worker's own fetches. */
+async function offlineController(view: Bun.WebView): Promise<(offline: boolean) => Promise<void>> {
+  const sessions = new Set<string>();
+
+  view.addEventListener<AttachedTarget>("Target.attachedToTarget", (event) => {
+    const info = event.data.targetInfo;
+
+    if (
+      event.data.sessionId !== undefined &&
+      info?.type === "service_worker" &&
+      (info.url ?? "").includes("bulletin.localhost")
+    ) {
+      sessions.add(event.data.sessionId);
+    }
+  });
+  await view.cdp("Target.setAutoAttach", {
+    autoAttach: true,
+    waitForDebuggerOnStart: false,
+    flatten: false,
+  });
+  await Bun.sleep(250);
+  await view.cdp("Network.enable");
+
+  return async (offline: boolean): Promise<void> => {
+    const conditions = {
+      offline,
+      latency: 0,
+      downloadThroughput: offline ? 0 : -1,
+      uploadThroughput: offline ? 0 : -1,
+    };
+
+    await view.cdp("Network.setCacheDisabled", { cacheDisabled: true });
+    await view.cdp("Network.emulateNetworkConditions", conditions);
+
+    for (const sessionId of sessions) {
+      await view.cdp("Target.sendMessageToTarget", {
+        sessionId,
+        message: JSON.stringify({ id: 1, method: "Network.enable", params: {} }),
+      });
+      await view.cdp("Target.sendMessageToTarget", {
+        sessionId,
+        message: JSON.stringify({
+          id: 2,
+          method: "Network.emulateNetworkConditions",
+          params: conditions,
+        }),
+      });
+    }
+  };
+}
+
 integrationDescribe("offline drafts", () => {
   beforeAll(() => setPostingFloodSeconds(0));
   afterAll(restorePostingFlood);
@@ -453,4 +509,97 @@ integrationDescribe("offline drafts", () => {
       );
     });
   }, 180_000);
+  test("an offline shell installed as a guest cannot clear a member's queued draft", async () => {
+    const topicUrl = new URL("/topic/3-what-are-you-reading-this-month", USER_URL).toString();
+    const body = `Guest shell draft ${Date.now()}`;
+
+    await withPage(
+      { url: USER_URL, viewport: "mobile360", allowConsoleErrors: OFFLINE_ERRORS },
+      async (view) => {
+        // Install/cache the shell while the browser is still a guest, then sign in.
+        await waitForExpression(
+          view,
+          "navigator.serviceWorker.ready.then((registration) => registration.active !== null)",
+          30_000,
+        );
+        await loginAs(view, "member-1");
+        const setOffline = await offlineController(view);
+
+        await view.navigate(topicUrl);
+        await waitForSelector(view, "[data-reply-toggle]", 20_000);
+        await clickSelector(view, "[data-reply-toggle]");
+        await waitForSelector(view, "[data-reply-form] [data-editor-ready='true']", 20_000);
+        await waitForSelector(view, "[data-editor-wysiwyg] .ProseMirror", 30_000);
+        await waitForSelector(view, '[data-editor-mode="source"]', 20_000);
+        await clickSelector(view, '[data-editor-mode="source"]');
+        await waitForSelector(view, "[data-editor-source]", 20_000);
+        await setInputValue(view, "[data-editor-source]", body);
+
+        await setOffline(true);
+        await waitForSelector(view, "[data-reply-submit]:not([disabled])");
+        await clickSelector(view, "[data-reply-submit]");
+        await waitForSelector(view, "[data-offline-drafts]:not([hidden])", 20_000);
+        await waitForExpression(view, `(${IDB_COUNT})().then((count) => count === 1)`, 10_000);
+
+        // Opening the cached guest shell offline must not treat its identity as authoritative.
+        await view.navigate(`${topicUrl}?offline=${Date.now()}`);
+        await waitForSelector(view, "[data-offline-page]", 20_000);
+        expect(await view.evaluate<boolean>("navigator.onLine")).toBe(false);
+        expect(await draftCount(view)).toBe(1);
+
+        await setOffline(false);
+      },
+    );
+  }, 300_000);
+  test("shows the reauth prompt when realtime is disabled", async () => {
+    const offRules = [{ type: "group", groups: ["members"], value: false }];
+
+    try {
+      await setFlagRules("realtime", offRules);
+
+      await withPage(
+        {
+          url: USER_URL,
+          viewport: "mobile360",
+          allowConsoleErrors: [/401.*\/api\//],
+        },
+        async (view) => {
+          await loginAs(view, "member-1");
+          await view.navigate(
+            new URL("/topic/3-what-are-you-reading-this-month", USER_URL).toString(),
+          );
+          await waitForSelector(view, "[data-reply-toggle]", 20_000);
+          await clickSelector(view, "[data-reply-toggle]");
+          await waitForSelector(view, "[data-reply-form] [data-editor-ready='true']", 20_000);
+          await waitForSelector(view, "[data-editor-wysiwyg] .ProseMirror", 30_000);
+          await waitForSelector(view, '[data-editor-mode="source"]', 20_000);
+          await clickSelector(view, '[data-editor-mode="source"]');
+          await waitForSelector(view, "[data-editor-source]", 20_000);
+          await setInputValue(view, "[data-editor-source]", `Needs reauth ${Date.now()}`);
+
+          const session = await view.evaluate<{ csrfToken: string }>(
+            'fetch("/api/auth/session", { headers: { accept: "application/json" } }).then((response) => response.json())',
+          );
+          const aged = await view.evaluate<boolean>(
+            `fetch("/api/test/age-reauth", {
+            method: "POST",
+            headers: { "x-bulletin-csrf": ${JSON.stringify(session.csrfToken)} },
+          }).then((response) => response.ok)`,
+          );
+          expect(aged).toBe(true);
+
+          await waitForSelector(view, "[data-reply-submit]:not([disabled])");
+          await clickSelector(view, "[data-reply-submit]");
+          await waitForSelector(view, "[data-stream-reauth]:not([hidden])", 20_000);
+          expect(
+            await view.evaluate<string>(
+              'document.querySelector("[data-stream-reauth-continue]")?.getAttribute("href") ?? ""',
+            ),
+          ).toContain("/api/auth/refresh");
+        },
+      );
+    } finally {
+      await setFlagRules("realtime", []);
+    }
+  }, 300_000);
 });

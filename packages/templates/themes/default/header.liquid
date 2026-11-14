@@ -28,12 +28,10 @@
       {% island "LanguageSwitcher" language %}
     </nav>
   </div>
-  {% if flags.realtime %}
   <div class="bl-reauth-banner" data-stream-reauth hidden>
     <p>{% t "realtime.reauthBody" %}</p>
     <a class="bl-button bl-button--small" data-stream-reauth-continue href="/api/auth/refresh">{% t "realtime.continue" %}</a>
   </div>
-  {% endif %}
   {% if flags.pwa %}
   <div class="bl-offline-drafts" data-offline-drafts hidden
     data-label-offline="{% t "pwa.drafts.offline" %}"
