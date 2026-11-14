@@ -386,8 +386,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
+        const pushEnabled = await flags.enabled("web_push", session.memberId);
         return flags.guard("notifications", session.memberId)(request, () =>
-          notificationPreferencesResponse(sql, session.memberId, request),
+          notificationPreferencesResponse(sql, session.memberId, request, { pushEnabled }),
         );
       });
 
@@ -402,10 +403,8 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return notificationPreviewResponse(
-          sql,
-          session.memberId,
-          notificationPreviewMatch[1] ?? "",
+        return flags.guard("web_push", session.memberId)(request, () =>
+          notificationPreviewResponse(sql, session.memberId, notificationPreviewMatch[1] ?? ""),
         );
       });
 
@@ -418,7 +417,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return pushConfigResponse(config.nodeEnv);
+        return flags.guard("web_push", session.memberId)(request, () =>
+          pushConfigResponse(config.nodeEnv),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -430,7 +431,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return pushDevicesResponse(sql, request, config.nodeEnv);
+        return flags.guard("web_push", session.memberId)(request, () =>
+          pushDevicesResponse(sql, request, config.nodeEnv),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -442,7 +445,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return pushSubscribeResponse(sql, request, { nodeEnv: config.nodeEnv });
+        return flags.guard("web_push", session.memberId)(request, () =>
+          pushSubscribeResponse(sql, request, { nodeEnv: config.nodeEnv }),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
@@ -454,7 +459,9 @@ await startService({
           return Response.json({ code: "unauthenticated" }, { status: 401 });
         }
 
-        return pushDeleteDeviceResponse(sql, request, config.nodeEnv);
+        return flags.guard("web_push", session.memberId)(request, () =>
+          pushDeleteDeviceResponse(sql, request, config.nodeEnv),
+        );
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

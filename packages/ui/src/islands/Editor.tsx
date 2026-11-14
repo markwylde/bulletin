@@ -102,7 +102,13 @@ function wrapSelection(
 /** The editor island (ADR 0007): WYSIWYG/source, toolbar, emoticons, mentions and drafts. */
 export function Editor(props: EditorProps) {
   return (
-    <FlagsProvider value={{ mentions: props.flags.mentions, attachments: props.flags.attachments }}>
+    <FlagsProvider
+      value={{
+        mentions: props.flags.mentions,
+        attachments: props.flags.attachments,
+        pwa: props.flags.pwa,
+      }}
+    >
       <EditorContent {...props} />
     </FlagsProvider>
   );
@@ -120,6 +126,7 @@ function EditorContent({
 }: EditorProps) {
   const mentionsEnabled = useFlag("mentions");
   const attachmentsEnabled = useFlag("attachments");
+  const pwaEnabled = useFlag("pwa");
   const canAttach = canUpload && attachmentsEnabled;
   const [mode, setMode] = useState<EditorMode>("source");
   const [markdown, setMarkdown] = useState(initialMarkdown);
@@ -207,7 +214,7 @@ function EditorContent({
   // The stream asks editors to persist before the session's re-auth grace expires; server
   // draft autosave is refused at that point, so keep the text locally for the return.
   useEffect(() => {
-    if (memberId === null) {
+    if (memberId === null || !pwaEnabled) {
       return;
     }
 
@@ -223,11 +230,11 @@ function EditorContent({
     return () => {
       window.removeEventListener("bulletin:reauth", persist);
     };
-  }, [contextKey, memberId]);
+  }, [contextKey, memberId, pwaEnabled]);
 
   // Offer a locally saved re-auth draft once the editor mounts again, for this member only.
   useEffect(() => {
-    if (memberId === null) {
+    if (memberId === null || !pwaEnabled) {
       return;
     }
 
@@ -236,7 +243,7 @@ function EditorContent({
     if (saved !== null && saved !== initialRef.current) {
       setDraft({ contextKey, bodyMd: saved, updatedAt: new Date().toISOString() });
     }
-  }, [contextKey, memberId]);
+  }, [contextKey, memberId, pwaEnabled]);
 
   // The personal overlay delivers the draft before/alongside the editor's own request.
   useEffect(() => {
@@ -535,7 +542,7 @@ function EditorContent({
     }, 400);
     setDraft(null);
 
-    if (memberId !== null) {
+    if (pwaEnabled && memberId !== null) {
       clearReauthDraft(memberId, contextKey);
     }
   }
@@ -543,7 +550,7 @@ function EditorContent({
   function discardDraft(): void {
     setDraft(null);
 
-    if (memberId !== null) {
+    if (pwaEnabled && memberId !== null) {
       clearReauthDraft(memberId, contextKey);
     }
 
@@ -760,6 +767,7 @@ function EditorContent({
       data-editor
       data-draft-context={contextKey}
       data-editor-can-upload={canAttach ? "true" : "false"}
+      data-editor-offline-drafts={pwaEnabled ? "true" : "false"}
       {...(ready ? { "data-editor-ready": "true" } : {})}
       onDragOver={(event) => {
         if (!canAttach) {

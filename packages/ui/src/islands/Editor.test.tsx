@@ -50,14 +50,34 @@ describe("Editor server markup", () => {
       labels,
     };
     const off = renderToStaticMarkup(
-      <Editor {...props} flags={{ mentions: false, attachments: true }} />,
+      <Editor {...props} flags={{ mentions: false, attachments: true, pwa: true }} />,
     );
     const on = renderToStaticMarkup(
-      <Editor {...props} flags={{ mentions: true, attachments: true }} />,
+      <Editor {...props} flags={{ mentions: true, attachments: true, pwa: true }} />,
     );
 
     expect(off).not.toContain('aria-label="Mention a member"');
     expect(on).toContain('aria-label="Mention a member"');
+  });
+
+  test("uses the pwa flag to enable local offline draft storage", () => {
+    const common = {
+      contextKey: "reply:topic:1",
+      initialMarkdown: "",
+      forumId: "1",
+      canUpload: false,
+      emoticons: [],
+      labels,
+    } as const;
+    const off = renderToStaticMarkup(
+      <Editor {...common} flags={{ mentions: true, attachments: true, pwa: false }} />,
+    );
+    const on = renderToStaticMarkup(
+      <Editor {...common} flags={{ mentions: true, attachments: true, pwa: true }} />,
+    );
+
+    expect(off).toContain('data-editor-offline-drafts="false"');
+    expect(on).toContain('data-editor-offline-drafts="true"');
   });
 
   test("renders a usable source editor and the translated toolbar", () => {
@@ -69,7 +89,7 @@ describe("Editor server markup", () => {
         canUpload
         emoticons={[{ code: "smile", src: "/files/smile.svg", alt: "Smile" }]}
         labels={labels}
-        flags={{ mentions: true, attachments: true }}
+        flags={{ mentions: true, attachments: true, pwa: true }}
       />,
     );
 
@@ -93,12 +113,12 @@ describe("Editor attachment controls", () => {
       forumId: "1",
       emoticons: [],
       labels,
-      flags: { mentions: true, attachments: true },
+      flags: { mentions: true, attachments: true, pwa: true },
     } as const;
     const allowed = renderToStaticMarkup(<Editor {...common} canUpload />);
     const denied = renderToStaticMarkup(<Editor {...common} canUpload={false} />);
     const flagOff = renderToStaticMarkup(
-      <Editor {...common} canUpload flags={{ mentions: true, attachments: false }} />,
+      <Editor {...common} canUpload flags={{ mentions: true, attachments: false, pwa: true }} />,
     );
 
     expect(allowed).toContain("data-editor-attach");

@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { readBoard } from "../../board.ts";
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { readSql } from "../../db.ts";
+import { pwaFlagRoute } from "../../pwa/guard.ts";
 import { iconLetter, iconSvg, parseThemeReference } from "../../pwa/manifest.ts";
 import { resolvePwaTheme } from "../../pwa/theme.ts";
 import { boardNameFrom } from "../../theme/render.ts";
@@ -15,7 +16,14 @@ const icons = new Map<string, Uint8Array>();
  * `GET /pwa/icon-<size>.png?theme=<id>@<version>`: a raster icon in the active theme's colours.
  * The manifest needs 192 and 512 pixel icons for installation; 180 is the Apple touch icon.
  */
-export const GET: APIRoute = async ({ params, request, url }) => {
+export const GET: APIRoute = ({ params, request, url }) =>
+  pwaFlagRoute(readSql(), request, "pwa", () => iconResponse(params, request, url));
+
+async function iconResponse(
+  params: Readonly<Record<string, string | undefined>>,
+  request: Request,
+  url: URL,
+): Promise<Response> {
   const size = Number(params.size ?? "");
 
   if (!SIZES.has(String(size))) {
@@ -65,4 +73,4 @@ export const GET: APIRoute = async ({ params, request, url }) => {
       "x-content-type-options": "nosniff",
     },
   });
-};
+}

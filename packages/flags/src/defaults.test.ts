@@ -4,6 +4,8 @@ import {
   attachmentsFlag,
   avatarUploadFlag,
   CODE_FLAG_DEFINITIONS,
+  pwaFlag,
+  webPushFlag,
 } from "./defaults.ts";
 
 describe("announcements flag declaration", () => {
@@ -32,6 +34,25 @@ describe("attachment and avatar flag declarations", () => {
       key: "avatar_upload",
       defaultValue: false,
       affectsRender: false,
+      clientVisible: true,
+    });
+  });
+});
+
+describe("PWA and push flag declarations", () => {
+  test("default off, affect the render and are client visible", () => {
+    expect(CODE_FLAG_DEFINITIONS).toContain(pwaFlag);
+    expect(CODE_FLAG_DEFINITIONS).toContain(webPushFlag);
+    expect(pwaFlag).toMatchObject({
+      key: "pwa",
+      defaultValue: false,
+      affectsRender: true,
+      clientVisible: true,
+    });
+    expect(webPushFlag).toMatchObject({
+      key: "web_push",
+      defaultValue: false,
+      affectsRender: true,
       clientVisible: true,
     });
   });

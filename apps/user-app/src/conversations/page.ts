@@ -26,6 +26,8 @@ export interface InboxPageInput {
   readonly query?: string;
   /** The viewer's evaluated `mentions` flag for the editor island. */
   readonly mentionsEnabled?: boolean;
+  /** The viewer's evaluated `pwa` flag; off disables local draft storage in the editor. */
+  readonly pwaEnabled?: boolean;
   readonly replaceWords?: ReplaceWords;
 }
 
@@ -202,6 +204,7 @@ export async function buildInboxPage(input: InboxPageInput): Promise<InboxPageDa
           contextKey: `conversation:new`,
           mentions: input.mentionsEnabled !== false,
           attachments: false,
+          pwa: input.pwaEnabled === true,
           name: "bodyMd",
           forumId: "",
           canUpload: false,
@@ -248,6 +251,7 @@ export async function buildConversationPage(input: {
   /** False when the `attachments` flag is off: placeholders and uploads disappear. */
   readonly attachmentsEnabled?: boolean;
   readonly mentionsEnabled?: boolean;
+  readonly pwaEnabled?: boolean;
   readonly replaceWords?: ReplaceWords;
 }): Promise<ConversationPageData | null> {
   const detail = await readConversationForParticipant(
@@ -309,6 +313,7 @@ export async function buildConversationPage(input: {
         contextKey: `conversation:reply:${detail.id}`,
         mentions: input.mentionsEnabled !== false,
         attachments: attachmentsEnabled,
+        pwa: input.pwaEnabled === true,
         name: "bodyMd",
         forumId: "",
         conversationId: detail.id,

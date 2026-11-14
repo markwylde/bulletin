@@ -355,6 +355,7 @@ integrationDescribe("notification feature flags", () => {
           sql: database.sql,
           memberId: member,
           translate,
+          pushEnabled: true,
         });
         const themed = await renderThemedPage({
           sql: database.sql,

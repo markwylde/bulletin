@@ -5,7 +5,9 @@ import { cacheRuntime } from "../cache-runtime.ts";
 import { USER_CATALOGS } from "../catalogs.ts";
 import { offlineContract } from "../contracts.ts";
 import { readSql } from "../db.ts";
+import { loadViewerFlags } from "../flags.ts";
 import ThemeLayout from "../layouts/ThemeLayout.astro";
+import { renderThemedNotFound } from "../theme/not-found.ts";
 import {
   boardNameFrom,
   loadPluginsGeneration,
@@ -18,29 +20,43 @@ const locale = Astro.locals.locale ?? "en";
 const localeSource = Astro.locals.localeSource ?? "guest";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const runtime = await cacheRuntime(sql);
-const rendered = await renderAuthRoute({
-  sql,
-  themeId: Astro.locals.themeId,
-  preview: Astro.locals.previewTheme === true,
-  boardName: boardNameFrom(Astro.locals.board?.boardName, translate),
-  locale,
-  translate,
-  template: offlineContract.templates.page,
-  contract: offlineContract,
-  pluginsGeneration: pluginsGeneration,
-  colourScheme:
-    Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
-  cache: runtime.cache,
-  // The cached offline shell is shared by every visitor; no member state is rendered.
-  shell: { visitor: "guest", localeSource: "guest" },
-});
+const flags = await loadViewerFlags(sql, Astro.locals.session ?? null);
+const enabled = flags.values.pwa === true;
+const notFound = enabled
+  ? null
+  : await renderThemedNotFound({
+      sql,
+      themeId: Astro.locals.themeId,
+      locale,
+      translate,
+      route: offlineContract,
+    });
+const rendered =
+  notFound ??
+  (await renderAuthRoute({
+    sql,
+    themeId: Astro.locals.themeId,
+    preview: Astro.locals.previewTheme === true,
+    boardName: boardNameFrom(Astro.locals.board?.boardName, translate),
+    locale,
+    translate,
+    template: offlineContract.templates.page,
+    contract: offlineContract,
+    pluginsGeneration: pluginsGeneration,
+    colourScheme:
+      Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
+    cache: runtime.cache,
+    // The cached offline shell is shared by every visitor; no member state is rendered.
+    shell: { visitor: "guest", localeSource: "guest" },
+  }));
 
+Astro.response.status = enabled ? 200 : 404;
 Astro.response.headers.set("cache-control", "private, no-store");
 ---
 
 <ThemeLayout
   colourScheme={Astro.locals.colourScheme ?? "system"}
-  title={translate("pwa.offline.title")}
+  title={enabled ? translate("pwa.offline.title") : (notFound?.title ?? "")}
   locale={locale}
   body={rendered.html}
   visitor="guest"

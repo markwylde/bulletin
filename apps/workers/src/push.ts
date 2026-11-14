@@ -80,6 +80,7 @@ export async function deliverNotificationPush(
     if (
       options.flags !== undefined &&
       (!(await options.flags.enabled("notifications", context.memberId)) ||
+        !(await options.flags.enabled("web_push", context.memberId)) ||
         (context.type === "conversation.message" &&
           !(await options.flags.enabled("conversations", context.memberId))))
     ) {

@@ -684,6 +684,7 @@ integrationDescribe("notification centre", () => {
         sql: database.sql,
         memberId: member,
         translate,
+        pushEnabled: true,
       });
 
       expect(page.viewModel.types).toHaveLength(NOTIFICATION_TYPES.length);
@@ -729,6 +730,7 @@ integrationDescribe("notification centre", () => {
           method: "POST",
           body: JSON.stringify({ type: "post.mention", channel: "push", enabled: true }),
         }),
+        { pushEnabled: true },
       );
       expect(pushSaved.status).toBe(200);
       expect((await notificationChannels(database.sql, member, "post.mention")).push).toBe(true);

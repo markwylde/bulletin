@@ -116,6 +116,7 @@ export interface TopicPageInput {
   readonly mentionsEnabled?: boolean;
   readonly pollsEnabled?: boolean;
   readonly attachmentsEnabled?: boolean;
+  readonly pwaEnabled?: boolean;
   readonly publicEditHistory?: boolean;
   readonly replaceWords?: ReplaceWords;
 }
@@ -320,6 +321,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
   const embedProviders = await listEmbedProviders(input.sql);
   const mentionsEnabled = input.mentionsEnabled !== false;
   const pollsEnabled = input.pollsEnabled !== false;
+  const pwaEnabled = input.pwaEnabled === true;
   const rendered = await Promise.all(
     posts.rows.map(async (post) => {
       const unfilteredSource = post.bodyHtmlUnfiltered !== null;
@@ -658,6 +660,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
               contextKey: `reply:topic:${input.topic.id}`,
               mentions: mentionsEnabled,
               attachments: attachmentsEnabled,
+              pwa: pwaEnabled,
               name: "bodyMd",
               forumId: input.topic.forumId,
               canUpload: upload,
@@ -667,6 +670,7 @@ export async function buildTopicPage(input: TopicPageInput): Promise<TopicPageDa
         mentions: mentionsEnabled,
         polls: pollsEnabled,
         attachments: attachmentsEnabled,
+        pwa: pwaEnabled,
       },
     },
   };

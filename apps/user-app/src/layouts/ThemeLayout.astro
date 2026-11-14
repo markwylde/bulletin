@@ -36,7 +36,18 @@ const {
 const flagsJson =
   clientFlagsJson ??
   (Astro.locals.clientFlags === undefined ? undefined : JSON.stringify(Astro.locals.clientFlags));
-const pwa = await pwaBuild();
+const clientFlags = (() => {
+  try {
+    const parsed: unknown = JSON.parse(flagsJson ?? "{}");
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+})();
+const pwaEnabled = clientFlags.pwa === true;
+const pwa = pwaEnabled ? await pwaBuild() : null;
 ---
 
 <!doctype html>
@@ -49,13 +60,13 @@ const pwa = await pwaBuild();
   data-client-flags={flagsJson}
   data-scheme={colourScheme}
   data-plugins-origin={configuredPluginOrigin()}
-  data-pwa-version={pwa.version}
+  data-pwa-version={pwa?.version}
 >
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="data:," />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/pwa/icon-180.png" />
+    {pwaEnabled ? <link rel="manifest" href="/manifest.webmanifest" /> : null}
+    {pwaEnabled ? <link rel="apple-touch-icon" href="/pwa/icon-180.png" /> : null}
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {robots === "noindex" ? <meta name="robots" content="noindex" /> : null}
     <title>{title}</title>
@@ -68,8 +79,8 @@ const pwa = await pwaBuild();
     <script>import "../islands.ts";</script>
     <script>import "../plugins/bridge.ts";</script>
     <script>import "../visits.ts";</script>
-    <script>import "../pwa/register.ts";</script>
-    <script>import "../offline/client.ts";</script>
+    {pwaEnabled ? <script>import "../pwa/register.ts";</script> : null}
+    {pwaEnabled ? <script>import "../offline/client.ts";</script> : null}
     <script>import "../realtime/client.ts";</script>
     <script>import "../read-tracking/client.ts";</script>
   </body>

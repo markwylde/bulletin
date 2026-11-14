@@ -59,11 +59,17 @@ integrationDescribe("push", () => {
         expect(page).not.toContain(PUSH_TEST_KEYS.publicKey);
         expect(page).not.toContain(PUSH_TEST_KEYS.auth);
 
-        await waitForSelector(view, "[data-push-remove]:not([disabled])");
-        await clickSelector(view, "[data-push-remove]");
+        const removed = await view.evaluate<boolean>(`(() => {
+          const row = [...document.querySelectorAll("[data-push-device]")].find((candidate) => candidate.textContent?.includes("E2E phone"));
+          const button = row?.querySelector("[data-push-remove]");
+          if (!(button instanceof HTMLButtonElement) || button.disabled) return false;
+          button.click();
+          return true;
+        })()`);
+        expect(removed).toBe(true);
         await waitForExpression(
           view,
-          "document.querySelectorAll('[data-push-device]').length === 0",
+          `[...document.querySelectorAll("[data-push-device]")].every((row) => !row.textContent?.includes("E2E phone"))`,
           20_000,
         );
         await waitForText(view, "Device removed.");

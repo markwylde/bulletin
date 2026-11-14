@@ -3,6 +3,7 @@ import type { APIRoute } from "astro";
 import { readBoard } from "../board.ts";
 import { USER_CATALOGS } from "../catalogs.ts";
 import { readSql } from "../db.ts";
+import { pwaFlagRoute } from "../pwa/guard.ts";
 import { buildManifest, parseThemeReference } from "../pwa/manifest.ts";
 import { resolvePwaTheme } from "../pwa/theme.ts";
 import { boardNameFrom } from "../theme/render.ts";
@@ -12,7 +13,10 @@ import { boardNameFrom } from "../theme/render.ts";
  * An optional `?theme=<id>@<version>` makes the response shareable and cacheable by theme;
  * without it the viewer's own theme and colour scheme decide the colours.
  */
-export const GET: APIRoute = async ({ request, url }) => {
+export const GET: APIRoute = ({ request, url }) =>
+  pwaFlagRoute(readSql(), request, "pwa", () => manifestResponse(request, url));
+
+async function manifestResponse(request: Request, url: URL): Promise<Response> {
   const sql = readSql();
   const locale = "en";
   const translate = createServerT(locale, { shipped: USER_CATALOGS });
@@ -38,4 +42,4 @@ export const GET: APIRoute = async ({ request, url }) => {
       "x-content-type-options": "nosniff",
     },
   });
-};
+}

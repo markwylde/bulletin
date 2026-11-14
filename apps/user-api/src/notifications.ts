@@ -54,10 +54,16 @@ export async function notificationReadResponse(
 }
 
 /** `POST /api/notifications/preferences`: one type/channel cell for the session member. */
+export interface NotificationPreferenceOptions {
+  /** The `web_push` flag: a disabled channel is indistinguishable from an unknown one. */
+  readonly pushEnabled?: boolean;
+}
+
 export async function notificationPreferencesResponse(
   sql: SQL,
   memberId: string,
   request: Request,
+  options: NotificationPreferenceOptions = {},
 ): Promise<Response> {
   const body: unknown = await request.json().catch(() => null);
 
@@ -70,6 +76,10 @@ export async function notificationPreferencesResponse(
     typeof body.enabled !== "boolean"
   ) {
     return json({ code: "invalid_request" }, 400);
+  }
+
+  if (body.channel === "push" && options.pushEnabled !== true) {
+    return json({ code: "not_found" }, 404);
   }
 
   await setNotificationPreference(sql, memberId, body.type, body.channel, body.enabled);

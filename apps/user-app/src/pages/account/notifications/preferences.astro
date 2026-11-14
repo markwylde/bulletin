@@ -23,11 +23,15 @@ const sql = readSql();
 const pluginsGeneration = await loadPluginsGeneration(sql);
 const flags = await loadViewerFlags(sql, session);
 const enabled = flags.values.notifications === true;
-const page = enabled ? await buildNotificationPreferencesPage({
-    sql,
-    memberId: session.memberId,
-    translate,
-  }) : null;
+const pushEnabled = flags.values.web_push === true;
+const page = enabled
+  ? await buildNotificationPreferencesPage({
+      sql,
+      memberId: session.memberId,
+      translate,
+      pushEnabled,
+    })
+  : null;
 const notFound = enabled
   ? null
   : await renderThemedNotFound({ sql, themeId: Astro.locals.themeId, locale, translate, route: notificationPreferencesContract });
@@ -91,5 +95,5 @@ Astro.response.headers.set("cache-control", "private, no-store");
   visitor="member"
 >
   <script>import "../../../notifications/client.ts";</script>
-  <script>import "../../../push/client.ts";</script>
+  {pushEnabled ? <script>import "../../../push/client.ts";</script> : null}
 </ThemeLayout>

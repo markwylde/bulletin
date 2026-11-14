@@ -325,6 +325,26 @@ export const webhooksFlag = defineFlag({
   clientVisible: true,
 });
 
+/** Installable PWA: manifest, icons, service worker and the offline shell (ADR 0014). */
+export const pwaFlag = defineFlag({
+  key: "pwa",
+  description: "The installable PWA, its manifest, service worker and offline shell.",
+  owner: "platform",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
+/** Web Push subscriptions, device management and the push settings UI (ADR 0014). */
+export const webPushFlag = defineFlag({
+  key: "web_push",
+  description: "Web Push notifications, registered devices and push preferences.",
+  owner: "events",
+  default: false,
+  affectsRender: true,
+  clientVisible: true,
+});
+
 /** Every flag declared in code. Each feature adds its own entry here. */
 export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   announcementsFlag,
@@ -355,4 +375,6 @@ export const CODE_FLAG_DEFINITIONS: readonly FlagDefinition[] = Object.freeze([
   pluginsFlag,
   publicApiFlag,
   webhooksFlag,
+  pwaFlag,
+  webPushFlag,
 ]);

@@ -29,6 +29,8 @@ export interface NotificationPreferencesPageInput {
   readonly sql: SQL;
   readonly memberId: string;
   readonly translate: Translator;
+  /** The `web_push` flag; hides the push channel and its device settings section. */
+  readonly pushEnabled: boolean;
 }
 
 export interface NotificationPreferencesPageData {
@@ -80,7 +82,9 @@ export async function buildNotificationPreferencesPage(
       types: Object.entries(NOTIFICATION_TYPE_LABELS).map(([type, entry]) => ({
         type: type as NotificationType,
         label: input.translate(entry.labelKey),
-        channels: NOTIFICATION_CHANNELS.map((channel) => ({
+        channels: NOTIFICATION_CHANNELS.filter(
+          (channel) => channel !== "push" || input.pushEnabled,
+        ).map((channel) => ({
           channel,
           label: input.translate(CHANNEL_LABELS[channel].labelKey),
           enabled: matrix[type as NotificationType][channel],

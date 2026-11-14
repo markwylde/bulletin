@@ -34,6 +34,7 @@
     <a class="bl-button bl-button--small" data-stream-reauth-continue href="/api/auth/refresh">{% t "realtime.continue" %}</a>
   </div>
   {% endif %}
+  {% if flags.pwa %}
   <div class="bl-offline-drafts" data-offline-drafts hidden
     data-label-offline="{% t "pwa.drafts.offline" %}"
     data-label-online="{% t "pwa.drafts.online" %}"
@@ -46,6 +47,7 @@
       <button class="bl-button bl-button--quiet bl-button--small" type="button" data-offline-drafts-discard>{% t "pwa.drafts.discard" %}</button>
     </div>
   </div>
+  {% endif %}
   {% island "LocaleSuggestion" localeSuggestion %}
   <div class="bl-ban-notice" data-ban-notice data-label-ban="{% t "ban.notice" reason: "__REASON__", until: "__UNTIL__" %}" data-label-ban-until="{% t "ban.until" date: "__DATE__" %}" hidden></div>
 </header>

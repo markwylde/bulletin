@@ -128,6 +128,8 @@ export interface ForumPageInput {
   readonly pollsEnabled?: boolean;
   /** The viewer's evaluated `attachments` flag; off hides uploads and attachment UI. */
   readonly attachmentsEnabled?: boolean;
+  /** The viewer's evaluated `pwa` flag; off disables local draft storage in the editor. */
+  readonly pwaEnabled?: boolean;
   readonly replaceWords?: ReplaceWords;
 }
 
@@ -184,6 +186,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
   const announcementsEnabled = input.announcementsEnabled !== false;
   const mentionsEnabled = input.mentionsEnabled !== false;
   const pollsEnabled = input.pollsEnabled !== false;
+  const pwaEnabled = input.pwaEnabled === true;
   const allAnnouncements = announcementsEnabled
     ? await loadAnnouncements(input.sql, input.now)
     : [];
@@ -266,6 +269,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
           announcements: announcementsEnabled,
           polls: pollsEnabled,
           attachments: attachmentsEnabled,
+          pwa: pwaEnabled,
         },
       },
       visibilityKey,
@@ -363,6 +367,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         contextKey: `topic:new:${input.forum.id}`,
         mentions: mentionsEnabled,
         attachments: attachmentsEnabled,
+        pwa: pwaEnabled,
         name: "bodyMd",
         forumId: input.forum.id,
         canUpload,

@@ -422,6 +422,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
               mentionsEnabled: flags.values.mentions === true,
               pollsEnabled: flags.values.polls === true,
               attachmentsEnabled: flags.values.attachments === true,
+              pwaEnabled: flags.values.pwa === true,
               publicEditHistory: freshSettings.publicEditHistory,
               replaceWords,
             });

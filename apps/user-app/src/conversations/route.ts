@@ -77,6 +77,7 @@ export async function renderConversationsRoute(
     translate: input.translate,
     folder: input.folder,
     mentionsEnabled: flags.values.mentions === true,
+    pwaEnabled: flags.values.pwa === true,
     ...(input.query === undefined ? {} : { query: input.query }),
   });
   const rendered = await renderCachedPage({
@@ -147,6 +148,7 @@ export async function renderConversationRoute(
           conversationId: parsed[1] ?? "",
           attachmentsEnabled: flags.values.attachments === true,
           mentionsEnabled: flags.values.mentions === true,
+          pwaEnabled: flags.values.pwa === true,
           replaceWords,
         });
 

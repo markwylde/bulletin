@@ -251,6 +251,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
             mentionsEnabled: flags.values.mentions === true,
             pollsEnabled: flags.values.polls === true,
             attachmentsEnabled: flags.values.attachments === true,
+            pwaEnabled: flags.values.pwa === true,
             replaceWords,
           });
         }

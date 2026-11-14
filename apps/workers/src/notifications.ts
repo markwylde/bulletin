@@ -165,7 +165,11 @@ export async function processNotificationRecipients(
         }
       }
 
-      if (channels.push && notificationId !== null) {
+      const pushEnabled =
+        options.flags === undefined ||
+        (await options.flags.enabled("web_push", recipient.memberId));
+
+      if (channels.push && pushEnabled && notificationId !== null) {
         const intent = await createNotificationPushIntent(
           tx,
           recipient.memberId,

@@ -1,6 +1,8 @@
 import type { APIRoute } from "astro";
 import { USER_CATALOGS } from "../catalogs.ts";
+import { readSql } from "../db.ts";
 import { pwaBuild } from "../pwa/build.ts";
+import { pwaFlagRoute } from "../pwa/guard.ts";
 import { serviceWorkerSource } from "../pwa/service-worker.ts";
 
 function pushTitles(): Readonly<Record<string, Readonly<Record<string, string>>>> {
@@ -13,7 +15,10 @@ function pushTitles(): Readonly<Record<string, Readonly<Record<string, string>>>
 }
 
 /** `GET /sw.js`: the versioned service worker (ADR 0014), served from the app's root scope. */
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = ({ request }) =>
+  pwaFlagRoute(readSql(), request, "pwa", () => serviceWorkerResponse());
+
+async function serviceWorkerResponse(): Promise<Response> {
   const build = await pwaBuild();
 
   return new Response(serviceWorkerSource({ ...build, titles: pushTitles() }), {
@@ -25,4 +30,4 @@ export const GET: APIRoute = async () => {
       "x-content-type-options": "nosniff",
     },
   });
-};
+}

@@ -366,6 +366,68 @@ integrationDescribe("push delivery", () => {
     });
   }, 60_000);
 
+  test("respects the web_push flag before creating or sending a push", async () => {
+    await withPushStack(async ({ database, store, base }) => {
+      const fixture = await replyFixture(database);
+      const recipient = fixture.starter;
+      await sessionToken(database, recipient, "push-flag-session");
+      await saveDevice(database, "push-flag-session", `${base}/push/flag`);
+      await setNotificationPreference(database.sql, recipient, "topic.reply", "push", true);
+      const { eventId } = fixture;
+      const pushIntents: string[] = [];
+      const off = {
+        enabled: async (key: string) => key !== "web_push",
+      };
+
+      const recipientView: NotificationRecipient = {
+        memberId: recipient,
+        type: "topic.reply",
+        source: "follow",
+        actorId: fixture.actor,
+        topicId: fixture.topicId,
+        forumId: fixture.forumId,
+        postId: fixture.postId,
+      };
+      await processNotificationRecipients(
+        {
+          sql: database.sql,
+          flags: off,
+          enqueuePush: async (intent: string) => {
+            pushIntents.push(intent);
+          },
+        },
+        await requireEvent(database, eventId),
+        [recipientView],
+      );
+      expect(pushIntents).toEqual([]);
+
+      // A stored intent is also skipped by the sender while the flag is off.
+      const [row] = (await database.sql`
+        SELECT notification_id::text AS id
+        FROM core.notification_events
+        WHERE event_id = ${eventId} AND member_id = ${recipient}
+      `) as Array<{ id: string }>;
+      const intentId = await createNotificationPushIntent(
+        database.sql,
+        recipient,
+        BigInt(row?.id ?? "0"),
+        eventId,
+      );
+
+      if (intentId === null) {
+        throw new Error("Missing push intent");
+      }
+
+      const delivered = await deliverNotificationPush(
+        database.sql,
+        { ...deliveryOptions(), flags: off },
+        intentId.toString(),
+      );
+      expect(delivered.sent).toBe(0);
+      expect(store.list()).toEqual([]);
+    });
+  }, 60_000);
+
   test("creates push intents only for the types the member enabled", async () => {
     await withPushStack(async ({ database, store, base }) => {
       const fixture = await replyFixture(database);
