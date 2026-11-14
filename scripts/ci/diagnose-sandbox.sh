@@ -42,5 +42,9 @@ if [ -n "$jail" ]; then
   echo "--- tail ---"
   awk -v p="$jail" '$1 >= p' /tmp/sandbox-trace.txt | tail -40 | cut -c1-250
 fi
+echo "--- clone/thread failures and CPU count ---"
+echo "nproc=$(nproc) getconf=$(getconf _NPROCESSORS_ONLN)"
+grep -E "clone3?\(.*= -1|clone3?.*EAGAIN" /tmp/sandbox-trace.txt | cut -c1-200 | head -5
+grep -cE "clone3?\(" /tmp/sandbox-trace.txt
 echo "--- execve calls ---"
 grep -E "execve\(" /tmp/sandbox-trace.txt | cut -c1-300 | head -10
