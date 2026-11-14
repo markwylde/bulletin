@@ -7,7 +7,7 @@
 
 ## 2. Health panel
 
-- [ ] 2.1 Staff health panel (readiness, queue lag, dead letters, cache stats, variant warnings, plugin health, pool saturation) gated by `acp.system`; permission-denial test; E2E at 360 and 1440
+- [x] 2.1 Staff health panel (readiness, queue lag, dead letters, cache stats, variant warnings, plugin health, pool saturation) gated by `acp.system`; permission-denial test; E2E at 360 and 1440
 
 ## 3. Capacity
 

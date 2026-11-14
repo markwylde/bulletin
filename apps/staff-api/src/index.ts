@@ -21,6 +21,7 @@ import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { auditStaffLocaleChange } from "./admin-log.ts";
 import { createStaffApi } from "./api.ts";
+import { healthTargetsFromEnv } from "./system-health.ts";
 
 const config = loadConfig();
 const logger = createLogger({ service: "staff-api", level: config.logLevel });
@@ -71,6 +72,7 @@ const api = createStaffApi({
   userOrigin: config.userOrigin,
   themePreviewSecret: config.sessionSecret,
   apiKeyPepper: config.sessionSecret,
+  healthTargets: healthTargetsFromEnv(Bun.env),
   ...(purge === undefined ? {} : { purge }),
 });
 

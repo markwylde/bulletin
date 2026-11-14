@@ -120,6 +120,7 @@ import {
   saveOverrideSet,
   searchOverrideKeys,
 } from "./string-overrides.ts";
+import { type HealthFetch, type HealthTarget, readSystemHealth } from "./system-health.ts";
 import {
   exportThemeResponse,
   importThemeResponse,
@@ -159,6 +160,9 @@ export interface StaffRouteContext {
   readonly themePreviewSecret?: string;
   /** Server pepper for integration key hashes (ADR 0016). */
   readonly apiKeyPepper?: string;
+  /** Internal service URLs for the system health panel (ADR 0020). */
+  readonly healthTargets?: readonly HealthTarget[];
+  readonly healthFetch?: HealthFetch;
 }
 
 export interface StaffRoute {
@@ -183,6 +187,8 @@ export interface StaffApiOptions {
   readonly themePreviewSecret?: string;
   /** Server pepper for integration key hashes (ADR 0016). */
   readonly apiKeyPepper?: string;
+  readonly healthTargets?: readonly HealthTarget[];
+  readonly healthFetch?: HealthFetch;
 }
 
 export interface StaffApi {
@@ -1880,6 +1886,21 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     handler: promotionsMutate,
   },
   {
+    id: "system.health",
+    method: "GET",
+    path: "/api/staff/system/health",
+    permission: "acp.system",
+    handler: async ({ sql, checks, healthTargets, healthFetch }) =>
+      json(
+        await readSystemHealth({
+          sql,
+          checks,
+          targets: healthTargets ?? [],
+          ...(healthFetch === undefined ? {} : { fetch: healthFetch }),
+        }),
+      ),
+  },
+  {
     id: "events.deadLetters.list",
     method: "GET",
     path: "/api/staff/events/dead-letters",
@@ -2171,6 +2192,8 @@ export function createStaffApi(options: StaffApiOptions): StaffApi {
           ...(options.themePreviewSecret === undefined
             ? {}
             : { themePreviewSecret: options.themePreviewSecret }),
+          ...(options.healthTargets === undefined ? {} : { healthTargets: options.healthTargets }),
+          ...(options.healthFetch === undefined ? {} : { healthFetch: options.healthFetch }),
           apiKeyPepper:
             options.apiKeyPepper ??
             Bun.env.SESSION_SECRET ??

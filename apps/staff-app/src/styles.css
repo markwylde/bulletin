@@ -1639,3 +1639,87 @@ textarea.form-input {
   overflow-wrap: anywhere;
   word-break: break-all;
 }
+
+/* System health panel (ADR 0020): mobile-first rows that wrap at 360 px. */
+.system-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.system-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  min-width: 0;
+}
+
+.system-row.is-warning {
+  border-color: var(--warning);
+  border-left-width: 0.3rem;
+  background: var(--surface-alt);
+}
+
+.system-name {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1 1 10rem;
+}
+
+.system-stats {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.system-stats div {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.system-stats dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.system-stats dd {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.system-ok {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.system-bad {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.system-subhead {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.9rem;
+}
+
+.system-summary {
+  margin-top: 0.75rem;
+}
+
+@media (min-width: 900px) {
+  .system-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

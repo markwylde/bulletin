@@ -45,6 +45,15 @@ describe("staff section registry", () => {
     expect(visibleSections([]).map((section) => section.id)).toEqual([]);
   });
 
+  test("shows the system health panel only with acp.system", () => {
+    expect(
+      visibleSections(["acp.access", "acp.members"]).map((section) => section.id),
+    ).not.toContain("systemHealth");
+    expect(visibleSections(["acp.access", "acp.system"]).map((section) => section.id)).toContain(
+      "systemHealth",
+    );
+  });
+
   test("shows retention only with privacy.manage", () => {
     expect(
       visibleSections(["acp.access", "acp.settings"]).map((section) => section.id),
