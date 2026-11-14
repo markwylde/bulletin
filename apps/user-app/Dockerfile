@@ -4,7 +4,8 @@ FROM oven/bun:1.4.0-alpine AS deps
 
 WORKDIR /app
 COPY . .
-RUN bun install --frozen-lockfile
+RUN --mount=type=cache,id=bulletin-bun-cache,target=/root/.bun/install/cache,sharing=locked \
+    bun install --frozen-lockfile
 
 FROM deps AS dev
 
