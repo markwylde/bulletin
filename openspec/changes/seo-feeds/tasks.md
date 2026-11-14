@@ -4,7 +4,7 @@
 
 - [x] 1.1 Sitemap index and paginated sitemaps using the Guests snapshot, with tests for the staff-forum exclusion
 - [x] 1.2 RSS and Atom feeds (board and per forum, guest-visible, quote-free excerpts), with tests for the forum and private-forum scenarios
-- [ ] 1.3 CDN caching and tags for sitemaps and feeds, with a test for the topic-made-private scenario via the CDN mock
+- [x] 1.3 CDN caching and tags for sitemaps and feeds, with a test for the topic-made-private scenario via the CDN mock
 
 ## 2. Metadata
 
