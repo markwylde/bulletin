@@ -280,6 +280,16 @@ export function ThemesPage() {
             });
           case "invalid_template":
             return t("staff.themes.check.invalidTemplate", { template: String(issue.template) });
+          case "missing_meta":
+            return t("staff.themes.check.missingMeta", {
+              template: String(issue.template),
+              meta: String(issue.meta),
+            });
+          case "head_element":
+            return t("staff.themes.check.headElement", {
+              template: String(issue.template),
+              element: String(issue.element),
+            });
           case "invalid_css":
             return t("staff.themes.check.invalidCss");
           case "contrast":

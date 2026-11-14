@@ -9,15 +9,19 @@ import {
   applyPluginOverrides,
   createCompileCache,
   createTemplateEngine,
+  enforceHeadMarkup,
+  HEAD_TEMPLATE_NAME,
   type LoadedTheme,
   loadPluginFragments,
   loadTheme,
   missingRenderedIslands,
   type RenderedThemePage,
   renderThemePage,
+  renderThemeTemplate,
   TemplateRenderError,
   type TemplateRuntime,
   type TemplateViolation,
+  type ThemeHeadSeo,
   type ThemeRegion,
 } from "@bulletin/templates";
 import { pluginAppIsland, SERVER_ISLANDS } from "@bulletin/ui/islands/server";
@@ -401,6 +405,72 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
   await recordFailures(input.sql, failures);
 
   return { html: page.html, errors };
+}
+
+export interface ThemeHeadInput {
+  readonly sql: SQL;
+  readonly themeId?: string | null | undefined;
+  readonly pluginsGeneration: number;
+  readonly translate: Translator;
+  readonly boardName: string;
+  readonly seo: ThemeHeadSeo;
+}
+
+/**
+ * Renders the theme's `head` template for one response (change `seo-feeds`), then applies the
+ * required-meta check. It runs per response, after the cached body, because the canonical and
+ * `hreflang` set depend on the request URL (`?lang=`) and origin, not only on the variant.
+ * Any template failure, or a theme without a `head` template, falls back to the trusted tags.
+ */
+export async function renderThemeHead(input: ThemeHeadInput): Promise<string> {
+  const failures: FailureReport[] = [];
+  let html = "";
+
+  try {
+    const theme = await loadActiveTheme(input.sql, input.themeId);
+
+    if (theme !== null) {
+      const rendered = await renderThemeTemplate({
+        engine,
+        compiled: compiledThemes.compile(theme, input.pluginsGeneration),
+        name: HEAD_TEMPLATE_NAME,
+        viewModel: { seo: input.seo, boardName: input.boardName },
+        runtime: {
+          translate: input.translate,
+          hooks: {},
+          report: (message) => console.warn(`[theme] head: ${message}`),
+        },
+      });
+
+      html = rendered.html;
+      failures.push(...violationReports(rendered.violations));
+    }
+  } catch (error) {
+    console.warn("[theme] the head template failed; using the trusted metadata", error);
+    failures.push({
+      action: "theme.head.error",
+      signature: `head|error|${error instanceof Error ? error.message : String(error)}`,
+      summary: {
+        template: HEAD_TEMPLATE_NAME,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+
+  const enforced = enforceHeadMarkup(html, input.seo);
+
+  if (html !== "" && enforced.problems.length > 0) {
+    console.warn(`[theme] head: ${enforced.problems.join("; ")}`);
+    failures.push({
+      action: "theme.head.required_meta",
+      signature: `head|meta|${input.themeId ?? THEME_NAME}|${enforced.problems.join("|")}`,
+      summary: { template: HEAD_TEMPLATE_NAME, problems: enforced.problems },
+    });
+  }
+
+  await recordFailures(input.sql, failures);
+
+  return enforced.html;
 }
 
 /**

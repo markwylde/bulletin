@@ -4,6 +4,7 @@ export * from "./contract.ts";
 export * from "./contrast.ts";
 export * from "./engine.ts";
 export * from "./flag-context.ts";
+export * from "./head.ts";
 export * from "./hook-registry.ts";
 export * from "./hook-tag.ts";
 export * from "./hooks.ts";

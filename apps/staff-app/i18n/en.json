@@ -1108,6 +1108,8 @@
   "staff.themes.check.invalidString": "{key} is not a valid string override",
   "staff.themes.check.invalidTemplate": "{template} is not a valid template",
   "staff.themes.check.missingIsland": "{template} needs the {island} island",
+  "staff.themes.check.missingMeta": "{template} must include the {meta} tag",
+  "staff.themes.check.headElement": "{template} may only contain title, meta and canonical or alternate link tags, not {element}",
   "staff.themes.check.missingTemplate": "missing template {template}",
   "staff.themes.check.responsive": "{property}: {value} is wider than the 360px mobile viewport",
   "staff.themes.column.parent": "Parent",

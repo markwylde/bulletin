@@ -1,8 +1,13 @@
 ---
 import { localiseSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
+import { createServerT, isLocale } from "@bulletin/i18n";
 import "../theme/default.css";
+import { USER_CATALOGS } from "../catalogs.ts";
+import { readSql } from "../db.ts";
 import { configuredPluginOrigin } from "../plugins/config.ts";
 import { pwaBuild } from "../pwa/build.ts";
+import { jsonLdText, themeHeadSeo } from "../seo/head.ts";
+import { boardNameFrom, loadPluginsGeneration, renderThemeHead } from "../theme/render.ts";
 
 interface Props {
   readonly title: string;
@@ -48,12 +53,26 @@ const seo =
         boardDefaultLocale: Astro.locals.board?.defaultLocale ?? null,
       });
 const origin = Astro.url.origin;
-const canonical = seo === undefined ? null : new URL(seo.canonicalPath, origin).toString();
-const jsonLd =
-  seo?.jsonLd === null || seo?.jsonLd === undefined
+const jsonLd = seo === undefined ? null : jsonLdText(seo);
+const robotsDirective = robots ?? "noindex";
+// Public pages: the theme's `head` template renders the metadata, and the required-meta check
+// guarantees the trusted title, robots, canonical and hreflang tags (design, ADR 0008).
+const themeHead =
+  seo === undefined
     ? null
-    : JSON.stringify(seo.jsonLd).replaceAll("<", "\\u003c");
-const robotsDirective = seo?.robots ?? robots ?? "noindex";
+    : await (async () => {
+        const sql = readSql();
+        const translate = createServerT(isLocale(locale) ? locale : "en", { shipped: USER_CATALOGS });
+
+        return renderThemeHead({
+          sql,
+          themeId: Astro.locals.themeId,
+          pluginsGeneration: await loadPluginsGeneration(sql),
+          translate,
+          boardName: boardNameFrom(Astro.locals.board?.boardName, translate),
+          seo: themeHeadSeo(seo, { origin, locale }),
+        });
+      })();
 const flagsJson =
   clientFlagsJson ??
   (Astro.locals.clientFlags === undefined ? undefined : JSON.stringify(Astro.locals.clientFlags));
@@ -91,27 +110,13 @@ const memberId = Astro.locals.session?.memberId ?? "";
     {pwaEnabled ? <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" /> : null}
     {pwaEnabled ? <link rel="apple-touch-icon" href="/pwa/icon-180.png" /> : null}
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content={robotsDirective} />
-    {seo === undefined ? null : <meta name="description" content={seo.description} />}
-    {canonical === null ? null : <link rel="canonical" href={canonical} />}
-    {seo?.alternates.map((alternate) => (
-      <link
-        rel="alternate"
-        hreflang={alternate.hreflang}
-        href={new URL(alternate.path, origin).toString()}
-      />
-    ))}
-    <title>{seo?.title ?? title}</title>
-    {seo === undefined || canonical === null ? null : (
+    {themeHead === null ? (
       <>
-        <meta property="og:type" content={seo.type} />
-        <meta property="og:title" content={seo.title} />
-        <meta property="og:description" content={seo.description} />
-        <meta property="og:url" content={canonical} />
-        <meta name="twitter:card" content="summary" />
-        <meta name="twitter:title" content={seo.title} />
-        <meta name="twitter:description" content={seo.description} />
+        <meta name="robots" content={robotsDirective} />
+        <title>{title}</title>
       </>
+    ) : (
+      <Fragment set:html={themeHead} />
     )}
     {jsonLd === null ? null : (
       <script

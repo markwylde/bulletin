@@ -19,8 +19,20 @@ Uses the Guests permission snapshot and CDN caching rules (ADR 0006).
   `lastmod` = `last_post_at`.
 - **Excerpts**: the first 300 characters of the first post's `body_text` (quote-free).
 - **Metadata**: the view model provides `seo { title, description, canonical, og, jsonLd,
-  hreflang[] }`. Default theme head templates render it; themes can override presentation,
-  but the required-meta check ensures the canonical and robots tags exist.
+  hreflang[] }`. The default theme's `head` template renders it (title, description, robots,
+  canonical, `hreflang` links, OpenGraph and Twitter tags) from `{ seo, boardName }` with
+  absolute URLs; themes can override presentation, but the required-meta check ensures the
+  canonical and robots tags exist:
+  - at save/install time the `head` template must contain a title, a robots meta and a
+    canonical link, and only `title`, `meta` (no `http-equiv`/`charset`) and
+    `link rel="canonical|alternate"` elements;
+  - at render time, after autoescaping and the theme sanitiser, anything else is removed,
+    robots/canonical/`og:url`/`hreflang` tags that disagree with the trusted values are
+    dropped, and missing title, robots, canonical and alternates are added from the view
+    model. A failed or missing template falls back to the trusted tags.
+  The head renders per response (not in the cached body), because canonical and `hreflang`
+  depend on the request origin and `?lang=`. JSON-LD stays app markup with the CSP nonce,
+  since themes cannot emit scripts (ADR 0008).
 - **Locale variants**: `hreflang` alternates are `?lang=<locale>` URLs. For guests, `?lang=` is
   a server locale source ahead of `bp` and the board default (the client locale bootstrap
   already honoured it), so each alternate renders its own locale. It is part of the URL, so the CDN key
