@@ -18,8 +18,7 @@ export const JOURNAL_PREFIX = "journal/";
  * Erasure entries are `journal/<accepted date>/<request id, 12 digits>.json`; revocation batches
  * are `journal/<date>/rev-<epoch ms, 13 digits>-<first pending id, 12 digits>.json`.
  */
-export const JOURNAL_ENTRY_KEY =
-  /^journal\/\d{4}-\d{2}-\d{2}\/(?:\d{12}|rev-\d{13}-\d{12})\.json$/;
+export const JOURNAL_ENTRY_KEY = /^journal\/\d{4}-\d{2}-\d{2}\/(?:\d{12}|rev-\d{13}-\d{12})\.json$/;
 /** Written by workers; a database whose outbox sequence is behind it was restored. */
 export const RESTORE_WATERMARK_KEY = "ops/watermark.json";
 
