@@ -1,5 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
+import { routeLabel, standardMetrics } from "@bulletin/config/metrics";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
@@ -11,10 +12,12 @@ import {
   resolveRequestLocale,
   serializeBpCookie,
 } from "@bulletin/i18n";
+import type { APIContext, MiddlewareNext } from "astro";
 import { canViewOffline, readBoard } from "./board.ts";
 import { closeCacheRuntime } from "./cache-runtime.ts";
 import { readSql } from "./db.ts";
 import { loadViewerFlags } from "./flags.ts";
+import { startUserAppMetrics } from "./observability.ts";
 import { offlinePage } from "./offline.ts";
 import { configuredPluginOrigin } from "./plugins/config.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
@@ -29,6 +32,8 @@ const filesOrigin =
   `http://files.bulletin.localhost:${process.env.BULLETIN_HTTP_PORT ?? "8080"}`;
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const drain = import.meta.env.DEV ? createDrainController() : null;
+
+startUserAppMetrics();
 
 // Astro's own asset endpoints are not pages. `/_demo/*` is a page and must go through the
 // session, locale and board logic below, so the bare "/_" prefix is deliberately absent.
@@ -76,6 +81,28 @@ async function readiness(): Promise<{ status: number; body: unknown }> {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  const started = performance.now();
+  let status = 500;
+
+  try {
+    const response = await handle(context, next);
+    status = response.status;
+    return response;
+  } finally {
+    if (!context.url.pathname.startsWith("/health/")) {
+      standardMetrics.requestDuration.observe(
+        {
+          route: context.routePattern || routeLabel(context.url.pathname),
+          method: context.request.method,
+          status: String(status),
+        },
+        (performance.now() - started) / 1_000,
+      );
+    }
+  }
+});
+
+async function handle(context: APIContext, next: MiddlewareNext): Promise<Response> {
   const finish = drain?.track();
   const nonce = createCspNonce();
   context.locals.cspNonce = nonce;
@@ -260,4 +287,4 @@ export const onRequest = defineMiddleware(async (context, next) => {
   } finally {
     finish?.();
   }
-});
+}

@@ -1,5 +1,11 @@
 import { createCdnPurger } from "@bulletin/cache";
-import { createLogger, loadConfig, loadStorageEnvironment, parseReplicas } from "@bulletin/config";
+import {
+  createLogger,
+  loadConfig,
+  loadStorageEnvironment,
+  metricsPortFromEnv,
+  parseReplicas,
+} from "@bulletin/config";
 import {
   createDatabaseCheck,
   createListenerCheck,
@@ -12,6 +18,7 @@ import {
   createRelay,
   type EventSubscriber,
   ensurePgBossQueue,
+  registerQueueCollector,
 } from "@bulletin/db/events";
 import { syncFlagDefinitions } from "@bulletin/db/flags";
 import {
@@ -78,6 +85,7 @@ await runBaseSeed({
 const sql = createServiceSql("workers", databaseUrl);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
 const listener = await createListenerCheck(sql);
+registerQueueCollector(sql);
 const boss = await createPgBossQueue({
   connectionString: Bun.env.PG_BOSS_DATABASE_URL ?? databaseUrl,
   schema: "pgboss",
@@ -305,6 +313,7 @@ const relayTimer = setInterval(() => {
 
 await startService({
   service: "workers",
+  metricsPort: metricsPortFromEnv(),
   logger,
   port,
   fetch() {

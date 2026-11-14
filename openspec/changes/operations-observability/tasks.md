@@ -2,7 +2,7 @@
 
 ## 1. Metrics and tracing
 
-- [ ] 1.1 Implement the metrics library and `/metrics` on every service with all listed metric families; integration test that a scrape returns each family
+- [x] 1.1 Implement the metrics library and `/metrics` on every service with all listed metric families; integration test that a scrape returns each family
 - [ ] 1.2 Add OpenTelemetry tracing across apps, APIs, workers (job metadata propagation) and plugin-host; test that a reply produces one linked trace with an in-memory exporter
 
 ## 2. Health panel

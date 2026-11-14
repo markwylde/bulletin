@@ -1,4 +1,5 @@
 import type { Logger } from "@bulletin/config";
+import { standardMetrics } from "@bulletin/config/metrics";
 import type { ViewerContext } from "@bulletin/plugin-sdk/hooks";
 import { type PluginHookRegistry, pluginTag } from "./registry.ts";
 
@@ -108,15 +109,27 @@ export class PluginHookRunner {
   readonly #onFailure: ((pluginId: string, hook: string, error: unknown) => void) | undefined;
   readonly #onSuccess: ((pluginId: string, hook: string) => void) | undefined;
 
-  #request<T>(
+  /** One sandbox call, timed per plugin and hook for the ADR 0020 hook metrics. */
+  async #request<T>(
+    pluginId: string,
+    hook: string,
     method: string,
     params: unknown,
     timeoutMs: number,
     viewer: ViewerContext,
   ): Promise<T> {
-    return this.#transport.requestWithContext === undefined
-      ? this.#transport.request<T>(method, params, timeoutMs)
-      : this.#transport.requestWithContext<T>(method, params, viewer, timeoutMs);
+    const timer = standardMetrics.pluginHookDuration.startTimer({ plugin: pluginId, hook });
+
+    try {
+      const result = await (this.#transport.requestWithContext === undefined
+        ? this.#transport.request<T>(method, params, timeoutMs)
+        : this.#transport.requestWithContext<T>(method, params, viewer, timeoutMs));
+      timer({ outcome: "ok" });
+      return result;
+    } catch (error) {
+      timer({ outcome: "error" });
+      throw error;
+    }
   }
 
   async #active(pluginId: string): Promise<boolean> {
@@ -148,6 +161,8 @@ export class PluginHookRunner {
             fields?: unknown;
             tags?: unknown;
           }>(
+            entry.pluginId,
+            input.hook,
             "hook.enrich",
             {
               hook: input.hook,
@@ -219,6 +234,8 @@ export class PluginHookRunner {
 
       try {
         const result = await this.#request<{ content?: unknown }>(
+          entry.pluginId,
+          input.hook,
           "hook.filter",
           {
             hook: input.hook,
@@ -297,6 +314,8 @@ export class PluginHookRunner {
 
     try {
       const result = await this.#request<{ allow?: unknown; reasonKey?: unknown }>(
+        pluginId,
+        input.hook,
         "hook.veto",
         {
           hook: input.hook,

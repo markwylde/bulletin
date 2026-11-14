@@ -1,4 +1,5 @@
 import { createBoundedCache } from "./bounded.ts";
+import { recordCacheRender } from "./render-metrics.ts";
 import type { TagVersionSource } from "./tags.ts";
 
 /** Default byte budget for the rendered-page cache (ADR 0006). */
@@ -111,89 +112,95 @@ export function createRenderCache(options: RenderCacheOptions): RenderCache {
     return { key, html, status: "bypass", tags, versions: snapshot(tags) };
   }
 
-  return {
-    async getOrRender<T>(request: RenderRequest<T>) {
+  async function lookup<T>(request: RenderRequest<T>): Promise<RenderResult> {
+    if (!(await trusted())) {
+      const prepared = await request.prepare();
+
+      return bypassResult(prepared.key, await request.render(prepared.data), request.tags);
+    }
+
+    let key = "";
+    let html = "";
+
+    for (let attempt = 0; attempt < MAX_RENDER_ATTEMPTS; attempt += 1) {
+      const current = snapshot(request.tags);
+      const prepared = await request.prepare();
+
+      key = prepared.key;
+
+      // `prepare()` awaited. A listener failure during it means the versions just captured
+      // can no longer be trusted, so serve the fresh render as BYPASS and store nothing.
       if (!(await trusted())) {
-        const prepared = await request.prepare();
-
-        return bypassResult(prepared.key, await request.render(prepared.data), request.tags);
+        return bypassResult(key, await request.render(prepared.data), request.tags);
       }
 
-      let key = "";
-      let html = "";
+      const preparedVersions = snapshot(request.tags);
+      const cached = store.get(key);
+      const live = cached !== undefined && (cached.expiresAt === null || cached.expiresAt > now());
 
-      for (let attempt = 0; attempt < MAX_RENDER_ATTEMPTS; attempt += 1) {
-        const current = snapshot(request.tags);
-        const prepared = await request.prepare();
-
-        key = prepared.key;
-
-        // `prepare()` awaited. A listener failure during it means the versions just captured
-        // can no longer be trusted, so serve the fresh render as BYPASS and store nothing.
-        if (!(await trusted())) {
-          return bypassResult(key, await request.render(prepared.data), request.tags);
-        }
-
-        const preparedVersions = snapshot(request.tags);
-        const cached = store.get(key);
-        const live =
-          cached !== undefined && (cached.expiresAt === null || cached.expiresAt > now());
-
-        if (cached !== undefined && live && sameVersions(cached.versions, preparedVersions)) {
-          hits += 1;
-          return {
-            key,
-            html: cached.html,
-            status: "hit",
-            tags: request.tags,
-            versions: cached.versions,
-          };
-        }
-
-        html = await request.render(prepared.data);
-
-        // `render()` awaited. Recheck trust before returning the HTML and, below, before
-        // storing it: a listener loss must fail closed even mid-render.
-        if (!(await trusted())) {
-          return bypassResult(key, html, request.tags);
-        }
-
-        const next = snapshot(request.tags);
-
-        if (sameVersions(next, current) && sameVersions(preparedVersions, current)) {
-          misses += 1;
-          store.set(
-            key,
-            {
-              html,
-              versions: current,
-              expiresAt: prepared.ttlMs === undefined ? null : now() + Math.max(0, prepared.ttlMs),
-            },
-            Buffer.byteLength(html, "utf8"),
-          );
-
-          return { key, html, status: "miss", tags: request.tags, versions: current };
-        }
-
-        // A tag moved while the data was loaded or rendered, so the snapshot this HTML was
-        // built from may already be older than the invalidation. Load again instead of storing
-        // stale HTML under a newer version.
+      if (cached !== undefined && live && sameVersions(cached.versions, preparedVersions)) {
+        hits += 1;
+        return {
+          key,
+          html: cached.html,
+          status: "hit",
+          tags: request.tags,
+          versions: cached.versions,
+        };
       }
 
-      // The tags kept moving for every attempt: serve this render but store nothing.
+      html = await request.render(prepared.data);
+
+      // `render()` awaited. Recheck trust before returning the HTML and, below, before
+      // storing it: a listener loss must fail closed even mid-render.
       if (!(await trusted())) {
         return bypassResult(key, html, request.tags);
       }
 
-      misses += 1;
+      const next = snapshot(request.tags);
 
-      return {
-        key,
-        html,
-        status: "miss",
-        tags: request.tags,
-        versions: snapshot(request.tags),
-      };
+      if (sameVersions(next, current) && sameVersions(preparedVersions, current)) {
+        misses += 1;
+        store.set(
+          key,
+          {
+            html,
+            versions: current,
+            expiresAt: prepared.ttlMs === undefined ? null : now() + Math.max(0, prepared.ttlMs),
+          },
+          Buffer.byteLength(html, "utf8"),
+        );
+
+        return { key, html, status: "miss", tags: request.tags, versions: current };
+      }
+
+      // A tag moved while the data was loaded or rendered, so the snapshot this HTML was
+      // built from may already be older than the invalidation. Load again instead of storing
+      // stale HTML under a newer version.
+    }
+
+    // The tags kept moving for every attempt: serve this render but store nothing.
+    if (!(await trusted())) {
+      return bypassResult(key, html, request.tags);
+    }
+
+    misses += 1;
+
+    return {
+      key,
+      html,
+      status: "miss",
+      tags: request.tags,
+      versions: snapshot(request.tags),
+    };
+  }
+
+  return {
+    async getOrRender<T>(request: RenderRequest<T>) {
+      const started = performance.now();
+      const result = await lookup(request);
+      recordCacheRender(result.key, result.status, (performance.now() - started) / 1_000);
+      return result;
     },
 
     get size() {

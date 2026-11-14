@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { recordCacheUntrusted } from "./render-metrics.ts";
 import {
   CACHE_TAG_NOTIFY_CHANNEL,
   GLOBAL_CACHE_TAGS,
@@ -155,6 +156,11 @@ export async function createTagVersions(options: TagVersionsOptions): Promise<Ta
   const heartbeat = setInterval(() => {
     if (closed) {
       return;
+    }
+
+    // ADR 0020: untrusted time is exported, since every second of it bypasses the LRU.
+    if (!connected || now() - lastSignalAt > heartbeatTimeoutMs) {
+      recordCacheUntrusted(heartbeatMs / 1_000);
     }
 
     void options.sql.notify(healthChannel, "1").catch(markDown);

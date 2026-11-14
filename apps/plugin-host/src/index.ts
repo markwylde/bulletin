@@ -3,7 +3,14 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bumpCacheTags } from "@bulletin/cache";
-import { connectionPoolSize, createLogger, loadConfig } from "@bulletin/config";
+import {
+  connectionPoolSize,
+  createLogger,
+  loadConfig,
+  metrics,
+  metricsPortFromEnv,
+  standardMetrics,
+} from "@bulletin/config";
 import { startService } from "@bulletin/config/server";
 import {
   can,
@@ -59,6 +66,15 @@ const pluginDatabaseUrl = sandboxConfig.pluginDatabaseUrl ?? config.databaseUrl;
 const connections = new PluginConnectionManager({
   adminUrl: pluginDatabaseUrl,
   maxConnections: connectionPoolSize("plugin-host"),
+});
+// Broker pool saturation (ADR 0020): lazily-opened plugin connections against the semaphore.
+metrics.addCollector(() => {
+  const stats = connections.stats();
+  standardMetrics.dbPoolConnections.replace([
+    [{ state: "active" }, stats.open],
+    [{ state: "waiting" }, stats.waiting],
+  ]);
+  standardMetrics.dbPoolMax.set({}, stats.maxConnections);
 });
 const database = await PluginDatabase.open({
   adminUrl: pluginDatabaseUrl,
@@ -194,6 +210,7 @@ const breaker = new PluginCircuitBreaker({
         AND generation = (SELECT generation FROM core.plugin_generation WHERE id = true)
     `;
     await advancePluginsGeneration(cacheSql);
+    standardMetrics.pluginBreakerTrips.inc({ plugin: pluginId });
     logger.error("plugin.auto_disabled", { pluginId, reason });
   },
 });
@@ -339,6 +356,7 @@ const supervisor = new SandboxSupervisor({
 
 await startService({
   service: "plugin-host",
+  metricsPort: metricsPortFromEnv(),
   logger,
   port: config.port,
   async fetch(request) {

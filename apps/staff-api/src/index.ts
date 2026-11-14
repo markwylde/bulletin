@@ -1,5 +1,11 @@
 import { createCdnPurger } from "@bulletin/cache";
-import { createLogger, loadConfig, loadStorageEnvironment, parseReplicas } from "@bulletin/config";
+import {
+  createLogger,
+  loadConfig,
+  loadStorageEnvironment,
+  metricsPortFromEnv,
+  parseReplicas,
+} from "@bulletin/config";
 import {
   createDatabaseCheck,
   createListenerCheck,
@@ -68,6 +74,7 @@ const api = createStaffApi({
 
 await startService({
   service: "staff-api",
+  metricsPort: metricsPortFromEnv(),
   logger,
   port,
   fetch(request) {

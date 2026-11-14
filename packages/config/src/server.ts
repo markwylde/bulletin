@@ -9,6 +9,13 @@ import {
   type ServiceName,
 } from "./connections.ts";
 import { createLogger, type Logger } from "./log.ts";
+import {
+  type MetricsRegistry,
+  metrics,
+  routeLabel,
+  serveMetrics,
+  standardMetrics,
+} from "./metrics.ts";
 import { applySecurityHeaders, createCspNonce, type SecurityHeadersConfig } from "./security.ts";
 
 export interface HealthCheck {
@@ -40,10 +47,19 @@ export interface StartServiceOptions {
   readonly logger?: Logger;
   /** App-origin security headers, applied to every response. */
   readonly security?: SecurityHeadersConfig;
+  /**
+   * Internal port for the Prometheus `/metrics` endpoint (ADR 0020); `null`/absent disables it.
+   * It is never routed by the public proxy.
+   */
+  readonly metricsPort?: number | null;
+  /** Bounded route label for request latency; defaults to {@link routeLabel}. */
+  readonly routeOf?: (request: Request, url: URL) => string;
 }
 
 export interface RunningService {
   readonly server: ReturnType<typeof Bun.serve>;
+  /** The internal metrics listener, when enabled. */
+  readonly metricsServer: ReturnType<typeof Bun.serve> | null;
   shutdown(): Promise<void>;
 }
 
@@ -128,6 +144,41 @@ export async function createListenerCheck(
   };
 }
 
+/**
+ * Records this service's database connections by state on every scrape (ADR 0020 "DB pool
+ * saturation"). Each service has its own login role, so the role's sessions are its pool plus
+ * its LISTEN (and, for workers, pg-boss) connections across replicas.
+ */
+export function registerDbPoolCollector(
+  sql: SQL,
+  service: ServiceName,
+  registry: MetricsRegistry = metrics,
+  connections?: Partial<Record<ServiceName, ConnectionShare>>,
+): () => void {
+  return registry.addCollector(async () => {
+    const rows = (await sql`
+      SELECT COALESCE(state, 'unknown') AS state, count(*)::int AS connections
+      FROM pg_stat_activity
+      WHERE usename = current_user AND backend_type = 'client backend'
+      GROUP BY 1
+    `) as Array<{ state: string; connections: number }>;
+    const byState = new Map<string, number>([
+      ["active", 0],
+      ["idle", 0],
+      ["idle in transaction", 0],
+    ]);
+
+    for (const row of rows) {
+      byState.set(row.state, row.connections);
+    }
+
+    standardMetrics.dbPoolConnections.replace(
+      [...byState].map(([state, value]) => [{ state }, value] as const),
+    );
+    standardMetrics.dbPoolMax.set({}, connectionPoolSize(service, connections));
+  });
+}
+
 export async function readMaxConnections(sql: SQL): Promise<number> {
   const rows = (await sql`SHOW max_connections`) as Array<{ max_connections: string }>;
   const value = Number(rows[0]?.max_connections ?? 0);
@@ -168,9 +219,20 @@ export function createServiceSql(
  * `drainTimeoutMs` before connections are closed.
  */
 export async function startService(options: StartServiceOptions): Promise<RunningService> {
+  let unregisterPool: (() => void) | undefined;
+
   if (options.budget !== undefined) {
     await checkBudget(options.budget);
+    unregisterPool = registerDbPoolCollector(options.budget.sql, options.budget.service);
   }
+
+  const metricsServer =
+    options.metricsPort === undefined || options.metricsPort === null
+      ? null
+      : serveMetrics({
+          port: options.metricsPort,
+          ...(options.hostname === undefined ? {} : { hostname: options.hostname }),
+        });
 
   const logger = options.logger ?? createLogger({ service: options.service });
   let draining = false;
@@ -316,13 +378,18 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
         path: url.pathname,
       });
 
+      const route = options.routeOf?.(request, url) ?? routeLabel(url.pathname);
+      const timer = standardMetrics.requestDuration.startTimer({ route, method: request.method });
+
       try {
         requestLogger.info("request.started");
         const response = await options.fetch(request);
         requestLogger.info("request.completed", { status: response.status });
+        timer({ status: String(response.status) });
         return trackResponse(secure(response));
       } catch (error) {
         requestLogger.error("request.failed", { error });
+        timer({ status: "500" });
         finishRequest();
         throw error;
       }
@@ -355,6 +422,8 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
       });
 
       server.stop(true);
+      metricsServer?.stop(true);
+      unregisterPool?.();
     })();
 
     return shutdownPromise;
@@ -369,5 +438,5 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
     process.on("SIGINT", onSignal);
   }
 
-  return { server, shutdown };
+  return { server, metricsServer, shutdown };
 }

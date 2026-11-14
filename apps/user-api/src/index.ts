@@ -1,4 +1,10 @@
-import { createLogger, loadConfig, loadStorageEnvironment, parseReplicas } from "@bulletin/config";
+import {
+  createLogger,
+  loadConfig,
+  loadStorageEnvironment,
+  metricsPortFromEnv,
+  parseReplicas,
+} from "@bulletin/config";
 import {
   createDatabaseCheck,
   createListenerCheck,
@@ -149,6 +155,7 @@ const auth = await createAuthService({
 
 await startService({
   service: "user-api",
+  metricsPort: metricsPortFromEnv(),
   logger,
   port,
   async fetch(request) {

@@ -190,9 +190,15 @@
     },
     "packages/cache": {
       "name": "@bulletin/cache",
+      "dependencies": {
+        "@bulletin/config": "workspace:*",
+      },
     },
     "packages/config": {
       "name": "@bulletin/config",
+      "dependencies": {
+        "@opentelemetry/api": "1.9.0",
+      },
     },
     "packages/content": {
       "name": "@bulletin/content",
@@ -673,7 +679,7 @@
 
     "@ocavue/utils": ["@ocavue/utils@1.12.0", "", {}, "sha512-PzQ6biw5KN0AKQd0TzngftFTzs3Jy22/NrYXHBKd1C60tew2Z8X5RNCr6x5ajQOQKILW+AGHbItXeDyy50Fj9Q=="],
 
-    "@opentelemetry/api": ["@opentelemetry/api@1.10.0", "", {}, "sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ=="],
+    "@opentelemetry/api": ["@opentelemetry/api@1.9.0", "", {}, "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="],
 
     "@oslojs/encoding": ["@oslojs/encoding@1.1.0", "", {}, "sha512-70wQhgYmndg4GCPxPPxPGevRKqTIJ2Nh4OkiMWmDAVYsTQ+Ta7Sq+rPevXyXGdzr30/qZBnyOalCszoMxlyldQ=="],
 

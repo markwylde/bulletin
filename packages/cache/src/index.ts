@@ -3,6 +3,7 @@ export * from "./bounded.ts";
 export * from "./keys.ts";
 export * from "./purge.ts";
 export * from "./render-cache.ts";
+export * from "./render-metrics.ts";
 export * from "./tag-listener.ts";
 export * from "./tags.ts";
 export * from "./versioned.ts";
