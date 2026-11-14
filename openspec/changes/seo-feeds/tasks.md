@@ -13,7 +13,7 @@
 
 ## 3. Strings and seed
 
-- [ ] 3.1 Add en/es/fr strings for feed titles and meta descriptions; verify completeness
+- [x] 3.1 Add en/es/fr strings for feed titles and meta descriptions; verify completeness
 - [ ] 3.2 Verify the seeded board produces valid sitemaps and feeds (XML validation) after `docker compose up --watch`
 
 ## 4. Feature flag
