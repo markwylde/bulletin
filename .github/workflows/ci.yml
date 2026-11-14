@@ -42,6 +42,9 @@ jobs:
   e2e:
     name: Full-stack E2E (${{ matrix.engine }})
     runs-on: ubuntu-latest
+    env:
+      # Container runners cannot bind-mount files from the job checkout (compose.ci.yaml).
+      COMPOSE_FILE: compose.yaml:compose.ci.yaml
     strategy:
       fail-fast: false
       matrix:
@@ -65,11 +68,6 @@ jobs:
           chmod +x /usr/local/bin/docker-compose
           podman info
 
-      - name: Add local origins to /etc/hosts
-        run: |
-          echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
-            | tee -a /etc/hosts
-
       - name: Install pinned Chrome for E2E
         id: setup-chrome
         uses: browser-actions/setup-chrome@v1
@@ -89,6 +87,19 @@ jobs:
           else
             docker compose up -d --wait --wait-timeout 300
           fi
+
+      - name: Reach the stack from the job container
+        # The job runs in its own container, so published ports are on the host, not on
+        # 127.0.0.1. Join the stack's network and point the local origins at the proxy.
+        run: |
+          engine=${{ matrix.engine }}
+          proxy=$($engine compose ps -q proxy)
+          network=$($engine inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$proxy")
+          $engine network connect "$network" "$(hostname)" || true
+          ip=$($engine inspect -f "{{(index .NetworkSettings.Networks \"$network\").IPAddress}}" "$proxy")
+          echo "$ip bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
+            | tee -a /etc/hosts
+          curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" http://bulletin.localhost:8080/
 
       - name: Measure sandbox spawn time and memory
         run: |
