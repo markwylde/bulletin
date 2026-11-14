@@ -155,6 +155,11 @@ export async function listForumsNeedingLanguageRebuild(
 export interface SearchJobsOptions {
   readonly boss: PgBoss;
   readonly sql: SQL;
+  /**
+   * The direct connection for LISTEN (ADR 0003); defaults to `sql`. Must not be a
+   * transaction-mode pooler, which drops LISTEN state between transactions.
+   */
+  readonly listenSql?: SQL;
   readonly logger?: Logger;
 }
 
@@ -210,21 +215,24 @@ export async function createSearchJobs(options: SearchJobsOptions): Promise<Sear
   await options.boss.schedule(SEARCH_LANGUAGE_SWEEP_QUEUE, SEARCH_LANGUAGE_SWEEP_CRON, {});
 
   // The staff app wakes the worker immediately; the five-minute sweep is the recovery path.
-  const listener = await options.sql.listen(FORUM_LANGUAGE_CHANNEL, (forumId) => {
-    void (async () => {
-      const [row] = (await options.sql`
+  const listener = await (options.listenSql ?? options.sql).listen(
+    FORUM_LANGUAGE_CHANNEL,
+    (forumId) => {
+      void (async () => {
+        const [row] = (await options.sql`
         SELECT id::text AS "forumId", search_lang_version::text AS version
         FROM core.forums
         WHERE id = ${forumId}
       `) as ForumLanguageRebuildQueueRow[];
 
-      if (row !== undefined) {
-        await enqueueLanguageRebuild(options, row);
-      }
-    })().catch((error: unknown) => {
-      options.logger?.error("search.language.wake_failed", { forumId, error });
-    });
-  });
+        if (row !== undefined) {
+          await enqueueLanguageRebuild(options, row);
+        }
+      })().catch((error: unknown) => {
+        options.logger?.error("search.language.wake_failed", { forumId, error });
+      });
+    },
+  );
 
   return {
     async stop() {

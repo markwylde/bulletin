@@ -515,6 +515,11 @@ export async function runAttachmentReconciliation(
 export interface AttachmentJobsOptions {
   readonly boss: PgBoss;
   readonly sql: SQL;
+  /**
+   * The direct connection for LISTEN (ADR 0003); defaults to `sql`. Must not be a
+   * transaction-mode pooler, which drops LISTEN state between transactions.
+   */
+  readonly listenSql?: SQL;
   readonly storage: StorageClient;
   readonly logger?: Logger;
   readonly scan?: AttachmentScan;
@@ -564,25 +569,28 @@ export async function createAttachmentJobs(
 
   // Finalise wakes the worker immediately; the cron above is the durable recovery path.
   let running: Promise<void> | null = null;
-  const listener = await options.sql.listen(ATTACHMENT_PROCESS_CHANNEL, () => {
-    if (running !== null) {
-      return;
-    }
+  const listener = await (options.listenSql ?? options.sql).listen(
+    ATTACHMENT_PROCESS_CHANNEL,
+    () => {
+      if (running !== null) {
+        return;
+      }
 
-    running = runAttachmentProcessing(options.sql, options.storage, {
-      ...(options.scan === undefined ? {} : { scan: options.scan }),
-      ...(options.logger === undefined ? {} : { logger: options.logger }),
-    })
-      .then((result) => {
-        options.logger?.info("attachment.process_wake", { ...result });
+      running = runAttachmentProcessing(options.sql, options.storage, {
+        ...(options.scan === undefined ? {} : { scan: options.scan }),
+        ...(options.logger === undefined ? {} : { logger: options.logger }),
       })
-      .catch((error: unknown) => {
-        options.logger?.error("attachment.process_wake_failed", { error });
-      })
-      .finally(() => {
-        running = null;
-      });
-  });
+        .then((result) => {
+          options.logger?.info("attachment.process_wake", { ...result });
+        })
+        .catch((error: unknown) => {
+          options.logger?.error("attachment.process_wake_failed", { error });
+        })
+        .finally(() => {
+          running = null;
+        });
+    },
+  );
 
   return {
     async stop() {

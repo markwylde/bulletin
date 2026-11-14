@@ -144,6 +144,7 @@ const listener = await createListenerCheck(sql, undefined, listenSql);
 const streamHub = await createStreamHub(listenSql);
 const auth = await createAuthService({
   sql,
+  listenSql,
   kind: "user",
   issuer: config.authIssuer,
   jwksUrl: config.authJwksUrl,

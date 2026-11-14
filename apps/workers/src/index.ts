@@ -363,15 +363,16 @@ const banJobs = await createBanJobs({ boss: boss.boss, sql, logger });
 const warningJobs = await createWarningJobs({ boss: boss.boss, sql, logger });
 const promotionJobs = await createPromotionJobs({ boss: boss.boss, sql, logger });
 const reputationJobs = await createReputationJobs({ boss: boss.boss, sql, logger });
-const searchJobs = await createSearchJobs({ boss: boss.boss, sql, logger });
+const searchJobs = await createSearchJobs({ boss: boss.boss, sql, listenSql, logger });
 const maintenanceJobs = await createMaintenanceJobs({ boss: boss.boss, sql, logger });
 const retentionJobs = await createRetentionJobs({ boss: boss.boss, sql, storage, logger });
 const forumJobs = await createForumJobs({ boss: boss.boss, sql, logger });
-const contentJobs = await createContentJobs({ boss: boss.boss, sql, logger });
+const contentJobs = await createContentJobs({ boss: boss.boss, sql, listenSql, logger });
 const unfurlJobs = await createUnfurlJobs({ boss: boss.boss, sql, logger, storage });
 const attachmentJobs = await createAttachmentJobs({
   boss: boss.boss,
   sql,
+  listenSql,
   storage,
   logger,
 });

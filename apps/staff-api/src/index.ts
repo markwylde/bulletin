@@ -47,6 +47,7 @@ const listenSql = listenSqlFromEnv(sql);
 const listener = await createListenerCheck(sql, undefined, listenSql);
 const auth = await createAuthService({
   sql,
+  listenSql,
   kind: "staff",
   issuer: config.authIssuer,
   jwksUrl: config.authJwksUrl,

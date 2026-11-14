@@ -774,6 +774,11 @@ export async function runContentRerenderJob(
 export interface ContentJobsOptions extends ContentRerenderOptions {
   readonly boss: PgBoss;
   readonly sql: SQL;
+  /**
+   * The direct connection for LISTEN (ADR 0003); defaults to `sql`. Must not be a
+   * transaction-mode pooler, which drops LISTEN state between transactions.
+   */
+  readonly listenSql?: SQL;
   readonly logger?: Logger;
 }
 
@@ -805,7 +810,7 @@ export async function createContentJobs(options: ContentJobsOptions): Promise<Co
   await options.boss.schedule(CONTENT_RERENDER_QUEUE, CONTENT_RERENDER_CRON, {});
 
   // A filter edit wakes the worker immediately; the cron above remains the recovery path.
-  const listener = await options.sql.listen(FILTER_RERENDER_CHANNEL, () => {
+  const listener = await (options.listenSql ?? options.sql).listen(FILTER_RERENDER_CHANNEL, () => {
     void enqueueContentRerender(options.boss).catch((error: unknown) => {
       options.logger?.error("content.rerender_wake_failed", { error });
     });
