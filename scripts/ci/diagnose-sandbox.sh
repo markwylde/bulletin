@@ -34,5 +34,13 @@ echo "--- last calls of each killed process ---"
 for pid in $(grep -E "\+\+\+ killed" /tmp/sandbox-trace.txt | awk '{print $1}' | head -3); do
   echo "pid $pid:"; grep -E "^$pid " /tmp/sandbox-trace.txt | tail -8
 done
+echo "--- jailed process: failed calls and last activity ---"
+jail=$(grep -E "prctl\(PR_SET_SECCOMP" /tmp/sandbox-trace.txt | head -1 | awk '{print $1}')
+if [ -n "$jail" ]; then
+  # Threads of the jailed process are its children in the trace; show every failing call.
+  grep -E " = -1 E" /tmp/sandbox-trace.txt | awk -v p="$jail" '$1 >= p' | grep -v "EAGAIN\|ETIMEDOUT" | cut -c1-250 | head -40
+  echo "--- tail ---"
+  awk -v p="$jail" '$1 >= p' /tmp/sandbox-trace.txt | tail -40 | cut -c1-250
+fi
 echo "--- execve calls ---"
 grep -E "execve\(" /tmp/sandbox-trace.txt | cut -c1-300 | head -10
