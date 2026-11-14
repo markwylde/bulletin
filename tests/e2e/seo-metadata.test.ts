@@ -36,4 +36,24 @@ integrationDescribe("SEO metadata", () => {
     expect(searchHtml).toContain('<link rel="canonical"');
     expect(searchHtml).toContain('/search"');
   }, 60_000);
+  test("topic pages carry canonical and discussion JSON-LD", async () => {
+    const forum = await fetch(`${USER_URL}/forum/2-announcements`);
+    const forumHtml = await forum.text();
+    const topicPath = /\/topic\/\d+-[a-z0-9-]+/.exec(forumHtml)?.[0];
+
+    expect(topicPath).toBeDefined();
+
+    if (topicPath === undefined) {
+      throw new Error("The announcements page listed no topic");
+    }
+
+    const topic = await fetch(`${USER_URL}${topicPath}`);
+    const topicHtml = await topic.text();
+
+    expect(topic.status).toBe(200);
+    expect(topicHtml).toContain(`<link rel="canonical" href="${USER_URL}${topicPath}"`);
+    expect(topicHtml).toContain('<meta name="robots" content="index"');
+    expect(topicHtml).toContain('type="application/ld+json"');
+    expect(topicHtml).toContain('"@type":"DiscussionForumPosting"');
+  }, 60_000);
 });
