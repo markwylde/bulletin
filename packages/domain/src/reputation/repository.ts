@@ -140,8 +140,20 @@ export async function readReputationRules(sql: SQL, memberId: string): Promise<R
   };
 }
 
-/** A `restrict-any` opt-out: one group can stop a member from receiving reputation. */
-export function canReceiveReputation(sql: SQL, memberId: string): Promise<boolean> {
+/**
+ * A `restrict-any` opt-out: one group can stop a member from receiving reputation. Members
+ * that are erasing or erased never receive entries, so a recount cannot recreate reputation
+ * from reactions that survive on their retained posts (ADR 0012).
+ */
+export async function canReceiveReputation(sql: SQL, memberId: string): Promise<boolean> {
+  const [member] = (await sql`
+    SELECT state FROM core.members WHERE id = ${memberId}
+  `) as Array<{ state: string }>;
+
+  if (member?.state !== "active") {
+    return false;
+  }
+
   return can(sql, memberId, "receive_reputation");
 }
 

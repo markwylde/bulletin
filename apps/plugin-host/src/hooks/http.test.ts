@@ -52,6 +52,8 @@ function options(bundles = new Map<string, { manifest: PluginManifest; path: str
       case "route.request":
       case "bridge.request":
         return { status: 200, body: "viewer:guest", headers: {} };
+      case "gdpr.export":
+        return { rows: 2 };
       default:
         throw new Error(`unexpected ${method}`);
     }
@@ -136,6 +138,52 @@ describe("plugin-host internal hook API", () => {
     );
     const body = (await registry?.json()) as { generation: number; plugins: unknown[] };
     expect(body.generation).toBe(3);
+  });
+
+  test("exports plugin personal data through the internal GDPR endpoint", async () => {
+    const opts = options();
+    const response = await readInternal(
+      request("/internal/gdpr", { pluginId: "tips", operation: "export", memberId: "7" }),
+      opts,
+    );
+    expect(await response?.json()).toEqual({ ok: true, data: { rows: 2 } });
+
+    const unknown = await readInternal(
+      request("/internal/gdpr", { pluginId: "other", operation: "export", memberId: "7" }),
+      opts,
+    );
+    expect(unknown?.status).toBe(404);
+  });
+
+  test("runs GDPR hooks through a maintenance sandbox for a disabled plugin", async () => {
+    const disabled = options();
+    disabled.registry.setEnabled("tips", false);
+    const calls: string[] = [];
+    (
+      disabled as {
+        maintenanceGdpr?: (
+          pluginId: string,
+          operation: "export" | "erase",
+          memberId: string,
+        ) => Promise<{ ok: boolean; data?: unknown }>;
+      }
+    ).maintenanceGdpr = async (pluginId, operation, memberId) => {
+      calls.push(`${pluginId}:${operation}:${memberId}`);
+      return operation === "export" ? { ok: true, data: { rows: 1 } } : { ok: true };
+    };
+
+    const exported = await readInternal(
+      request("/internal/gdpr", { pluginId: "tips", operation: "export", memberId: "7" }),
+      disabled,
+    );
+    expect(await exported?.json()).toEqual({ ok: true, data: { rows: 1 } });
+
+    const erased = await readInternal(
+      request("/internal/gdpr", { pluginId: "tips", operation: "erase", memberId: "7" }),
+      disabled,
+    );
+    expect(await erased?.json()).toEqual({ ok: true });
+    expect(calls).toEqual(["tips:export:7", "tips:erase:7"]);
   });
 
   test("refuses route dispatch for unknown or disabled plugins", async () => {

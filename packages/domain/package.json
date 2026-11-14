@@ -44,6 +44,7 @@
     "./warnings": "./src/warnings/index.ts",
     "./filters": "./src/filters/index.ts",
     "./pii": "./src/pii/index.ts",
+    "./privacy": "./src/privacy/index.ts",
     "./push": "./src/push/index.ts",
     "./bans": "./src/bans/index.ts",
     "./themes": "./src/themes/index.ts",
@@ -66,6 +67,7 @@
     "parse5": "8.1.1",
     "sharp": "0.35.5",
     "lightningcss": "1.30.2",
-    "@bulletin/plugin-sdk": "workspace:*"
+    "@bulletin/plugin-sdk": "workspace:*",
+    "fflate": "0.8.3"
   }
 }

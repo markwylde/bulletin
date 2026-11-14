@@ -30,6 +30,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "demo",
   "display-name",
   "account",
+  "account-privacy",
   "account-api-keys",
   "account-profile",
   "api-docs",
@@ -52,6 +53,7 @@ export const DEFAULT_THEME_TEMPLATE_NAMES = [
   "moderation-warnings",
   "moderation-log",
   "unsubscribe",
+  "privacy-policy",
 ] as const;
 
 export type DefaultThemeTemplateName = (typeof DEFAULT_THEME_TEMPLATE_NAMES)[number];

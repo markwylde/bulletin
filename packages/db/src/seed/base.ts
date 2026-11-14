@@ -17,6 +17,7 @@ import { moderationSeedModule } from "./moderation.ts";
 import { moderatorAssignmentsSeedModule } from "./moderator-assignments.ts";
 import { notificationsSeedModule } from "./notifications.ts";
 import { pluginSeedModule } from "./plugins.ts";
+import { privacySeedModule } from "./privacy.ts";
 import { profilesSeedModule } from "./profiles.ts";
 import { pushSeedModule } from "./push.ts";
 import { reactionsSeedModule } from "./reactions.ts";
@@ -77,6 +78,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
         attachmentSeedModule,
         conversationSeedModule,
         moderationSeedModule,
+        privacySeedModule,
         adminLogSeedModule,
         flagsSeedModule,
         themesSeedModule,

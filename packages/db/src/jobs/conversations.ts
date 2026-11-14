@@ -105,6 +105,13 @@ async function planRemoval(sql: SQL, conversationId: string): Promise<RemovalPla
         )
         WHERE id = ${conversationId}
       `;
+
+      // The design keeps only the conversation row, held messages and their attachments.
+      // Participant folders, read markers and membership history are not part of that set.
+      await tx`
+        DELETE FROM core.conversation_participants
+        WHERE conversation_id = ${conversationId}
+      `;
     } else {
       const messageCounts = (await tx`
         SELECT count(*)::int AS count

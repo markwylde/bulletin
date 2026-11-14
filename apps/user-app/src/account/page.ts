@@ -42,6 +42,8 @@ export interface AccountLabels {
   readonly current: string;
   readonly lastSeen: string;
   readonly unknownBrowser: string;
+  readonly exportRequested: string;
+  readonly exportError: string;
   readonly browsers: Readonly<Record<string, string>>;
 }
 
@@ -70,6 +72,8 @@ export function accountLabels(translate: Translator): AccountLabels {
     current: translate("account.sessions.current"),
     lastSeen: translate("account.sessions.lastSeen"),
     unknownBrowser: translate("account.sessions.unknownBrowser"),
+    exportRequested: translate("account.export.requested"),
+    exportError: translate("account.export.error"),
     browsers: {
       chrome: translate("account.browser.chrome"),
       firefox: translate("account.browser.firefox"),

@@ -17,4 +17,5 @@ export const NOTIFICATION_TYPE_LABELS = {
   "report.rejected": { labelKey: "notification.type.report.rejected" },
   "warning.issued": { labelKey: "notification.type.warning.issued" },
   "webhook.disabled": { labelKey: "notification.type.webhook.disabled" },
+  "data.export.ready": { labelKey: "notification.type.data.export.ready" },
 } satisfies Record<NotificationType, { labelKey: string }>;

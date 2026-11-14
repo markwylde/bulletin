@@ -15,10 +15,10 @@ import {
 import { heldPostsForOverlay, heldTopicsForOverlay } from "../moderation/overlay/repository.ts";
 import { unreadNotificationCount } from "../notifications/repository.ts";
 import {
-  acpPermissionsFor,
   DEFAULT_STAFF_SCHEME,
   isStaffScheme,
   type StaffScheme,
+  staffPermissionsFor,
 } from "../permissions/acp.ts";
 import { listDismissedAnnouncementIds } from "../permissions/announcements.ts";
 import { can } from "../permissions/can.ts";
@@ -155,7 +155,7 @@ async function readStaffSessionContext(sql: SQL, memberId: string): Promise<Staf
     ? preferences.staff_scheme
     : DEFAULT_STAFF_SCHEME;
 
-  return { permissions: await acpPermissionsFor(sql, memberId), scheme };
+  return { permissions: await staffPermissionsFor(sql, memberId), scheme };
 }
 
 /**

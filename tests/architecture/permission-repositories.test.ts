@@ -43,6 +43,12 @@ function isAllowed(file: SourceFile): boolean {
     // Conversation removal is a retention lifecycle job: it deletes only conversations with no
     // active participant and never serves a viewer (ADR 0012).
     file.path === "packages/db/src/jobs/conversations.ts" ||
+    // The GDPR export job reads only the requesting member's own content into their archive;
+    // it never serves a viewer (ADR 0012).
+    file.path === "packages/domain/src/privacy/export.ts" ||
+    // The GDPR erasure job removes the requesting member's own content and never serves it to
+    // a viewer (ADR 0012).
+    file.path === "packages/db/src/jobs/erasure.ts" ||
     // The search language rebuild only rewrites per-row `lang` metadata; result queries apply
     // the permission filter (ADR 0005, 0017).
     file.path === "packages/db/src/jobs/search.ts" ||

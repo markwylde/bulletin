@@ -14,6 +14,7 @@
     {% if flags.conversations %}<a href="/conversations" data-account-conversations>{% t "conversation.title" %}</a>{% endif %}
     {% if flags.warnings %}<a href="/account/warnings" data-account-warnings>{% t "warnings.title" %}</a>{% endif %}
     {% if flags.public_api %}<a href="/account/api-keys" data-account-api-keys>{% t "apiKeys.title" %}</a>{% endif %}
+    <a href="/account/privacy" data-account-privacy>{% t "account.privacy.title" %}</a>
   </p>
 
   <section class="bl-card" data-account-profile>
@@ -34,6 +35,14 @@
       <a class="bl-button" href="/account/profile" data-account-profile-edit>{% t "account.profile.edit" %}</a>
       {% if profileUrl %}<a class="bl-button bl-button--quiet" href="{{ profileUrl }}" data-account-profile-view>{% t "account.profile.view" %}</a>{% endif %}
     </div>
+  </section>
+
+  <section class="bl-card" data-account-export>
+    <h2 class="bl-card__title">{% t "account.export.title" %}</h2>
+    <p class="bl-muted">{% t "account.export.body" %}</p>
+    <button class="bl-button" type="button" data-account-export-request>{% t "account.export.request" %}</button>
+    <p class="bl-muted" data-account-export-status hidden></p>
+    <p class="bl-error-text" data-account-export-error hidden></p>
   </section>
 
   {% if flags.avatar_upload %}

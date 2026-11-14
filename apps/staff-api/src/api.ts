@@ -3,12 +3,12 @@ import type { HealthCheck } from "@bulletin/config/server";
 import { isJobId, listDeadLetters, retryDeadLetter } from "@bulletin/db/events";
 import { type AuthService, type SessionRecord, STEP_UP_WINDOW_MS } from "@bulletin/domain/auth";
 import {
-  type AcpPermission,
   allForumTags,
   can,
   forumSubtreeTags,
-  isAcpPermission,
+  isPermissionKey,
   isStaffScheme,
+  type PermissionKey,
 } from "@bulletin/domain/permissions";
 import { fetchCatalog } from "@bulletin/domain/plugins";
 import type { StorageClient } from "@bulletin/storage";
@@ -94,6 +94,15 @@ import {
   uninstallPlugin,
 } from "./plugin-manager.ts";
 import { deletePrefix, listPrefixesAdmin, type PrefixMutation, savePrefix } from "./prefixes.ts";
+import {
+  accessLogResponse,
+  dataRequestsResponse,
+  loadPrivacyRetention,
+  privacyPolicyResponse,
+  savePrivacyRetention,
+  updateDataRequestResponse,
+  updatePrivacyPolicyResponse,
+} from "./privacy.ts";
 import { listProfileFieldsForStaff, mutateProfileFieldForStaff } from "./profile-fields.ts";
 import { mutateMemberProfileForStaff, readMemberProfileForStaff } from "./profiles.ts";
 import {
@@ -158,7 +167,7 @@ export interface StaffRoute {
   readonly method: "GET" | "POST" | "DELETE";
   readonly path: string;
   /** Section permission; `acp.access` is also checked for every route. */
-  readonly permission: AcpPermission;
+  readonly permission: PermissionKey;
   /** Sensitive permission mutations need fresh authentication (ADR 0018). */
   readonly requiresStepUp?: boolean;
   readonly handler: (context: StaffRouteContext) => Promise<Response> | Response;
@@ -308,6 +317,21 @@ async function boardSettings(context: StaffRouteContext): Promise<Response> {
 async function updateBoardSettings(context: StaffRouteContext): Promise<Response> {
   const body: unknown = await context.request.json().catch(() => null);
   const result = await saveBoardSettings(context.sql, context.session.memberId, body);
+
+  if (!result.ok) {
+    return json({ code: "invalid_settings", fields: result.fields }, 400);
+  }
+
+  return json(result.settings);
+}
+
+async function privacyRetention(context: StaffRouteContext): Promise<Response> {
+  return json(await loadPrivacyRetention(context.sql));
+}
+
+async function updatePrivacyRetention(context: StaffRouteContext): Promise<Response> {
+  const body: unknown = await context.request.json().catch(() => null);
+  const result = await savePrivacyRetention(context.sql, context.session.memberId, body);
 
   if (!result.ok) {
     return json({ code: "invalid_settings", fields: result.fields }, 400);
@@ -1412,6 +1436,57 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     handler: updateBoardSettings,
   },
   {
+    id: "privacy.retention",
+    method: "GET",
+    path: "/api/staff/privacy/retention",
+    permission: "privacy.manage",
+    handler: privacyRetention,
+  },
+  {
+    id: "privacy.retention.update",
+    method: "POST",
+    path: "/api/staff/privacy/retention",
+    permission: "privacy.manage",
+    handler: updatePrivacyRetention,
+  },
+  {
+    id: "privacy.policy",
+    method: "GET",
+    path: "/api/staff/privacy/policy",
+    permission: "privacy.manage",
+    handler: async ({ sql }) => privacyPolicyResponse(sql),
+  },
+  {
+    id: "privacy.policy.update",
+    method: "POST",
+    path: "/api/staff/privacy/policy",
+    permission: "privacy.manage",
+    handler: async ({ sql, session, request }) =>
+      updatePrivacyPolicyResponse(sql, session.memberId, request),
+  },
+  {
+    id: "privacy.requests",
+    method: "GET",
+    path: "/api/staff/privacy/requests",
+    permission: "privacy.requests",
+    handler: async ({ sql, request }) => dataRequestsResponse(sql, request),
+  },
+  {
+    id: "privacy.requests.update",
+    method: "POST",
+    path: "/api/staff/privacy/requests",
+    permission: "privacy.requests",
+    handler: async ({ sql, session, request }) =>
+      updateDataRequestResponse(sql, session.memberId, request),
+  },
+  {
+    id: "privacy.accessLog",
+    method: "GET",
+    path: "/api/staff/privacy/access-log",
+    permission: "privacy.audit",
+    handler: async ({ sql, request }) => accessLogResponse(sql, request),
+  },
+  {
     id: "settings.embeds",
     method: "GET",
     path: "/api/staff/settings/embeds",
@@ -2036,7 +2111,7 @@ export async function authorizeStaffRoute(
     return forbidden();
   }
 
-  if (route.permission !== "acp.access" && !isAcpPermission(route.permission)) {
+  if (route.permission !== "acp.access" && !isPermissionKey(route.permission)) {
     return forbidden();
   }
 

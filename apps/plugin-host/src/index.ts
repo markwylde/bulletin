@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -209,6 +210,58 @@ const hookRunner = new PluginHookRunner({
   },
   canReadContent,
 });
+/** Runs a plugin's GDPR hook in a one-shot sandbox when its normal transport is gone. */
+async function maintenanceGdpr(
+  pluginId: string,
+  operation: "export" | "erase",
+  memberId: string,
+): Promise<{ readonly ok: boolean; readonly data?: unknown; readonly error?: string }> {
+  const bundle = bundles.get(pluginId);
+
+  if (bundle === undefined) {
+    return { ok: false, error: "plugin bundle is not available" };
+  }
+
+  const socketPath = join(sandboxConfig.stateDir, `maintenance-${pluginId}-${randomUUID()}.sock`);
+  const maintenanceChannel = new BrokerChannel({
+    socketPath,
+    logger: logger.child({ component: "maintenance-gdpr" }),
+    handler: broker,
+    expectedPluginId: pluginId,
+  });
+  await maintenanceChannel.start();
+  const maintenanceSupervisor = new SandboxSupervisor({
+    pluginId,
+    bundlePath: bundle.path,
+    socketPath,
+    nsjailPath: sandboxConfig.nsjailPath,
+    rootfsPath: sandboxConfig.rootfsPath,
+    cgroupV2Mount: cgroupRoot,
+    seccompPolicy: buildSeccompPolicy(sandboxArch(process.arch)),
+    limits: sandboxConfig.limits,
+    channel: maintenanceChannel,
+    logger,
+    readyTimeoutMs: sandboxConfig.readyTimeoutMs,
+    maxLifetimeMs: 60_000,
+  });
+
+  try {
+    await maintenanceSupervisor.start();
+    const data = await maintenanceChannel.request(
+      operation === "export" ? "gdpr.export" : "gdpr.erase",
+      { memberId },
+      30_000,
+    );
+    return { ok: true, data };
+  } catch (error) {
+    logger.warn("plugin.maintenance_gdpr_failed", { pluginId, operation, error });
+    return { ok: false, error: "maintenance handler failed" };
+  } finally {
+    await maintenanceSupervisor.stop();
+    await maintenanceChannel.close();
+  }
+}
+
 const hookHttp = {
   runner: hookRunner,
   registry: hooks,
@@ -216,6 +269,7 @@ const hookHttp = {
   transports: new Map([[manifest.id, channel]]),
   canReadContent,
   isPluginActive: pluginActive,
+  maintenanceGdpr,
   token: sandboxConfig.internalToken,
   frameAncestors: [config.userOrigin, config.staffOrigin],
   logger: logger.child({ component: "hooks" }),

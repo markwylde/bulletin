@@ -2,6 +2,7 @@ import type { SQL } from "bun";
 import { emit } from "../events/outbox.ts";
 import { writeModerationLog } from "../moderation/log/repository.ts";
 import { can } from "../permissions/can.ts";
+import { readPrivacySettings } from "../privacy/settings.ts";
 
 export interface IpBanRecord {
   readonly id: string;
@@ -94,7 +95,7 @@ export async function banIp(
     return { ok: false, code: "invalid_request" };
   }
 
-  const days = input.days ?? 365;
+  const days = input.days ?? (await readPrivacySettings(sql)).ipBanDays;
   const expiresAt = days <= 0 ? null : new Date(Date.now() + days * 86_400_000);
 
   return sql.begin(async (tx) => {

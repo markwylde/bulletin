@@ -12,6 +12,7 @@ export * from "./permissions/index.ts";
 export * from "./pii/index.ts";
 export * from "./plugins/index.ts";
 export * from "./polls/index.ts";
+export * from "./privacy/index.ts";
 export * from "./reactions/index.ts";
 export * from "./reports/index.ts";
 export * from "./reputation/index.ts";

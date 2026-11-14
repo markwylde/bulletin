@@ -40,6 +40,12 @@ import {
   readConversationResponse,
   replyConversationResponse,
 } from "./conversations.ts";
+import { requestDataErasureResponse } from "./data-erasure.ts";
+import {
+  dataExportDownloadResponse,
+  ownDataRequestsResponse,
+  requestDataExportResponse,
+} from "./data-export.ts";
 import { draftsRoute } from "./drafts.ts";
 import { emoticonImageResponse, listEmoticonsResponse } from "./emoticons.ts";
 import { createUserApiFlags } from "./flag-guard.ts";
@@ -216,6 +222,62 @@ await startService({
       const response = await auth.handle(request, async ({ session }) =>
         redirectCountsResponse(sql, session?.memberId ?? GUEST_PRINCIPAL, session?.id ?? null),
       );
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/data-erasure") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return requestDataErasureResponse(sql, session.memberId, request, config.nodeEnv);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/me/data-requests") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return ownDataRequestsResponse(sql, request, config.nodeEnv);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/me/data-export") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return requestDataExportResponse(sql, session.memberId, request, config.nodeEnv);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const dataExportDownloadMatch = /^\/api\/me\/data-export\/(\d+)$/.exec(pathname);
+
+    if (request.method === "GET" && dataExportDownloadMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return dataExportDownloadResponse(
+          sql,
+          storage,
+          request,
+          config.nodeEnv,
+          dataExportDownloadMatch[1] ?? "",
+        );
+      });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });
     }

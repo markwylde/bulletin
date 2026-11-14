@@ -409,6 +409,32 @@ integrationDescribe("notification email", () => {
     });
   }, 60_000);
 
+  test("sends export-ready mail even when the notifications flag is off", async () => {
+    await withMailStack(async ({ database, store, options }) => {
+      const member = await memberId(database, "member-1");
+      const [notification] = (await database.sql`
+        INSERT INTO core.notifications (member_id, type)
+        VALUES (${member}, 'data.export.ready')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [intent] = (await database.sql`
+        INSERT INTO core.delivery_intents (member_id, kind, ref_id, channel)
+        VALUES (${member}, 'notification', ${notification?.id}, 'email')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      const result = await deliverNotificationEmail(
+        database.sql,
+        { ...options, flags: { enabled: async () => false } },
+        intent?.id ?? "",
+      );
+
+      expect(result).toBe("sent");
+      expect(store.list()).toHaveLength(1);
+      expect(store.list()[0]?.subject.toLowerCase()).toContain("export");
+    });
+  }, 60_000);
+
   test("system mail resolves the address but respects the erasure fence", async () => {
     await withMailStack(async ({ database }) => {
       const member = await memberId(database, "member-1");

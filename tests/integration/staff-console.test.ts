@@ -540,6 +540,317 @@ integrationDescribe("staff API permission guard", () => {
     });
   }, 30_000);
 
+  test("manages privacy retention settings and denies a moderator", async () => {
+    await withDb("staff_privacy_retention", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminId = await createMember(database, "Privacy Administrator", ["administrators"]);
+        const admin = await createSession(database, adminId);
+        const moderatorId = await createMember(database, "Privacy Moderator", [
+          "members",
+          "super_moderators",
+        ]);
+        const moderator = await createSession(database, moderatorId);
+
+        const before = await callRoute(api, route("privacy.retention"), admin);
+        expect(before.status).toBe(200);
+        expect(await before.json()).toEqual({
+          ipLogDays: 90,
+          sessionMetaDays: 30,
+          revokedSessionDays: 7,
+          accessLogDays: 730,
+          exportDays: 7,
+          ipBanDays: 365,
+        });
+
+        expect(await callRoute(api, route("privacy.retention"), moderator)).toHaveProperty(
+          "status",
+          403,
+        );
+        expect(
+          await callRoute(api, route("privacy.retention.update"), moderator, {
+            ipLogDays: 10,
+          }),
+        ).toHaveProperty("status", 403);
+
+        const saved = await callRoute(api, route("privacy.retention.update"), admin, {
+          ipLogDays: 120,
+          sessionMetaDays: 45,
+          revokedSessionDays: 10,
+          accessLogDays: 1_000,
+          exportDays: 14,
+          ipBanDays: 500,
+        });
+        expect(saved.status).toBe(200);
+        expect(await saved.json()).toEqual({
+          ipLogDays: 120,
+          sessionMetaDays: 45,
+          revokedSessionDays: 10,
+          accessLogDays: 1_000,
+          exportDays: 14,
+          ipBanDays: 500,
+        });
+
+        const invalid = await callRoute(api, route("privacy.retention.update"), admin, {
+          ipLogDays: 0,
+        });
+        expect(invalid.status).toBe(400);
+        expect(await invalid.json()).toEqual({
+          code: "invalid_settings",
+          fields: ["ipLogDays"],
+        });
+
+        const after = await callRoute(api, route("privacy.retention"), admin);
+        expect(await after.json()).toMatchObject({ ipLogDays: 120, ipBanDays: 500 });
+
+        const [entry] = (await database.sql`
+          SELECT actor_member_id, action, summary->'before'->>'ipLogDays' AS before_ip_days,
+            summary->'after'->>'ipLogDays' AS after_ip_days
+          FROM core.admin_log
+          WHERE action = 'privacy.retention.update'
+          ORDER BY id DESC
+          LIMIT 1
+        `) as Array<{
+          actor_member_id: string;
+          action: string;
+          before_ip_days: string;
+          after_ip_days: string;
+        }>;
+
+        expect(entry).toMatchObject({
+          actor_member_id: adminId,
+          action: "privacy.retention.update",
+          before_ip_days: "90",
+          after_ip_days: "120",
+        });
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("saves the privacy policy and enforces privacy.manage", async () => {
+    await withDb("staff_privacy_policy", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const admin = await createSession(
+          database,
+          await createMember(database, "Policy Administrator", ["administrators"]),
+        );
+        const moderator = await createSession(
+          database,
+          await createMember(database, "Policy Moderator", ["members", "super_moderators"]),
+        );
+
+        const before = await callRoute(api, route("privacy.policy"), admin);
+        expect(before.status).toBe(200);
+        expect(await before.json()).toMatchObject({ markdown: "" });
+
+        expect(await callRoute(api, route("privacy.policy"), moderator)).toHaveProperty(
+          "status",
+          403,
+        );
+        expect(
+          await callRoute(api, route("privacy.policy.update"), moderator, {
+            markdown: "Denied",
+          }),
+        ).toHaveProperty("status", 403);
+
+        const saved = await callRoute(api, route("privacy.policy.update"), admin, {
+          markdown: "We keep **only** what we need.",
+        });
+        expect(saved.status).toBe(200);
+        const policy = (await saved.json()) as { markdown: string; html: string };
+        expect(policy.markdown).toContain("We keep **only** what we need.");
+        expect(policy.html).toContain("<strong>only</strong>");
+
+        const [stored] = (await database.sql`
+          SELECT policy_md, policy_html FROM core.privacy_settings WHERE id = 1
+        `) as Array<{ policy_md: string; policy_html: string }>;
+        expect(stored?.policy_md).toContain("We keep");
+        expect(stored?.policy_html).toContain("<strong>only</strong>");
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("shows the data request queue and enforces privacy.requests", async () => {
+    await withDb("staff_privacy_requests", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const admin = await createSession(
+          database,
+          await createMember(database, "Requests Administrator", ["administrators"]),
+        );
+        const moderator = await createSession(
+          database,
+          await createMember(database, "Requests Moderator", ["members", "super_moderators"]),
+        );
+        const memberId = await createMember(database, "Requests Member", ["members"]);
+        const [request] = (await database.sql`
+          INSERT INTO pii.data_requests (member_id, kind, status, due_at)
+          VALUES (${memberId}, 'erasure', 'pending', now() + interval '30 days')
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+
+        const listed = await callRoute(api, route("privacy.requests"), admin);
+        expect(listed.status).toBe(200);
+        const body = (await listed.json()) as {
+          requests: Array<{ id: string; memberName: string; kind: string; postAction: string }>;
+        };
+        expect(body.requests).toEqual([
+          expect.objectContaining({
+            id: request?.id,
+            memberName: "Requests Member",
+            kind: "erasure",
+            postAction: "anonymise",
+          }),
+        ]);
+
+        await database.sql`
+          UPDATE pii.data_requests SET last_error = 'plugin down' WHERE id = ${request?.id}
+        `;
+        const failed = await callRoute(api, route("privacy.requests"), admin);
+        expect(
+          ((await failed.json()) as { requests: Array<{ lastError: string | null }> }).requests[0]
+            ?.lastError,
+        ).toBe("plugin down");
+
+        expect(await callRoute(api, route("privacy.requests"), moderator)).toHaveProperty(
+          "status",
+          403,
+        );
+        expect(
+          await callRoute(api, route("privacy.requests.update"), moderator, {
+            id: request?.id,
+            action: "reject",
+            reason: "Denied",
+          }),
+        ).toHaveProperty("status", 403);
+
+        const rejected = await callRoute(api, route("privacy.requests.update"), admin, {
+          id: request?.id,
+          action: "reject",
+          reason: "No legal basis",
+        });
+        expect(rejected.status).toBe(200);
+
+        const [stored] = (await database.sql`
+          SELECT status, decision_reason FROM pii.data_requests WHERE id = ${request?.id}
+        `) as Array<{ status: string; decision_reason: string }>;
+        expect(stored).toEqual({ status: "rejected", decision_reason: "No legal basis" });
+
+        const secondMember = await createMember(database, "Requests Erasure Member", ["members"]);
+        const [erasure] = (await database.sql`
+          INSERT INTO pii.data_requests (member_id, kind, status, due_at)
+          VALUES (${secondMember}, 'erasure', 'pending', now() - interval '1 day')
+          RETURNING id::text AS id
+        `) as Array<{ id: string }>;
+        const overdue = await callPath(
+          api,
+          admin,
+          "GET",
+          "/api/staff/privacy/requests?overdue=true",
+        );
+        const overdueBody = (await overdue.json()) as { requests: Array<{ id: string }> };
+        expect(overdueBody.requests.map((entry) => entry.id)).toEqual([erasure?.id]);
+
+        const processed = await callRoute(api, route("privacy.requests.update"), admin, {
+          id: erasure?.id,
+          action: "process",
+          postAction: "delete",
+          reason: "Approved",
+        });
+        expect(processed.status).toBe(200);
+        const [erasureRow] = (await database.sql`
+          SELECT status, post_action FROM pii.data_requests WHERE id = ${erasure?.id}
+        `) as Array<{ status: string; post_action: string }>;
+        expect(erasureRow).toEqual({ status: "processing", post_action: "delete" });
+        const [memberState] = (await database.sql`
+          SELECT state FROM core.members WHERE id = ${secondMember}
+        `) as Array<{ state: string }>;
+        expect(memberState?.state).toBe("erasing");
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
+  test("shows the PII access log with filters and enforces privacy.audit", async () => {
+    await withDb("staff_privacy_audit", async (database) => {
+      const { api, auth, sql } = await createStaffApiFor(database);
+
+      try {
+        const adminMember = await createMember(database, "Audit Administrator", ["administrators"]);
+        const admin = await createSession(database, adminMember);
+        const moderatorMember = await createMember(database, "Audit Moderator", [
+          "members",
+          "super_moderators",
+        ]);
+        const moderator = await createSession(database, moderatorMember);
+        const subject = await createMember(database, "Audit Subject", ["members"]);
+        await database.sql`
+          INSERT INTO pii.access_log (
+            actor_member_id, subject_member_id, purpose, resource_type, resource_id, created_at
+          ) VALUES
+            (${moderatorMember}, ${subject}, 'post_ip', 'post', '1', now() - interval '2 days'),
+            (${moderatorMember}, ${subject}, 'post_ip', 'post', '2', now() - interval '1 day'),
+            (${moderatorMember}, ${subject}, 'login_ips', 'member', '3', now())
+        `;
+
+        expect(await callRoute(api, route("privacy.accessLog"), moderator)).toHaveProperty(
+          "status",
+          403,
+        );
+
+        const response = await callPath(
+          api,
+          admin,
+          "GET",
+          `/api/staff/privacy/access-log?actorId=${moderatorMember}&purpose=post_ip`,
+        );
+        expect(response.status).toBe(200);
+        const body = (await response.json()) as {
+          entries: Array<{
+            actorMemberId: string;
+            actorName: string | null;
+            subjectMemberId: string | null;
+            purpose: string;
+            resourceId: string | null;
+          }>;
+        };
+        expect(body.entries).toHaveLength(2);
+        expect(body.entries.every((entry) => entry.actorMemberId === moderatorMember)).toBe(true);
+        expect(body.entries.every((entry) => entry.purpose === "post_ip")).toBe(true);
+        expect(body.entries[0]).toMatchObject({
+          actorName: "Audit Moderator",
+          subjectMemberId: subject,
+        });
+
+        const today = new Date().toISOString().slice(0, 10);
+        const from = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 10);
+        const dated = await callPath(
+          api,
+          admin,
+          "GET",
+          `/api/staff/privacy/access-log?actorId=${moderatorMember}&purpose=post_ip&from=${from}&to=${today}`,
+        );
+        expect(dated.status).toBe(200);
+        expect(((await dated.json()) as { entries: unknown[] }).entries).toHaveLength(2);
+      } finally {
+        await auth.close();
+        await sql.close();
+      }
+    });
+  }, 30_000);
+
   test("saves, lists and reverts string overrides with admin log entries", async () => {
     await withDb("staff_string_overrides", async (database) => {
       const { api, auth, sql } = await createStaffApiFor(database);

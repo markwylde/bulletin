@@ -2,6 +2,7 @@ import {
   DIGEST_FREQUENCIES,
   type DigestFrequency,
   digestFrequency,
+  isSystemNotificationType,
   NOTIFICATION_CHANNELS,
   type NotificationChannel,
   type NotificationType,
@@ -87,17 +88,19 @@ export async function buildNotificationPreferencesPage(
         label: input.translate(DIGEST_LABELS[frequency].labelKey),
         selected: frequency === currentDigest,
       })),
-      types: Object.entries(NOTIFICATION_TYPE_LABELS).map(([type, entry]) => ({
-        type: type as NotificationType,
-        label: input.translate(entry.labelKey),
-        channels: NOTIFICATION_CHANNELS.filter(
-          (channel) => channel !== "push" || input.pushEnabled,
-        ).map((channel) => ({
-          channel,
-          label: input.translate(CHANNEL_LABELS[channel].labelKey),
-          enabled: matrix[type as NotificationType][channel],
+      types: Object.entries(NOTIFICATION_TYPE_LABELS)
+        .filter(([type]) => !isSystemNotificationType(type as NotificationType))
+        .map(([type, entry]) => ({
+          type: type as NotificationType,
+          label: input.translate(entry.labelKey),
+          channels: NOTIFICATION_CHANNELS.filter(
+            (channel) => channel !== "push" || input.pushEnabled,
+          ).map((channel) => ({
+            channel,
+            label: input.translate(CHANNEL_LABELS[channel].labelKey),
+            enabled: matrix[type as NotificationType][channel],
+          })),
         })),
-      })),
     },
   };
 }

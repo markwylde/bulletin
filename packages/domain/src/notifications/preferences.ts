@@ -1,5 +1,9 @@
 import type { SQL } from "bun";
-import { NOTIFICATION_TYPES, type NotificationType } from "./repository.ts";
+import {
+  NOTIFICATION_TYPES,
+  type NotificationType,
+  SYSTEM_NOTIFICATION_TYPES,
+} from "./repository.ts";
 
 export const NOTIFICATION_CHANNELS = ["in_app", "email", "digest", "push"] as const;
 
@@ -11,6 +15,10 @@ export function isNotificationChannel(value: string): value is NotificationChann
 
 export function isNotificationTypeValue(value: string): value is NotificationType {
   return (NOTIFICATION_TYPES as readonly string[]).includes(value);
+}
+
+export function isSystemNotificationType(value: NotificationType): boolean {
+  return (SYSTEM_NOTIFICATION_TYPES as readonly string[]).includes(value);
 }
 
 export interface NotificationChannels {

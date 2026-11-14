@@ -17,6 +17,7 @@ export const PUSH_TITLE_KEYS = {
   "report.rejected": { titleKey: "push.title.reportRejected" },
   "warning.issued": { titleKey: "push.title.warning" },
   "webhook.disabled": { titleKey: "push.title.webhookDisabled" },
+  "data.export.ready": { titleKey: "push.title.exportReady" },
 } as const satisfies Record<NotificationType, { readonly titleKey: string }>;
 
 /** Fallback when a payload has no usable title key or the preview cannot be fetched. */

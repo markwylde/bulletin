@@ -24,6 +24,7 @@
     "@bulletin/templates": "workspace:*",
     "pg-boss": "12.38.1",
     "@bulletin/content": "workspace:*",
-    "@bulletin/storage": "workspace:*"
+    "@bulletin/storage": "workspace:*",
+    "fflate": "0.8.3"
   }
 }
