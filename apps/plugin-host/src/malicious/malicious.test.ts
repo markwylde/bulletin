@@ -70,6 +70,14 @@ let broker: Broker | undefined;
 let logger: ReturnType<typeof createLogger>;
 const lines: string[] = [];
 
+/** The last log lines worth reading on a failure: debug chatter (quota polls) hides the cause. */
+function recentLogs(count = 12): string {
+  return lines
+    .filter((line) => !line.includes('"level":"debug"'))
+    .slice(-count)
+    .join("\n");
+}
+
 function parseLine(line: string): LogRecord | undefined {
   try {
     return JSON.parse(line) as LogRecord;
@@ -140,9 +148,7 @@ async function waitForResult(
     return undefined;
   }
 
-  throw new Error(
-    `Timed out waiting for malicious case ${caseName}. Last logs:\n${lines.slice(-8).join("\n")}`,
-  );
+  throw new Error(`Timed out waiting for malicious case ${caseName}. Last logs:\n${recentLogs()}`);
 }
 
 function parseCounters(text: string | undefined): Map<string, number> {
@@ -332,7 +338,7 @@ async function waitForDemoDatabaseSuccess(
 
   throw new Error(
     `Timed out waiting for the benign sandbox's database operation. Last logs:
-${lines.slice(-8).join("\n")}`,
+${recentLogs()}`,
   );
 }
 
