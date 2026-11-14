@@ -13,6 +13,12 @@ concurrency:
 permissions:
   contents: read
 
+# `shell: bash` runs steps as `bash -e -o pipefail`: a step that pipes (`… | tee log`) fails when
+# any command in the pipe fails, not only the last one (tests/architecture/workflow-pipefail).
+defaults:
+  run:
+    shell: bash
+
 jobs:
   load-test:
     name: Capacity load test (SEED_SIZE=large)
