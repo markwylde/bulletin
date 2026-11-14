@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { ConnectionBudgetError } from "./connections.ts";
 import { createLogger } from "./log.ts";
-import { createServiceSql, type RunningService, startService } from "./server.ts";
+import { createServiceSql, listenSqlFromEnv, type RunningService, startService } from "./server.ts";
 
 const running: RunningService[] = [];
 
@@ -227,5 +227,20 @@ describe("shared service lifecycle", () => {
     } finally {
       await sql.close();
     }
+  });
+});
+
+describe("listenSqlFromEnv (ADR 0003)", () => {
+  test("reuses the query client unless a direct LISTEN URL is configured", async () => {
+    const pool = new SQL("postgres://user@127.0.0.1:1/db", { max: 1 });
+
+    expect(listenSqlFromEnv(pool, {})).toBe(pool);
+    expect(listenSqlFromEnv(pool, { LISTEN_DATABASE_URL: " " })).toBe(pool);
+    const direct = listenSqlFromEnv(pool, {
+      LISTEN_DATABASE_URL: "postgres://user@127.0.0.1:2/db",
+    });
+    expect(direct).not.toBe(pool);
+    await direct.close();
+    await pool.close();
   });
 });

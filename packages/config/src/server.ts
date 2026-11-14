@@ -66,6 +66,20 @@ export interface RunningService {
 
 const DEFAULT_DRAIN_TIMEOUT_MS = 25_000;
 
+/**
+ * The client LISTEN uses (ADR 0003: one dedicated direct connection per process, never through a
+ * transaction-mode pooler). When `DATABASE_URL` points at PgBouncer in transaction mode, set
+ * `LISTEN_DATABASE_URL` to Postgres itself; otherwise the query pool's client is reused.
+ */
+export function listenSqlFromEnv(
+  sql: SQL,
+  env: Readonly<Record<string, string | undefined>> = Bun.env,
+): SQL {
+  const url = env.LISTEN_DATABASE_URL?.trim();
+
+  return url === undefined || url === "" ? sql : new BunSQL(url, { max: 1 });
+}
+
 export function createDatabaseCheck(sql: SQL): HealthCheck {
   return {
     name: "database",
@@ -88,11 +102,12 @@ export interface ListenerCheck extends HealthCheck {
 export async function createListenerCheck(
   sql: SQL,
   channel = "bulletin_health",
+  listenSql: SQL = sql,
 ): Promise<ListenerCheck> {
   const pending = new Map<string, (ok: boolean) => void>();
   let closed = false;
 
-  const subscription = await sql.listen(channel, (payload) => {
+  const subscription = await listenSql.listen(channel, (payload) => {
     const resolve = pending.get(payload);
 
     if (resolve !== undefined) {
