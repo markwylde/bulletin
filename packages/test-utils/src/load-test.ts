@@ -97,6 +97,12 @@ export interface RouteSamples {
   readonly buckets: Uint32Array;
 }
 
+export interface SseResult {
+  readonly opened: number;
+  readonly failed: number;
+  readonly dropped: number;
+}
+
 export interface WorkerResult {
   readonly routes: ReadonlyArray<{
     readonly role: LoadRole;
@@ -107,6 +113,8 @@ export interface WorkerResult {
   }>;
   readonly sseOpened: number;
   readonly sseFailed: number;
+  /** Streams that opened but ended before the run did (server close, reset, error). */
+  readonly sseDropped: number;
 }
 
 export interface RouteResult {
@@ -150,7 +158,7 @@ export interface LoadReport {
   readonly startedAt: string;
   readonly durationMs: number;
   readonly routes: readonly RouteResult[];
-  readonly sse: { readonly opened: number; readonly failed: number };
+  readonly sse: SseResult;
   readonly metrics: MetricsObservation;
   readonly failures: readonly string[];
   readonly passed: boolean;
@@ -202,15 +210,17 @@ export function mergeResults(
   durationMs: number,
 ): {
   routes: RouteResult[];
-  sse: { opened: number; failed: number };
+  sse: SseResult;
 } {
   const merged = new Map<string, RouteSamples>();
   let opened = 0;
   let failed = 0;
+  let dropped = 0;
 
   for (const result of results) {
     opened += result.sseOpened;
     failed += result.sseFailed;
+    dropped += result.sseDropped;
 
     for (const route of result.routes) {
       const key = `${route.role} ${route.route}`;
@@ -251,7 +261,7 @@ export function mergeResults(
       .sort((left, right) =>
         `${left.role} ${left.route}`.localeCompare(`${right.role} ${right.route}`),
       ),
-    sse: { opened, failed },
+    sse: { opened, failed, dropped },
   };
 }
 
@@ -368,7 +378,7 @@ export function mergeObservations(observations: readonly MetricsObservation[]): 
 /** Every threshold breach, naming the route or queue responsible. */
 export function evaluateLoad(
   routes: readonly RouteResult[],
-  sse: { readonly opened: number; readonly failed: number },
+  sse: SseResult,
   metrics: MetricsObservation,
   thresholds: LoadThresholds,
   expected: { readonly writesPerSecond: number; readonly sseClients: number },
@@ -418,6 +428,12 @@ export function evaluateLoad(
 
   if (expected.sseClients > 0 && sse.opened < expected.sseClients) {
     failures.push(`sse: ${sse.opened} of ${expected.sseClients} streams opened`);
+  }
+
+  // A stream counts only if it stayed open until the run ended; one that opened and closed at
+  // once must not pass a capacity run.
+  if (sse.dropped > 0) {
+    failures.push(`sse: ${sse.dropped} of ${sse.opened} streams closed before the end of the run`);
   }
 
   if (metrics.maxQueueLagSeconds > thresholds.maxQueueLagSeconds) {
@@ -566,7 +582,7 @@ export function formatLoadReport(report: LoadReport): string {
   }
 
   lines.push(
-    `sse streams: ${report.sse.opened} opened, ${report.sse.failed} failed`,
+    `sse streams: ${report.sse.opened} opened, ${report.sse.failed} failed, ${report.sse.dropped} dropped`,
     `max queue lag: ${report.metrics.maxQueueLagSeconds.toFixed(1)} s${
       report.metrics.laggingQueue === null ? "" : ` (${report.metrics.laggingQueue})`
     }`,

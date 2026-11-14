@@ -46,7 +46,10 @@ describe("load test arithmetic", () => {
       recordSample(writes, 20, index % 2 === 0);
     }
 
-    const merged = mergeResults([{ routes: [writes], sseOpened: 3, sseFailed: 1 }], 10_000);
+    const merged = mergeResults(
+      [{ routes: [writes], sseOpened: 3, sseFailed: 1, sseDropped: 0 }],
+      10_000,
+    );
     const failures = evaluateLoad(
       merged.routes,
       merged.sse,
@@ -91,10 +94,16 @@ describe("load test metrics observations", () => {
   }
 
   function evaluate(observation: Awaited<ReturnType<typeof observeMetrics>>): string[] {
-    return evaluateLoad([], { opened: 0, failed: 0 }, observation, CAPACITY_THRESHOLDS, {
-      writesPerSecond: 0,
-      sseClients: 0,
-    });
+    return evaluateLoad(
+      [],
+      { opened: 0, failed: 0, dropped: 0 },
+      observation,
+      CAPACITY_THRESHOLDS,
+      {
+        writesPerSecond: 0,
+        sseClients: 0,
+      },
+    );
   }
 
   test("a healthy scrape passes", async () => {
@@ -178,6 +187,29 @@ describe("load test against a stand-in origin", () => {
           );
         }
 
+        if (pathname === "/api/stream") {
+          // A stream the server ends at once, as on a crash or a dropped connection.
+          if ((request.headers.get("cookie") ?? "").includes("drop")) {
+            return new Response("", { headers: { "content-type": "text/event-stream" } });
+          }
+
+          let timer: ReturnType<typeof setInterval> | undefined;
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                timer = setInterval(
+                  () => controller.enqueue(new TextEncoder().encode(": hb\n\n")),
+                  100,
+                );
+              },
+              cancel() {
+                clearInterval(timer);
+              },
+            }),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        }
+
         if (pathname === "/api/auth/session") {
           return Response.json({ csrfToken: "token" });
         }
@@ -247,5 +279,28 @@ describe("load test against a stand-in origin", () => {
     expect(report.failures).toHaveLength(1);
     expect(report.failures[0]).toMatch(/^guest \/slow: p95 \d+\.\d ms exceeds 30 ms$/);
     expect(formatLoadReport(report)).toContain("FAIL guest /slow");
+  }, 15_000);
+
+  test("SSE streams must stay open for the whole run", async () => {
+    const held = await runLoadTest(
+      {
+        ...config(["/"]),
+        users: { guests: 1, cdnGuests: 0, members: 0, sseClients: 2, writesPerSecond: 0 },
+      },
+      CAPACITY_THRESHOLDS,
+    );
+    expect(held.sse).toEqual({ opened: 2, failed: 0, dropped: 0 });
+    expect(held.failures).toEqual([]);
+
+    const dropped = await runLoadTest(
+      {
+        ...config(["/"]),
+        users: { guests: 1, cdnGuests: 0, members: 0, sseClients: 2, writesPerSecond: 0 },
+        sessions: [{ cookie: "bl_session=drop" }],
+      },
+      CAPACITY_THRESHOLDS,
+    );
+    expect(dropped.sse).toEqual({ opened: 2, failed: 0, dropped: 2 });
+    expect(dropped.failures).toEqual(["sse: 2 of 2 streams closed before the end of the run"]);
   }, 15_000);
 });

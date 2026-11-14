@@ -31,6 +31,7 @@ async function run(input: WorkerInput): Promise<WorkerResult> {
   const origin = new URL(config.baseUrl).origin;
   let sseOpened = 0;
   let sseFailed = 0;
+  let sseDropped = 0;
 
   const record = (role: LoadRole, route: string, ms: number, ok: boolean, startedAt: number) => {
     if (startedAt < measureFrom) {
@@ -112,7 +113,15 @@ async function run(input: WorkerInput): Promise<WorkerResult> {
   const sse = async (index: number, session: LoadSession) => {
     await sleep(Math.max(0, input.startAt - Date.now()) + (index % 1_000));
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), Math.max(0, stopAt - Date.now()));
+    let ended = false;
+    let opened = false;
+    const timer = setTimeout(
+      () => {
+        ended = true;
+        controller.abort();
+      },
+      Math.max(0, stopAt - Date.now()),
+    );
 
     try {
       const response = await fetch(`${config.baseUrl}/api/stream`, {
@@ -125,6 +134,7 @@ async function run(input: WorkerInput): Promise<WorkerResult> {
         return;
       }
 
+      opened = true;
       sseOpened += 1;
       const reader = response.body.getReader();
 
@@ -135,8 +145,21 @@ async function run(input: WorkerInput): Promise<WorkerResult> {
           break;
         }
       }
+
+      // The server ended the stream before the run did.
+      if (!ended) {
+        sseDropped += 1;
+      }
     } catch {
-      // Aborting at `stopAt` ends a healthy stream; only failures before opening count.
+      // Aborting at `stopAt` ends a healthy stream; any other error is a failure to open or a
+      // stream lost mid-run.
+      if (!ended) {
+        if (opened) {
+          sseDropped += 1;
+        } else {
+          sseFailed += 1;
+        }
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -240,6 +263,7 @@ async function run(input: WorkerInput): Promise<WorkerResult> {
     })),
     sseOpened,
     sseFailed,
+    sseDropped,
   };
 }
 
