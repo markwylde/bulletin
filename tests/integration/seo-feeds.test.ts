@@ -141,6 +141,46 @@ async function insertFeedTopic(
   return topic.id;
 }
 
+interface ParsedEntry {
+  readonly title: string;
+  readonly link: string;
+  readonly author: string;
+  readonly date: string;
+  readonly excerpt: string;
+}
+
+function field(block: string, pattern: RegExp): string {
+  return pattern.exec(block)?.[1] ?? "";
+}
+
+function rssItems(xml: string): readonly ParsedEntry[] {
+  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map((match) => {
+    const block = match[1] ?? "";
+
+    return {
+      title: field(block, /<title>([^<]*)<\/title>/),
+      link: field(block, /<link>([^<]*)<\/link>/),
+      author: field(block, /<dc:creator>([^<]*)<\/dc:creator>/),
+      date: field(block, /<pubDate>([^<]*)<\/pubDate>/),
+      excerpt: field(block, /<description>([^<]*)<\/description>/),
+    };
+  });
+}
+
+function atomEntries(xml: string): readonly ParsedEntry[] {
+  return [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map((match) => {
+    const block = match[1] ?? "";
+
+    return {
+      title: field(block, /<title>([^<]*)<\/title>/),
+      link: field(block, /<link rel="alternate" href="([^"]*)"\/>/),
+      author: field(block, /<author><name>([^<]*)<\/name><\/author>/),
+      date: field(block, /<published>([^<]*)<\/published>/),
+      excerpt: field(block, /<summary type="text">([^<]*)<\/summary>/),
+    };
+  });
+}
+
 function summaries(xml: string): readonly string[] {
   return [...xml.matchAll(/<summary type="text">([^<]*)<\/summary>/g)].map(
     (match) => match[1] ?? "",
@@ -244,6 +284,87 @@ integrationDescribe("feeds", () => {
         forumRef: "999999-missing",
       });
       expect(missing.status).toBe(404);
+    });
+  });
+
+  test("a public forum's feed lists exactly its 20 newest topics with every required field", async () => {
+    await withSeededDb(async (database) => {
+      const offTopic = await forumId(database, "off-topic");
+      const announcements = await forumId(database, "announcements");
+      const author = await memberId(database, "member-1");
+      const [authorRow] = (await database.sql`
+        SELECT display_name FROM core.members WHERE id = ${author}
+      `) as Array<{ display_name: string }>;
+      const authorName = authorRow?.display_name ?? "";
+      const created: Array<{ id: string; title: string; body: string; at: Date }> = [];
+
+      // 25 topics newer than anything seeded, one minute apart, so only the last 20 qualify.
+      for (let index = 0; index < 25; index += 1) {
+        const at = new Date(Date.UTC(2040, 0, 1, 0, index));
+        const title = `Forum feed topic ${String(index).padStart(2, "0")}`;
+        const body = `Excerpt for forum feed topic ${index}.`;
+        const id = await insertFeedTopic(database, {
+          forumId: offTopic,
+          authorId: author,
+          title,
+          bodyText: body,
+          lastPostAt: at,
+        });
+
+        created.push({ id, title, body, at });
+      }
+
+      // Newer still, but in another forum: never part of this forum's feed.
+      const elsewhere = await insertFeedTopic(database, {
+        forumId: announcements,
+        authorId: author,
+        title: "Newer topic in another forum",
+        bodyText: "Not in the off-topic feed.",
+        lastPostAt: new Date("2050-01-01T00:00:00Z"),
+      });
+      const expected = created.slice(5).reverse();
+      const slugs = (await database.sql`
+        SELECT id::text AS id, slug FROM core.topics
+        WHERE id = ANY(${`{${expected.map((topic) => topic.id).join(",")}}`}::bigint[])
+      `) as Array<{ id: string; slug: string }>;
+      const slugById = new Map(slugs.map((row) => [row.id, row.slug]));
+      const link = (id: string) => `${ORIGIN}/topic/${id}-${slugById.get(id) ?? ""}`;
+
+      const rss = await feedDocumentFor({
+        sql: database.sql,
+        origin: ORIGIN,
+        format: "rss",
+        forumRef: `${offTopic}-off-topic`,
+      });
+      const atom = await feedDocumentFor({
+        sql: database.sql,
+        origin: ORIGIN,
+        format: "atom",
+        forumRef: `${offTopic}-off-topic`,
+      });
+
+      expect(rss.status).toBe(200);
+      expect(atom.status).toBe(200);
+      expect(rss.body).not.toContain(`/topic/${elsewhere}-`);
+      expect(atom.body).not.toContain(`/topic/${elsewhere}-`);
+      expect(rssItems(rss.body)).toEqual(
+        expected.map((topic) => ({
+          title: topic.title,
+          link: link(topic.id),
+          author: authorName,
+          date: topic.at.toUTCString(),
+          excerpt: topic.body,
+        })),
+      );
+      expect(atomEntries(atom.body)).toEqual(
+        expected.map((topic) => ({
+          title: topic.title,
+          link: link(topic.id),
+          author: authorName,
+          date: topic.at.toISOString(),
+          excerpt: topic.body,
+        })),
+      );
     });
   });
 
