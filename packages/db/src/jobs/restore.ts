@@ -161,7 +161,10 @@ async function replayLocked(options: JournalReplayOptions): Promise<JournalRepla
         : (row?.result ?? {});
 
     if (result.status === "replay" && result.requestId !== undefined) {
-      await runErasureJob(sql, storage, result.requestId, options.erasure ?? {});
+      await runErasureJob(sql, storage, result.requestId, {
+        ...options.erasure,
+        journalReplayKey: key,
+      });
       replayed += 1;
     } else {
       recorded += 1;

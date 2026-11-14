@@ -419,6 +419,131 @@ integrationDescribe("restore: erasure journal replay and reconciliation", () => 
   }, 60_000);
 });
 
+integrationDescribe("restore: several journal entries", () => {
+  let live: TestDatabase;
+  const backupName = `bulletin_restore_multi_backup_${crypto.randomUUID().slice(0, 8)}`;
+  const restoredName = `bulletin_restore_multi_restored_${crypto.randomUUID().slice(0, 8)}`;
+  const { server, storage } = storageFor();
+  const requests: Array<{ memberId: string; requestId: string; key: string }> = [];
+
+  beforeAll(async () => {
+    live = await createTestDatabase({ adminUrl: adminUrl ?? "", prefix: "restore_multi" });
+    await runSeeds({
+      sql: live.sql,
+      registry: new SeedRegistry([baseSeedModule, permissionFixtureSeedModule]),
+    });
+    const adminId = await member(live.sql, "Multi Admin", ["administrators"]);
+    const staffToken = "restore-multi-staff-token";
+    await live.sql`
+      INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at, last_auth_at)
+      VALUES (
+        ${adminId}, 'staff', sha256(convert_to(${staffToken}, 'UTF8')),
+        now() + interval '1 day', now()
+      )
+    `;
+    const pending: Array<{ memberId: string; requestId: string }> = [];
+
+    for (const name of ["Ann Multi", "Cy Multi"]) {
+      const memberId = await member(live.sql, name, ["members"]);
+      await live.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+        VALUES (
+          ${memberId}, 'user', sha256(convert_to(${`${name}-token`}, 'UTF8')),
+          now() + interval '1 day'
+        )
+      `;
+      const [request] = (await live.sql`
+        INSERT INTO pii.data_requests (member_id, kind, status, post_action)
+        VALUES (${memberId}, 'erasure', 'pending', 'anonymise')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      pending.push({ memberId, requestId: request?.id ?? "" });
+    }
+
+    const workers = new SQL(roleUrl(live.url, "workers"));
+    await writeRestoreWatermark(workers, storage);
+    await workers.close();
+    await live.sql.close();
+    await copyDatabase(live.name, backupName);
+
+    // After the backup both erasures complete, oldest first; HEAD names the newest.
+    const after = new SQL(live.url);
+    const afterWorkers = new SQL(roleUrl(live.url, "workers"));
+
+    for (const entry of pending) {
+      await after`
+        SELECT pii.update_data_request(${staffToken}, ${entry.requestId}, 'process', 'Approved')
+      `;
+      const erased = await runErasureJob(afterWorkers, storage, entry.requestId, { pluginErase });
+      requests.push({ ...entry, key: erased?.journalKey ?? "" });
+    }
+
+    await writeRestoreWatermark(afterWorkers, storage);
+    await after.close();
+    await afterWorkers.close();
+    await copyDatabase(backupName, restoredName);
+  }, 120_000);
+
+  afterAll(async () => {
+    server.stop(true);
+    await dropDatabase(restoredName);
+    await dropDatabase(backupName);
+    await live?.drop();
+  });
+
+  test("services stay unready until every entry is replayed, not just the first", async () => {
+    const restoredUrl = databaseUrl(restoredName);
+    const userApi = new SQL(roleUrl(restoredUrl, "user_api"));
+    const workers = new SQL(roleUrl(restoredUrl, "workers"));
+    const [first, last] = requests;
+    const head = new TextDecoder().decode(await storage.get(JOURNAL_HEAD_KEY));
+    const readinessBetween: boolean[] = [];
+
+    // Observe readiness at the moment the second entry is read, i.e. after the first entry's
+    // erasure has been replayed in full and before the second one starts.
+    const observed: StorageClient = {
+      ...storage,
+      async get(key) {
+        if (key === last?.key) {
+          readinessBetween.push(await journalApplied(userApi, storage));
+          readinessBetween.push(await createJournalReadinessCheck(userApi, storage).check());
+        }
+
+        return storage.get(key);
+      },
+    };
+
+    try {
+      expect(first?.key).not.toBe(last?.key);
+      expect(head).toContain(last?.key ?? "missing");
+      expect(await journalApplied(userApi, storage)).toBe(false);
+
+      const prepared = await prepareAfterRestore({
+        sql: workers,
+        storage: observed,
+        erasure: { pluginErase },
+        reconcileGraceMs: 0,
+      });
+
+      expect(prepared).toEqual({ restored: true, replayed: 2 });
+      expect(readinessBetween).toEqual([false, false]);
+      // The replay never moves HEAD back to an older entry.
+      expect(new TextDecoder().decode(await storage.get(JOURNAL_HEAD_KEY))).toBe(head);
+      expect(await journalApplied(userApi, storage)).toBe(true);
+
+      const sessions = (await workers`
+        SELECT count(*)::int AS live FROM core.sessions
+        WHERE member_id IN (${first?.memberId ?? "0"}, ${last?.memberId ?? "0"})
+          AND revoked_at IS NULL
+      `) as Array<{ live: number }>;
+      expect(sessions[0]?.live).toBe(0);
+    } finally {
+      await userApi.close();
+      await workers.close();
+    }
+  }, 120_000);
+});
+
 describe("bucket versioning (35 days)", () => {
   test("a file deleted 3 days ago can be restored; one deleted 36 days ago cannot", async () => {
     let clock = Date.now();

@@ -15,7 +15,7 @@ import {
 import type { Logger } from "@bulletin/config";
 import { tracedFetch } from "@bulletin/config/tracing";
 import { redactQuoteSnapshots } from "@bulletin/domain/content";
-import { JOURNAL_HEAD_KEY } from "@bulletin/domain/operations";
+import { JOURNAL_HEAD_KEY, readJournalHead } from "@bulletin/domain/operations";
 import { recomputeReactionSummary } from "@bulletin/domain/reactions";
 import { recountTopic, refreshForumLastPost } from "@bulletin/domain/topics";
 import { avatarKey, type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
@@ -71,6 +71,13 @@ export interface ErasureJobOptions {
   readonly logger?: Logger;
   readonly now?: Date;
   readonly purge?: CdnPurger;
+  /**
+   * Set when the post-restore replay re-runs a journalled erasure: the entry already exists, so
+   * the journal step writes nothing. In particular it never moves `journal/HEAD` back to an
+   * older entry, which would let services report ready while later entries are unapplied.
+   * The replay records the entry as applied itself, once the erasure has completed.
+   */
+  readonly journalReplayKey?: string;
 }
 
 export interface ErasureResult {
@@ -692,6 +699,11 @@ export async function runErasureJob(
         ? (fenceRow.fence as Record<string, unknown>)
         : {};
     const acceptedAt = typeof fence.acceptedAt === "string" ? new Date(fence.acceptedAt) : now;
+    if (options.journalReplayKey !== undefined) {
+      journalKey = options.journalReplayKey;
+      return;
+    }
+
     journalKey = journalKeyFor(requestId, acceptedAt);
     // Applied first, then written, then HEAD: in normal operation HEAD always names an applied
     // key, so only a restore to an earlier point makes services wait for the replay (ADR 0020).
@@ -713,9 +725,15 @@ export async function runErasureJob(
       })}\n`,
       { contentType: "application/json" },
     );
-    await storage.put(JOURNAL_HEAD_KEY, `${JSON.stringify({ key: journalKey })}\n`, {
-      contentType: "application/json",
-    });
+    // HEAD only moves forward: keys sort by acceptance date, then by request id, so an erasure
+    // that finishes after a newer one never makes readiness depend on the older entry alone.
+    const head = await readJournalHead(storage);
+
+    if (head === null || head.key < journalKey) {
+      await storage.put(JOURNAL_HEAD_KEY, `${JSON.stringify({ key: journalKey })}\n`, {
+        contentType: "application/json",
+      });
+    }
   });
 
   await sql`SELECT pii.complete_erasure(${requestId})`;
