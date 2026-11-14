@@ -313,6 +313,35 @@ integrationDescribe("push subscriptions", () => {
     });
   }, 30_000);
 
+  test("deletes a device when the session that registered it is revoked", async () => {
+    await seeded(async (database) => {
+      const alice = await memberId(database, "member-1");
+      await sessionToken(database, alice, "alice-revoke-session");
+      await saveDevice(database, "alice-revoke-session");
+      const [before] = (await database.sql`
+        SELECT count(*)::int AS count FROM pii.push_subscriptions WHERE member_id = ${alice}
+      `) as Array<{ count: number }>;
+      expect(before?.count).toBe(1);
+
+      await database.sql`
+        UPDATE core.sessions SET revoked_at = now()
+        WHERE token_hash = sha256(convert_to('alice-revoke-session', 'UTF8'))
+      `;
+
+      const [after] = (await database.sql`
+        SELECT count(*)::int AS count FROM pii.push_subscriptions WHERE member_id = ${alice}
+      `) as Array<{ count: number }>;
+      expect(after?.count).toBe(0);
+
+      await withRole(database, "user_api", async (sql) => {
+        const [row] = (await sql`
+          SELECT count(*)::int AS count FROM pii.list_push_devices('alice-revoke-session')
+        `) as Array<{ count: number }>;
+        expect(row?.count).toBe(0);
+      });
+    });
+  }, 30_000);
+
   test("rejects missing or revoked sessions and malformed input", async () => {
     await seeded(async (database) => {
       const alice = await memberId(database, "member-1");

@@ -5,12 +5,7 @@ import { forumActionMask, readPermVersion } from "@bulletin/domain/permissions";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { authIssuer, staffOrigin } from "@bulletin/test-utils/urls";
 import { SQL } from "bun";
-import {
-  createStaffApi,
-  STAFF_ROUTES,
-  type StaffApi,
-  type StaffRoute,
-} from "../../apps/staff-api/src/api.ts";
+import { createStaffApi, STAFF_ROUTES, type StaffApi } from "../../apps/staff-api/src/api.ts";
 import { saveMatrixCell } from "../../apps/staff-api/src/masks.ts";
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;

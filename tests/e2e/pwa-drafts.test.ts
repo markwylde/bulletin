@@ -10,6 +10,7 @@ import {
   withPages,
 } from "@bulletin/test-utils/e2e";
 import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
+import { setFlagRules } from "./support/flags.ts";
 import { restorePostingFlood, setPostingFloodSeconds } from "./support/group-settings.ts";
 import { createPagedTopic } from "./support/paged-topic.ts";
 
@@ -265,4 +266,55 @@ integrationDescribe("offline drafts", () => {
       },
     );
   }, 180_000);
+
+  test("does not write an offline draft when the pwa flag is off", async () => {
+    const topicUrl = new URL("/topic/3-what-are-you-reading-this-month", USER_URL).toString();
+    const offRules = [{ type: "group", groups: ["members"], value: false }];
+
+    try {
+      await setFlagRules("pwa", offRules);
+
+      await withPage(
+        { url: USER_URL, viewport: "mobile360", allowConsoleErrors: OFFLINE_ERRORS },
+        async (view) => {
+          await loginAs(view, "member-1");
+          await view.navigate(topicUrl);
+          expect(
+            await view.evaluate<boolean>(
+              `document.documentElement.dataset.clientFlags?.includes('"pwa":true') ?? false`,
+            ),
+          ).toBe(false);
+          expect(
+            await view.evaluate<number>(
+              "document.querySelectorAll('[data-offline-drafts]').length",
+            ),
+          ).toBe(0);
+
+          await waitForSelector(view, "[data-reply-toggle]", 20_000);
+          await clickSelector(view, "[data-reply-toggle]");
+          await waitForSelector(view, "[data-reply-form] [data-editor-ready='true']", 20_000);
+          await waitForSelector(view, "[data-editor-wysiwyg] .ProseMirror", 30_000);
+          await waitForSelector(view, '[data-editor-mode="source"]', 20_000);
+          await clickSelector(view, '[data-editor-mode="source"]');
+          await waitForSelector(view, "[data-editor-source]", 20_000);
+          await setInputValue(view, "[data-editor-source]", `Should not queue ${Date.now()}`);
+
+          await view.cdp("Network.enable");
+          await view.cdp("Network.emulateNetworkConditions", {
+            offline: true,
+            latency: 0,
+            downloadThroughput: 0,
+            uploadThroughput: 0,
+          });
+
+          await waitForSelector(view, "[data-reply-submit]:not([disabled])");
+          await clickSelector(view, "[data-reply-submit]");
+          await waitForSelector(view, "[data-reply-form] [data-form-error]:not([hidden])", 20_000);
+          expect(await draftCount(view)).toBe(0);
+        },
+      );
+    } finally {
+      await setFlagRules("pwa", []);
+    }
+  }, 300_000);
 });

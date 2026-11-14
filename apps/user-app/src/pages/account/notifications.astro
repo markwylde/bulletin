@@ -4,13 +4,16 @@ import { buildNotificationsPage, parseNotificationsPageParam } from "../../accou
 import { USER_CATALOGS } from "../../catalogs.ts";
 import { notificationsContract } from "../../contracts.ts";
 import { readSql } from "../../db.ts";
+import { notificationPreview } from "@bulletin/domain/notifications";
 import { loadViewerFlags } from "../../flags.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
 import { renderThemedNotFound } from "../../theme/not-found.ts";
 import { boardNameFrom, loadPluginsGeneration, renderThemedPage } from "../../theme/render.ts";
 
-const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account/notifications")}`;
+const loginUrl = `/auth/login?return_to=${encodeURIComponent(
+  Astro.url.pathname + Astro.url.search,
+)}`;
 const session = Astro.locals.session ?? null;
 
 if (session === null) {
@@ -23,7 +26,16 @@ const sql = readSql();
 const pluginsGeneration = await loadPluginsGeneration(sql);
 const flags = await loadViewerFlags(sql, session);
 const enabled = flags.values.notifications === true;
+const openId = Astro.url.searchParams.get("open");
 const requestedPage = parseNotificationsPageParam(Astro.url.searchParams.get("page"));
+
+if (enabled && openId !== null && /^\d+$/.test(openId)) {
+  const preview = await notificationPreview(sql, session.memberId, openId);
+
+  if (preview !== null) {
+    return Astro.redirect(preview.url, 303);
+  }
+}
 const page = enabled ? await buildNotificationsPage({
     sql,
     memberId: session.memberId,

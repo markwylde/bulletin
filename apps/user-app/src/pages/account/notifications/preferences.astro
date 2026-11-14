@@ -1,6 +1,9 @@
 ---
 import { createServerT } from "@bulletin/i18n";
-import { buildNotificationPreferencesPage } from "../../../account/notification-preferences.ts";
+import {
+  buildNotificationPreferencesPage,
+  pushSettingsEnabled,
+} from "../../../account/notification-preferences.ts";
 import { USER_CATALOGS } from "../../../catalogs.ts";
 import { notificationPreferencesContract } from "../../../contracts.ts";
 import { readSql } from "../../../db.ts";
@@ -23,7 +26,7 @@ const sql = readSql();
 const pluginsGeneration = await loadPluginsGeneration(sql);
 const flags = await loadViewerFlags(sql, session);
 const enabled = flags.values.notifications === true;
-const pushEnabled = flags.values.web_push === true;
+const pushEnabled = pushSettingsEnabled(flags.values);
 const page = enabled
   ? await buildNotificationPreferencesPage({
       sql,

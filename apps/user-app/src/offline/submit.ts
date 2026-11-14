@@ -1,5 +1,6 @@
 import { saveOfflineDraft } from "@bulletin/ui/islands/editor/offline-drafts";
 import { currentMemberId } from "../auth/client.ts";
+import { clientFlag } from "../client-flags.ts";
 import { draftContext } from "./client.ts";
 
 /** A fetch that rejects (or a browser that already reports offline) is a lost connection. */
@@ -17,6 +18,12 @@ export async function queueOfflineSubmission(
   url: string,
   payload: unknown,
 ): Promise<boolean> {
+  // The feature flag is evaluated server-side; without it there is no reconnect banner and
+  // nothing may be written to device storage.
+  if (!clientFlag("pwa")) {
+    return false;
+  }
+
   const draft = await saveOfflineDraft({
     memberId: currentMemberId(),
     contextKey: draftContext(form),

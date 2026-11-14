@@ -19,7 +19,10 @@ import { createServerT } from "@bulletin/i18n";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { createUserApiFlags } from "../../apps/user-api/src/flag-guard.ts";
 import { notificationPreferencesResponse } from "../../apps/user-api/src/notifications.ts";
-import { buildNotificationPreferencesPage } from "../../apps/user-app/src/account/notification-preferences.ts";
+import {
+  buildNotificationPreferencesPage,
+  pushSettingsEnabled,
+} from "../../apps/user-app/src/account/notification-preferences.ts";
 import { USER_CATALOGS } from "../../apps/user-app/src/catalogs.ts";
 import { notificationPreferencesContract } from "../../apps/user-app/src/contracts.ts";
 import { loadViewerFlags } from "../../apps/user-app/src/flags.ts";
@@ -180,6 +183,13 @@ integrationDescribe("PWA and push feature flags", () => {
       expect(pushOn.status).toBe(200);
     });
   }, 60_000);
+
+  test("push settings require the PWA shell as well as web_push", () => {
+    expect(pushSettingsEnabled({ pwa: true, web_push: true })).toBe(true);
+    expect(pushSettingsEnabled({ pwa: false, web_push: true })).toBe(false);
+    expect(pushSettingsEnabled({ pwa: true, web_push: false })).toBe(false);
+    expect(pushSettingsEnabled({})).toBe(false);
+  });
 
   test("the preferences page hides the push column and section when web_push is off", async () => {
     await withDb(

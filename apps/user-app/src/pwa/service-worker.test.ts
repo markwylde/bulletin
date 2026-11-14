@@ -52,6 +52,16 @@ describe("service worker source", () => {
     expect(source).toContain("self.clients.openWindow");
   });
 
+  test("keeps the destination after login and rechecks authentication on click", () => {
+    expect(source).toContain('new URL(self.location.href).searchParams.get("l")');
+    expect(source).toContain("const LOCALE =");
+    expect(source).toContain("function openUrl(notificationId)");
+    expect(source).toContain('"/account/notifications?open="');
+    expect(source).toContain("async function clickTarget(data)");
+    expect(source).toContain('credentials: "include"');
+    expect(source).toContain("loginUrl(openUrl(notificationId))");
+  });
+
   test("handles a clear message without deleting the shell cache", () => {
     expect(source).toContain('event.data === "clear"');
     expect(source).toContain('key.startsWith("bulletin-") && key !== CACHE_NAME');

@@ -289,6 +289,34 @@ integrationDescribe("push delivery", () => {
     });
   }, 60_000);
 
+  test("does not deliver after the registering session is revoked", async () => {
+    await withPushStack(async ({ database, store, base }) => {
+      const fixture = await replyFixture(database);
+      const recipient = fixture.starter;
+      await sessionToken(database, recipient, "push-revoked-session");
+      await saveDevice(database, "push-revoked-session", `${base}/push/revoked`);
+      const { intentId } = await topicNotification(database, fixture);
+
+      await database.sql`
+        UPDATE core.sessions SET revoked_at = now()
+        WHERE token_hash = sha256(convert_to('push-revoked-session', 'UTF8'))
+      `;
+
+      const result = await deliverNotificationPush(
+        database.sql,
+        deliveryOptions(),
+        intentId.toString(),
+      );
+
+      expect(result.sent).toBe(0);
+      expect(store.list()).toEqual([]);
+      const [rows] = (await database.sql`
+        SELECT count(*)::int AS count FROM pii.push_subscriptions WHERE member_id = ${recipient}
+      `) as Array<{ count: number }>;
+      expect(rows?.count).toBe(0);
+    });
+  }, 60_000);
+
   test("does not send when the recipient lost access before the send", async () => {
     await withPushStack(async ({ database, store, base }) => {
       const fixture = await replyFixture(database);

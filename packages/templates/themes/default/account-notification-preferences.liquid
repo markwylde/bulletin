@@ -50,7 +50,7 @@
   <p class="bl-muted" data-notification-preference-status hidden>{% t "notification.preferences.saved" %}</p>
   <p class="bl-error-text" data-notification-preference-error hidden>{% t "notification.preferences.saveFailed" %}</p>
 
-  {% if flags.web_push %}
+  {% if flags.web_push and flags.pwa %}
   <section class="bl-card" data-push-settings
     data-label-unsupported="{% t "push.settings.unsupported" %}"
     data-label-permission-denied="{% t "push.settings.permissionDenied" %}"

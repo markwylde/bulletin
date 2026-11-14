@@ -6,10 +6,12 @@
 
 const root = document.documentElement;
 const version = root.dataset.pwaVersion ?? "";
+// The worker picks the member's resolved locale from its registration URL (ADR 0013).
+const locale = root.lang === "" ? "en" : root.lang;
 
 if (version !== "" && "serviceWorker" in navigator) {
   void navigator.serviceWorker
-    .register(`/sw.js?v=${encodeURIComponent(version)}`, {
+    .register(`/sw.js?v=${encodeURIComponent(version)}&l=${encodeURIComponent(locale)}`, {
       scope: "/",
       updateViaCache: "none",
     })

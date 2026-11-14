@@ -3,6 +3,7 @@ import type { SQL } from "bun";
 import type { SeedModule } from "./framework.ts";
 
 const PUSH_ENDPOINT_ENV = "BULLETIN_SEED_PUSH_ENDPOINT";
+const PUSH_SESSION_TOKEN = "bulletin-seed-push-session";
 
 /**
  * The fixed test subscription key from `mocks/push`. The mock owns the matching private key,
@@ -88,19 +89,19 @@ export const pushSeedModule: SeedModule = {
     const conversation = await seededConversation(sql);
 
     await sql`
-      INSERT INTO pii.push_subscriptions (
-        member_id, endpoint, p256dh, auth_secret, label, browser_family
+      INSERT INTO core.sessions (
+        member_id, kind, token_hash, reauth_at, last_seen_at, created_at
       ) VALUES (
-        ${recipient}, ${endpoint}, ${SEED_PUSH_KEYS.p256dh}, ${SEED_PUSH_KEYS.auth},
-        'Seed phone', 'chrome'
+        ${recipient}, 'user', sha256(convert_to(${PUSH_SESSION_TOKEN}, 'UTF8')),
+        now() + interval '24 hours', now(), now()
       )
-      ON CONFLICT (endpoint) DO UPDATE
-        SET member_id = EXCLUDED.member_id,
-            p256dh = EXCLUDED.p256dh,
-            auth_secret = EXCLUDED.auth_secret,
-            label = EXCLUDED.label,
-            browser_family = EXCLUDED.browser_family,
-            updated_at = now()
+      ON CONFLICT (token_hash) DO UPDATE SET member_id = EXCLUDED.member_id
+    `;
+    await sql`
+      SELECT pii.save_push_subscription(
+        ${PUSH_SESSION_TOKEN}, ${endpoint}, ${SEED_PUSH_KEYS.p256dh}, ${SEED_PUSH_KEYS.auth},
+        'Seed phone', 'Chrome/120.0 Safari/537'
+      )
     `;
 
     await sql`

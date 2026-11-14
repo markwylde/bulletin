@@ -15,19 +15,26 @@ function pushTitles(): Readonly<Record<string, Readonly<Record<string, string>>>
 }
 
 /** `GET /sw.js`: the versioned service worker (ADR 0014), served from the app's root scope. */
-export const GET: APIRoute = ({ request }) =>
-  pwaFlagRoute(readSql(), request, "pwa", () => serviceWorkerResponse());
+export const GET: APIRoute = ({ request, url }) =>
+  pwaFlagRoute(readSql(), request, "pwa", () => serviceWorkerResponse(url));
 
-async function serviceWorkerResponse(): Promise<Response> {
+async function serviceWorkerResponse(url: URL): Promise<Response> {
   const build = await pwaBuild();
 
-  return new Response(serviceWorkerSource({ ...build, titles: pushTitles() }), {
-    headers: {
-      "content-type": "text/javascript; charset=utf-8",
-      // Updates are checked on every registration; never let a stale worker script be cached.
-      "cache-control": "no-cache",
-      "service-worker-allowed": "/",
-      "x-content-type-options": "nosniff",
+  return new Response(
+    serviceWorkerSource({
+      ...build,
+      titles: pushTitles(),
+      locale: url.searchParams.get("l") ?? "en",
+    }),
+    {
+      headers: {
+        "content-type": "text/javascript; charset=utf-8",
+        // Updates are checked on every registration; never let a stale worker script be cached.
+        "cache-control": "no-cache",
+        "service-worker-allowed": "/",
+        "x-content-type-options": "nosniff",
+      },
     },
-  });
+  );
 }

@@ -1,4 +1,5 @@
 import { memberFetch } from "../auth/client.ts";
+import { clientFlag } from "../client-flags.ts";
 import { clientCsrfToken } from "../csrf.ts";
 
 interface PushDevice {
@@ -57,7 +58,10 @@ if (root !== null) {
   const list = root.querySelector<HTMLElement>("[data-push-devices]");
   const empty = root.querySelector<HTMLElement>("[data-push-empty]");
   const supported =
-    "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+    "serviceWorker" in navigator &&
+    "PushManager" in window &&
+    "Notification" in window &&
+    clientFlag("pwa");
 
   const setStatus = (text: string, show = true): void => {
     if (status !== null) {

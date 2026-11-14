@@ -25,6 +25,14 @@ const CHANNEL_LABELS = {
   push: { labelKey: "notification.preferences.push" },
 } satisfies Record<NotificationChannel, { labelKey: string }>;
 
+/**
+ * Push settings need the PWA shell (manifest/service worker) as well as the push feature; with
+ * `pwa` off there is no registration to subscribe against.
+ */
+export function pushSettingsEnabled(flags: Readonly<Record<string, boolean>>): boolean {
+  return flags.pwa === true && flags.web_push === true;
+}
+
 export interface NotificationPreferencesPageInput {
   readonly sql: SQL;
   readonly memberId: string;

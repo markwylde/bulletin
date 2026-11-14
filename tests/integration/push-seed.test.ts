@@ -55,13 +55,14 @@ integrationDescribe("push seed", () => {
   test("seeds a device, a push preference and a PM event that reaches the mock", async () => {
     await withSeededStack(async ({ database, messages }) => {
       const [device] = (await database.sql`
-        SELECT p.endpoint, p.label, p.browser_family, i.sub
+        SELECT p.endpoint, p.label, p.browser_family, p.session_id, i.sub
         FROM pii.push_subscriptions p
         JOIN pii.identities i ON i.member_id = p.member_id
       `) as Array<{
         endpoint: string;
         label: string;
         browser_family: string;
+        session_id: string | null;
         sub: string;
       }>;
       expect(device).toMatchObject({
@@ -69,6 +70,7 @@ integrationDescribe("push seed", () => {
         browser_family: "chrome",
         sub: "member-1",
       });
+      expect(device?.session_id).toMatch(/^\d+$/);
       expect(device?.endpoint).toContain("/push/seed/member-1");
 
       const [preference] = (await database.sql`

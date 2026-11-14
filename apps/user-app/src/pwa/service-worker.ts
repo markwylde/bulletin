@@ -10,6 +10,8 @@ export interface ServiceWorkerInput {
   readonly assets: readonly string[];
   /** Generic push titles per locale, keyed by the payload's title key. */
   readonly titles: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  /** The locale this registration was created for; changes make the worker bytes differ. */
+  readonly locale?: string;
 }
 
 const ASSET_PREFIX = "/_astro/";
@@ -35,6 +37,7 @@ export function serviceWorkerSource(input: ServiceWorkerInput): string {
 const BUILD_VERSION = ${literal(input.version)};
 const VERSION = new URL(self.location.href).searchParams.get("v") || BUILD_VERSION;
 const CACHE_NAME = "bulletin-shell-" + VERSION;
+const LOCALE = new URL(self.location.href).searchParams.get("l") || ${literal(input.locale ?? "en")};
 const SHELL = ${literal(shell)};
 const TITLES = ${literal(input.titles)};
 const ASSET_PREFIX = ${literal(ASSET_PREFIX)};
@@ -125,6 +128,14 @@ function titleFor(locale, key) {
   );
 }
 
+function openUrl(notificationId) {
+  return "/account/notifications?open=" + encodeURIComponent(notificationId);
+}
+
+function loginUrl(returnTo) {
+  return "/auth/login?return_to=" + encodeURIComponent(returnTo || "/");
+}
+
 function safePath(value) {
   if (typeof value !== "string" || value === "") {
     return "";
@@ -178,11 +189,10 @@ async function showPush(event) {
     // The generic title is still useful when the device cannot reach the forum.
   }
 
-  const locale = self.navigator.language || "en";
   const previewTitle = typeof preview?.t === "string" ? preview.t : titleKey;
-  const title = titleFor(locale, previewTitle);
+  const title = titleFor(LOCALE, previewTitle);
   const body = typeof preview?.body === "string" ? preview.body : "";
-  const url = safePath(preview?.url) || "/account/notifications";
+  const url = safePath(preview?.url) || openUrl(notificationId);
 
   await self.registration.showNotification(title, {
     body,
@@ -197,16 +207,48 @@ self.addEventListener("push", (event) => {
   event.waitUntil(showPush(event).catch(() => undefined));
 });
 
+async function clickTarget(data) {
+  const notificationId =
+    typeof data.notificationId === "string" ? data.notificationId : "";
+
+  if (notificationId !== "") {
+    try {
+      const response = await fetch(
+        "/api/notifications/" + encodeURIComponent(notificationId) + "/preview",
+        { credentials: "include", headers: { accept: "application/json" } },
+      );
+
+      if (response.ok) {
+        const preview = await response.json();
+        const destination = safePath(preview.url);
+
+        if (destination !== "") {
+          return destination;
+        }
+      }
+
+      if (response.status === 401) {
+        return loginUrl(openUrl(notificationId));
+      }
+    } catch {
+      // A network failure falls back to the stored destination or the login page.
+    }
+  }
+
+  const stored = safePath(data.url);
+
+  return data.loginRequired === true
+    ? loginUrl(stored || (notificationId === "" ? "/account/notifications" : openUrl(notificationId)))
+    : stored || "/account/notifications";
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data ?? {};
-  const target =
-    data.loginRequired === true
-      ? "/auth/login?return_to=" + encodeURIComponent(safePath(data.url) || "/")
-      : safePath(data.url) || "/";
 
   event.waitUntil(
     (async () => {
+      const target = await clickTarget(data);
       const url = new URL(target, self.location.origin);
       const windows = await self.clients.matchAll({
         type: "window",
@@ -215,7 +257,11 @@ self.addEventListener("notificationclick", (event) => {
 
       for (const client of windows) {
         if ("focus" in client) {
-          await client.focus();
+          try {
+            await client.focus();
+          } catch {
+            // Notifications opened by a test or a background event may lack user activation.
+          }
           if ("navigate" in client) {
             await client.navigate(url.href);
           }

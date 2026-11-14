@@ -9,6 +9,7 @@ import {
   withPage,
 } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
+import { setFlagRules } from "./support/flags.ts";
 
 // Run against the full stack:
 //   docker compose up -d --build --wait
@@ -30,37 +31,52 @@ interface NotificationView {
 }
 
 integrationDescribe("push", () => {
-  test("lists and removes a registered device without exposing its endpoint or keys", async () => {
+  test("enables this device through the permission and subscription flow, then removes it", async () => {
     await withPage(
       { url: `${USER_URL}/account/notifications/preferences`, viewport: "mobile360" },
       async (view) => {
+        await viewGrantNotifications(view);
         await loginAs(view, "member-1");
         await waitForSelector(view, "[data-push-settings]");
-
-        const session = await view.evaluate<{ csrfToken: string }>(
-          'fetch("/api/auth/session", { headers: { accept: "application/json" } }).then((response) => response.json())',
+        await waitForSelector(view, "[data-push-enable]:not([hidden])");
+        const before = await view.evaluate<number>(
+          "document.querySelectorAll('[data-push-device]').length",
         );
-        const subscribed = await view.evaluate<boolean>(`fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-bulletin-csrf": ${JSON.stringify(session.csrfToken)} },
-        body: JSON.stringify({
-          endpoint: "http://push:4003/push/e2e-device",
-          keys: { p256dh: ${JSON.stringify(PUSH_TEST_KEYS.publicKey)}, auth: ${JSON.stringify(PUSH_TEST_KEYS.auth)} },
-          label: "E2E phone"
-        })
-      }).then((response) => response.ok)`);
-        expect(subscribed).toBe(true);
 
-        await view.navigate(`${USER_URL}/account/notifications/preferences`);
-        await waitForSelector(view, "[data-push-device]");
-        await waitForText(view, "E2E phone");
+        // The push service itself is not reachable from headless Chrome; the browser
+        // subscription object is the only part mocked, while permission, the enable button,
+        // the save API and the refreshed device list all run for real.
+        const prepared = await view.evaluate<boolean>(`(() => {
+          if (!("PushManager" in window)) return false;
+          const subscription = {
+            endpoint: "http://push:4003/push/e2e-enable",
+            toJSON: () => ({
+              endpoint: "http://push:4003/push/e2e-enable",
+              keys: { p256dh: ${JSON.stringify(PUSH_TEST_KEYS.publicKey)}, auth: ${JSON.stringify(PUSH_TEST_KEYS.auth)} }
+            })
+          };
+          PushManager.prototype.getSubscription = async () => null;
+          PushManager.prototype.subscribe = async () => subscription;
+          return true;
+        })()`);
+        expect(prepared).toBe(true);
+
+        await waitForSelector(view, "[data-push-enable]:not([disabled])");
+        await clickSelector(view, "[data-push-enable]");
+        await waitForExpression(
+          view,
+          `document.querySelectorAll("[data-push-device]").length === ${before + 1}`,
+          20_000,
+        );
+        await waitForText(view, "Push is enabled on this device.");
+
         const page = await view.evaluate<string>("document.documentElement.outerHTML");
-        expect(page).not.toContain("push/e2e-device");
+        expect(page).not.toContain("push/e2e-enable");
         expect(page).not.toContain(PUSH_TEST_KEYS.publicKey);
         expect(page).not.toContain(PUSH_TEST_KEYS.auth);
 
         const removed = await view.evaluate<boolean>(`(() => {
-          const row = [...document.querySelectorAll("[data-push-device]")].find((candidate) => candidate.textContent?.includes("E2E phone"));
+          const row = [...document.querySelectorAll("[data-push-device]")].find((candidate) => !candidate.textContent?.includes("Seed phone"));
           const button = row?.querySelector("[data-push-remove]");
           if (!(button instanceof HTMLButtonElement) || button.disabled) return false;
           button.click();
@@ -69,7 +85,7 @@ integrationDescribe("push", () => {
         expect(removed).toBe(true);
         await waitForExpression(
           view,
-          `[...document.querySelectorAll("[data-push-device]")].every((row) => !row.textContent?.includes("E2E phone"))`,
+          `document.querySelectorAll("[data-push-device]").length === ${before}`,
           20_000,
         );
         await waitForText(view, "Device removed.");
@@ -165,6 +181,14 @@ integrationDescribe("push", () => {
       expect(shown[0]?.body).toBe(title);
       expect(shown[0]?.data.url).toBe(notification.href);
       expect(shown[0]?.data.loginRequired).toBe(false);
+
+      // Clicking the real notification rechecks authentication and opens the destination.
+      await clickNotification(view, shown[0]?.data ?? {});
+      await waitForExpression(
+        view,
+        `location.pathname === ${JSON.stringify(notification.href)}`,
+        20_000,
+      );
     });
   }, 300_000);
   test("marks a guest push for the login fallback", async () => {
@@ -197,10 +221,133 @@ integrationDescribe("push", () => {
       );
       expect(shown[0]?.title).toBe("Bulletin notification");
       expect(shown[0]?.data.loginRequired).toBe(true);
-      expect(shown[0]?.data.url).toBe("/account/notifications");
+      expect(shown[0]?.data.url).toBe("/account/notifications?open=987654");
+
+      await clickNotification(view, shown[0]?.data ?? {});
+      await waitForSelector(view, "[data-login]", 20_000);
     });
   }, 300_000);
+
+  test("uses the member's locale for push titles even when the browser is English", async () => {
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await viewGrantNotifications(view);
+      await loginAs(view, "member-fr");
+      expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
+
+      await view.navigate(`${USER_URL}/account/notifications`);
+      await waitForSelector(view, "[data-notification-link]", 30_000);
+      const notification = await view.evaluate<{ id: string } | null>(`(() => {
+        const link = [...document.querySelectorAll("[data-notification-link]")].find((candidate) => (candidate.getAttribute("href") ?? "").includes("/topic/"));
+        if (!(link instanceof HTMLAnchorElement)) return null;
+        return { id: link.getAttribute("data-notification-link") ?? "" };
+      })()`);
+
+      if (notification === null) {
+        throw new Error("No topic notification for member-fr");
+      }
+
+      const preview = await view.evaluate<{ readonly t?: string } | null>(
+        `fetch("/api/notifications/${notification.id}/preview", { credentials: "include" }).then((response) => response.ok ? response.json() : null)`,
+      );
+
+      if (preview?.t === undefined) {
+        throw new Error("Missing push preview for member-fr");
+      }
+
+      const expectedTitle =
+        preview.t === "push.title.topicCreated" ? "Nouveau sujet" : "Nouvelle réponse";
+      await waitForExpression(
+        view,
+        `navigator.serviceWorker.ready.then((registration) => registration.active?.scriptURL.includes("l=fr") ?? false)`,
+        30_000,
+      );
+      await deliverPush(view, { n: notification.id, t: preview.t });
+      await Bun.sleep(1_000);
+      await waitForExpression(
+        view,
+        `navigator.serviceWorker.getRegistration().then((registration) => registration.getNotifications()).then((notifications) => notifications.some((notification) => notification.data?.notificationId === ${JSON.stringify(notification.id)}))`,
+        20_000,
+      );
+      const shown = await view.evaluate<NotificationView[]>(
+        `navigator.serviceWorker.getRegistration().then((registration) => registration.getNotifications()).then((notifications) => notifications.filter((notification) => notification.data?.notificationId === ${JSON.stringify(notification.id)}).map((notification) => ({ title: notification.title, body: notification.body, data: notification.data })))`,
+      );
+      expect(shown[0]?.title).toBe(expectedTitle);
+    });
+  }, 300_000);
+  test("does not render push settings when pwa is off even though web_push is on", async () => {
+    const offRules = [{ type: "group", groups: ["members"], value: false }];
+
+    try {
+      await setFlagRules("pwa", offRules);
+
+      await withPage(
+        { url: `${USER_URL}/account/notifications/preferences`, viewport: "mobile360" },
+        async (view) => {
+          await loginAs(view, "member-1");
+          await waitForSelector(view, "[data-notification-preferences-page]");
+          expect(
+            await view.evaluate<number>("document.querySelectorAll('[data-push-settings]').length"),
+          ).toBe(0);
+          expect(
+            await view.evaluate<number>("document.querySelectorAll('[data-push-enable]').length"),
+          ).toBe(0);
+          expect(
+            await view.evaluate<boolean>(
+              `document.documentElement.dataset.clientFlags?.includes('"pwa":true') ?? false`,
+            ),
+          ).toBe(false);
+        },
+      );
+    } finally {
+      await setFlagRules("pwa", []);
+    }
+  }, 300_000);
 });
+
+/** Dispatches a real notificationclick event inside the active service worker. */
+async function clickNotification(view: Bun.WebView, data: Record<string, unknown>): Promise<void> {
+  let sessionId = "";
+  view.addEventListener<{
+    readonly sessionId?: string;
+    readonly targetInfo?: { readonly type?: string; readonly url?: string };
+  }>("Target.attachedToTarget", (event) => {
+    if (
+      event.data.sessionId !== undefined &&
+      event.data.targetInfo?.type === "service_worker" &&
+      (event.data.targetInfo.url ?? "").includes("bulletin.localhost")
+    ) {
+      sessionId = event.data.sessionId;
+    }
+  });
+  await view.cdp("Target.setAutoAttach", {
+    autoAttach: true,
+    waitForDebuggerOnStart: false,
+    flatten: false,
+  });
+  await Bun.sleep(250);
+
+  if (sessionId === "") {
+    throw new Error("Chrome did not expose the service worker target");
+  }
+
+  const expression = `(async () => {
+    const event = new Event("notificationclick");
+    event.notification = { close() {}, data: ${JSON.stringify(data)} };
+    event.waitUntil = (work) => { self.__bulletinClick = work; };
+    self.dispatchEvent(event);
+    if (self.__bulletinClick) await self.__bulletinClick;
+    return true;
+  })()`;
+
+  await view.cdp("Target.sendMessageToTarget", {
+    sessionId,
+    message: JSON.stringify({
+      id: 1,
+      method: "Runtime.evaluate",
+      params: { expression, awaitPromise: true, returnByValue: true },
+    }),
+  });
+}
 
 /** Headless Chrome denies notifications unless the browser target grants the origin. */
 async function viewGrantNotifications(view: Bun.WebView): Promise<void> {
