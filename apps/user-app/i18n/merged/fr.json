@@ -124,6 +124,7 @@
   "apiKeys.secretOnce": "Copiez cette clé maintenant ; elle ne sera plus affichée.",
   "apiKeys.title": "Clés d’API",
   "attachment.downloads": "{count, plural, =0 {Aucun téléchargement} =1 {1 téléchargement} other {# téléchargements}}",
+  "attachment.missing": "Ce fichier n’est plus disponible. Il a été perdu dans le stockage et l’équipe du forum a été prévenue.",
   "attachment.remove": "Retirer",
   "attachment.removed": "Pièce jointe supprimée",
   "auth.continue": "Continuer",

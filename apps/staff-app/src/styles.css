@@ -1723,3 +1723,10 @@ textarea.form-input {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Missing files (ADR 0020): storage keys are long hex strings; wrap them at 360 px. */
+.system-key {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}

@@ -54,6 +54,15 @@ describe("staff section registry", () => {
     );
   });
 
+  test("shows the missing-object listing only with acp.system", () => {
+    expect(
+      visibleSections(["acp.access", "acp.members"]).map((section) => section.id),
+    ).not.toContain("missingObjects");
+    expect(visibleSections(["acp.access", "acp.system"]).map((section) => section.id)).toContain(
+      "missingObjects",
+    );
+  });
+
   test("shows retention only with privacy.manage", () => {
     expect(
       visibleSections(["acp.access", "acp.settings"]).map((section) => section.id),

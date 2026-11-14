@@ -5,6 +5,7 @@ import {
   readDownloadableAttachment,
   recordAttachmentDownloadBuffer,
 } from "@bulletin/domain/attachments";
+import { attachmentObjectMissing } from "@bulletin/domain/operations";
 import {
   can,
   GUEST_PRINCIPAL,
@@ -131,6 +132,12 @@ export async function attachmentDownloadResponse(
 
   if (!allowed) {
     return json({ code: "forbidden" }, 403);
+  }
+
+  // ADR 0020: a restore can leave a row whose object is gone. Say so instead of redirecting to
+  // a storage 404; the check runs after authorisation so it reveals nothing to others.
+  if (await attachmentObjectMissing(input.sql, attachment.id)) {
+    return json({ code: "attachment_missing" }, 410);
   }
 
   if (input.session === null && input.guestViewerKey !== undefined && input.preview !== true) {

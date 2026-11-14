@@ -896,10 +896,14 @@ integrationDescribe("member erasure", () => {
       expect(storage.deleted).toContain(avatarKey(fixture.memberId, "e".repeat(64), "lg"));
       expect(storage.deleted).toContain(fixture.exportKey);
 
-      const journalKeys = [...storage.objects.keys()].filter((key) =>
-        key.startsWith(fixture.journalPrefix),
+      const journalKeys = [...storage.objects.keys()].filter(
+        (key) => key.startsWith(fixture.journalPrefix) && key.endsWith(".json"),
       );
       expect(journalKeys).toHaveLength(1);
+      // HEAD names the newest entry, which this database has applied (ADR 0020 restores).
+      expect(JSON.parse(new TextDecoder().decode(storage.objects.get("journal/HEAD")))).toEqual({
+        key: journalKeys[0],
+      });
       const journal = JSON.parse(
         new TextDecoder().decode(storage.objects.get(journalKeys[0] ?? "")),
       ) as Record<string, unknown>;

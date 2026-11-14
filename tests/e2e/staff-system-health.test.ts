@@ -48,12 +48,31 @@ integrationDescribe("staff system health panel (ADR 0020)", () => {
     }, 120_000);
   }
 
+  for (const viewport of VIEWPORTS) {
+    test(`lists missing files after a restore at ${viewport}`, async () => {
+      await withPage({ url: STAFF_URL, viewport }, async (view) => {
+        await loginAs(view, "admin");
+        await waitForSelector(view, '[data-auth-state="authenticated"]');
+        await view.navigate(`${STAFF_URL}/system/missing-objects`);
+        await waitForSelector(view, '[data-page="missing-objects"]');
+        await waitForSelector(view, "[data-missing-last-run]");
+        await waitForSelector(view, "[data-missing-total]");
+
+        expect(
+          await view.evaluate<boolean>(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
+          ),
+        ).toBe(true);
+      });
+    }, 120_000);
+  }
+
   test("hides the panel from a member without acp.system", async () => {
     await withPage(
       {
         url: STAFF_URL,
         viewport: "mobile360",
-        allowConsoleErrors: [/403.*\/api\/staff\/system\/health/],
+        allowConsoleErrors: [/403.*\/api\/staff\/system\/(health|missing-objects)/],
       },
       async (view) => {
         await loginAs(view, "super-mod");
@@ -74,6 +93,15 @@ integrationDescribe("staff system health panel (ADR 0020)", () => {
         await view.navigate(`${STAFF_URL}/system/health`);
         await waitForSelector(view, "[data-not-found]");
         await waitForExpression(view, "!document.querySelector('[data-page=\"system-health\"]')");
+
+        expect(
+          await view.evaluate<number>(
+            'fetch("/api/staff/system/missing-objects", { credentials: "include" }).then((response) => response.status)',
+          ),
+        ).toBe(403);
+        await view.navigate(`${STAFF_URL}/system/missing-objects`);
+        await waitForSelector(view, "[data-not-found]");
+        await waitForExpression(view, "!document.querySelector('[data-page=\"missing-objects\"]')");
       },
     );
   }, 120_000);

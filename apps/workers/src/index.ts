@@ -10,6 +10,7 @@ import {
   createDatabaseCheck,
   createListenerCheck,
   createServiceSql,
+  listenSqlFromEnv,
   startService,
 } from "@bulletin/config/server";
 import { initTracing, traceJobData } from "@bulletin/config/tracing";
@@ -43,6 +44,8 @@ import {
   createWebhookJobs,
   ERASURE_QUEUE,
   EXPORT_QUEUE,
+  prepareAfterRestore,
+  writeRestoreWatermark,
 } from "@bulletin/db/jobs";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
@@ -86,8 +89,43 @@ await runBaseSeed({
 
 const sql = createServiceSql("workers", databaseUrl);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
-const listener = await createListenerCheck(sql);
+const listenSql = listenSqlFromEnv(sql);
+const listener = await createListenerCheck(sql, undefined, listenSql);
 registerQueueCollector(sql);
+
+// ADR 0012/0020: after a database restore, erasures journalled after the restore point are
+// replayed before this process starts any job or reports ready, so nothing is delivered to an
+// erased member. Other services stay unready on their `journal` check until it is done.
+const erasureOptions = {
+  pluginHostUrl: Bun.env.PLUGIN_HOST_INTERNAL_URL ?? "http://plugin-host:3004",
+  pluginToken: Bun.env.PLUGIN_INTERNAL_TOKEN ?? "bulletin-development-only-internal-token",
+  ...(Bun.env.BULLETIN_CDN_PURGE_URL === undefined
+    ? {}
+    : { purge: createCdnPurger({ url: Bun.env.BULLETIN_CDN_PURGE_URL }) }),
+  logger,
+};
+
+for (let attempt = 1; ; attempt += 1) {
+  try {
+    const prepared = await prepareAfterRestore({ sql, storage, logger, erasure: erasureOptions });
+
+    if (prepared.restored || prepared.replayed > 0) {
+      logger.info("restore.startup", prepared);
+    }
+
+    break;
+  } catch (error) {
+    // Plugin-host or storage may still be starting; keep retrying rather than serve early.
+    logger.error("restore.startup_failed", { attempt, error });
+    await Bun.sleep(Math.min(30_000, attempt * 2_000));
+  }
+}
+
+const watermarkTimer = setInterval(() => {
+  void writeRestoreWatermark(sql, storage).catch((error: unknown) => {
+    logger.warn("restore.watermark_failed", { error });
+  });
+}, 60_000);
 const boss = await createPgBossQueue({
   connectionString: Bun.env.PG_BOSS_DATABASE_URL ?? databaseUrl,
   schema: "pgboss",
@@ -353,6 +391,7 @@ await startService({
   },
   onShutdown: async () => {
     clearInterval(relayTimer);
+    clearInterval(watermarkTimer);
     await relayInFlight;
     await listener.close();
     await notificationFanout.stop();

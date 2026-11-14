@@ -124,6 +124,7 @@
   "apiKeys.secretOnce": "Copia esta clave ahora; no se volverá a mostrar.",
   "apiKeys.title": "Claves de API",
   "attachment.downloads": "{count, plural, =0 {Sin descargas} =1 {1 descarga} other {# descargas}}",
+  "attachment.missing": "Este archivo ya no está disponible. Se perdió del almacenamiento y el equipo del foro ya lo sabe.",
   "attachment.remove": "Quitar",
   "attachment.removed": "Adjunto eliminado",
   "auth.continue": "Continuar",

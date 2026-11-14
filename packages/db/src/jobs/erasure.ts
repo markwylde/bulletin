@@ -15,6 +15,7 @@ import {
 import type { Logger } from "@bulletin/config";
 import { tracedFetch } from "@bulletin/config/tracing";
 import { redactQuoteSnapshots } from "@bulletin/domain/content";
+import { JOURNAL_HEAD_KEY } from "@bulletin/domain/operations";
 import { recomputeReactionSummary } from "@bulletin/domain/reactions";
 import { recountTopic, refreshForumLastPost } from "@bulletin/domain/topics";
 import { avatarKey, type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
@@ -370,6 +371,14 @@ export async function runErasureJob(
       }
     }
 
+    // Missing-object rows name the member's files; they go with the files (ADR 0012).
+    await sql`
+      DELETE FROM core.missing_objects
+      WHERE (kind = 'avatar' AND resource_id = ${memberId})
+         OR (kind = 'attachment' AND resource_id IN (
+               SELECT id FROM core.attachments WHERE member_id = ${memberId}))
+    `;
+
     if (attachments.length > 0) {
       await sql`DELETE FROM core.attachments WHERE member_id = ${memberId}`;
     }
@@ -684,11 +693,19 @@ export async function runErasureJob(
         : {};
     const acceptedAt = typeof fence.acceptedAt === "string" ? new Date(fence.acceptedAt) : now;
     journalKey = journalKeyFor(requestId, acceptedAt);
+    // Applied first, then written, then HEAD: in normal operation HEAD always names an applied
+    // key, so only a restore to an earlier point makes services wait for the replay (ADR 0020).
+    await sql`
+      INSERT INTO core.erasure_journal_applied (key, request_id)
+      VALUES (${journalKey}, ${requestId})
+      ON CONFLICT (key) DO NOTHING
+    `;
     await storage.put(
       journalKey,
       `${JSON.stringify({
         requestId,
         memberId,
+        postAction: info.postAction,
         completedAt: now.toISOString(),
         sessionIds: strings(fence.sessionIds),
         apiKeyIds: strings(fence.apiKeyIds),
@@ -696,6 +713,9 @@ export async function runErasureJob(
       })}\n`,
       { contentType: "application/json" },
     );
+    await storage.put(JOURNAL_HEAD_KEY, `${JSON.stringify({ key: journalKey })}\n`, {
+      contentType: "application/json",
+    });
   });
 
   await sql`SELECT pii.complete_erasure(${requestId})`;

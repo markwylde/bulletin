@@ -10,6 +10,7 @@ import {
   createDatabaseCheck,
   createListenerCheck,
   createServiceSql,
+  listenSqlFromEnv,
   startService,
 } from "@bulletin/config/server";
 import { initTracing } from "@bulletin/config/tracing";
@@ -17,6 +18,7 @@ import { syncFlagDefinitions } from "@bulletin/db/flags";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
+import { createJournalReadinessCheck } from "@bulletin/domain/operations";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { auditStaffLocaleChange } from "./admin-log.ts";
@@ -41,7 +43,8 @@ await runBaseSeed({
 
 const sql = createServiceSql("staff-api", databaseUrl);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
-const listener = await createListenerCheck(sql);
+const listenSql = listenSqlFromEnv(sql);
+const listener = await createListenerCheck(sql, undefined, listenSql);
 const auth = await createAuthService({
   sql,
   kind: "staff",
@@ -61,6 +64,7 @@ const checks = [
   createDatabaseCheck(sql),
   { name: "migrations", check: () => migrationsCurrent(sql) },
   listener,
+  createJournalReadinessCheck(sql, storage),
 ];
 const purgeUrl = Bun.env.BULLETIN_CDN_PURGE_URL;
 const purge = purgeUrl === undefined ? undefined : createCdnPurger({ url: purgeUrl });

@@ -9,6 +9,7 @@ import {
   createDatabaseCheck,
   createListenerCheck,
   createServiceSql,
+  listenSqlFromEnv,
   startService,
 } from "@bulletin/config/server";
 import { initTracing } from "@bulletin/config/tracing";
@@ -16,6 +17,7 @@ import { syncFlagDefinitions } from "@bulletin/db/flags";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
+import { createJournalReadinessCheck } from "@bulletin/domain/operations";
 import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
@@ -137,8 +139,9 @@ await runBaseSeed({
 const sql = createServiceSql("user-api", databaseUrl);
 const flags = createUserApiFlags(sql);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
-const listener = await createListenerCheck(sql);
-const streamHub = await createStreamHub(sql);
+const listenSql = listenSqlFromEnv(sql);
+const listener = await createListenerCheck(sql, undefined, listenSql);
+const streamHub = await createStreamHub(listenSql);
 const auth = await createAuthService({
   sql,
   kind: "user",
@@ -1383,6 +1386,7 @@ await startService({
     createDatabaseCheck(sql),
     { name: "migrations", check: () => migrationsCurrent(sql) },
     listener,
+    createJournalReadinessCheck(sql, storage),
   ],
   budget: {
     sql,

@@ -65,6 +65,7 @@ import {
   saveMatrixCell,
 } from "./masks.ts";
 import { removeMemberAvatarForStaff } from "./members.ts";
+import { readMissingObjects } from "./missing-objects.ts";
 import {
   staffModerationActionResponse,
   staffQueueCountResponse,
@@ -1899,6 +1900,13 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
           ...(healthFetch === undefined ? {} : { fetch: healthFetch }),
         }),
       ),
+  },
+  {
+    id: "system.missingObjects",
+    method: "GET",
+    path: "/api/staff/system/missing-objects",
+    permission: "acp.system",
+    handler: async ({ sql }) => json(await readMissingObjects(sql)),
   },
   {
     id: "events.deadLetters.list",

@@ -127,7 +127,7 @@ export function signRequestHeaders(input: {
   const request = [
     input.method,
     input.url.pathname || "/",
-    "",
+    canonicalQuery([...input.url.searchParams.entries()]),
     canonical.text,
     canonical.names,
     payloadHash,

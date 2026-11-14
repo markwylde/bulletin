@@ -8,7 +8,11 @@ const bucket = Bun.env.S3_BUCKET ?? "bulletin";
 const basePath = Bun.env.MOCK_BASE_PATH ?? "";
 
 const sql = new SQL(databaseUrl);
-const store = await createPostgresStore(sql);
+// Like production, previous versions expire 35 days after they stop being current (ADR 0020).
+const noncurrentDays = Number(Bun.env.S3_NONCURRENT_VERSION_DAYS ?? "35");
+const store = await createPostgresStore(sql, {
+  noncurrentDays: Number.isFinite(noncurrentDays) && noncurrentDays > 0 ? noncurrentDays : 35,
+});
 const handler = createS3Handler({
   store,
   bucket,

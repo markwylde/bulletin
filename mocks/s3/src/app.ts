@@ -1,6 +1,6 @@
 import { escapeHtml, escapeXml, htmlResponse, jsonResponse, renderPage } from "@bulletin/mock-ui";
 import { type S3Credentials, verifyRequestSignature } from "./sigv4.ts";
-import type { ObjectStore, StoredObject } from "./types.ts";
+import type { ObjectStore, ObjectVersion, StoredObject } from "./types.ts";
 
 export interface S3MockOptions {
   readonly store: ObjectStore;
@@ -56,6 +56,7 @@ function objectHeaders(object: StoredObject): Headers {
     "content-length": String(object.body.byteLength),
     etag: object.etag,
     "last-modified": object.lastModified.toUTCString(),
+    "x-amz-version-id": object.versionId,
   });
 
   for (const [key, value] of Object.entries(object.metadata)) {
@@ -92,6 +93,38 @@ function listXml(
   ${result.nextContinuationToken === undefined ? "" : `<NextContinuationToken>${escapeXml(result.nextContinuationToken)}</NextContinuationToken>`}
   ${contents}
 </ListBucketResult>`;
+}
+
+function versionsXml(bucket: string, prefix: string, versions: readonly ObjectVersion[]): string {
+  const entries = versions
+    .map((version) =>
+      version.deleteMarker
+        ? `<DeleteMarker>
+        <Key>${escapeXml(version.key)}</Key>
+        <VersionId>${escapeXml(version.versionId)}</VersionId>
+        <IsLatest>${version.isLatest}</IsLatest>
+        <LastModified>${version.lastModified.toISOString()}</LastModified>
+      </DeleteMarker>`
+        : `<Version>
+        <Key>${escapeXml(version.key)}</Key>
+        <VersionId>${escapeXml(version.versionId)}</VersionId>
+        <IsLatest>${version.isLatest}</IsLatest>
+        <LastModified>${version.lastModified.toISOString()}</LastModified>
+        <ETag>${escapeXml(version.etag)}</ETag>
+        <Size>${version.size}</Size>
+        <StorageClass>STANDARD</StorageClass>
+      </Version>`,
+    )
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>${escapeXml(bucket)}</Name>
+  <Prefix>${escapeXml(prefix)}</Prefix>
+  <MaxKeys>1000</MaxKeys>
+  <IsTruncated>false</IsTruncated>
+  ${entries}
+</ListVersionsResult>`;
 }
 
 function renderObjects(objects: readonly StoredObject[]): string {
@@ -202,6 +235,20 @@ export function createS3Handler(options: S3MockOptions): (request: Request) => P
       }
 
       const prefix = url.searchParams.get("prefix") ?? "";
+
+      if (url.searchParams.has("versions")) {
+        return cors(
+          new Response(
+            versionsXml(
+              options.bucket,
+              prefix,
+              await options.store.listVersions(options.bucket, prefix),
+            ),
+            { headers: { "content-type": "application/xml" } },
+          ),
+        );
+      }
+
       const result = await options.store.list(options.bucket, {
         prefix,
         maxKeys: Number(url.searchParams.get("max-keys") ?? "1000"),
@@ -218,7 +265,11 @@ export function createS3Handler(options: S3MockOptions): (request: Request) => P
     }
 
     if (request.method === "GET" || request.method === "HEAD") {
-      const object = await options.store.get(options.bucket, key);
+      const versionId = url.searchParams.get("versionId");
+      const object =
+        versionId === null
+          ? await options.store.get(options.bucket, key)
+          : await options.store.getVersion(options.bucket, key, versionId);
 
       if (object === null) {
         return s3Error("NoSuchKey", "The specified key does not exist", 404);
@@ -253,7 +304,10 @@ export function createS3Handler(options: S3MockOptions): (request: Request) => P
       const copySource = request.headers.get("x-amz-copy-source");
 
       if (copySource !== null) {
-        const source = decodeURIComponent(copySource).replace(/^\/+/, "");
+        // `/<bucket>/<key>[?versionId=<id>]` restores a previous version onto the key.
+        const [sourcePath = "", sourceQuery = ""] = copySource.split("?");
+        const sourceVersion = new URLSearchParams(sourceQuery).get("versionId");
+        const source = decodeURIComponent(sourcePath).replace(/^\/+/, "");
         const slash = source.indexOf("/");
         const sourceBucket = slash === -1 ? source : source.slice(0, slash);
         const sourceKey = slash === -1 ? "" : source.slice(slash + 1);
@@ -262,7 +316,10 @@ export function createS3Handler(options: S3MockOptions): (request: Request) => P
           return s3Error("NoSuchBucket", "Unknown copy source bucket", 404);
         }
 
-        const original = await options.store.get(options.bucket, sourceKey);
+        const original =
+          sourceVersion === null
+            ? await options.store.get(options.bucket, sourceKey)
+            : await options.store.getVersion(options.bucket, sourceKey, sourceVersion);
 
         if (original === null) {
           return s3Error("NoSuchKey", "Copy source does not exist", 404);

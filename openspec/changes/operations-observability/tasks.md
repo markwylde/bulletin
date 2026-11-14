@@ -17,9 +17,9 @@
 ## 4. Backups and docs
 
 - [x] 4.1 Write `docs/ops/restore.md` (PITR, S3 versioning, reconciliation) and `docs/ops/deploy.md` (CDN requirements, PgBouncer transaction mode, direct LISTEN connections, connection budgets, plugin cluster option)
-- [ ] 4.2 Implement the missing-object listing in the staff app and the reconciliation trigger after restore; integration test for the missing-object scenario
+- [x] 4.2 Implement the missing-object listing in the staff app and the reconciliation trigger after restore; integration test for the missing-object scenario
 - [ ] 4.3 Implement the restore drill script for staging, and run it once
-- [ ] 4.4 Erasure journal replay on restore (before readiness), with an integration test for the erasure-after-backup scenario
+- [x] 4.4 Erasure journal replay on restore (before readiness), with an integration test for the erasure-after-backup scenario
 
 ## 5. Strings
 

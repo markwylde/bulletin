@@ -51,7 +51,8 @@
     "./themes/css": "./src/themes/css.ts",
     "./plugins": "./src/plugins/index.ts",
     "./plugins/identifiers": "./src/plugins/identifiers.ts",
-    "./plugins/namespace": "./src/plugins/namespace.ts"
+    "./plugins/namespace": "./src/plugins/namespace.ts",
+    "./operations": "./src/operations/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
