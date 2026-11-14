@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { GLOBAL_CACHE_TAGS, memberTag, postTag, readTagVersion, topicTag } from "@bulletin/cache";
+import {
+  GLOBAL_CACHE_TAGS,
+  memberTag,
+  postReactionsTag,
+  postTag,
+  readTagVersion,
+  topicTag,
+} from "@bulletin/cache";
 import { currentContentVersions } from "@bulletin/content";
 import {
   ERASURE_STEPS,
@@ -1194,6 +1201,136 @@ integrationDescribe("member erasure", () => {
     expect(journalKeyFor("7", accepted)).toBe(journalKeyFor("7", accepted));
     expect(new Set([journalKeyFor("7", accepted), journalKeyFor("8", accepted)]).size).toBe(2);
   });
+
+  test("does not recreate reputation for an erased member from retained reactions", async () => {
+    await withDb("privacy_erasure_reputation", async (database) => {
+      const fixture = await createFixtures(database);
+      const storage = createStorage();
+      await database.sql`
+        INSERT INTO core.board_settings (id, board_name)
+        VALUES (1, 'Erasure board')
+        ON CONFLICT (id) DO NOTHING
+      `;
+      await database.sql`
+        UPDATE core.board_settings SET reactions_affect_reputation = true WHERE id = 1
+      `;
+      const [reaction] = (await database.sql`
+        SELECT id::text AS id FROM core.reactions WHERE key = 'erase_like'
+      `) as Array<{ id: string }>;
+
+      if (reaction === undefined) {
+        throw new Error("Could not find the reaction");
+      }
+
+      await database.sql`UPDATE core.reactions SET weight = 1 WHERE id = ${reaction.id}`;
+      // Another member's reaction survives on the post the erased member keeps anonymised.
+      await database.sql`
+        INSERT INTO core.post_reactions (post_id, member_id, reaction_id)
+        VALUES (${fixture.postId}, ${fixture.otherId}, ${reaction.id})
+      `;
+      const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+      if (request === null) {
+        throw new Error("erasure request was not created");
+      }
+
+      await approveErasure(database, fixture, request.requestId);
+      const completed = await runErasureJob(database.sql, storage.storage, request.requestId, {
+        pluginErase: async () => ({ ok: true }),
+      });
+      expect(completed?.memberId).toBe(fixture.memberId);
+
+      const [entries] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.reputation_entries
+        WHERE source = 'reaction' AND receiver_id = ${fixture.memberId}
+      `) as Array<{ count: number }>;
+      expect(entries?.count).toBe(0);
+
+      const [retained] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.post_reactions
+        WHERE post_id = ${fixture.postId} AND member_id = ${fixture.otherId}
+      `) as Array<{ count: number }>;
+      expect(retained?.count).toBe(1);
+    });
+  }, 120_000);
+
+  test("recomputes reaction summaries atomically when the step is interrupted", async () => {
+    await withDb("privacy_erasure_reactions", async (database) => {
+      const fixture = await createFixtures(database);
+      const storage = createStorage();
+      const [reaction] = (await database.sql`
+        SELECT id::text AS id FROM core.reactions WHERE key = 'erase_like'
+      `) as Array<{ id: string }>;
+
+      if (reaction === undefined) {
+        throw new Error("Could not find the reaction");
+      }
+
+      // Two reactions on the other member's post: the erased member's and one that stays.
+      await database.sql`
+        INSERT INTO core.post_reactions (post_id, member_id, reaction_id)
+        VALUES (${fixture.mentionPostId}, ${fixture.memberId}, ${reaction.id}),
+               (${fixture.mentionPostId}, ${fixture.otherId}, ${reaction.id})
+      `;
+      const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+      if (request === null) {
+        throw new Error("erasure request was not created");
+      }
+
+      await approveErasure(database, fixture, request.requestId);
+      await database.sql.unsafe(`
+        CREATE OR REPLACE FUNCTION core.test_fail_reaction_summary() RETURNS trigger
+        LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.id = ${fixture.mentionPostId}::bigint
+             AND NEW.reaction_summary IS DISTINCT FROM OLD.reaction_summary THEN
+            RAISE EXCEPTION 'reaction summary interrupted';
+          END IF;
+          RETURN NEW;
+        END;
+        $$
+      `);
+      await database.sql.unsafe(`
+        CREATE TRIGGER test_fail_reaction_summary
+        BEFORE UPDATE ON core.posts
+        FOR EACH ROW EXECUTE FUNCTION core.test_fail_reaction_summary()
+      `);
+
+      try {
+        await expect(
+          runErasureJob(database.sql, storage.storage, request.requestId, {
+            pluginErase: async () => ({ ok: true }),
+          }),
+        ).rejects.toThrow(/interrupted/);
+      } finally {
+        await database.sql.unsafe(
+          "DROP TRIGGER IF EXISTS test_fail_reaction_summary ON core.posts",
+        );
+        await database.sql.unsafe("DROP FUNCTION IF EXISTS core.test_fail_reaction_summary()");
+      }
+
+      const afterFailure = (await database.sql`
+        SELECT count(*)::int AS count FROM core.post_reactions
+        WHERE member_id = ${fixture.memberId} AND post_id = ${fixture.mentionPostId}
+      `) as Array<{ count: number }>;
+      expect(afterFailure[0]?.count).toBe(1);
+
+      const tagBefore = await readTagVersion(database.sql, postReactionsTag(fixture.mentionPostId));
+      const retried = await runErasureJob(database.sql, storage.storage, request.requestId, {
+        pluginErase: async () => ({ ok: true }),
+      });
+      expect(retried?.memberId).toBe(fixture.memberId);
+
+      const [post] = (await database.sql`
+        SELECT reaction_summary FROM core.posts WHERE id = ${fixture.mentionPostId}
+      `) as Array<{ reaction_summary: Record<string, number> }>;
+      expect(post?.reaction_summary).toEqual({ [reaction.id]: 1 });
+      expect(
+        Number(await readTagVersion(database.sql, postReactionsTag(fixture.mentionPostId))),
+      ).toBeGreaterThan(Number(tagBefore));
+    });
+  }, 120_000);
 
   test("can delete posts instead of keeping them anonymised", async () => {
     await withDb("privacy_erasure_delete_posts", async (database) => {

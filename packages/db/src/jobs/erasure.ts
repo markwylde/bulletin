@@ -4,6 +4,7 @@ import {
   forumTag,
   GLOBAL_CACHE_TAGS,
   memberTag,
+  postReactionsTag,
   postSnapshotsTag,
   postTag,
   topicPagesTag,
@@ -438,16 +439,27 @@ export async function runErasureJob(
   });
 
   await runStep(sql, requestId, "reactions", completed, async () => {
-    const posts = (await sql`
-      SELECT DISTINCT post_id::text AS post_id
-      FROM core.post_reactions WHERE member_id = ${memberId}
-    `) as Array<{ post_id: string }>;
+    // The deletion, every summary update and the cache bumps commit together. A failure
+    // half-way therefore rolls the deletion back, and a retry still knows the affected posts.
+    await sql.begin(async (tx) => {
+      const posts = (await tx`
+        SELECT DISTINCT post_id::text AS post_id
+        FROM core.post_reactions WHERE member_id = ${memberId}
+      `) as Array<{ post_id: string }>;
 
-    await sql`DELETE FROM core.post_reactions WHERE member_id = ${memberId}`;
+      await tx`DELETE FROM core.post_reactions WHERE member_id = ${memberId}`;
 
-    for (const post of posts) {
-      await recomputeReactionSummary(sql, post.post_id);
-    }
+      for (const post of posts) {
+        await recomputeReactionSummary(tx, post.post_id);
+      }
+
+      if (posts.length > 0) {
+        await bumpCacheTags(
+          tx,
+          posts.map((post) => postReactionsTag(post.post_id)),
+        );
+      }
+    });
   });
 
   await runStep(sql, requestId, "reputation", completed, async () => {

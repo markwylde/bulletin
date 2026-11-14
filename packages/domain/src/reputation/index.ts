@@ -398,13 +398,13 @@ export async function recountMemberReputation(
   });
 }
 
-/** Rebuilds reaction entries, routing each receiver's opt-out through `can()` (ADR 0005). */
+/** Rebuilds reaction entries, routing each receiver's opt-out and member state through `canReceiveReputation` (ADR 0005, 0012). */
 export async function rebuildReactionEntries(tx: SQL): Promise<void> {
   const receivers = await listReactionReceivers(tx);
   const allowed: string[] = [];
 
   for (const receiverId of receivers) {
-    if (await can(tx, receiverId, "receive_reputation")) {
+    if (await canReceiveReputation(tx, receiverId)) {
       allowed.push(receiverId);
     }
   }

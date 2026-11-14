@@ -412,6 +412,99 @@ integrationDescribe("retention sweep", () => {
     });
   }, 60_000);
 
+  test("purges rejected and cancelled export archives after an upload", async () => {
+    await withDb("retention_rejected_exports", async (database) => {
+      const now = new Date();
+      const storage = recordingStorage();
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name) VALUES ('Retention Rejected')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [admin] = (await database.sql`
+        INSERT INTO core.members (display_name) VALUES ('Retention Reviewer')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined || admin === undefined) {
+        throw new Error("Could not create rejected-export fixtures");
+      }
+
+      await database.sql`
+        INSERT INTO core.member_groups (member_id, group_id, is_primary)
+        SELECT ${admin.id}, id, true FROM core.groups WHERE key = 'administrators'
+      `;
+      const staffToken = "retention-staff-token";
+      await database.sql`
+        INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at, last_auth_at)
+        VALUES (
+          ${admin.id}, 'staff', sha256(convert_to(${staffToken}, 'UTF8')),
+          now() + interval '1 day', now()
+        )
+      `;
+      const [rejected] = (await database.sql`
+        INSERT INTO pii.data_requests (
+          member_id, kind, status, export_key, export_started_at, created_at
+        ) VALUES (
+          ${member.id}, 'export', 'processing', 'export/rejected.zip',
+          ${daysAgo(now, 2)}, ${daysAgo(now, 3)}
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [cancelled] = (await database.sql`
+        INSERT INTO pii.data_requests (
+          member_id, kind, status, export_key, export_started_at, created_at
+        ) VALUES (
+          ${member.id}, 'export', 'cancelled', 'export/cancelled.zip',
+          ${daysAgo(now, 2)}, ${daysAgo(now, 3)}
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (rejected === undefined || cancelled === undefined) {
+        throw new Error("Could not create rejected-export requests");
+      }
+
+      // Staff rejects the export after the archive upload reserved its key.
+      await database.sql`
+        SELECT pii.update_data_request(
+          ${staffToken}, ${rejected.id}, 'reject', 'Rejected after upload'
+        )
+      `;
+      const [rejectedState] = (await database.sql`
+        SELECT status, export_key FROM pii.data_requests WHERE id = ${rejected.id}
+      `) as Array<{ status: string; export_key: string | null }>;
+      expect(rejectedState).toMatchObject({
+        status: "rejected",
+        export_key: "export/rejected.zip",
+      });
+
+      storage.failing.add("export/rejected.zip");
+      const first = await runRetention(database.sql, storage.storage, { now });
+      expect(first.exportFailures).toBe(1);
+      expect(first.exportsDeleted).toBe(1);
+      expect(storage.deleted).toContain("export/cancelled.zip");
+
+      const [stillThere] = (await database.sql`
+        SELECT export_key FROM pii.data_requests WHERE id = ${rejected.id}
+      `) as Array<{ export_key: string | null }>;
+      expect(stillThere?.export_key).toBe("export/rejected.zip");
+
+      storage.failing.clear();
+      const retried = await runRetention(database.sql, storage.storage, { now });
+      expect(retried.exportFailures).toBe(0);
+      expect(retried.exportsDeleted).toBe(1);
+      expect(storage.deleted).toContain("export/rejected.zip");
+
+      const rows = (await database.sql`
+        SELECT id::text AS id, export_key FROM pii.data_requests ORDER BY id
+      `) as Array<{ id: string; export_key: string | null }>;
+      expect(rows).toEqual([
+        { id: rejected.id, export_key: null },
+        { id: cancelled.id, export_key: null },
+      ]);
+    });
+  }, 60_000);
+
   test("runs as the worker role", async () => {
     await withDb("retention_worker", async (database) => {
       const now = new Date();

@@ -191,6 +191,37 @@ async function createFixtures(database: TestDatabase): Promise<ExportFixtures> {
   await database.sql`
     INSERT INTO core.followed_members (follower_id, followed_id) VALUES (${member.id}, ${other.id})
   `;
+  await database.sql`
+    INSERT INTO core.drafts (member_id, context_key, body_md)
+    VALUES (${member.id}, 'new-topic:1', 'Seeded draft body')
+  `;
+  await database.sql`
+    INSERT INTO core.friendships (a_member_id, b_member_id, state, requested_by)
+    VALUES (${member.id}, ${other.id}, 'accepted', ${member.id})
+  `;
+  const [poll] = (await database.sql`
+    INSERT INTO core.polls (topic_id) VALUES (${topic.id}) RETURNING id::text AS id
+  `) as Array<{ id: string }>;
+  const [question] = (await database.sql`
+    INSERT INTO core.poll_questions (poll_id, prompt)
+    VALUES (${poll?.id}, 'Seeded poll prompt') RETURNING id::text AS id
+  `) as Array<{ id: string }>;
+  const [choice] = (await database.sql`
+    INSERT INTO core.poll_choices (poll_id, question_id, label)
+    VALUES (${poll?.id}, ${question?.id}, 'Seeded poll choice') RETURNING id::text AS id
+  `) as Array<{ id: string }>;
+
+  if (poll === undefined || question === undefined || choice === undefined) {
+    throw new Error("Could not create export poll");
+  }
+
+  await database.sql`
+    INSERT INTO core.poll_votes (poll_id, member_id) VALUES (${poll.id}, ${member.id})
+  `;
+  await database.sql`
+    INSERT INTO core.poll_vote_choices (poll_id, member_id, question_id, choice_id)
+    VALUES (${poll.id}, ${member.id}, ${question.id}, ${choice.id})
+  `;
   const [reason] = (await database.sql`
     INSERT INTO core.warning_reasons (key, points, expiry_days)
     VALUES ('export_reason', 2, 30)
@@ -284,12 +315,16 @@ integrationDescribe("member data export", () => {
         expect.arrayContaining([
           "attachments.json",
           "conversations.json",
+          "drafts.json",
           "follows.json",
+          "friendships.json",
           "manifest.json",
           "plugins/sample-plugin.json",
+          "polls.json",
           "posts.json",
           "profile.json",
           "reactions.json",
+          "requests.json",
           "restricted.json",
           "settings.json",
           "warnings.json",
@@ -304,6 +339,12 @@ integrationDescribe("member data export", () => {
       expect(strFromU8(files["conversations.json"] ?? new Uint8Array())).toContain(
         "Conversation body",
       );
+      expect(strFromU8(files["drafts.json"] ?? new Uint8Array())).toContain("Seeded draft body");
+      expect(strFromU8(files["friendships.json"] ?? new Uint8Array())).toContain("Other Member");
+      expect(strFromU8(files["polls.json"] ?? new Uint8Array())).toContain("Seeded poll prompt");
+      expect(strFromU8(files["polls.json"] ?? new Uint8Array())).toContain("Seeded poll choice");
+      expect(strFromU8(files["requests.json"] ?? new Uint8Array())).toContain(requestId);
+      expect(strFromU8(files["requests.json"] ?? new Uint8Array())).toContain('"kind": "export"');
       expect(strFromU8(files["restricted.json"] ?? new Uint8Array())).toContain(
         "export@example.test",
       );

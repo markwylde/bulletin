@@ -94,6 +94,10 @@ export async function buildMemberExport(
     conversations,
     messages,
     reactions,
+    drafts,
+    friendships,
+    pollVotes,
+    pollChoices,
     attachments,
   ] = await Promise.all([
     sql`
@@ -220,6 +224,43 @@ export async function buildMemberExport(
       ORDER BY pr.created_at, pr.post_id
     ` as Promise<unknown[]>,
     sql`
+      SELECT context_key, body_md, updated_at
+      FROM core.drafts
+      WHERE member_id = ${memberId}
+      ORDER BY context_key
+    ` as Promise<unknown[]>,
+    sql`
+      SELECT f.state, f.requested_by::text AS requested_by, f.created_at,
+        other.id::text AS member_id, other.display_name
+      FROM core.friendships f
+      JOIN core.members other
+        ON other.id = CASE
+          WHEN f.a_member_id = ${memberId} THEN f.b_member_id
+          ELSE f.a_member_id
+        END
+      WHERE f.a_member_id = ${memberId} OR f.b_member_id = ${memberId}
+      ORDER BY f.created_at, other.id
+    ` as Promise<unknown[]>,
+    sql`
+      SELECT v.poll_id::text AS poll_id, v.created_at,
+        p.topic_id::text AS topic_id, t.title AS topic_title,
+        t.slug AS topic_slug, t.forum_id::text AS forum_id
+      FROM core.poll_votes v
+      JOIN core.polls p ON p.id = v.poll_id
+      JOIN core.topics t ON t.id = p.topic_id
+      WHERE v.member_id = ${memberId}
+      ORDER BY v.created_at, v.poll_id
+    ` as Promise<unknown[]>,
+    sql`
+      SELECT vc.poll_id::text AS poll_id, vc.question_id::text AS question_id,
+        q.prompt, vc.choice_id::text AS choice_id, c.label
+      FROM core.poll_vote_choices vc
+      JOIN core.poll_questions q ON q.id = vc.question_id
+      JOIN core.poll_choices c ON c.id = vc.choice_id
+      WHERE vc.member_id = ${memberId}
+      ORDER BY vc.poll_id, q.position, q.id, c.position, c.id
+    ` as Promise<unknown[]>,
+    sql`
       SELECT id::text AS id, filename, verified_type, size_bytes, storage_key, created_at
       FROM core.attachments
       WHERE member_id = ${memberId}
@@ -311,6 +352,37 @@ export async function buildMemberExport(
     }
   }
 
+  const choicesByPoll = new Map<string, unknown[]>();
+
+  for (const choice of pollChoices as Array<Record<string, unknown>>) {
+    const pollId = typeof choice.poll_id === "string" ? choice.poll_id : "";
+    const choices = choicesByPoll.get(pollId) ?? [];
+    choices.push({
+      question_id: choice.question_id,
+      prompt: choice.prompt,
+      choice_id: choice.choice_id,
+      label: choice.label,
+    });
+    choicesByPoll.set(pollId, choices);
+  }
+
+  const polls: unknown[] = [];
+  for (const vote of pollVotes as Array<Record<string, unknown>>) {
+    const forumId = typeof vote.forum_id === "string" ? vote.forum_id : null;
+    const allowed = await readable(forumId, "read");
+    const pollId = typeof vote.poll_id === "string" ? vote.poll_id : "";
+    polls.push({
+      poll_id: vote.poll_id,
+      topic_id: vote.topic_id,
+      topic_title: allowed ? vote.topic_title : null,
+      topic_slug: allowed ? vote.topic_slug : null,
+      created_at: vote.created_at,
+      choices: choicesByPoll.get(pollId) ?? [],
+    });
+  }
+
+  const ownRequests = Array.isArray(restricted.dataRequests) ? restricted.dataRequests : [];
+
   const directory = await mkdtemp(join(tmpdir(), "bulletin-export-"));
   const path = join(directory, "export.zip");
   const writer = Bun.file(path).writer();
@@ -368,6 +440,10 @@ export async function buildMemberExport(
     add("posts.json", jsonBytes({ posts: visiblePosts, revisions }));
     add("conversations.json", jsonBytes({ conversations, messages }));
     add("reactions.json", jsonBytes({ reactions: visibleReactions }));
+    add("drafts.json", jsonBytes({ drafts }));
+    add("friendships.json", jsonBytes({ friendships }));
+    add("polls.json", jsonBytes({ votes: polls }));
+    add("requests.json", jsonBytes({ requests: ownRequests }));
     add("warnings.json", jsonBytes({ warnings }));
     add("restricted.json", jsonBytes(restricted));
     const attachmentMetadata: Array<Record<string, unknown>> = [];

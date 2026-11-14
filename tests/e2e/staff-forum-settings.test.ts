@@ -77,6 +77,8 @@ integrationDescribe("staff forum settings, prefixes and announcements", () => {
 
       await view.navigate(`${STAFF_URL}/forums/prefixes`);
       await waitForSelector(view, '[data-page="prefixes"]');
+      // The editor renders only after the prefixes query resolves.
+      await waitForSelector(view, '[data-prefix-field="key"]', 20_000);
       const stamp = Date.now();
       const key = `e2e_prefix_${stamp}`;
       await setInputValue(view, '[data-prefix-field="key"]', key);
