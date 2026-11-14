@@ -142,9 +142,12 @@ const ARCH_SYSCALLS: Readonly<Record<SandboxArch, Readonly<Record<string, number
     // ppoll, dup3, epoll_pwait, getdents64, ...), so none adds a capability.
     access: 21,
     arch_prctl: 158,
+    chmod: 90,
+    creat: 85,
     dup2: 33,
     epoll_create: 213,
     epoll_wait: 232,
+    eventfd: 284,
     getdents: 78,
     lstat: 6,
     mkdir: 83,
@@ -156,6 +159,8 @@ const ARCH_SYSCALLS: Readonly<Record<SandboxArch, Readonly<Record<string, number
     rmdir: 84,
     select: 23,
     stat: 4,
+    // Bun links /tmp/bun-node-*/node to itself at startup.
+    symlink: 88,
     time: 201,
     unlink: 87,
     clone3: 435,

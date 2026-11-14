@@ -87,6 +87,9 @@ describe("seccomp profile", () => {
     // Bun sets up thread-local storage with arch_prctl on x86_64; without it the sandbox
     // dies with SIGSYS before the broker handshake.
     expect(buildSeccompPolicy("x64")).toContain("#define SYS_arch_prctl 158");
+    // Bun creates /tmp/bun-node-*/node with symlink(2) on x86_64; a killed main thread left
+    // the plugin hung before its handshake.
+    expect(buildSeccompPolicy("x64")).toContain("#define SYS_symlink 88");
     expect(buildSeccompPolicy("arm64")).not.toContain("arch_prctl");
   });
 
