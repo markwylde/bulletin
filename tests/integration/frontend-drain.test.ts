@@ -41,8 +41,22 @@ integrationDescribe("frontend SIGTERM drain", () => {
     });
     servers.push(stalledApi);
 
+    // A free port, not a fixed one: concurrent CI runs share the host network.
+    const probe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() });
+    const port = probe.port;
+    probe.stop(true);
+    const origin = `http://127.0.0.1:${port}`;
+
     const child = Bun.spawn(
-      ["bun", "node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", "4410"],
+      [
+        "bun",
+        "node_modules/vite/bin/vite.js",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        String(port),
+        "--strictPort",
+      ],
       {
         cwd: fileURLToPath(new URL("../../apps/staff-app", import.meta.url)),
         env: {
@@ -50,15 +64,20 @@ integrationDescribe("frontend SIGTERM drain", () => {
           STAFF_API_INTERNAL_URL: `http://127.0.0.1:${stalledApi.port}`,
           BULLETIN_DRAIN_TIMEOUT_MS: "100",
         },
-        stdout: "pipe",
+        // Never "pipe" an unread stream: a cold vite start logs enough to fill the pipe and block.
+        stdout: "ignore",
         stderr: "pipe",
       },
     );
 
     try {
-      await waitFor("http://127.0.0.1:4410/health/live");
+      await waitFor(`${origin}/health/live`).catch(async (error: unknown) => {
+        child.kill();
+        const stderr = await new Response(child.stderr).text();
+        throw new Error(`${error instanceof Error ? error.message : String(error)}\n${stderr}`);
+      });
 
-      const pending = fetch("http://127.0.0.1:4410/health/ready").catch(() => null);
+      const pending = fetch(`${origin}/health/ready`).catch(() => null);
       await Bun.sleep(50);
 
       child.kill("SIGTERM");

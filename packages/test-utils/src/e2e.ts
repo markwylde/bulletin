@@ -30,6 +30,15 @@ interface OpenPage {
   readonly ownsProfile: boolean;
 }
 
+/**
+ * Extra Chrome flags for CI containers. Chrome refuses to start as root with its sandbox on
+ * (container CI jobs run as root), and /dev/shm there is too small for its shared memory.
+ * Developer machines run as a normal user and keep the sandbox.
+ */
+function chromeArgv(): string[] {
+  return process.getuid?.() === 0 ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
+}
+
 /** Opens one page with error capture. The caller owns the process-wide view lifecycle. */
 async function openPage(options: PageOptions): Promise<OpenPage> {
   const viewport = resolveViewport(options.viewport);
@@ -38,7 +47,7 @@ async function openPage(options: PageOptions): Promise<OpenPage> {
   const ownsProfile = options.profileDirectory === undefined;
   const errors: string[] = [];
   const candidate = new Bun.WebView({
-    backend: { type: "chrome", url: false },
+    backend: { type: "chrome", url: false, argv: chromeArgv() },
     width: viewport.width,
     height: viewport.height,
     dataStore: { directory: profileDirectory },
