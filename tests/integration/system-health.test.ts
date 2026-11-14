@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { metrics } from "@bulletin/config/metrics";
 import { createPgBossQueue } from "@bulletin/db/events";
 import {
   baseSeedModule,
@@ -179,6 +180,9 @@ integrationDescribe("staff system health panel", () => {
         `;
 
         const admin = await createMember(database, "Health Admin", ["administrators"]);
+        // staff-api merges its own registry into the report; earlier tests in this Bun process
+        // record into the same registry, so start from zero.
+        metrics.resetValues();
         const allowed = await authorizeStaffRoute(healthRoute, context(staffSql, admin, targets));
         expect(allowed.status).toBe(200);
         const report = (await allowed.json()) as SystemHealthReport;
