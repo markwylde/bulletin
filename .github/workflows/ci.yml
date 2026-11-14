@@ -98,7 +98,8 @@ jobs:
           fi
 
       - name: Check the proxy is reachable
-        run: curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" "http://bulletin.localhost:$BULLETIN_HTTP_PORT/"
+        run: |
+          curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" "http://bulletin.localhost:$BULLETIN_HTTP_PORT/"
 
       - name: Measure sandbox spawn time and memory
         run: |
