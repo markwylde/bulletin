@@ -60,11 +60,12 @@ const auth = await createAuthService({
   onStaffLocaleChange: auditStaffLocaleChange,
 });
 
+const journalCheck = createJournalReadinessCheck(sql, storage);
 const checks = [
   createDatabaseCheck(sql),
   { name: "migrations", check: () => migrationsCurrent(sql) },
   listener,
-  createJournalReadinessCheck(sql, storage),
+  journalCheck,
 ];
 const purgeUrl = Bun.env.BULLETIN_CDN_PURGE_URL;
 const purge = purgeUrl === undefined ? undefined : createCdnPurger({ url: purgeUrl });
@@ -89,6 +90,8 @@ await startService({
     return api.handle(request);
   },
   checks,
+  // No staff request runs against restored, not yet re-erased data (ADR 0020, ADR 0012).
+  requestGates: [journalCheck],
   budget: {
     sql,
     service: "staff-api",

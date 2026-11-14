@@ -695,6 +695,7 @@
   "reputation.minPosts": "Necesitas al menos %s mensajes para dar reputación.",
   "reputation.negativeNotAllowed": "Tus grupos no pueden dar reputación negativa.",
   "reputation.ownPost": "No puedes dar reputación a tu propio mensaje.",
+  "restore.unavailable": "El foro se está restaurando desde una copia de seguridad y volverá en unos minutos.",
   "search.author.filter": "Solo contenido de {name}",
   "search.author.label": "Autor",
   "search.author.noMatch": "Ningún miembro coincide con ese nombre.",

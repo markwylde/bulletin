@@ -158,6 +158,8 @@ const auth = await createAuthService({
   translateFor: apiTranslator,
 });
 
+const journalCheck = createJournalReadinessCheck(sql, storage);
+
 await startService({
   service: "user-api",
   metricsPort: metricsPortFromEnv(),
@@ -1386,8 +1388,11 @@ await startService({
     createDatabaseCheck(sql),
     { name: "migrations", check: () => migrationsCurrent(sql) },
     listener,
-    createJournalReadinessCheck(sql, storage),
+    journalCheck,
   ],
+  // After a restore, sessions and keys erased since the restore point are back until the
+  // journal replay finishes; no request reaches a handler before then (ADR 0020, ADR 0012).
+  requestGates: [journalCheck],
   budget: {
     sql,
     service: "user-api",

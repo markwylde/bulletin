@@ -657,6 +657,7 @@
   "reputation.minPosts": "You need at least %s posts to give reputation.",
   "reputation.negativeNotAllowed": "Your groups cannot give negative reputation.",
   "reputation.ownPost": "You cannot give reputation to your own post.",
+  "restore.unavailable": "The board is being restored from a backup and will be back in a few minutes.",
   "search.author.filter": "Only content by {name}",
   "search.author.label": "Author",
   "search.author.noMatch": "No member matches that name.",

@@ -79,6 +79,41 @@ describe("shared service lifecycle", () => {
     });
   });
 
+  test("refuses public requests while a request gate is closed and keeps /health/* up", async () => {
+    let restored = false;
+    let dispatched = 0;
+    const { base } = await start({
+      service: "test",
+      port: 0,
+      fetch: () => {
+        dispatched += 1;
+        return new Response("ok");
+      },
+      checks: [{ name: "journal", check: () => restored }],
+      requestGates: [{ name: "journal", check: () => restored }],
+    });
+
+    for (const path of ["/", "/api/me", "/api/v1/forums"]) {
+      const refused = await fetch(`${base}${path}`, { headers: { cookie: "bl_session=x" } });
+      expect(refused.status).toBe(503);
+      expect(refused.headers.get("cache-control")).toBe("no-store");
+      expect(refused.headers.get("retry-after")).toBe("30");
+      expect(await refused.json()).toEqual({ code: "restoring" });
+    }
+
+    expect(dispatched).toBe(0);
+    expect((await fetch(`${base}/health/live`)).status).toBe(200);
+    expect((await fetch(`${base}/health/ready`)).status).toBe(503);
+
+    restored = true;
+    // A closed result is reused for a second, so a request flood is not a storage flood.
+    await Bun.sleep(1_100);
+    const served = await fetch(`${base}/api/me`);
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe("ok");
+    expect(dispatched).toBe(1);
+  });
+
   test("lets an in-flight request finish before shutdown resolves", async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {

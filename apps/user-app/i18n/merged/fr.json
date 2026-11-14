@@ -695,6 +695,7 @@
   "reputation.minPosts": "Vous avez besoin d’au moins %s messages pour donner de la réputation.",
   "reputation.negativeNotAllowed": "Vos groupes ne peuvent pas donner de réputation négative.",
   "reputation.ownPost": "Vous ne pouvez pas donner de réputation à votre propre message.",
+  "restore.unavailable": "Le forum est en cours de restauration depuis une sauvegarde et sera de retour dans quelques minutes.",
   "search.author.filter": "Uniquement le contenu de {name}",
   "search.author.label": "Auteur",
   "search.author.noMatch": "Aucun membre ne correspond à ce nom.",

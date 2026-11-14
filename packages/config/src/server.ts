@@ -7,6 +7,7 @@ import {
   connectionPoolSize,
   type ServiceName,
 } from "./connections.ts";
+import { createRequestGate, gateClosedResponse } from "./gate.ts";
 import { createLogger, type Logger } from "./log.ts";
 import {
   type MetricsRegistry,
@@ -40,6 +41,12 @@ export interface StartServiceOptions {
   readonly hostname?: string;
   readonly fetch: (request: Request) => Response | Promise<Response>;
   readonly checks?: readonly HealthCheck[];
+  /**
+   * Checks every non-health request waits on (ADR 0020): until each has passed, requests get
+   * a 503 with `Retry-After` and are never dispatched. Gates are one-way, like the erasure
+   * journal check, so a proxy that keeps routing during a restore cannot reach a handler.
+   */
+  readonly requestGates?: readonly HealthCheck[];
   readonly drainTimeoutMs?: number;
   readonly installSignalHandlers?: boolean;
   readonly budget?: ConnectionBudgetConfig;
@@ -250,6 +257,7 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
         });
 
   const logger = options.logger ?? createLogger({ service: options.service });
+  const gate = createRequestGate(options.requestGates ?? []);
   let draining = false;
   let active = 0;
   let idleResolve: (() => void) | undefined;
@@ -383,6 +391,10 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
 
       if (url.pathname === "/health/ready") {
         return secure(await readiness());
+      }
+
+      if (!(await gate.open())) {
+        return secure(gateClosedResponse());
       }
 
       active += 1;

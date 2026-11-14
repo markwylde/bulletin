@@ -12,7 +12,8 @@
     "./storage": "./src/storage.ts",
     "./env": "./src/env.ts",
     "./metrics": "./src/metrics.ts",
-    "./tracing": "./src/tracing.ts"
+    "./tracing": "./src/tracing.ts",
+    "./gate": "./src/gate.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

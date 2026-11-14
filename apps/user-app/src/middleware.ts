@@ -1,14 +1,17 @@
 import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
+import { createRequestGate, gateClosedResponse, type RequestGate } from "@bulletin/config/gate";
 import { routeLabel, standardMetrics } from "@bulletin/config/metrics";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
 import { withServerSpan } from "@bulletin/config/tracing";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
 import { embedProviderOrigins, listEmbedProviders } from "@bulletin/domain/content";
+import { createJournalReadinessCheck } from "@bulletin/domain/operations";
 import {
   BP_COOKIE_MAX_AGE_SECONDS,
   BP_COOKIE_NAME,
+  createServerT,
   DEFAULT_BP_THEME_ID,
   resolveRequestLocale,
   serializeBpCookie,
@@ -16,12 +19,14 @@ import {
 import type { APIContext, MiddlewareNext } from "astro";
 import { canViewOffline, readBoard } from "./board.ts";
 import { closeCacheRuntime } from "./cache-runtime.ts";
+import { USER_CATALOGS } from "./catalogs.ts";
 import { readSql } from "./db.ts";
 import { loadViewerFlags } from "./flags.ts";
 import { startUserAppMetrics } from "./observability.ts";
 import { offlinePage } from "./offline.ts";
 import { configuredPluginOrigin } from "./plugins/config.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
+import { storage } from "./storage.ts";
 import { resolveRequestTheme } from "./theme/request-theme.ts";
 
 const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
@@ -72,6 +77,35 @@ if (import.meta.env.DEV) {
       process.exit(0);
     });
   });
+}
+
+let restoreGate: RequestGate | undefined;
+
+/**
+ * After a restore, members erased since the restore point (and their sessions) are back in the
+ * database until the workers replay the erasure journal. The proxy keeps routing to user-app,
+ * so every request except `/health/*` is refused until the replay is done (ADR 0020, 0012).
+ */
+function journalGate(): RequestGate {
+  restoreGate ??= createRequestGate([createJournalReadinessCheck(readSql(), storage)]);
+  return restoreGate;
+}
+
+function restoringResponse(context: APIContext): Response {
+  if (!(context.request.headers.get("accept") ?? "").includes("text/html")) {
+    return gateClosedResponse();
+  }
+
+  const { locale } = resolveRequestLocale({
+    audience: "guest",
+    bp: parseCookieHeader(context.request.headers.get("cookie"))[BP_COOKIE_NAME] ?? null,
+    query: context.url.searchParams.get("lang"),
+    boardDefaultLocale: null,
+    acceptLanguage: context.request.headers.get("accept-language"),
+  });
+  const translate = createServerT(locale, { shipped: USER_CATALOGS });
+
+  return gateClosedResponse(translate("restore.unavailable"));
 }
 
 async function readiness(): Promise<{ status: number; body: unknown }> {
@@ -150,6 +184,10 @@ async function handle(context: APIContext, next: MiddlewareNext): Promise<Respon
 
       const result = await readiness();
       return secure(Response.json(result.body, { status: result.status }));
+    }
+
+    if (!(await journalGate().open())) {
+      return secure(restoringResponse(context));
     }
 
     const isNavigation =

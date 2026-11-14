@@ -86,7 +86,7 @@ When workers start against a restored database, they work through these steps **
 4. **List missing objects.** Ready attachments and current avatars whose object is gone are written to `core.missing_objects`. They appear in the staff app under **Overview → Missing files**. Downloading such an attachment returns `410 attachment_missing` with a readable message.
 5. Record the run in `core.restore_runs` and move the watermark to the restored timeline.
 
-Meanwhile **user-api, user-app (through user-api) and staff-api fail `/health/ready`**. Their `journal` check passes only once the entry named by `journal/HEAD` is in `core.erasure_journal_applied`. Load balancers therefore send no traffic until erasures are re-applied.
+Meanwhile **user-api, user-app (through user-api) and staff-api fail `/health/ready`**. Their `journal` check passes only once the entry named by `journal/HEAD` is in `core.erasure_journal_applied`. Load balancers therefore send no traffic until erasures are re-applied. A proxy that keeps routing anyway gets nothing either: every request except `/health/*` is answered with `503`, `Cache-Control: no-store` and `Retry-After: 30`, so a restored session or API key of an erased member is never served.
 
 A replay that fails, for example because plugin-host is not up yet, is retried with backoff. The board stays unready in the meantime. Watch the workers' logs for `restore.startup_failed`.
 

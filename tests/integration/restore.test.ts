@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { createLogger } from "@bulletin/config";
+import { startService } from "@bulletin/config/server";
 import {
   detectRestore,
   prepareAfterRestore,
@@ -423,6 +425,7 @@ integrationDescribe("restore: several journal entries", () => {
   let live: TestDatabase;
   const backupName = `bulletin_restore_multi_backup_${crypto.randomUUID().slice(0, 8)}`;
   const restoredName = `bulletin_restore_multi_restored_${crypto.randomUUID().slice(0, 8)}`;
+  const gateRestoredName = `bulletin_restore_multi_gate_${crypto.randomUUID().slice(0, 8)}`;
   const { server, storage } = storageFor();
   const requests: Array<{ memberId: string; requestId: string; key: string }> = [];
 
@@ -440,6 +443,12 @@ integrationDescribe("restore: several journal entries", () => {
         ${adminId}, 'staff', sha256(convert_to(${staffToken}, 'UTF8')),
         now() + interval '1 day', now()
       )
+    `;
+    // A bystander whose session is restored as well and must keep working after the replay.
+    const boId = await member(live.sql, "Bo Multi", ["members"]);
+    await live.sql`
+      INSERT INTO core.sessions (member_id, kind, token_hash, reauth_at)
+      VALUES (${boId}, 'user', sha256(convert_to('Bo Multi-token', 'UTF8')), now() + interval '1 day')
     `;
     const pending: Array<{ memberId: string; requestId: string }> = [];
 
@@ -482,10 +491,12 @@ integrationDescribe("restore: several journal entries", () => {
     await after.close();
     await afterWorkers.close();
     await copyDatabase(backupName, restoredName);
+    await copyDatabase(backupName, gateRestoredName);
   }, 120_000);
 
   afterAll(async () => {
     server.stop(true);
+    await dropDatabase(gateRestoredName);
     await dropDatabase(restoredName);
     await dropDatabase(backupName);
     await live?.drop();
@@ -538,6 +549,61 @@ integrationDescribe("restore: several journal entries", () => {
       `) as Array<{ live: number }>;
       expect(sessions[0]?.live).toBe(0);
     } finally {
+      await userApi.close();
+      await workers.close();
+    }
+  }, 120_000);
+
+  test("a restored credential gets 503 before the replay and is handled after it", async () => {
+    const restoredUrl = databaseUrl(gateRestoredName);
+    const userApi = new SQL(roleUrl(restoredUrl, "user_api"));
+    const workers = new SQL(roleUrl(restoredUrl, "workers"));
+    // A stand-in user-api: the real request gate, and a handler that trusts any live session.
+    const service = await startService({
+      service: "restore-gate",
+      port: 0,
+      hostname: "127.0.0.1",
+      installSignalHandlers: false,
+      logger: createLogger({ service: "restore-gate", sink: () => undefined }),
+      requestGates: [createJournalReadinessCheck(userApi, storage)],
+      async fetch(request) {
+        const token = request.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
+        const rows = (await userApi`
+          SELECT 1 FROM core.sessions
+          WHERE token_hash = sha256(convert_to(${token}, 'UTF8')) AND revoked_at IS NULL
+        `) as unknown[];
+
+        return rows.length > 0
+          ? Response.json({ ok: true })
+          : Response.json({ code: "unauthenticated" }, { status: 401 });
+      },
+    });
+    const base = `http://127.0.0.1:${service.server.port}`;
+    const call = (token: string) =>
+      fetch(`${base}/api/me`, { headers: { authorization: `Bearer ${token}` } });
+
+    try {
+      // Ann was erased after the backup; her restored session is live in the database.
+      const erased = await call("Ann Multi-token");
+      expect(erased.status).toBe(503);
+      expect(erased.headers.get("cache-control")).toBe("no-store");
+      expect(erased.headers.get("retry-after")).toBe("30");
+      expect((await call("Bo Multi-token")).status).toBe(503);
+      expect((await fetch(`${base}/health/live`)).status).toBe(200);
+
+      await prepareAfterRestore({
+        sql: workers,
+        storage,
+        erasure: { pluginErase },
+        reconcileGraceMs: 0,
+      });
+
+      // The gate rechecks at most once a second.
+      await Bun.sleep(1_100);
+      expect((await call("Bo Multi-token")).status).toBe(200);
+      expect((await call("Ann Multi-token")).status).toBe(401);
+    } finally {
+      await service.shutdown();
       await userApi.close();
       await workers.close();
     }
