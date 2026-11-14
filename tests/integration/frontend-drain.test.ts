@@ -71,7 +71,8 @@ integrationDescribe("frontend SIGTERM drain", () => {
     );
 
     try {
-      await waitFor(`${origin}/health/live`).catch(async (error: unknown) => {
+      // A cold vite start on a busy shared runner can take well over 20 s.
+      await waitFor(`${origin}/health/live`, 60_000).catch(async (error: unknown) => {
         child.kill();
         const stderr = await new Response(child.stderr).text();
         throw new Error(`${error instanceof Error ? error.message : String(error)}\n${stderr}`);
@@ -93,5 +94,5 @@ integrationDescribe("frontend SIGTERM drain", () => {
     } finally {
       child.kill();
     }
-  }, 45_000);
+  }, 90_000);
 });

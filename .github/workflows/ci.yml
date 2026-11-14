@@ -1,7 +1,11 @@
 name: CI
 
 on:
+  # Branches are tested through their pull request; pushing to a PR branch must not start a
+  # second, identical run (all runners share one Docker host and every E2E shard starts a
+  # full stack).
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -112,6 +116,10 @@ jobs:
       - name: Check the proxy is reachable
         run: |
           curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" "http://bulletin.localhost:$BULLETIN_HTTP_PORT/"
+          # The PWA icon is rendered by sharp's native build for this architecture.
+          curl -sS -o /tmp/icon.png -w "pwa icon: %{http_code} %{content_type} %{size_download} bytes\n" \
+            "http://bulletin.localhost:$BULLETIN_HTTP_PORT/pwa/icon-192.png"
+          head -c 8 /tmp/icon.png | od -An -tx1
 
       - name: Measure sandbox spawn time and memory
         if: matrix.shard == 0
