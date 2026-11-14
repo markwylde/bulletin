@@ -34,6 +34,8 @@ import { ReactionsPage } from "./reactions/ReactionsPage.tsx";
 import type { StaffSection } from "./sections.ts";
 import { BoardSettingsPage } from "./settings/BoardSettingsPage.tsx";
 import { StringOverridesPage } from "./strings/StringOverridesPage.tsx";
+import { MissingObjectsPage } from "./system/MissingObjectsPage.tsx";
+import { SystemHealthPage } from "./system/SystemHealthPage.tsx";
 import { ThemesPage } from "./themes/ThemesPage.tsx";
 import { WebhooksPage } from "./webhooks/WebhooksPage.tsx";
 
@@ -46,6 +48,8 @@ export const SECTION_ELEMENTS: Readonly<Record<string, ComponentType>> = {
   multimod: MultimodPage,
   warnings: WarningsPage,
   adminLog: AdminLogPage,
+  systemHealth: SystemHealthPage,
+  missingObjects: MissingObjectsPage,
   deadLetters: DeadLettersPage,
   boardSettings: BoardSettingsPage,
   privacyRetention: RetentionPage,

@@ -86,6 +86,22 @@ export const STAFF_SECTIONS: readonly StaffSection[] = [
     labelKey: "staff.nav.adminLog",
   },
   {
+    id: "systemHealth",
+    path: "/system/health",
+    navGroup: "overview",
+    permission: "acp.system",
+    icon: "events",
+    labelKey: "staff.nav.systemHealth",
+  },
+  {
+    id: "missingObjects",
+    path: "/system/missing-objects",
+    navGroup: "overview",
+    permission: "acp.system",
+    icon: "events",
+    labelKey: "staff.nav.missingObjects",
+  },
+  {
     id: "deadLetters",
     path: "/system/dead-letters",
     navGroup: "overview",

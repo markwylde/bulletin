@@ -124,7 +124,7 @@ integrationDescribe("plugin storage quota", () => {
 
     await withTestDatabase({ adminUrl, prefix: "plugin_quota_restart" }, async (database) => {
       const pluginId = uniquePluginId();
-      let plugin = await PluginDatabase.open({
+      const plugin = await PluginDatabase.open({
         adminUrl: database.url,
         pluginId,
         migrations: MIGRATIONS,

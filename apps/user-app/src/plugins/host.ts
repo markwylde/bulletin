@@ -1,3 +1,4 @@
+import { tracedFetch } from "@bulletin/config/tracing";
 import type { ViewerContext } from "@bulletin/plugin-sdk/hooks";
 
 /** Server-side client for plugin-host route and bridge calls. */
@@ -30,7 +31,7 @@ async function call(
 ): Promise<PluginRouteResponse> {
   const base = (options.url ?? Bun.env.PLUGIN_HOST_INTERNAL_URL ?? DEFAULT_URL).replace(/\/+$/, "");
   const token = options.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
-  const request = options.fetch ?? ((target, init) => globalThis.fetch(target, init));
+  const request = options.fetch ?? tracedFetch;
 
   try {
     const response = await request(`${base}${path}`, {

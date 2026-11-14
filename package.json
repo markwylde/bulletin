@@ -29,6 +29,7 @@
     "test:e2e": "bun scripts/run-e2e.ts",
     "test:db": "bun test tests/harness",
     "benchmark": "bun scripts/benchmark.ts",
+    "load-test": "bun scripts/load-test.ts",
     "search:benchmark": "bun scripts/search-benchmark.ts"
   },
   "devDependencies": {

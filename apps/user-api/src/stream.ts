@@ -1,3 +1,4 @@
+import { standardMetrics } from "@bulletin/config/metrics";
 import type { SessionRecord } from "@bulletin/domain/auth";
 import {
   maxConversationMessageId,
@@ -148,6 +149,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      standardMetrics.sseConnections.inc();
       let heartbeat: ReturnType<typeof setInterval> | undefined;
       let revalidate: ReturnType<typeof setInterval> | undefined;
       let reconcile: ReturnType<typeof setInterval> | undefined;
@@ -175,6 +177,7 @@ export async function streamResponse(options: StreamOptions): Promise<Response> 
         }
 
         closed = true;
+        standardMetrics.sseConnections.dec();
 
         if (heartbeat !== undefined) {
           clearInterval(heartbeat);

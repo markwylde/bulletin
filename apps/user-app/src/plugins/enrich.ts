@@ -1,3 +1,4 @@
+import { tracedFetch } from "@bulletin/config/tracing";
 import type { ViewerContext } from "@bulletin/plugin-sdk/hooks";
 
 /** Core client for view-model enrichers (ADR 0009). */
@@ -36,7 +37,7 @@ export async function enrichView(input: EnrichInput): Promise<Enrichment> {
 
   const url = configured.replace(/\/+$/, "");
   const token = input.token ?? Bun.env.PLUGIN_INTERNAL_TOKEN ?? DEFAULT_TOKEN;
-  const request = input.fetch ?? ((target, init) => globalThis.fetch(target, init));
+  const request = input.fetch ?? tracedFetch;
 
   try {
     const response = await request(`${url}/internal/enrich`, {

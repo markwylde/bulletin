@@ -1,14 +1,23 @@
-import { createLogger, loadConfig, loadStorageEnvironment, parseReplicas } from "@bulletin/config";
+import {
+  createLogger,
+  loadConfig,
+  loadStorageEnvironment,
+  metricsPortFromEnv,
+  parseReplicas,
+} from "@bulletin/config";
 import {
   createDatabaseCheck,
   createListenerCheck,
   createServiceSql,
+  listenSqlFromEnv,
   startService,
 } from "@bulletin/config/server";
+import { initTracing } from "@bulletin/config/tracing";
 import { syncFlagDefinitions } from "@bulletin/db/flags";
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import { createAuthService } from "@bulletin/domain/auth";
+import { createJournalReadinessCheck } from "@bulletin/domain/operations";
 import { GUEST_PRINCIPAL } from "@bulletin/domain/permissions";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
@@ -113,6 +122,7 @@ import {
 
 const config = loadConfig();
 const logger = createLogger({ service: "user-api", level: config.logLevel });
+initTracing({ service: "user-api" });
 const port = config.port;
 const databaseUrl = config.databaseUrl;
 const migrationUrl = Bun.env.MIGRATION_DATABASE_URL ?? databaseUrl;
@@ -129,10 +139,12 @@ await runBaseSeed({
 const sql = createServiceSql("user-api", databaseUrl);
 const flags = createUserApiFlags(sql);
 await syncFlagDefinitions(sql, CODE_FLAG_DEFINITIONS);
-const listener = await createListenerCheck(sql);
-const streamHub = await createStreamHub(sql);
+const listenSql = listenSqlFromEnv(sql);
+const listener = await createListenerCheck(sql, undefined, listenSql);
+const streamHub = await createStreamHub(listenSql);
 const auth = await createAuthService({
   sql,
+  listenSql,
   kind: "user",
   issuer: config.authIssuer,
   jwksUrl: config.authJwksUrl,
@@ -147,8 +159,12 @@ const auth = await createAuthService({
   translateFor: apiTranslator,
 });
 
+const journalCheck = createJournalReadinessCheck(sql, storage);
+
 await startService({
   service: "user-api",
+  metricsPort: metricsPortFromEnv(),
+  routes: API_ROUTES.map((route) => route.path),
   logger,
   port,
   async fetch(request) {
@@ -1374,7 +1390,11 @@ await startService({
     createDatabaseCheck(sql),
     { name: "migrations", check: () => migrationsCurrent(sql) },
     listener,
+    journalCheck,
   ],
+  // After a restore, sessions and keys erased since the restore point are back until the
+  // journal replay finishes; no request reaches a handler before then (ADR 0020, ADR 0012).
+  requestGates: [journalCheck],
   budget: {
     sql,
     service: "user-api",

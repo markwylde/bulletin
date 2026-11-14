@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { ConnectionBudgetError } from "./connections.ts";
 import { createLogger } from "./log.ts";
-import { createServiceSql, type RunningService, startService } from "./server.ts";
+import { METRIC_FAMILIES, metrics, parsePrometheusText } from "./metrics.ts";
+import { createServiceSql, listenSqlFromEnv, type RunningService, startService } from "./server.ts";
 
 const running: RunningService[] = [];
 
@@ -78,6 +79,89 @@ describe("shared service lifecycle", () => {
       checks: { database: false, listener: false },
     });
   });
+
+  test("refuses public requests while a request gate is closed and keeps /health/* up", async () => {
+    let restored = false;
+    let dispatched = 0;
+    const { base } = await start({
+      service: "test",
+      port: 0,
+      fetch: () => {
+        dispatched += 1;
+        return new Response("ok");
+      },
+      checks: [{ name: "journal", check: () => restored }],
+      requestGates: [{ name: "journal", check: () => restored }],
+    });
+
+    for (const path of ["/", "/api/me", "/api/v1/forums"]) {
+      const refused = await fetch(`${base}${path}`, { headers: { cookie: "bl_session=x" } });
+      expect(refused.status).toBe(503);
+      expect(refused.headers.get("cache-control")).toBe("no-store");
+      expect(refused.headers.get("retry-after")).toBe("30");
+      expect(await refused.json()).toEqual({ code: "restoring" });
+    }
+
+    expect(dispatched).toBe(0);
+    expect((await fetch(`${base}/health/live`)).status).toBe(200);
+    expect((await fetch(`${base}/health/ready`)).status).toBe(503);
+
+    restored = true;
+    // A closed result is reused for a second, so a request flood is not a storage flood.
+    await Bun.sleep(1_100);
+    const served = await fetch(`${base}/api/me`);
+    expect(served.status).toBe(200);
+    expect(await served.text()).toBe("ok");
+    expect(dispatched).toBe(1);
+  });
+
+  test("keeps request metric labels bounded under arbitrary paths and methods", async () => {
+    metrics.resetValues();
+    const { base } = await start({
+      service: "test",
+      port: 0,
+      routes: ["/api/items/:id"],
+      fetch: (request) => {
+        const { pathname } = new URL(request.url);
+
+        if (pathname.startsWith("/api/items/")) {
+          return new Response("ok");
+        }
+
+        // Authentication before routing: any /api path answers 401, so the status alone
+        // cannot tell a real route from a made-up one.
+        return pathname.startsWith("/api/")
+          ? new Response("unauthenticated", { status: 401 })
+          : new Response("not found", { status: 404 });
+      },
+    });
+
+    for (let index = 0; index < 300; index += 1) {
+      const tag = crypto.randomUUID().slice(0, 6);
+      await fetch(`${base}/x${index}/${tag}`);
+      await fetch(`${base}/api/k${index}-${tag}`, { method: index % 2 === 0 ? "GET" : "POST" });
+      await fetch(`${base}/api/items/${index}`);
+      await fetch(`${base}/api/items/${index}`, { method: `M${index}` }).catch(() => undefined);
+    }
+
+    const samples = parsePrometheusText(await metrics.expose()).filter(
+      (sample) => sample.name === `${METRIC_FAMILIES.requestDuration}_count`,
+    );
+    const routes = new Set(samples.map((sample) => sample.labels.route));
+    const methods = new Set(samples.map((sample) => sample.labels.method));
+
+    expect(routes.has("/api/items/:id")).toBe(true);
+    expect(routes.has("unmatched")).toBe(true);
+    expect(routes.size).toBeLessThanOrEqual(102);
+    expect(
+      [...methods].every((method) =>
+        ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "other"].includes(
+          method ?? "",
+        ),
+      ),
+    ).toBe(true);
+    metrics.resetValues();
+  }, 30_000);
 
   test("lets an in-flight request finish before shutdown resolves", async () => {
     let release: (() => void) | undefined;
@@ -227,5 +311,20 @@ describe("shared service lifecycle", () => {
     } finally {
       await sql.close();
     }
+  });
+});
+
+describe("listenSqlFromEnv (ADR 0003)", () => {
+  test("reuses the query client unless a direct LISTEN URL is configured", async () => {
+    const pool = new SQL("postgres://user@127.0.0.1:1/db", { max: 1 });
+
+    expect(listenSqlFromEnv(pool, {})).toBe(pool);
+    expect(listenSqlFromEnv(pool, { LISTEN_DATABASE_URL: " " })).toBe(pool);
+    const direct = listenSqlFromEnv(pool, {
+      LISTEN_DATABASE_URL: "postgres://user@127.0.0.1:2/db",
+    });
+    expect(direct).not.toBe(pool);
+    await direct.close();
+    await pool.close();
   });
 });

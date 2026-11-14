@@ -1,4 +1,5 @@
 import type { Logger } from "@bulletin/config";
+import { tracedFetch } from "@bulletin/config/tracing";
 import { advancePluginsGeneration, PluginCircuitBreaker } from "@bulletin/domain/plugins";
 import type { SQL } from "bun";
 
@@ -64,7 +65,7 @@ async function readJobs(sql: SQL): Promise<readonly PluginJob[]> {
 }
 
 export async function createPluginJobs(options: PluginJobOptions): Promise<PluginJobs> {
-  const request = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
+  const request = options.fetch ?? tracedFetch;
   const jobs: PluginJob[] = [];
   const started: string[] = [];
   const breaker = new PluginCircuitBreaker({

@@ -1,7 +1,9 @@
 import { clientIp } from "@bulletin/domain/auth";
 import { requireFlag } from "@bulletin/flags";
+import { createServerT } from "@bulletin/i18n";
 import type { APIRoute } from "astro";
 import { attachmentDownloadResponse } from "../../attachments/download.ts";
+import { USER_CATALOGS } from "../../catalogs.ts";
 import { readSql } from "../../db.ts";
 import { createUserFlags, loadFlagViewer } from "../../flags.ts";
 import { requestHasSession } from "../../http/cache.ts";
@@ -38,7 +40,7 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
     const preview = new URL(request.url).searchParams.get("preview") === "1";
     const viewerKey = guestViewerKey(request);
 
-    return attachmentDownloadResponse({
+    const response = await attachmentDownloadResponse({
       sql,
       storage,
       session:
@@ -49,5 +51,20 @@ export const GET: APIRoute = async ({ params, locals, request }) => {
       ...(viewerKey === undefined ? {} : { guestViewerKey: viewerKey }),
       conversationsEnabled: runtime.isOn(viewer, "conversations"),
     });
+
+    // A browser following a link gets a readable explanation rather than a JSON code.
+    if (response.status === 410 && (request.headers.get("accept") ?? "").includes("text/html")) {
+      const translate = createServerT(locals.locale ?? "en", { shipped: USER_CATALOGS });
+
+      return new Response(translate("attachment.missing"), {
+        status: 410,
+        headers: {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "private, no-store",
+        },
+      });
+    }
+
+    return response;
   });
 };

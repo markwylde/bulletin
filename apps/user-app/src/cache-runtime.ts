@@ -5,6 +5,7 @@ import {
   type TagVersionSource,
   type TagVersions,
 } from "@bulletin/cache";
+import { listenSqlFromEnv } from "@bulletin/config/server";
 import type { SQL } from "bun";
 
 export interface CacheRuntime {
@@ -124,11 +125,16 @@ export function createCacheRuntime(options: CacheRuntimeOptions): CacheRuntimeCo
 }
 
 let controller: CacheRuntimeController | null = null;
+let listenSql: SQL | undefined;
 
 /** The process-wide render cache; created on first use and retried until connected. */
 export function cacheRuntime(sql: SQL): Promise<CacheRuntime> {
   controller ??= createCacheRuntime({
-    connect: () => createTagVersions({ sql }),
+    connect: () => {
+      // One dedicated LISTEN client per process (ADR 0003), reused across reconnects.
+      listenSql ??= listenSqlFromEnv(sql, process.env);
+      return createTagVersions({ sql, listenSql });
+    },
     onUnavailable: (error) => {
       console.warn("[cache] tag listener unavailable; bypassing the render cache", error);
     },

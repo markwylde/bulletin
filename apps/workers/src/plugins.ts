@@ -1,4 +1,5 @@
 import type { Logger } from "@bulletin/config";
+import { tracedFetch } from "@bulletin/config/tracing";
 import type { StoredEvent } from "@bulletin/domain/events";
 import type { SQL } from "bun";
 
@@ -106,7 +107,7 @@ async function readSubscriptions(sql: SQL): Promise<readonly PluginSubscription[
 export async function createPluginEventJobs(
   options: PluginEventJobsOptions,
 ): Promise<PluginEventJobs> {
-  const request = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
+  const request = options.fetch ?? tracedFetch;
   const started: string[] = [];
   let subscriptions: readonly PluginSubscription[] = [];
 

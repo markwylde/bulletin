@@ -1,23 +1,32 @@
 import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
+import { createRequestGate, gateClosedResponse, type RequestGate } from "@bulletin/config/gate";
+import { methodLabel, standardMetrics, UNMATCHED_ROUTE } from "@bulletin/config/metrics";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
+import { withServerSpan } from "@bulletin/config/tracing";
 import { parseCookieHeader } from "@bulletin/domain/auth";
 import { reauthRedirectUrl, shouldRedirectToReauth } from "@bulletin/domain/auth/silent";
 import { embedProviderOrigins, listEmbedProviders } from "@bulletin/domain/content";
+import { createJournalReadinessCheck } from "@bulletin/domain/operations";
 import {
   BP_COOKIE_MAX_AGE_SECONDS,
   BP_COOKIE_NAME,
+  createServerT,
   DEFAULT_BP_THEME_ID,
   resolveRequestLocale,
   serializeBpCookie,
 } from "@bulletin/i18n";
+import type { APIContext, MiddlewareNext } from "astro";
 import { canViewOffline, readBoard } from "./board.ts";
 import { closeCacheRuntime } from "./cache-runtime.ts";
+import { USER_CATALOGS } from "./catalogs.ts";
 import { readSql } from "./db.ts";
 import { loadViewerFlags } from "./flags.ts";
+import { startUserAppMetrics } from "./observability.ts";
 import { offlinePage } from "./offline.ts";
 import { configuredPluginOrigin } from "./plugins/config.ts";
 import { closeSessionReadPool, currentSessionContext } from "./session.ts";
+import { storage } from "./storage.ts";
 import { resolveRequestTheme } from "./theme/request-theme.ts";
 
 const userApiUrl = process.env.USER_API_INTERNAL_URL ?? "http://user-api:3001";
@@ -29,6 +38,8 @@ const filesOrigin =
   `http://files.bulletin.localhost:${process.env.BULLETIN_HTTP_PORT ?? "8080"}`;
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const drain = import.meta.env.DEV ? createDrainController() : null;
+
+startUserAppMetrics();
 
 // Astro's own asset endpoints are not pages. `/_demo/*` is a page and must go through the
 // session, locale and board logic below, so the bare "/_" prefix is deliberately absent.
@@ -68,6 +79,35 @@ if (import.meta.env.DEV) {
   });
 }
 
+let restoreGate: RequestGate | undefined;
+
+/**
+ * After a restore, members erased since the restore point (and their sessions) are back in the
+ * database until the workers replay the erasure journal. The proxy keeps routing to user-app,
+ * so every request except `/health/*` is refused until the replay is done (ADR 0020, 0012).
+ */
+function journalGate(): RequestGate {
+  restoreGate ??= createRequestGate([createJournalReadinessCheck(readSql(), storage)]);
+  return restoreGate;
+}
+
+function restoringResponse(context: APIContext): Response {
+  if (!(context.request.headers.get("accept") ?? "").includes("text/html")) {
+    return gateClosedResponse();
+  }
+
+  const { locale } = resolveRequestLocale({
+    audience: "guest",
+    bp: parseCookieHeader(context.request.headers.get("cookie"))[BP_COOKIE_NAME] ?? null,
+    query: context.url.searchParams.get("lang"),
+    boardDefaultLocale: null,
+    acceptLanguage: context.request.headers.get("accept-language"),
+  });
+  const translate = createServerT(locale, { shipped: USER_CATALOGS });
+
+  return gateClosedResponse(translate("restore.unavailable"));
+}
+
 async function readiness(): Promise<{ status: number; body: unknown }> {
   try {
     const response = await fetch(`${userApiUrl}/health/ready`);
@@ -82,6 +122,41 @@ async function readiness(): Promise<{ status: number; body: unknown }> {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  const started = performance.now();
+  let status = 500;
+
+  // Astro's matched route pattern is bounded; a path no route matched never becomes a label.
+  const route = context.routePattern || UNMATCHED_ROUTE;
+  const method = methodLabel(context.request.method);
+
+  try {
+    const response = await withServerSpan(
+      context.request,
+      `${method} ${route}`,
+      async (span) => {
+        const result = await handle(context, next);
+        span.setAttribute("http.response.status_code", result.status);
+        return result;
+      },
+      { "http.route": route, "service.name": "user-app" },
+    );
+    status = response.status;
+    return response;
+  } finally {
+    if (!context.url.pathname.startsWith("/health/")) {
+      standardMetrics.requestDuration.observe(
+        {
+          route,
+          method,
+          status: String(status),
+        },
+        (performance.now() - started) / 1_000,
+      );
+    }
+  }
+});
+
+async function handle(context: APIContext, next: MiddlewareNext): Promise<Response> {
   const finish = drain?.track();
   const nonce = createCspNonce();
   context.locals.cspNonce = nonce;
@@ -111,6 +186,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
       const result = await readiness();
       return secure(Response.json(result.body, { status: result.status }));
+    }
+
+    if (!(await journalGate().open())) {
+      return secure(restoringResponse(context));
     }
 
     const isNavigation =
@@ -278,4 +357,4 @@ export const onRequest = defineMiddleware(async (context, next) => {
   } finally {
     finish?.();
   }
-});
+}

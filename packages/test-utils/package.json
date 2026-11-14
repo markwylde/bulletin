@@ -11,13 +11,15 @@
     "./urls": "./src/urls.ts",
     "./cache-variants": "./src/cache-variants.ts",
     "./benchmark": "./src/benchmark.ts",
-    "./benchmark-routes": "./src/benchmark-routes.ts"
+    "./benchmark-routes": "./src/benchmark-routes.ts",
+    "./load-test": "./src/load-test.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@bulletin/cache": "workspace:*",
-    "@bulletin/db": "workspace:*"
+    "@bulletin/db": "workspace:*",
+    "@bulletin/config": "workspace:*"
   }
 }

@@ -1,3 +1,4 @@
+import { currentTraceparent } from "@bulletin/config/tracing";
 import type { SQL } from "bun";
 import { type DomainEvent, EVENT_CATALOG, type EventType } from "./catalog.ts";
 
@@ -53,13 +54,15 @@ export async function emit<T extends EventType>(tx: SQL, event: DomainEvent<T>):
       aggregate_type,
       aggregate_id,
       aggregate_version,
-      payload_ids
+      payload_ids,
+      trace_parent
     ) VALUES (
       ${event.type},
       ${catalogEntry.aggregateType},
       ${event.aggregateId},
       ${event.aggregateVersion},
-      ${serializeIds(event.payloadIds)}::jsonb
+      ${serializeIds(event.payloadIds)}::jsonb,
+      ${currentTraceparent()}
     )
     RETURNING id
   `) as Array<{ id: bigint | string }>;

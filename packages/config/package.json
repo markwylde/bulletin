@@ -10,9 +10,15 @@
     "./drain": "./src/drain.ts",
     "./security": "./src/security.ts",
     "./storage": "./src/storage.ts",
-    "./env": "./src/env.ts"
+    "./env": "./src/env.ts",
+    "./metrics": "./src/metrics.ts",
+    "./tracing": "./src/tracing.ts",
+    "./gate": "./src/gate.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.0"
   }
 }

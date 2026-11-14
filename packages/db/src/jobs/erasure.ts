@@ -13,6 +13,7 @@ import {
   topicTag,
 } from "@bulletin/cache";
 import type { Logger } from "@bulletin/config";
+import { tracedFetch } from "@bulletin/config/tracing";
 import { redactQuoteSnapshots } from "@bulletin/domain/content";
 import { recomputeReactionSummary } from "@bulletin/domain/reactions";
 import { recountTopic, refreshForumLastPost } from "@bulletin/domain/topics";
@@ -69,6 +70,12 @@ export interface ErasureJobOptions {
   readonly logger?: Logger;
   readonly now?: Date;
   readonly purge?: CdnPurger;
+  /**
+   * Set when the post-restore replay re-runs a journalled erasure: the entry already exists, so
+   * the journal step writes nothing. The replay records the entry as applied itself, once the
+   * erasure has completed, so services stay unready until then.
+   */
+  readonly journalReplayKey?: string;
 }
 
 export interface ErasureResult {
@@ -144,7 +151,7 @@ function pluginEraser(options: ErasureJobOptions) {
     }
 
     try {
-      const response = await fetch(`${options.pluginHostUrl}/internal/gdpr`, {
+      const response = await tracedFetch(`${options.pluginHostUrl}/internal/gdpr`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
@@ -368,6 +375,14 @@ export async function runErasureJob(
         await deleteObject(storage, avatarKey(memberId, hash, variant));
       }
     }
+
+    // Missing-object rows name the member's files; they go with the files (ADR 0012).
+    await sql`
+      DELETE FROM core.missing_objects
+      WHERE (kind = 'avatar' AND resource_id = ${memberId})
+         OR (kind = 'attachment' AND resource_id IN (
+               SELECT id FROM core.attachments WHERE member_id = ${memberId}))
+    `;
 
     if (attachments.length > 0) {
       await sql`DELETE FROM core.attachments WHERE member_id = ${memberId}`;
@@ -682,12 +697,25 @@ export async function runErasureJob(
         ? (fenceRow.fence as Record<string, unknown>)
         : {};
     const acceptedAt = typeof fence.acceptedAt === "string" ? new Date(fence.acceptedAt) : now;
+    if (options.journalReplayKey !== undefined) {
+      journalKey = options.journalReplayKey;
+      return;
+    }
+
     journalKey = journalKeyFor(requestId, acceptedAt);
+    // Applied first, then written: in normal operation every entry in storage is applied, so
+    // only a restore to an earlier point makes services wait for the replay (ADR 0020).
+    await sql`
+      INSERT INTO core.erasure_journal_applied (key, request_id)
+      VALUES (${journalKey}, ${requestId})
+      ON CONFLICT (key) DO NOTHING
+    `;
     await storage.put(
       journalKey,
       `${JSON.stringify({
         requestId,
         memberId,
+        postAction: info.postAction,
         completedAt: now.toISOString(),
         sessionIds: strings(fence.sessionIds),
         apiKeyIds: strings(fence.apiKeyIds),

@@ -896,10 +896,12 @@ integrationDescribe("member erasure", () => {
       expect(storage.deleted).toContain(avatarKey(fixture.memberId, "e".repeat(64), "lg"));
       expect(storage.deleted).toContain(fixture.exportKey);
 
-      const journalKeys = [...storage.objects.keys()].filter((key) =>
-        key.startsWith(fixture.journalPrefix),
+      const journalKeys = [...storage.objects.keys()].filter(
+        (key) => key.startsWith(fixture.journalPrefix) && key.endsWith(".json"),
       );
       expect(journalKeys).toHaveLength(1);
+      // No "newest entry" pointer: readiness checks every entry against the applied keys.
+      expect(storage.objects.has("journal/HEAD")).toBe(false);
       const journal = JSON.parse(
         new TextDecoder().decode(storage.objects.get(journalKeys[0] ?? "")),
       ) as Record<string, unknown>;

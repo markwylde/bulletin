@@ -1,3 +1,4 @@
+import { currentTraceparent, SpanKind, withSpan } from "@bulletin/config/tracing";
 import type { EventType } from "@bulletin/domain/events";
 import { type StoredEvent, toBigInt } from "@bulletin/domain/events";
 import type { SQL } from "bun";
@@ -37,6 +38,7 @@ interface EventRow {
   readonly aggregate_version: bigint | string;
   readonly payload_ids: unknown;
   readonly created_at: Date | string;
+  readonly trace_parent: string | null;
 }
 
 function parsePayloadIds(value: unknown): Record<string, string> {
@@ -84,7 +86,8 @@ export function createRelay(options: RelayOptions): { runOnce(): Promise<RelayRe
 
     await options.sql.begin(async (tx) => {
       const rows = (await tx`
-        SELECT id, type, aggregate_type, aggregate_id, aggregate_version, payload_ids, created_at
+        SELECT id, type, aggregate_type, aggregate_id, aggregate_version, payload_ids, created_at,
+               trace_parent
         FROM core.events
         WHERE published_at IS NULL
         ORDER BY id
@@ -95,68 +98,86 @@ export function createRelay(options: RelayOptions): { runOnce(): Promise<RelayRe
       for (const row of rows) {
         claimed += 1;
         const event = rowToEvent(row);
-        const subscribers = options.subscribers.filter((subscriber) => matches(subscriber, event));
-        let eventFailed = false;
+        // The relay span continues the trace of the write that emitted the event (ADR 0020).
+        await withSpan(
+          `outbox.relay ${event.type}`,
+          async () => {
+            const subscribers = options.subscribers.filter((subscriber) =>
+              matches(subscriber, event),
+            );
+            let eventFailed = false;
 
-        for (const subscriber of subscribers) {
-          await tx`
+            for (const subscriber of subscribers) {
+              await tx`
             INSERT INTO core.event_deliveries (event_id, subscriber)
             VALUES (${event.id}, ${subscriber.name})
             ON CONFLICT DO NOTHING
           `;
 
-          const deliveries = (await tx`
+              const deliveries = (await tx`
             SELECT enqueued_at
             FROM core.event_deliveries
             WHERE event_id = ${event.id} AND subscriber = ${subscriber.name}
           `) as Array<{ enqueued_at: Date | string | null }>;
 
-          const delivery = deliveries[0];
+              const delivery = deliveries[0];
 
-          if (delivery === undefined) {
-            eventFailed = true;
-            failed += 1;
-            continue;
-          }
+              if (delivery === undefined) {
+                eventFailed = true;
+                failed += 1;
+                continue;
+              }
 
-          if (delivery.enqueued_at !== null) {
-            continue;
-          }
+              if (delivery.enqueued_at !== null) {
+                continue;
+              }
 
-          try {
-            await options.queue.send(
-              queueName,
-              { eventId: event.id.toString(), subscriber: subscriber.name },
-              { singletonKey: `${event.id}:${subscriber.name}` },
-            );
+              try {
+                const traceparent = currentTraceparent();
+                await options.queue.send(
+                  queueName,
+                  {
+                    eventId: event.id.toString(),
+                    subscriber: subscriber.name,
+                    ...(traceparent === null ? {} : { traceparent }),
+                  },
+                  { singletonKey: `${event.id}:${subscriber.name}` },
+                );
 
-            await tx`
+                await tx`
               UPDATE core.event_deliveries
               SET enqueued_at = now()
               WHERE event_id = ${event.id} AND subscriber = ${subscriber.name}
             `;
 
-            await tx`
+                await tx`
               INSERT INTO core.job_cursors (subscriber, last_event_id)
               VALUES (${subscriber.name}, ${event.id})
               ON CONFLICT (subscriber) DO UPDATE SET
                 last_event_id = GREATEST(core.job_cursors.last_event_id, EXCLUDED.last_event_id),
                 updated_at = now()
             `;
-          } catch {
-            eventFailed = true;
-            failed += 1;
-          }
-        }
+              } catch {
+                eventFailed = true;
+                failed += 1;
+              }
+            }
 
-        if (!eventFailed) {
-          await tx`
+            if (!eventFailed) {
+              await tx`
             UPDATE core.events
             SET published_at = now()
             WHERE id = ${event.id}
           `;
-          published += 1;
-        }
+              published += 1;
+            }
+          },
+          {
+            kind: SpanKind.PRODUCER,
+            traceparent: row.trace_parent,
+            attributes: { "messaging.system": "pg-boss", "bulletin.event_id": event.id.toString() },
+          },
+        );
       }
     });
 

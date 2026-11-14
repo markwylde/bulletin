@@ -144,6 +144,11 @@ export function directSessionLookup(sql: SQL, now: () => Date = () => new Date()
 
 export interface CreateSessionStoreOptions {
   readonly sql: SQL;
+  /**
+   * The direct connection for LISTEN (ADR 0003); defaults to `sql`. Must not be a
+   * transaction-mode pooler, which drops LISTEN state between transactions.
+   */
+  readonly listenSql?: SQL;
   readonly now?: () => Date;
   /** Tests use 0 to bypass the cache; production keeps the 5 s fail-closed window. */
   readonly cacheTtlMs?: number;
@@ -159,8 +164,9 @@ export async function createSessionStore(
   const now = options.now ?? (() => new Date());
   const ttlMs = options.cacheTtlMs ?? CACHE_TTL_MS;
   const cache = new Map<string, { readonly record: SessionRecord; readonly expiresAt: number }>();
+  const listenSql = options.listenSql ?? options.sql;
   let listenerHealthy = false;
-  const subscription = await options.sql.listen(
+  const subscription = await listenSql.listen(
     "session_revoked",
     () => {
       cache.clear();
@@ -169,7 +175,7 @@ export async function createSessionStore(
       listenerHealthy = true;
     },
   );
-  const healthSubscription = await options.sql.listen(
+  const healthSubscription = await listenSql.listen(
     HEALTH_CHANNEL,
     () => {
       listenerHealthy = true;

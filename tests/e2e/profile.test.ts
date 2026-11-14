@@ -86,6 +86,13 @@ integrationDescribe("member profile page", () => {
         await view.navigate(USER_URL);
         await loginAs(view, "member-1");
 
+        // The server renders the save control disabled: a click before the client module has
+        // attached its handler must not fall back to a native form submission and reload.
+        const serverHtml = await view.evaluate<string>(
+          'fetch("/account/profile", { credentials: "same-origin" }).then((response) => response.text())',
+        );
+        expect(serverHtml).toMatch(/<button[^>]*data-profile-save[^>]*\sdisabled/);
+
         await view.navigate(new URL("/account/profile", USER_URL).toString());
         await waitForSelector(view, "[data-profile-edit-page]", 20_000);
         expect(await withinWidth(view)).toBe(true);

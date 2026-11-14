@@ -44,6 +44,17 @@ export interface StoredObjectSummary {
   readonly lastModified: Date;
 }
 
+/** One version of an object in a versioned bucket (ADR 0020: 35-day noncurrent expiry). */
+export interface ObjectVersionSummary {
+  readonly key: string;
+  readonly versionId: string;
+  readonly isLatest: boolean;
+  /** A delete marker: the key was deleted at `lastModified`; older versions remain. */
+  readonly deleteMarker: boolean;
+  readonly size: number;
+  readonly lastModified: Date;
+}
+
 export interface StorageClient {
   put(key: string, data: Uint8Array | string, options?: PutOptions): Promise<number>;
   /** Streams a file from disk to the bucket without loading it into the caller's memory. */
@@ -55,6 +66,10 @@ export interface StorageClient {
   /** Server-side `CopyObject`; the bytes never pass through the caller. */
   copy(sourceKey: string, destinationKey: string): Promise<void>;
   list(prefix: string): Promise<readonly StoredObjectSummary[]>;
+  /** `ListObjectVersions`, newest first per key. */
+  listVersions?(prefix: string): Promise<readonly ObjectVersionSummary[]>;
+  /** Makes a previous version current again with a server-side copy onto the same key. */
+  restoreVersion?(key: string, versionId: string): Promise<void>;
   presignGet(key: string, options?: PresignGetOptions): string;
   presignPut(key: string, options?: PresignPutOptions): string;
 }
@@ -78,6 +93,35 @@ function credentialsOf(config: StorageConfig): SigningCredentials {
     secretAccessKey: config.secretAccessKey,
     region: config.region ?? "us-east-1",
   };
+}
+
+function xmlText(block: string, tag: string): string {
+  const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(block);
+  return (match?.[1] ?? "")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&amp;", "&");
+}
+
+/** Parses a `ListVersionsResult` document (versions and delete markers). */
+export function parseVersionsXml(xml: string): ObjectVersionSummary[] {
+  const versions: ObjectVersionSummary[] = [];
+
+  for (const match of xml.matchAll(/<(Version|DeleteMarker)>([\s\S]*?)<\/\1>/g)) {
+    const block = match[2] ?? "";
+    versions.push({
+      key: xmlText(block, "Key"),
+      versionId: xmlText(block, "VersionId"),
+      isLatest: xmlText(block, "IsLatest") === "true",
+      deleteMarker: match[1] === "DeleteMarker",
+      size: Number(xmlText(block, "Size") || "0"),
+      lastModified: new Date(xmlText(block, "LastModified")),
+    });
+  }
+
+  return versions;
 }
 
 export function createStorage(config: StorageConfig): StorageClient {
@@ -138,6 +182,40 @@ export function createStorage(config: StorageConfig): StorageClient {
 
       if (!response.ok) {
         throw new Error(`CopyObject ${sourceKey} -> ${destinationKey} failed: ${response.status}`);
+      }
+    },
+
+    async listVersions(prefix) {
+      const url = new URL(
+        `${config.endpoint.replace(/\/+$/, "")}/${encodeURIComponent(config.bucket)}`,
+      );
+      url.searchParams.set("versions", "");
+      url.searchParams.set("prefix", prefix);
+      const response = await fetch(url, {
+        headers: signRequestHeaders({ method: "GET", url, credentials }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`ListObjectVersions ${prefix} failed: ${response.status}`);
+      }
+
+      return parseVersionsXml(await response.text());
+    },
+
+    async restoreVersion(key, versionId) {
+      const headers = signRequestHeaders({
+        method: "PUT",
+        url: objectUrl(config, key),
+        credentials,
+        headers: {
+          "x-amz-copy-source": `/${config.bucket}/${encodeKeyPath(key)}?versionId=${encodeURIComponent(versionId)}`,
+        },
+        payloadHash: Bun.CryptoHasher.hash("sha256", "").toString("hex"),
+      });
+      const response = await fetch(objectUrl(config, key), { method: "PUT", headers });
+
+      if (!response.ok) {
+        throw new Error(`Restoring ${key} version ${versionId} failed: ${response.status}`);
       }
     },
 

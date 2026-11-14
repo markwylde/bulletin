@@ -1,4 +1,5 @@
 import type { SQL } from "bun";
+import { recordCacheUntrusted } from "./render-metrics.ts";
 import {
   CACHE_TAG_NOTIFY_CHANNEL,
   GLOBAL_CACHE_TAGS,
@@ -18,6 +19,11 @@ export const PERM_BACKSTOP_MS = 1_000;
 
 export interface TagVersionsOptions {
   readonly sql: SQL;
+  /**
+   * The dedicated direct connection for LISTEN (ADR 0003): never a transaction-mode pooler.
+   * Defaults to `sql` when the deployment does not set `LISTEN_DATABASE_URL`.
+   */
+  readonly listenSql?: SQL;
   /** Heartbeat interval; tests shorten it; production keeps the 2 s from ADR 0006. */
   readonly heartbeatMs?: number;
   readonly heartbeatTimeoutMs?: number;
@@ -146,8 +152,9 @@ export async function createTagVersions(options: TagVersionsOptions): Promise<Ta
     void reload().catch(markDown);
   };
 
-  const tagSubscription = await options.sql.listen(tagChannel, onnotify, onlisten);
-  const healthSubscription = await options.sql.listen(healthChannel, markSignal, onlisten);
+  const listenSql = options.listenSql ?? options.sql;
+  const tagSubscription = await listenSql.listen(tagChannel, onnotify, onlisten);
+  const healthSubscription = await listenSql.listen(healthChannel, markSignal, onlisten);
 
   // The explicit initial load also covers a connection whose onlisten callback already ran.
   await connect();
@@ -155,6 +162,11 @@ export async function createTagVersions(options: TagVersionsOptions): Promise<Ta
   const heartbeat = setInterval(() => {
     if (closed) {
       return;
+    }
+
+    // ADR 0020: untrusted time is exported, since every second of it bypasses the LRU.
+    if (!connected || now() - lastSignalAt > heartbeatTimeoutMs) {
+      recordCacheUntrusted(heartbeatMs / 1_000);
     }
 
     void options.sql.notify(healthChannel, "1").catch(markDown);

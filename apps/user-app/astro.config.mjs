@@ -35,7 +35,8 @@ export default defineConfig({
   output: "server",
   adapter,
   // Bun's SQL client is a runtime global in the SSR build; never bundle it.
-  vite: { ssr: { external: ["bun"] } },
+  // The dev server answers the staff health panel on the internal compose hostname too.
+  vite: { ssr: { external: ["bun"] }, server: { allowedHosts: ["user-app"] } },
   // The dev toolbar injects a nonce-less inline script, which the strict CSP blocks.
   devToolbar: { enabled: false },
   integrations: [budgetGuard],

@@ -69,6 +69,8 @@ export function isCsrfExempt(method: string, pathname: string): boolean {
 
 export interface AuthServiceOptions extends AuthRouterOptions {
   readonly cacheTtlMs?: number;
+  /** The direct LISTEN connection for session revocation wake-ups (ADR 0003). */
+  readonly listenSql?: SQL;
   readonly testEndpoints?: boolean;
   /** Staff-only audit hook, called in the same transaction as a locale preference write. */
   readonly onStaffLocaleChange?: (sql: SQL, change: StaffLocaleChange) => Promise<void>;
@@ -166,6 +168,7 @@ async function readStaffSessionContext(sql: SQL, memberId: string): Promise<Staf
 export async function createAuthService(options: AuthServiceOptions): Promise<AuthService> {
   const sessions = await createSessionStore({
     sql: options.sql,
+    ...(options.listenSql === undefined ? {} : { listenSql: options.listenSql }),
     ...(options.cacheTtlMs === undefined ? {} : { cacheTtlMs: options.cacheTtlMs }),
   });
   const router = createAuthRouter({ ...options, sessions });

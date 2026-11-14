@@ -1,0 +1,103 @@
+name: Nightly
+
+on:
+  schedule:
+    # 02:30 UTC, after the day's merges.
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+# `shell: bash` runs steps as `bash -e -o pipefail`: a step that pipes (`… | tee log`) fails when
+# any command in the pipe fails, not only the last one (tests/architecture/workflow-pipefail).
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  load-test:
+    name: Capacity load test (SEED_SIZE=large)
+    # The capacity targets (ADR 0020) need dedicated hardware: shared runners are too noisy
+    # for p95 thresholds. The runner is labelled for this job only.
+    runs-on: [self-hosted, linux, x64, bulletin-load]
+    timeout-minutes: 120
+    env:
+      SEED_SIZE: large
+      COMPOSE_PROJECT_NAME: bulletin-nightly
+      BULLETIN_HTTP_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+
+      - name: Add local origins to /etc/hosts
+        run: |
+          grep -q "bulletin.localhost" /etc/hosts || \
+            echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
+            | sudo tee -a /etc/hosts
+
+      - name: Start the stack with the large seed
+        run: >-
+          docker compose -f compose.yaml -f compose.loadtest.yaml
+          up -d --build --wait --wait-timeout 3600
+
+      - name: Run the load test
+        run: >-
+          bun scripts/load-test.ts
+          --duration=600 --warmup=60
+          --metrics=http://127.0.0.1:19464/metrics,http://127.0.0.1:19465/metrics,http://127.0.0.1:19466/metrics,http://127.0.0.1:19467/metrics
+          --report=load-report.json
+          | tee load-report.txt
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-report
+          path: |
+            load-report.json
+            load-report.txt
+          if-no-files-found: ignore
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose -f compose.yaml -f compose.loadtest.yaml down -v
+
+  restore-drill:
+    name: Restore drill (local compose)
+    needs: load-test
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      COMPOSE_PROJECT_NAME: bulletin-drill
+      BULLETIN_HTTP_PORT: "8080"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+      - run: bun install --frozen-lockfile
+      - name: Add local origins to /etc/hosts
+        run: |
+          echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
+            | sudo tee -a /etc/hosts
+      - run: docker compose up -d --build --wait --wait-timeout 900
+      - run: bun scripts/restore-drill.ts --report=restore-drill.json
+      - name: Upload the drill report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: restore-drill
+          path: restore-drill.json
+          if-no-files-found: ignore
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

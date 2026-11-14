@@ -10,6 +10,7 @@ export * from "./leaderboards.ts";
 export * from "./maintenance.ts";
 export * from "./promotion.ts";
 export * from "./reputation.ts";
+export * from "./restore.ts";
 export * from "./retention.ts";
 export * from "./search.ts";
 export * from "./unfurl-images.ts";
