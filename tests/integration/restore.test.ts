@@ -610,6 +610,102 @@ integrationDescribe("restore: several journal entries", () => {
   }, 120_000);
 });
 
+integrationDescribe("restore: backup taken after the latest watermark", () => {
+  let live: TestDatabase;
+  const suffix = crypto.randomUUID().slice(0, 8);
+  const equalBackup = `bulletin_restore_equal_backup_${suffix}`;
+  const higherBackup = `bulletin_restore_higher_backup_${suffix}`;
+  const equalRestored = `bulletin_restore_equal_restored_${suffix}`;
+  const higherRestored = `bulletin_restore_higher_restored_${suffix}`;
+  const { server, storage } = storageFor();
+  const lostKey = `att/${"a".repeat(64)}`;
+  const orphanKey = `att/${"b".repeat(64)}`;
+  let attachmentId = "";
+
+  beforeAll(async () => {
+    live = await createTestDatabase({ adminUrl: adminUrl ?? "", prefix: "restore_marker" });
+    await runSeeds({
+      sql: live.sql,
+      registry: new SeedRegistry([baseSeedModule, permissionFixtureSeedModule]),
+    });
+    const ownerId = await member(live.sql, "Dee Marker", ["members"]);
+    const [attachment] = (await live.sql`
+      INSERT INTO core.attachments (
+        member_id, state, filename, declared_type, declared_bytes, quarantine_key,
+        storage_key, size_bytes, sha256, verified_type
+      ) VALUES (
+        ${ownerId}, 'ready', 'plan.txt', 'text/plain', 4, 'quarantine/dee',
+        ${lostKey}, 4, ${"a".repeat(64)}, 'text/plain'
+      )
+      RETURNING id::text AS id
+    `) as Array<{ id: string }>;
+    attachmentId = attachment?.id ?? "";
+    await storage.put(lostKey, "plan", { contentType: "text/plain" });
+    await live.sql`SELECT nextval('core.events_id_seq')`;
+
+    // The workers' latest minute watermark, then a backup at exactly that sequence.
+    const workers = new SQL(roleUrl(live.url, "workers"));
+    await writeRestoreWatermark(workers, storage);
+    await workers.close();
+    await live.sql.close();
+    await copyDatabase(live.name, equalBackup);
+
+    // Some writes later, still before the next watermark, a second backup.
+    const later = new SQL(live.url);
+    await later`SELECT nextval('core.events_id_seq')`;
+    await later`SELECT nextval('core.events_id_seq')`;
+    await later.close();
+    await copyDatabase(live.name, higherBackup);
+
+    // After both backups: the file is lost and an upload no restored row references appears.
+    await storage.delete(lostKey);
+    await storage.put(orphanKey, "orphan");
+    await copyDatabase(equalBackup, equalRestored);
+    await copyDatabase(higherBackup, higherRestored);
+  }, 120_000);
+
+  afterAll(async () => {
+    server.stop(true);
+
+    for (const name of [equalRestored, higherRestored, equalBackup, higherBackup]) {
+      await dropDatabase(name);
+    }
+
+    await live?.drop();
+  });
+
+  for (const [label, name] of [
+    ["equal to", () => equalRestored],
+    ["ahead of", () => higherRestored],
+  ] as const) {
+    test(`reconciles and lists missing files when the sequence is ${label} the watermark`, async () => {
+      await storage.put(orphanKey, "orphan");
+      const restoredUrl = databaseUrl(name());
+      const workers = new SQL(roleUrl(restoredUrl, "workers"));
+
+      try {
+        expect(await detectRestore(workers, storage)).toBe(false);
+        await prepareAfterRestore({
+          sql: workers,
+          storage,
+          erasure: { pluginErase },
+          reconcileGraceMs: 0,
+        });
+
+        expect(await storage.exists(orphanKey)).toBe(false);
+        const missing = (await workers`
+          SELECT kind, resource_id::text AS resource_id, storage_key FROM core.missing_objects
+        `) as Array<Record<string, string>>;
+        expect(missing).toEqual([
+          { kind: "attachment", resource_id: attachmentId, storage_key: lostKey },
+        ]);
+      } finally {
+        await workers.close();
+      }
+    }, 60_000);
+  }
+});
+
 describe("bucket versioning (35 days)", () => {
   test("a file deleted 3 days ago can be restored; one deleted 36 days ago cannot", async () => {
     let clock = Date.now();

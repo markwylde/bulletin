@@ -367,7 +367,11 @@ export async function runPostRestore(options: PostRestoreOptions): Promise<PostR
 
 /**
  * Workers startup, before the service reports ready: run the full post-restore sequence when a
- * restore is detected, and otherwise still replay any journal entry this database lacks.
+ * restore is detected. Otherwise still replay any journal entry this database lacks, and still
+ * reconcile storage and rescan for missing files: the watermark is written once a minute, so a
+ * backup taken after the latest write restores to a sequence equal to or ahead of it and is not
+ * detected. Reconciling on every start makes that case converge too; it is idempotent and keeps
+ * the job's grace for fresh uploads.
  */
 export async function prepareAfterRestore(
   options: JournalReplayOptions & { readonly reconcileGraceMs?: number },
@@ -378,6 +382,19 @@ export async function prepareAfterRestore(
   }
 
   const replay = await replayErasureJournal(options);
+  const reconciled = await runAttachmentReconciliation(options.sql, options.storage, {
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
+    ...(options.reconcileGraceMs === undefined ? {} : { graceMs: options.reconcileGraceMs }),
+  });
+  const missing = await scanMissingObjects(options.sql, options.storage);
   await writeRestoreWatermark(options.sql, options.storage);
+
+  if (reconciled.deleted > 0 || missing.missing > 0) {
+    options.logger?.warn("restore.startup_reconciled", {
+      removedObjects: reconciled.deleted,
+      missingObjects: missing.missing,
+    });
+  }
+
   return { restored: false, replayed: replay.replayed };
 }
