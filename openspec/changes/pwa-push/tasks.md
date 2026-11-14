@@ -15,7 +15,7 @@
 
 ## 3. Real-device checklist
 
-- [ ] 3.1 Write the real-device acceptance checklist (install, push, offline, editor input on iOS and Android) in `docs/qa/real-device.md` as a release checklist run by a person before each release; an agent completes this task by writing it, not by running it
+- [x] 3.1 Write the real-device acceptance checklist (install, push, offline, editor input on iOS and Android) in `docs/qa/real-device.md` as a release checklist run by a person before each release; an agent completes this task by writing it, not by running it
 
 ## 4. Strings and seed
 
