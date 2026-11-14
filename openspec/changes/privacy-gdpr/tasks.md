@@ -2,7 +2,7 @@
 
 ## 1. Inventory and access
 
-- [ ] 1.1 Write `docs/privacy/inventory.md`, add `@personal` comments to all existing personal columns, and build the CI checker; verify it fails on a planted unlisted column
+- [x] 1.1 Write `docs/privacy/inventory.md`, add `@personal` comments to all existing personal columns, and build the CI checker; verify it fails on a planted unlisted column
 - [x] 1.2 Add a test sweep proving every app role is denied direct access to every `pii` table, and to functions it has no grant for
 - [x] 1.3 Implement `pii.create_data_request`, `pii.list_data_requests`, `pii.update_data_request`, `pii.update_request_step` and `pii.read_access_log` with in-SQL actor checks (`core.has_acp`), plus role-denial tests for each
 
