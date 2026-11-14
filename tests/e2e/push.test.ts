@@ -132,15 +132,24 @@ integrationDescribe("push", () => {
       );
       expect(memberId).toMatch(/^\d+$/);
 
+      // The notification row is written asynchronously by the queued event worker. A freshly
+      // seeded stack or a full-suite run can have a backlog, so poll with a real deadline
+      // instead of assuming delivery within the first second.
       let notification: { readonly id: string; readonly href: string } | null = null;
-      for (let attempt = 0; attempt < 20 && notification === null; attempt += 1) {
+      const deadline = Date.now() + 120_000;
+
+      while (notification === null && Date.now() < deadline) {
         await view.navigate(`${USER_URL}/account/notifications`);
-        await Bun.sleep(500);
+        await waitForSelector(view, "[data-notifications-page]", 20_000);
         notification = await view.evaluate<{ id: string; href: string } | null>(`(() => {
           const link = [...document.querySelectorAll("[data-notification-link]")].find((candidate) => candidate.getAttribute("href") === ${JSON.stringify(`/conversations/${conversationId}`)});
           if (!(link instanceof HTMLAnchorElement)) return null;
           return { id: link.getAttribute("data-notification-link") ?? "", href: link.getAttribute("href") ?? "" };
         })()`);
+
+        if (notification === null) {
+          await Bun.sleep(1_000);
+        }
       }
 
       if (notification === null) {
@@ -256,11 +265,9 @@ integrationDescribe("push", () => {
 
       const expectedTitle =
         preview.t === "push.title.topicCreated" ? "Nouveau sujet" : "Nouvelle réponse";
-      await waitForExpression(
-        view,
-        `navigator.serviceWorker.ready.then((registration) => registration.active?.scriptURL.includes("l=fr") ?? false)`,
-        30_000,
-      );
+      // Another suite may briefly turn the pwa flag off while this page loads, in which case the
+      // registration script never runs. Reload until the worker is registered for French.
+      await waitForWorkerLocale(view, "fr");
       await deliverPush(view, { n: notification.id, t: preview.t });
       await Bun.sleep(1_000);
       await waitForExpression(
@@ -397,6 +404,31 @@ async function clickNotification(view: Bun.WebView, data: Record<string, unknown
       params: { expression, awaitPromise: true, returnByValue: true },
     }),
   });
+}
+
+/**
+ * The registration URL carries the member's locale. Feature-flag suites flip `pwa` off for a
+ * few seconds, and a page served in that window never runs the registration script, so reload
+ * with a real deadline instead of assuming the first page load registered the worker.
+ */
+async function waitForWorkerLocale(view: Bun.WebView, locale: string): Promise<void> {
+  const deadline = Date.now() + 120_000;
+
+  while (Date.now() < deadline) {
+    const active = await view.evaluate<boolean>(
+      `navigator.serviceWorker.getRegistration().then((registration) => registration?.active?.scriptURL.includes(${JSON.stringify(`l=${locale}`)}) ?? false)`,
+    );
+
+    if (active) {
+      return;
+    }
+
+    await Bun.sleep(2_000);
+    await view.navigate(`${USER_URL}/account/notifications`);
+    await waitForSelector(view, "[data-notifications-page]", 20_000);
+  }
+
+  throw new Error(`The service worker never registered for locale ${locale}`);
 }
 
 /** Headless Chrome denies notifications unless the browser target grants the origin. */

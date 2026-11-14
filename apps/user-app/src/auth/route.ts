@@ -22,6 +22,8 @@ export interface AuthRouteInput {
   readonly cache: RenderCache;
   /** Guest and member shells differ, so their ETags must too. */
   readonly shell?: ShellVariant;
+  /** Template flags for the page; the auth shells render every flag off by default. */
+  readonly renderFlags?: Readonly<Record<string, boolean>>;
 }
 
 interface AuthData {
@@ -62,7 +64,7 @@ export async function renderAuthRoute(input: AuthRouteInput): Promise<CachedPage
         locale: input.locale,
         translate: input.translate,
         template: input.template,
-        viewModel: {},
+        viewModel: { flags: input.renderFlags ?? {} },
         breadcrumbs: [],
         route: input.contract,
         pluginsGeneration: input.pluginsGeneration,

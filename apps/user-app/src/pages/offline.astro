@@ -48,6 +48,9 @@ const rendered =
     cache: runtime.cache,
     // The cached offline shell is shared by every visitor; no member state is rendered.
     shell: { visitor: "guest", localeSource: "guest" },
+    // Only the reconnect banner is useful here; the banner stays hidden until the live session
+    // confirms an identity, so the shared shell can still offer a member's queued draft.
+    renderFlags: { pwa: true },
   }));
 
 Astro.response.status = enabled ? 200 : 404;

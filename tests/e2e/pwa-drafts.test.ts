@@ -546,8 +546,27 @@ integrationDescribe("offline drafts", () => {
         await waitForSelector(view, "[data-offline-page]", 20_000);
         expect(await view.evaluate<boolean>("navigator.onLine")).toBe(false);
         expect(await draftCount(view)).toBe(1);
+        // Without a confirmed identity the shared shell may not offer the queued text.
+        expect(
+          await view.evaluate<boolean>(
+            "document.querySelector('[data-offline-drafts]')?.hidden === true",
+          ),
+        ).toBe(true);
 
+        // Reconnecting confirms the session, offers the draft and sends it after confirmation.
+        // The dev server's modules are not precached the way a deployment's hashed scripts are,
+        // so reopen the shell once the connection is back; the guest shell must still confirm
+        // the member before it shows their queued text.
         await setOffline(false);
+        await view.navigate(`${USER_URL}/offline`);
+        await waitForSelector(view, "[data-offline-page]", 20_000);
+        await waitForSelector(view, "[data-offline-drafts]:not([hidden])", 30_000);
+        await waitForText(view, "Your connection is back", 20_000);
+        await waitForSelector(view, "[data-offline-drafts-send]:not([disabled])", 20_000);
+        await clickSelector(view, "[data-offline-drafts-send]");
+        await waitForSelector(view, "[data-topic-page]", 30_000);
+        await waitForText(view, body, 20_000);
+        await waitForExpression(view, `(${IDB_COUNT})().then((count) => count === 0)`, 10_000);
       },
     );
   }, 300_000);

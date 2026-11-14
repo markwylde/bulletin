@@ -39,6 +39,14 @@ const element = banner();
 const memberIdFromShell = documentRoot.dataset.memberId ?? currentMemberId();
 const authPath = window.location.pathname.startsWith("/auth/");
 
+/**
+ * A member shell was rendered by the server for this navigation, so its identity is current.
+ * The offline page is always rendered as a guest, so a cached shell cannot be trusted until the
+ * live session confirms it.
+ */
+let identityConfirmed = documentRoot.dataset.visitor === "member";
+const initialMemberId = identityConfirmed ? memberIdFromShell : "";
+
 async function clearMemberDrafts(): Promise<void> {
   clearReauthDrafts();
   await clearOfflineDrafts();
@@ -48,6 +56,18 @@ async function claimMember(memberId: string): Promise<void> {
   if (claimReauthDrafts(memberId)) {
     await clearOfflineDrafts();
   }
+}
+
+function publishMember(memberId: string): void {
+  identityConfirmed = true;
+
+  if (memberId === "") {
+    delete documentRoot.dataset.memberId;
+  } else {
+    documentRoot.dataset.memberId = memberId;
+  }
+
+  window.dispatchEvent(new CustomEvent("bulletin:member", { detail: { memberId } }));
 }
 
 /**
@@ -77,6 +97,7 @@ async function confirmIdentity(): Promise<void> {
 
         if (payload?.code !== "reauth_required") {
           await clearMemberDrafts();
+          publishMember("");
         }
       }
 
@@ -89,25 +110,21 @@ async function confirmIdentity(): Promise<void> {
     };
 
     if (session.authenticated === true && typeof session.memberId === "string") {
-      documentRoot.dataset.memberId = session.memberId;
       await claimMember(session.memberId);
-      window.dispatchEvent(
-        new CustomEvent("bulletin:member", { detail: { memberId: session.memberId } }),
-      );
+      publishMember(session.memberId);
       return;
     }
 
     delete documentRoot.dataset.memberId;
     await clearMemberDrafts();
+    publishMember("");
   } catch {
     // Identity is unknown without a successful response; keep drafts for the next online visit.
   }
 }
 
-void confirmIdentity();
-
-if (element !== null && clientFlag("pwa") && documentRoot.dataset.visitor === "member") {
-  let memberId = memberIdFromShell;
+if (element !== null && clientFlag("pwa")) {
+  let memberId = initialMemberId;
   let drafts: readonly OfflineDraft[] = [];
   let sending = false;
 
@@ -123,7 +140,9 @@ if (element !== null && clientFlag("pwa") && documentRoot.dataset.visitor === "m
   };
 
   const refresh = async (): Promise<void> => {
-    drafts = memberId === "" ? [] : await listOfflineDrafts(memberId);
+    // The offline shell is a guest page: never show queued text until the live session says
+    // whose device this is (reviewer finding: reconnect never offered drafts).
+    drafts = identityConfirmed && memberId !== "" ? await listOfflineDrafts(memberId) : [];
     render();
   };
 
@@ -211,6 +230,7 @@ if (element !== null && clientFlag("pwa") && documentRoot.dataset.visitor === "m
     const detail = (event as CustomEvent<{ readonly memberId?: unknown }>).detail;
     const next = typeof detail?.memberId === "string" ? detail.memberId : "";
     memberId = next;
+    identityConfirmed = true;
 
     if (next === "") {
       void clearMemberDrafts();
@@ -224,6 +244,10 @@ if (element !== null && clientFlag("pwa") && documentRoot.dataset.visitor === "m
 
   void refresh();
 }
+
+// Run after the banner listeners exist: the response may confirm (or clear) the identity that
+// decides whether queued drafts may be shown.
+void confirmIdentity();
 
 /** The editor context for a submission form, so a queued draft belongs to the right editor. */
 export function draftContext(form: HTMLFormElement): string {

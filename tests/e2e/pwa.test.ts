@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  clickSelector,
   loginAs,
+  setInputValue,
   waitForExpression,
   waitForSelector,
   waitForText,
@@ -267,6 +269,49 @@ integrationDescribe("PWA", () => {
         await setOffline(false);
       },
     );
+  }, 180_000);
+
+  test("serves fresh theme CSS to an active worker after the guest changes theme", async () => {
+    // Reviewer finding: a cache-first /theme-css pinned the first theme until the worker
+    // version changed. The worker must revalidate the same URL and keep the cache for offline.
+    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+      await serviceWorkerReady(view);
+      const defaultCss = await view.evaluate<string>(
+        'fetch("/theme-css").then((response) => response.text())',
+      );
+      expect(defaultCss).not.toContain("border-block-start-color");
+
+      await view.evaluate(
+        'document.querySelector("[data-theme-footer]")?.scrollIntoView({ block: "center" })',
+      );
+      await waitForSelector(
+        view,
+        'bl-island[data-name="ThemeChooser"][data-hydrated="true"]',
+        20_000,
+      );
+      await waitForSelector(view, "[data-appearance-chooser]:not([hidden])", 20_000);
+      const sunset = await view.evaluate<string | null>(`(() => {
+        const select = document.querySelector("[data-appearance-theme]");
+        if (!(select instanceof HTMLSelectElement)) return null;
+        const option = [...select.options].find((entry) => entry.textContent?.trim() === "sunset");
+        return option?.value ?? null;
+      })()`);
+
+      if (sunset === null) {
+        throw new Error("The seeded sunset theme is not offered");
+      }
+
+      await setInputValue(view, "[data-appearance-theme]", sunset);
+      await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
+      await clickSelector(view, "[data-appearance-save]");
+      await waitForSelector(view, '[data-theme-footer][data-theme-variant="sunset"]', 20_000);
+
+      const sunsetCss = await view.evaluate<string>(
+        'fetch("/theme-css").then((response) => response.text())',
+      );
+      expect(sunsetCss).toContain("border-block-start-color");
+      expect(sunsetCss).not.toBe(defaultCss);
+    });
   }, 180_000);
 
   test("activates a new worker version and drops the previous shell cache", async () => {

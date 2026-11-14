@@ -22,8 +22,7 @@ describe("service worker source", () => {
 
   test("precaches only the shell, offline page and hashed client assets", () => {
     expect(source).toContain('"/offline"');
-    expect(source).toContain('"/theme-css"');
-    expect(source).toContain('const SHELL_ASSETS = ["/theme-css"]');
+    expect(source).toContain('const THEME_CSS_URL = "/theme-css"');
     expect(source).toContain('"/_astro/app-1.js"');
     expect(source).toContain('"/_astro/app-2.css"');
     expect(source).not.toContain("/not-an-asset.json");
@@ -33,9 +32,20 @@ describe("service worker source", () => {
     expect(source).toContain('request.mode === "navigate"');
     expect(source).toContain("networkWithOfflineFallback(request)");
     expect(source).toContain("caches.match(OFFLINE_URL)");
-    // No content cache path: only hashed assets and the precached theme CSS are cache-first.
+    // No content cache path: only hashed assets are cache-first; the theme stylesheet is
+    // network-first with the cached copy reserved for offline.
     expect(source).toContain("url.pathname.startsWith(ASSET_PREFIX)");
-    expect(source).toContain("SHELL_ASSETS.includes(url.pathname)");
+    expect(source).toContain("networkFirst(event, request, THEME_CSS_URL)");
+  });
+
+  test("keeps the theme stylesheet fresh for an active worker", () => {
+    // A preference change or a staff edit keeps the same URL, so the network must win and the
+    // cached copy may only serve an offline device (reviewer finding: stale /theme-css).
+    expect(source).toContain("async function networkFirst(event, request, cacheKey = request)");
+    expect(source).toContain("cache.put(cacheKey, response.clone())");
+    expect(source).toContain("caches.match(request)) ?? (await caches.match(cacheKey)");
+    expect(source).toContain('headers.get("cache-control")');
+    expect(source).toContain('includes("private")');
   });
 
   test("shows a content-free push after fetching an authenticated preview", () => {
