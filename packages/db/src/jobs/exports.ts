@@ -108,6 +108,14 @@ export async function runExportJob(
   `) as Array<{ member_id: string | null }>;
 
   if (started?.member_id === null || started?.member_id === undefined) {
+    const [intent] = (await sql`
+      SELECT pii.export_email_intent(${requestId}) AS id
+    `) as Array<{ id: string | null }>;
+
+    if (intent?.id !== null && intent?.id !== undefined && options.enqueueEmail !== undefined) {
+      await options.enqueueEmail(intent.id);
+    }
+
     return null;
   }
 
@@ -127,9 +135,18 @@ export async function runExportJob(
 
   const exportKey = `export/${crypto.randomUUID()}.zip`;
   const expiresAt = new Date(Date.now() + settings.exportDays * 24 * 60 * 60 * 1_000);
-  const sizeBytes = await storage.put(exportKey, bundle.bytes, {
-    contentType: "application/zip",
-  });
+  let sizeBytes: number;
+
+  try {
+    sizeBytes =
+      storage.putFile === undefined
+        ? await storage.put(exportKey, await Bun.file(bundle.path).bytes(), {
+            contentType: "application/zip",
+          })
+        : await storage.putFile(exportKey, bundle.path, { contentType: "application/zip" });
+  } finally {
+    await bundle.cleanup();
+  }
   const intentId = await sql.begin(async (tx) => {
     const [completed] = (await tx`
       SELECT pii.complete_export(${requestId}, ${exportKey}, ${expiresAt}) AS completed

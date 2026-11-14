@@ -155,7 +155,7 @@ export async function updateDataRequestResponse(
     !isRecord(body) ||
     typeof body.id !== "string" ||
     !/^\d+$/.test(body.id) ||
-    (body.action !== "process" && body.action !== "reject" && body.action !== "complete")
+    (body.action !== "process" && body.action !== "reject")
   ) {
     return json({ code: "invalid_request" }, 400);
   }

@@ -1,4 +1,11 @@
-import { bumpCacheTags, postSnapshotsTag } from "@bulletin/cache";
+import {
+  bumpCacheTags,
+  forumTag,
+  postSnapshotsTag,
+  postTag,
+  topicPagesTag,
+  topicTag,
+} from "@bulletin/cache";
 import type { Logger } from "@bulletin/config";
 import { redactQuoteSnapshots } from "@bulletin/domain/content";
 import { recomputeReactionSummary } from "@bulletin/domain/reactions";
@@ -287,6 +294,9 @@ export async function runErasureJob(
     const posts = (await sql`
       SELECT id::text AS id FROM core.posts WHERE author_id = ${memberId}
     `) as Array<{ id: string }>;
+    const messages = (await sql`
+      SELECT id::text AS id FROM core.conversation_messages WHERE author_id = ${memberId}
+    `) as Array<{ id: string }>;
 
     for (const post of posts) {
       await redactQuoteSnapshots(sql, { kind: "post", id: post.id });
@@ -304,12 +314,32 @@ export async function runErasureJob(
         posts.map((post) => postSnapshotsTag(post.id)),
       );
     }
+
+    if (messages.length > 0) {
+      await sql`
+        DELETE FROM core.quote_snapshots
+        WHERE source_kind = 'message'
+          AND (
+            source_author_id = ${memberId}
+            OR source_id = ANY(${`{${messages.map((message) => message.id).join(",")}}`}::bigint[])
+          )
+      `;
+    }
   });
 
   await runStep(sql, requestId, "attachments", completed, async () => {
     const [avatar] = (await sql`
       SELECT avatar_hash FROM core.members WHERE id = ${memberId}
     `) as Array<{ avatar_hash: string | null }>;
+    const queuedAvatars = (await sql`
+      SELECT avatar_hash FROM core.avatar_deletions WHERE member_id = ${memberId}
+    `) as Array<{ avatar_hash: string }>;
+    const avatarHashes = new Set([
+      ...(avatar?.avatar_hash === null || avatar?.avatar_hash === undefined
+        ? []
+        : [avatar.avatar_hash]),
+      ...queuedAvatars.map((row) => row.avatar_hash),
+    ]);
     const attachments = (await sql`
       SELECT quarantine_key, snapshot_key, storage_key
       FROM core.attachments WHERE member_id = ${memberId}
@@ -326,9 +356,9 @@ export async function runErasureJob(
 
     await deleteAttachmentObjects(storage, keys);
 
-    if (avatar?.avatar_hash !== null && avatar?.avatar_hash !== undefined) {
+    for (const hash of avatarHashes) {
       for (const variant of AVATAR_VARIANTS) {
-        await deleteObject(storage, avatarKey(memberId, avatar.avatar_hash ?? "", variant));
+        await deleteObject(storage, avatarKey(memberId, hash, variant));
       }
     }
 
@@ -342,48 +372,60 @@ export async function runErasureJob(
   });
 
   await runStep(sql, requestId, "posts", completed, async () => {
-    const posts = (await sql`
-      SELECT p.id::text AS id, p.topic_id::text AS topic_id, t.forum_id::text AS forum_id
-      FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
-      WHERE p.author_id = ${memberId}
-    `) as Array<{ id: string; topic_id: string; forum_id: string }>;
-    deletedPosts = posts.length;
+    await sql.begin(async (tx) => {
+      const posts = (await tx`
+        SELECT p.id::text AS id, p.topic_id::text AS topic_id, t.forum_id::text AS forum_id
+        FROM core.posts p JOIN core.topics t ON t.id = p.topic_id
+        WHERE p.author_id = ${memberId}
+      `) as Array<{ id: string; topic_id: string; forum_id: string }>;
+      deletedPosts = posts.length;
 
-    if (info.postAction === "delete") {
-      await sql`DELETE FROM core.posts WHERE author_id = ${memberId}`;
+      if (info.postAction === "delete") {
+        await tx`DELETE FROM core.posts WHERE author_id = ${memberId}`;
 
-      for (const topicId of new Set(posts.map((post) => post.topic_id))) {
-        await recountTopic(sql, topicId);
-      }
+        for (const topicId of new Set(posts.map((post) => post.topic_id))) {
+          await recountTopic(tx, topicId);
+        }
 
-      for (const forumId of new Set(posts.map((post) => post.forum_id))) {
-        await refreshForumLastPost(sql, forumId);
-      }
+        for (const forumId of new Set(posts.map((post) => post.forum_id))) {
+          await refreshForumLastPost(tx, forumId);
+        }
 
-      const byForum = new Map<string, number>();
-      for (const post of posts) {
-        byForum.set(post.forum_id, (byForum.get(post.forum_id) ?? 0) + 1);
-      }
+        const byForum = new Map<string, number>();
+        for (const post of posts) {
+          byForum.set(post.forum_id, (byForum.get(post.forum_id) ?? 0) + 1);
+        }
 
-      for (const [forumId, count] of byForum) {
-        await sql`
-          UPDATE core.forums
-          SET post_count = GREATEST(0, post_count - ${count}), updated_at = now()
-          WHERE id = ${forumId}
+        for (const [forumId, count] of byForum) {
+          await tx`
+            UPDATE core.forums
+            SET post_count = GREATEST(0, post_count - ${count}), updated_at = now()
+            WHERE id = ${forumId}
+          `;
+        }
+      } else {
+        await tx`
+          UPDATE core.posts SET edited_by = NULL
+          WHERE author_id = ${memberId} AND edited_by = ${memberId}
         `;
       }
-    } else {
-      await sql`
-        UPDATE core.posts SET edited_by = NULL
-        WHERE author_id = ${memberId} AND edited_by = ${memberId}
-      `;
-    }
 
-    await sql`
-      DELETE FROM core.post_revisions
-      WHERE editor_id = ${memberId}
-         OR post_id IN (SELECT id FROM core.posts WHERE author_id = ${memberId})
-    `;
+      await tx`
+        DELETE FROM core.post_revisions
+        WHERE editor_id = ${memberId}
+           OR post_id IN (SELECT id FROM core.posts WHERE author_id = ${memberId})
+      `;
+      const tags = [
+        ...posts.map((post) => postTag(post.id)),
+        ...[...new Set(posts.map((post) => post.topic_id))].map(topicTag),
+        ...[...new Set(posts.map((post) => post.topic_id))].map(topicPagesTag),
+        ...[...new Set(posts.map((post) => post.forum_id))].map(forumTag),
+      ];
+
+      if (tags.length > 0) {
+        await bumpCacheTags(tx, tags);
+      }
+    });
   });
 
   await runStep(sql, requestId, "poll_votes", completed, async () => {

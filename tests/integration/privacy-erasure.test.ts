@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { postTag, readTagVersion, topicTag } from "@bulletin/cache";
 import { currentContentVersions } from "@bulletin/content";
 import {
   ERASURE_STEPS,
@@ -8,6 +9,7 @@ import {
   runExportJob,
 } from "@bulletin/db/jobs";
 import { sessionCookieName } from "@bulletin/domain/auth";
+import { saveDraft } from "@bulletin/domain/content";
 import { requestDataErasure, requestDataExport } from "@bulletin/domain/privacy";
 import { avatarKey, type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
@@ -586,7 +588,27 @@ integrationDescribe("member erasure", () => {
           avatarKey(fixture.memberId, fixture.avatarHash, variant),
           new TextEncoder().encode("avatar"),
         );
+        storage.objects.set(
+          avatarKey(fixture.memberId, "e".repeat(64), variant),
+          new TextEncoder().encode("old avatar"),
+        );
       }
+      await database.sql`
+        INSERT INTO core.avatar_deletions (member_id, avatar_hash)
+        VALUES (${fixture.memberId}, ${"e".repeat(64)})
+      `;
+      const [message] = (await database.sql`
+        SELECT id::text AS id FROM core.conversation_messages WHERE author_id = ${fixture.memberId}
+      `) as Array<{ id: string }>;
+      await database.sql`
+        INSERT INTO core.quote_snapshots (
+          source_kind, source_id, source_author_id, body_md, body_html,
+          render_version, sanitiser_version
+        ) VALUES (
+          'message', ${message?.id}, ${fixture.memberId}, 'Private quote text',
+          '<p>Private quote text</p>', 3_000_000, 1
+        )
+      `;
       const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
 
       if (request === null) {
@@ -822,10 +844,16 @@ integrationDescribe("member erasure", () => {
       expect(snapshot?.body_md).toBe("");
       expect(snapshot?.body_html).toBe("");
       expect(snapshot?.redacted_at).not.toBeNull();
+      const [privateSnapshots] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.quote_snapshots
+        WHERE source_kind = 'message' AND source_author_id = ${fixture.memberId}
+      `) as Array<{ count: number }>;
+      expect(privateSnapshots?.count).toBe(0);
 
       expect(storage.deleted).toContain(fixture.attachmentKey);
       expect(storage.deleted).toContain(thumbnailKeyFor(fixture.attachmentKey));
       expect(storage.deleted).toContain(avatarKey(fixture.memberId, fixture.avatarHash, "lg"));
+      expect(storage.deleted).toContain(avatarKey(fixture.memberId, "e".repeat(64), "lg"));
       expect(storage.deleted).toContain(fixture.exportKey);
 
       const journalKeys = [...storage.objects.keys()].filter((key) =>
@@ -895,6 +923,34 @@ integrationDescribe("member erasure", () => {
       expect(completed?.status).toBe("completed");
     });
   }, 120_000);
+
+  test("rejects a member write that races the erasure fence", async () => {
+    await withDb("privacy_erasure_write_fence", async (database) => {
+      const fixture = await createFixtures(database);
+      const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+      if (request === null) {
+        throw new Error("erasure request was not created");
+      }
+
+      await approveErasure(database, fixture, request.requestId);
+      const memberApi = new SQL(roleUrl(database, "user_api"));
+
+      try {
+        await expect(
+          saveDraft(memberApi, fixture.memberId, "new-topic:1", "recreated after the fence"),
+        ).rejects.toThrow(/not active/);
+      } finally {
+        await memberApi.close();
+      }
+
+      const drafts = (await database.sql`
+        SELECT count(*)::int AS count FROM core.drafts
+        WHERE member_id = ${fixture.memberId} AND body_md = 'recreated after the fence'
+      `) as Array<{ count: number }>;
+      expect(drafts[0]?.count).toBe(0);
+    });
+  }, 60_000);
 
   test("retains attachment and avatar work until storage confirms deletion", async () => {
     await withDb("privacy_erasure_storage_retry", async (database) => {
@@ -1095,12 +1151,20 @@ integrationDescribe("member erasure", () => {
         UPDATE pii.data_requests SET post_action = 'delete' WHERE id = ${request.requestId}
       `;
       await approveErasure(database, fixture, request.requestId);
+      const postVersion = await readTagVersion(database.sql, postTag(fixture.postId));
+      const topicVersion = await readTagVersion(database.sql, topicTag(fixture.topicId));
       const result = await runErasureJob(database.sql, storage.storage, request.requestId, {
         pluginErase: async () => ({ ok: true }),
       });
 
       expect(result?.postAction).toBe("delete");
       expect(result?.deletedPosts).toBe(1);
+      expect(Number(await readTagVersion(database.sql, postTag(fixture.postId)))).toBeGreaterThan(
+        Number(postVersion),
+      );
+      expect(Number(await readTagVersion(database.sql, topicTag(fixture.topicId)))).toBeGreaterThan(
+        Number(topicVersion),
+      );
 
       const posts = (await database.sql`
         SELECT id::text AS id FROM core.posts WHERE author_id = ${fixture.memberId}

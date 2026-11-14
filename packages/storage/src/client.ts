@@ -46,6 +46,8 @@ export interface StoredObjectSummary {
 
 export interface StorageClient {
   put(key: string, data: Uint8Array | string, options?: PutOptions): Promise<number>;
+  /** Streams a file from disk to the bucket without loading it into the caller's memory. */
+  putFile?(key: string, path: string, options?: PutOptions): Promise<number>;
   get(key: string): Promise<Uint8Array>;
   exists(key: string): Promise<boolean>;
   stat(key: string): Promise<ObjectStat>;
@@ -92,6 +94,12 @@ export function createStorage(config: StorageConfig): StorageClient {
   return {
     async put(key, data, options = {}) {
       return client.write(key, data, {
+        ...(options.contentType === undefined ? {} : { type: options.contentType }),
+      });
+    },
+
+    async putFile(key, path, options = {}) {
+      return client.write(key, Bun.file(path), {
         ...(options.contentType === undefined ? {} : { type: options.contentType }),
       });
     },

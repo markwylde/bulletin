@@ -1,6 +1,9 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { StorageClient } from "@bulletin/storage";
 import type { SQL } from "bun";
-import { strToU8, zipSync } from "fflate";
+import { strToU8, Zip, ZipDeflate } from "fflate";
 import { emit } from "../events/outbox.ts";
 import { listMemberWarnings } from "../warnings/repository.ts";
 
@@ -22,12 +25,14 @@ export interface BuildMemberExportOptions {
 }
 
 export interface MemberExportBundle {
-  readonly bytes: Uint8Array;
+  /** A temporary zip on disk; the caller must invoke cleanup after upload. */
+  readonly path: string;
+  readonly cleanup: () => Promise<void>;
   readonly files: readonly string[];
   readonly pluginFailures: readonly string[];
 }
 
-function file(value: unknown): Uint8Array {
+function jsonBytes(value: unknown): Uint8Array {
   return strToU8(`${JSON.stringify(value, null, 2)}\n`);
 }
 
@@ -230,99 +235,157 @@ export async function buildMemberExport(
   const member = asRecord(members[0]);
   const locale = typeof member?.locale === "string" ? member.locale : "en";
   const warnings = await listMemberWarnings(sql, memberId, locale);
-  const files: Record<string, Uint8Array> = {
-    "profile.json": file({
-      member,
-      groups,
-      nameHistory: history,
-      customFields: fields,
-      badges,
-    }),
-    "settings.json": file({
-      preferences: prefs,
-      notifications: notificationPrefs,
-      digest,
-      follows: followSettings,
-    }),
-    "follows.json": file({
-      topics: followedTopics,
-      forums: followedForums,
-      members: followedMembers,
-    }),
-    "posts.json": file({ posts, revisions }),
-    "conversations.json": file({ conversations, messages }),
-    "reactions.json": file({ reactions }),
-    "warnings.json": file({ warnings }),
-    "restricted.json": file(restricted),
+  const directory = await mkdtemp(join(tmpdir(), "bulletin-export-"));
+  const path = join(directory, "export.zip");
+  const writer = Bun.file(path).writer();
+  const pendingWrites: Promise<number>[] = [];
+  let zipError: Error | null = null;
+  const zip = new Zip((error, chunk) => {
+    if (error !== null) {
+      zipError = error;
+      return;
+    }
+
+    const written = writer.write(chunk);
+
+    if (written instanceof Promise) {
+      pendingWrites.push(written);
+    }
+  });
+  const names: string[] = [];
+  const add = (name: string, bytes: Uint8Array): void => {
+    names.push(name);
+    const entry = new ZipDeflate(name, { level: 6 });
+    zip.add(entry);
+    entry.push(bytes, true);
   };
-  const attachmentMetadata: Array<Record<string, unknown>> = [];
-
-  for (const attachment of attachments) {
-    const bytes = await storage.get(attachment.storage_key);
-    const name = `attachments/${attachment.id}-${safeName(attachment.filename)}`;
-
-    files[name] = bytes;
-    attachmentMetadata.push({
-      id: attachment.id,
-      filename: attachment.filename,
-      contentType: attachment.verified_type,
-      sizeBytes: Number(attachment.size_bytes),
-      createdAt: attachment.created_at,
-      archivePath: name,
-    });
-  }
-
-  files["attachments.json"] = file({ attachments: attachmentMetadata });
-
-  const pluginIds = (await sql`
-    SELECT DISTINCT plugin_id FROM core.plugin_personal_data ORDER BY plugin_id
-  `) as Array<{ plugin_id: string }>;
   const pluginFailures: string[] = [];
 
-  for (const plugin of pluginIds) {
-    if (options.pluginExport === undefined) {
-      throw new Error(`Plugin ${plugin.plugin_id} has no export handler configured`);
+  try {
+    add(
+      "profile.json",
+      jsonBytes({
+        member,
+        groups,
+        nameHistory: history,
+        customFields: fields,
+        badges,
+      }),
+    );
+    add(
+      "settings.json",
+      jsonBytes({
+        preferences: prefs,
+        notifications: notificationPrefs,
+        digest,
+        follows: followSettings,
+      }),
+    );
+    add(
+      "follows.json",
+      jsonBytes({
+        topics: followedTopics,
+        forums: followedForums,
+        members: followedMembers,
+      }),
+    );
+    add("posts.json", jsonBytes({ posts, revisions }));
+    add("conversations.json", jsonBytes({ conversations, messages }));
+    add("reactions.json", jsonBytes({ reactions }));
+    add("warnings.json", jsonBytes({ warnings }));
+    add("restricted.json", jsonBytes(restricted));
+    const attachmentMetadata: Array<Record<string, unknown>> = [];
+
+    for (const attachment of attachments) {
+      const bytes = await storage.get(attachment.storage_key);
+      const name = `attachments/${attachment.id}-${safeName(attachment.filename)}`;
+
+      add(name, bytes);
+      attachmentMetadata.push({
+        id: attachment.id,
+        filename: attachment.filename,
+        contentType: attachment.verified_type,
+        sizeBytes: Number(attachment.size_bytes),
+        createdAt: attachment.created_at,
+        archivePath: name,
+      });
     }
 
-    let result: PluginExportResult;
+    add("attachments.json", jsonBytes({ attachments: attachmentMetadata }));
 
+    const pluginIds = (await sql`
+      SELECT DISTINCT plugin_id FROM core.plugin_personal_data ORDER BY plugin_id
+    `) as Array<{ plugin_id: string }>;
+
+    for (const plugin of pluginIds) {
+      if (options.pluginExport === undefined) {
+        throw new Error(`Plugin ${plugin.plugin_id} has no export handler configured`);
+      }
+
+      let result: PluginExportResult;
+
+      try {
+        result = await options.pluginExport(plugin.plugin_id, memberId);
+      } catch (error) {
+        throw new Error(
+          `Plugin ${plugin.plugin_id} export failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
+      if (!result.ok) {
+        throw new Error(
+          `Plugin ${plugin.plugin_id} export failed: ${result.error ?? "unknown error"}`,
+        );
+      }
+
+      add(
+        `plugins/${plugin.plugin_id}.json`,
+        jsonBytes({
+          pluginId: plugin.plugin_id,
+          data: result.data ?? {},
+        }),
+      );
+    }
+
+    const generatedAt = (options.now ?? new Date()).toISOString();
+    const files = [...names, "manifest.json"].sort();
+
+    add(
+      "manifest.json",
+      jsonBytes({
+        schemaVersion: 1,
+        exportedAt: generatedAt,
+        memberId,
+        files,
+        pluginFailures,
+      }),
+    );
+
+    zip.end();
+    await Promise.all(pendingWrites);
+    await writer.end();
+
+    if (zipError !== null) {
+      throw zipError;
+    }
+
+    return {
+      path,
+      cleanup: () => rm(directory, { recursive: true, force: true }),
+      files,
+      pluginFailures,
+    };
+  } catch (error) {
     try {
-      result = await options.pluginExport(plugin.plugin_id, memberId);
-    } catch (error) {
-      throw new Error(
-        `Plugin ${plugin.plugin_id} export failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      await writer.end();
+    } catch {
+      // The archive is already being discarded.
     }
-
-    if (!result.ok) {
-      throw new Error(
-        `Plugin ${plugin.plugin_id} export failed: ${result.error ?? "unknown error"}`,
-      );
-    }
-
-    files[`plugins/${plugin.plugin_id}.json`] = file({
-      pluginId: plugin.plugin_id,
-      data: result.data ?? {},
-    });
+    await rm(directory, { recursive: true, force: true });
+    throw error;
   }
-
-  const generatedAt = (options.now ?? new Date()).toISOString();
-
-  files["manifest.json"] = file({
-    schemaVersion: 1,
-    exportedAt: generatedAt,
-    memberId,
-    files: Object.keys(files).sort(),
-    pluginFailures,
-  });
-
-  return {
-    bytes: zipSync(files),
-    files: Object.keys(files).sort(),
-    pluginFailures,
-  };
 }
 
 /** Creates the member's export request and queues it through the transactional outbox. */

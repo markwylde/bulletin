@@ -256,7 +256,7 @@ export async function updateDataRequest(
   sql: SQL,
   sessionToken: string,
   requestId: string,
-  action: "process" | "complete" | "reject",
+  action: "process" | "reject",
   reason: string | null,
 ): Promise<void> {
   await sql`

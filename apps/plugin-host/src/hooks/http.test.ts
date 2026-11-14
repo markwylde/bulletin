@@ -155,6 +155,37 @@ describe("plugin-host internal hook API", () => {
     expect(unknown?.status).toBe(404);
   });
 
+  test("runs GDPR hooks through a maintenance sandbox for a disabled plugin", async () => {
+    const disabled = options();
+    disabled.registry.setEnabled("tips", false);
+    const calls: string[] = [];
+    (
+      disabled as {
+        maintenanceGdpr?: (
+          pluginId: string,
+          operation: "export" | "erase",
+          memberId: string,
+        ) => Promise<{ ok: boolean; data?: unknown }>;
+      }
+    ).maintenanceGdpr = async (pluginId, operation, memberId) => {
+      calls.push(`${pluginId}:${operation}:${memberId}`);
+      return operation === "export" ? { ok: true, data: { rows: 1 } } : { ok: true };
+    };
+
+    const exported = await readInternal(
+      request("/internal/gdpr", { pluginId: "tips", operation: "export", memberId: "7" }),
+      disabled,
+    );
+    expect(await exported?.json()).toEqual({ ok: true, data: { rows: 1 } });
+
+    const erased = await readInternal(
+      request("/internal/gdpr", { pluginId: "tips", operation: "erase", memberId: "7" }),
+      disabled,
+    );
+    expect(await erased?.json()).toEqual({ ok: true });
+    expect(calls).toEqual(["tips:export:7", "tips:erase:7"]);
+  });
+
   test("refuses route dispatch for unknown or disabled plugins", async () => {
     const noTransport = options();
     (noTransport as { transports?: Map<string, HookTransport> }).transports = new Map();

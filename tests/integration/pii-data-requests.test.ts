@@ -308,7 +308,7 @@ integrationDescribe("data subject requests", () => {
     });
   }, 30_000);
 
-  test("staff process, complete and reject requests with an audited reason", async () => {
+  test("staff process and reject requests while only workers complete erasure", async () => {
     await withDb("data_request_update", async (database) => {
       const alice = await createMember(database, "Decision Alice");
       await createSession(database, alice, "user", "decision-alice");
@@ -339,14 +339,18 @@ integrationDescribe("data subject requests", () => {
       await updateRequest(database, "decision-admin", requestId, "process", null);
       expect((await requestRow(database, requestId)).status).toBe("processing");
 
+      // Staff cannot finish or reject an accepted erasure; the worker must complete it.
       await updateRequest(database, "decision-admin", requestId, "complete", "Erasure done");
+      expect((await requestRow(database, requestId)).status).toBe("processing");
+      await updateRequest(database, "decision-admin", requestId, "reject", "Too late");
+      expect((await requestRow(database, requestId)).status).toBe("processing");
+
+      await database.sql`SELECT pii.complete_erasure(${requestId})`;
       const completed = await requestRow(database, requestId);
       expect(completed.status).toBe("completed");
-      expect(completed.decision_reason).toBe("Erasure done");
-      expect(completed.decided_by).toBe(admin);
       expect(completed.completed_at).not.toBeNull();
 
-      await updateRequest(database, "decision-admin", requestId, "reject", "Too late");
+      await updateRequest(database, "decision-admin", requestId, "reject", "Still too late");
       expect((await requestRow(database, requestId)).status).toBe("completed");
 
       const secondMember = await createMember(database, "Decision Second");
@@ -361,7 +365,7 @@ integrationDescribe("data subject requests", () => {
 
       expect(
         (await auditPurposes(database)).filter((purpose) => purpose === "request_update"),
-      ).toHaveLength(3);
+      ).toHaveLength(2);
 
       await withRole(database, "user_api", async (sql) => {
         await expectQueryError(

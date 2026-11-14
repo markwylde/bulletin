@@ -19,6 +19,12 @@ export interface HookHttpOptions {
   readonly transports?: ReadonlyMap<string, HookTransport>;
   readonly canReadContent?: (pluginId: string, forumId: string) => Promise<boolean>;
   readonly isPluginActive?: (pluginId: string) => Promise<boolean>;
+  /** Runs a one-shot maintenance sandbox when the plugin has no live transport. */
+  readonly maintenanceGdpr?: (
+    pluginId: string,
+    operation: "export" | "erase",
+    memberId: string,
+  ) => Promise<{ readonly ok: boolean; readonly data?: unknown; readonly error?: string }>;
   readonly token: string;
   readonly frameAncestors: readonly string[];
   readonly logger: Logger;
@@ -290,13 +296,27 @@ async function readInternal(
 
       const plugin = options.registry.get(input.pluginId);
       const transport = transportFor(input.pluginId);
+      const active =
+        plugin?.enabled === true &&
+        transport !== undefined &&
+        (options.isPluginActive === undefined || (await options.isPluginActive(input.pluginId)));
 
-      if (
-        plugin === undefined ||
-        !plugin.enabled ||
-        transport === undefined ||
-        (options.isPluginActive !== undefined && !(await options.isPluginActive(input.pluginId)))
-      ) {
+      if (!active) {
+        if (options.maintenanceGdpr === undefined) {
+          return json({ ok: false, error: "plugin unavailable" }, 404);
+        }
+
+        const result = await options.maintenanceGdpr(
+          input.pluginId,
+          input.operation,
+          input.memberId,
+        );
+        return result.ok
+          ? json({ ok: true, data: result.data })
+          : json({ ok: false, error: result.error ?? "handler failed" }, 500);
+      }
+
+      if (transport === undefined) {
         return json({ ok: false, error: "plugin unavailable" }, 404);
       }
 

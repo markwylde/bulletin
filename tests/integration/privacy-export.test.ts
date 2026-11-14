@@ -414,6 +414,106 @@ integrationDescribe("member data export", () => {
     });
   }, 60_000);
 
+  test("streams a large attachment set into the archive", async () => {
+    await withDb("privacy_export_large", async (database) => {
+      const fixtures = await createFixtures(database);
+      const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
+      const large = new Uint8Array(512 * 1_024).fill(65);
+
+      for (let index = 0; index < 3; index += 1) {
+        const key = `att/large-${index}`;
+        storage.objects.set(key, large);
+        await database.sql`
+          INSERT INTO core.attachments (
+            member_id, state, filename, declared_type, declared_bytes, quarantine_key,
+            storage_key, size_bytes, sha256, verified_type
+          ) VALUES (
+            ${fixtures.memberId}, 'ready', ${`large-${index}.bin`}, 'application/octet-stream',
+            ${large.byteLength}, ${`quarantine/large-${index}`}, ${key}, ${large.byteLength},
+            ${"d".repeat(64)}, 'application/octet-stream'
+          )
+        `;
+      }
+
+      const cookie = `${sessionCookieName("user", "test")}=${fixtures.token}`;
+      const requested = await requestDataExportResponse(
+        database.sql,
+        fixtures.memberId,
+        new Request("http://bulletin.test/api/me/data-export", {
+          method: "POST",
+          headers: { cookie },
+        }),
+        "test",
+      );
+      const requestId = ((await requested.json()) as { requestId: string }).requestId;
+      const result = await runExportJob(database.sql, storage.storage, requestId, {
+        pluginExport: async () => ({ ok: true, data: {} }),
+      });
+      const archive = storage.objects.get(result?.exportKey ?? "");
+
+      if (archive === undefined) {
+        throw new Error("large export archive was not uploaded");
+      }
+
+      const files = unzipSync(archive);
+      const attachmentFiles = Object.entries(files).filter(([name]) =>
+        name.startsWith("attachments/"),
+      );
+      expect(attachmentFiles).toHaveLength(4);
+      expect(
+        attachmentFiles.filter(([, bytes]) => bytes.byteLength === large.byteLength),
+      ).toHaveLength(3);
+    });
+  }, 60_000);
+
+  test("recovers an export-ready email whose enqueue failed", async () => {
+    await withDb("privacy_export_email_recovery", async (database) => {
+      const fixtures = await createFixtures(database);
+      const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
+      const cookie = `${sessionCookieName("user", "test")}=${fixtures.token}`;
+      const requested = await requestDataExportResponse(
+        database.sql,
+        fixtures.memberId,
+        new Request("http://bulletin.test/api/me/data-export", {
+          method: "POST",
+          headers: { cookie },
+        }),
+        "test",
+      );
+      const requestId = ((await requested.json()) as { requestId: string }).requestId;
+
+      await expect(
+        runExportJob(database.sql, storage.storage, requestId, {
+          pluginExport: async () => ({ ok: true, data: {} }),
+          enqueueEmail: async () => {
+            throw new Error("queue down");
+          },
+        }),
+      ).rejects.toThrow(/queue down/);
+
+      const [row] = (await database.sql`
+        SELECT status FROM pii.data_requests WHERE id = ${requestId}
+      `) as Array<{ status: string }>;
+      expect(row?.status).toBe("completed");
+      const [intent] = (await database.sql`
+        SELECT i.id::text AS id FROM core.delivery_intents i
+        JOIN core.notifications n ON n.id = i.ref_id
+        WHERE n.data_request_id = ${requestId} AND i.delivered_at IS NULL
+      `) as Array<{ id: string }>;
+      expect(intent?.id).toBeString();
+
+      const enqueued: string[] = [];
+      const recovered = await runExportJob(database.sql, storage.storage, requestId, {
+        pluginExport: async () => ({ ok: true, data: {} }),
+        enqueueEmail: async (id) => {
+          enqueued.push(id);
+        },
+      });
+      expect(recovered).toBeNull();
+      expect(enqueued).toEqual([intent?.id]);
+    });
+  }, 60_000);
+
   test("does not export a conversation after the member is removed", async () => {
     await withDb("privacy_export_removed", async (database) => {
       const fixtures = await createFixtures(database);

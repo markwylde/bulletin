@@ -277,6 +277,106 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION pii.export_email_intent(p_request_id bigint)
+RETURNS bigint
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pii, pg_temp
+AS $$
+  SELECT i.id
+    FROM core.delivery_intents i
+    JOIN core.notifications n ON n.id = i.ref_id
+   WHERE n.data_request_id = p_request_id
+     AND i.kind = 'notification'
+     AND i.channel = 'email'
+     AND i.delivered_at IS NULL
+   ORDER BY i.id
+   LIMIT 1
+$$;
+
+CREATE OR REPLACE FUNCTION pii.update_data_request(
+  p_session_token text,
+  p_request_id bigint,
+  p_action text,
+  p_reason text
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pii, pg_temp
+AS $$
+DECLARE
+  v_actor bigint;
+  v_member_id bigint;
+  v_kind text;
+  v_status text;
+  v_reason text := nullif(btrim(p_reason), '');
+BEGIN
+  v_actor := pii.staff_session_member(p_session_token);
+
+  IF v_actor IS NULL OR NOT core.has_acp(v_actor, 'privacy.requests') THEN
+    RETURN;
+  END IF;
+
+  IF p_action IS NULL OR p_action NOT IN ('process', 'reject') THEN
+    RETURN;
+  END IF;
+
+  IF p_action = 'reject' AND v_reason IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT member_id, kind, status INTO v_member_id, v_kind, v_status
+    FROM pii.data_requests
+   WHERE id = p_request_id
+   FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN;
+  END IF;
+
+  IF p_action = 'process' AND v_status <> 'pending' THEN
+    RETURN;
+  END IF;
+
+  -- Once an erasure is accepted only the worker's verified completion may finish it.
+  IF p_action = 'reject' AND v_kind = 'erasure' AND v_status = 'processing' THEN
+    RETURN;
+  END IF;
+
+  IF p_action = 'reject' AND v_status NOT IN ('pending', 'processing') THEN
+    RETURN;
+  END IF;
+
+  UPDATE pii.data_requests
+     SET status = CASE p_action
+                    WHEN 'process' THEN 'processing'
+                    ELSE 'rejected'
+                  END,
+         decision_reason = v_reason,
+         decided_by = v_actor,
+         updated_at = now(),
+         completed_at = CASE WHEN p_action = 'process' THEN NULL ELSE now() END
+   WHERE id = p_request_id;
+
+  IF p_action = 'process' AND v_kind = 'erasure' THEN
+    PERFORM pii.apply_erasure_fence(p_request_id);
+
+    INSERT INTO core.events (type, aggregate_type, aggregate_id, aggregate_version, payload_ids)
+    VALUES (
+      'privacy.erasure.accepted', 'data_request', p_request_id, 1,
+      jsonb_build_object('requestId', p_request_id::text, 'memberId', v_member_id::text)
+    );
+  END IF;
+
+  INSERT INTO pii.access_log (
+    actor_member_id, subject_member_id, purpose, resource_type, resource_id
+  ) VALUES (
+    v_actor, v_member_id, 'request_update', 'data_request', p_request_id::text
+  );
+END;
+$$;
+
 DROP FUNCTION IF EXISTS pii.list_data_requests(text, jsonb);
 
 CREATE OR REPLACE FUNCTION pii.list_data_requests(
@@ -508,6 +608,7 @@ REVOKE ALL ON FUNCTION pii.erasure_fence(bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.begin_erasure(bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.complete_export(bigint, text, timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.export_failed(bigint, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION pii.export_email_intent(bigint) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.list_data_requests(text, jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.expired_exports(timestamptz) FROM PUBLIC;
 REVOKE ALL ON FUNCTION pii.clear_expired_export(bigint, timestamptz) FROM PUBLIC;
@@ -522,9 +623,97 @@ GRANT EXECUTE ON FUNCTION pii.erasure_fence(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.begin_erasure(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.complete_export(bigint, text, timestamptz) TO workers;
 GRANT EXECUTE ON FUNCTION pii.export_failed(bigint, text) TO workers;
+GRANT EXECUTE ON FUNCTION pii.export_email_intent(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.list_data_requests(text, jsonb) TO staff_api;
 GRANT EXECUTE ON FUNCTION pii.expired_exports(timestamptz) TO workers;
 GRANT EXECUTE ON FUNCTION pii.clear_expired_export(bigint, timestamptz) TO workers;
 GRANT EXECUTE ON FUNCTION pii.erasure_export_keys(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.clear_erasure_export_keys(bigint) TO workers;
 GRANT EXECUTE ON FUNCTION pii.purge_expired(timestamptz) TO workers;
+
+-- Transactional write fence: app roles lock the member row before writing personal data, so
+-- a write racing the erasure fence either commits before approval or fails after it.
+SET LOCAL ROLE bulletin_owner;
+
+CREATE OR REPLACE FUNCTION core.fence_member_write()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = core, pg_temp
+AS $$
+DECLARE
+  v_member_id bigint;
+  v_state text;
+BEGIN
+  IF current_user IN ('workers', 'pii_owner', 'bulletin_owner', 'bulletin', 'postgres') THEN
+    RETURN NEW;
+  END IF;
+
+  EXECUTE format('SELECT ($1).%I', TG_ARGV[0]) INTO v_member_id USING NEW;
+
+  IF v_member_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT state INTO v_state FROM core.members WHERE id = v_member_id FOR SHARE;
+
+  IF v_state IS DISTINCT FROM 'active' THEN
+    RAISE EXCEPTION 'member % is not active', v_member_id USING ERRCODE = 'check_violation';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION core.fence_member_write() FROM PUBLIC;
+
+DO $$
+DECLARE
+  target record;
+BEGIN
+  FOR target IN
+    SELECT *
+    FROM (VALUES
+      ('drafts', 'member_id'),
+      ('posts', 'author_id'),
+      ('conversation_messages', 'author_id'),
+      ('conversations', 'starter_id'),
+      ('conversation_participants', 'member_id'),
+      ('attachments', 'member_id'),
+      ('post_reactions', 'member_id'),
+      ('poll_votes', 'member_id'),
+      ('poll_vote_choices', 'member_id'),
+      ('followed_topics', 'member_id'),
+      ('followed_forums', 'member_id'),
+      ('followed_members', 'follower_id'),
+      ('member_ignores', 'member_id'),
+      ('follow_settings', 'member_id'),
+      ('member_prefs', 'member_id'),
+      ('member_field_values', 'member_id'),
+      ('member_restrictions', 'member_id'),
+      ('api_keys', 'principal_member_id'),
+      ('notifications', 'member_id'),
+      ('notification_preferences', 'member_id'),
+      ('digest_subscriptions', 'member_id'),
+      ('delivery_intents', 'member_id'),
+      ('announcement_dismissals', 'member_id'),
+      ('conversation_daily_starts', 'member_id'),
+      ('topic_reads', 'member_id'),
+      ('forum_reads', 'member_id')
+    ) AS t(table_name, column_name)
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS fence_member_write ON core.%I', target.table_name);
+    EXECUTE format(
+      'CREATE TRIGGER fence_member_write BEFORE INSERT OR UPDATE ON core.%I
+       FOR EACH ROW EXECUTE FUNCTION core.fence_member_write(%L)',
+      target.table_name, target.column_name
+    );
+  END LOOP;
+END
+$$;
+
+DROP TRIGGER IF EXISTS fence_member_write ON core.members;
+CREATE TRIGGER fence_member_write
+BEFORE UPDATE ON core.members
+FOR EACH ROW EXECUTE FUNCTION core.fence_member_write('id');
+
+RESET ROLE;
