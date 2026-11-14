@@ -195,3 +195,11 @@ form?.addEventListener("submit", (event) => {
   event.preventDefault();
   void submit(form);
 });
+
+// The template renders the save control disabled so a click before this module has run can
+// never fall back to a native form submission that reloads the page and drops the edit.
+const saveButton = form?.querySelector<HTMLButtonElement>("[data-profile-save]");
+
+if (saveButton !== null && saveButton !== undefined) {
+  saveButton.disabled = false;
+}
