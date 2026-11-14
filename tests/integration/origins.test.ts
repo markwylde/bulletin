@@ -12,7 +12,8 @@ const ORIGIN_PATHS: Readonly<Record<StackHost, string>> = {
   user: "/",
   staff: "/",
   files: "/health/live",
-  plugins: "/",
+  // The plugins origin only serves /apps/* and health; its root is deliberately a 404.
+  plugins: "/health/live",
   auth: "/",
 };
 

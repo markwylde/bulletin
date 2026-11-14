@@ -97,6 +97,12 @@ jobs:
             docker compose up -d --build --wait --wait-timeout 300
           fi
 
+      - name: Resolve the local origins
+        # glibc does not resolve *.localhost subdomains, but Bun's fetch in the suites needs them.
+        run: |
+          echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
+            | tee -a /etc/hosts
+
       - name: Check the proxy is reachable
         run: |
           curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" "http://bulletin.localhost:$BULLETIN_HTTP_PORT/"

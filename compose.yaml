@@ -84,7 +84,9 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bulletin -d bulletin"]
+      # Over TCP: the image's temporary initdb server listens on the Unix socket only, so a
+      # socket check reports healthy before the real server starts and dependants race it.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U bulletin -d bulletin"]
       interval: 5s
       timeout: 5s
       retries: 20
