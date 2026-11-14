@@ -99,7 +99,9 @@ jobs:
           engine=${{ matrix.engine }}
           proxy=$($engine compose ps -q proxy)
           network=$($engine inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}}{{end}}' "$proxy")
-          $engine network connect "$network" "$(hostname)" || true
+          # The job container's ID (its hostname is the runner's name on Gitea runners).
+          self=$(grep -oE 'containers/[0-9a-f]{64}' /proc/self/mountinfo | head -1 | cut -d/ -f2)
+          $engine network connect "$network" "${self:-$(hostname)}"
           ip=$($engine inspect -f "{{(index .NetworkSettings.Networks \"$network\").IPAddress}}" "$proxy")
           echo "$ip bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
             | tee -a /etc/hosts
