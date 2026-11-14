@@ -1,4 +1,5 @@
 ---
+import type { SeoMetadata } from "@bulletin/domain/seo";
 import "../theme/default.css";
 import { configuredPluginOrigin } from "../plugins/config.ts";
 import { pwaBuild } from "../pwa/build.ts";
@@ -14,11 +15,14 @@ interface Props {
   /** The member's locale source, for the client locale/board bootstrap. */
   readonly serverLocale?: string;
   readonly localeSource?: "member" | "guest";
+  /** Legacy explicit noindex; public routes pass the full `seo` view model instead. */
   readonly robots?: "noindex";
   /** Client-visible flags as JSON; only affects the island provider, never shared content. */
   readonly clientFlagsJson?: string | undefined;
   /** The member's saved scheme or the guest's `bp` choice. */
   readonly colourScheme?: "light" | "dark" | "system";
+  /** Page metadata rendered into the default theme's head (change `seo-feeds`). */
+  readonly seo?: SeoMetadata;
 }
 
 const {
@@ -32,7 +36,15 @@ const {
   robots,
   clientFlagsJson,
   colourScheme = "system",
+  seo,
 } = Astro.props;
+const origin = Astro.url.origin;
+const canonical = seo === undefined ? null : new URL(seo.canonicalPath, origin).toString();
+const jsonLd =
+  seo?.jsonLd === null || seo?.jsonLd === undefined
+    ? null
+    : JSON.stringify(seo.jsonLd).replaceAll("<", "\\u003c");
+const robotsDirective = seo?.robots ?? robots ?? "noindex";
 const flagsJson =
   clientFlagsJson ??
   (Astro.locals.clientFlags === undefined ? undefined : JSON.stringify(Astro.locals.clientFlags));
@@ -70,8 +82,35 @@ const memberId = Astro.locals.session?.memberId ?? "";
     {pwaEnabled ? <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" /> : null}
     {pwaEnabled ? <link rel="apple-touch-icon" href="/pwa/icon-180.png" /> : null}
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    {robots === "noindex" ? <meta name="robots" content="noindex" /> : null}
-    <title>{title}</title>
+    <meta name="robots" content={robotsDirective} />
+    {seo === undefined ? null : <meta name="description" content={seo.description} />}
+    {canonical === null ? null : <link rel="canonical" href={canonical} />}
+    {seo?.alternates.map((alternate) => (
+      <link
+        rel="alternate"
+        hreflang={alternate.hreflang}
+        href={new URL(alternate.path, origin).toString()}
+      />
+    ))}
+    <title>{seo?.title ?? title}</title>
+    {seo === undefined || canonical === null ? null : (
+      <>
+        <meta property="og:type" content={seo.type} />
+        <meta property="og:title" content={seo.title} />
+        <meta property="og:description" content={seo.description} />
+        <meta property="og:url" content={canonical} />
+        <meta name="twitter:card" content="summary" />
+        <meta name="twitter:title" content={seo.title} />
+        <meta name="twitter:description" content={seo.description} />
+      </>
+    )}
+    {jsonLd === null ? null : (
+      <script
+        type="application/ld+json"
+        nonce={Astro.locals.cspNonce}
+        set:html={jsonLd}
+      />
+    )}
   </head>
   <body>
     <div set:html={body} />

@@ -1,5 +1,6 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
 import { readBoardSettings } from "@bulletin/domain/board";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -53,7 +54,9 @@ export async function renderApiDocsRoute(input: ApiDocsRouteInput): Promise<{
   readonly etag: string | null;
   readonly errors: readonly string[];
   readonly status: number;
+  readonly seo: SeoMetadata;
 }> {
+  const title = input.translate("api.docs.title");
   const flags = await loadViewerFlags(input.sql, input.session);
 
   if (flags.values.public_api !== true) {
@@ -75,11 +78,17 @@ export async function renderApiDocsRoute(input: ApiDocsRouteInput): Promise<{
       tags: [],
       etag: null,
       status: 404,
+      seo: buildSeoMetadata({
+        title,
+        boardName: "",
+        description: input.translate("seo.apiDocs.description"),
+        canonicalPath: "/api-docs",
+        robots: "noindex",
+      }),
     };
   }
 
   let boardName = "";
-  const title = input.translate("api.docs.title");
 
   const rendered = await renderCachedPage<ApiDocsData>({
     tags: contractTags(apiDocsContract, {}),
@@ -119,6 +128,12 @@ export async function renderApiDocsRoute(input: ApiDocsRouteInput): Promise<{
         viewModel: {
           openApiUrl: OPENAPI_URL,
           apiDocs: { content: OPENAPI_DOCUMENT },
+          seo: buildSeoMetadata({
+            title,
+            boardName: data.boardName,
+            description: input.translate("seo.apiDocs.description"),
+            canonicalPath: "/api-docs",
+          }),
           flags: data.flags.values,
         },
         breadcrumbs: [{ label: title, href: null }],
@@ -131,5 +146,16 @@ export async function renderApiDocsRoute(input: ApiDocsRouteInput): Promise<{
     },
   });
 
-  return { ...rendered, title, boardName, status: 200 };
+  return {
+    ...rendered,
+    title,
+    boardName,
+    status: 200,
+    seo: buildSeoMetadata({
+      title,
+      boardName,
+      description: input.translate("seo.apiDocs.description"),
+      canonicalPath: "/api-docs",
+    }),
+  };
 }

@@ -519,6 +519,29 @@ export async function readTopicPostPage(
   return { rows: rows.map(toTopicPost), total: count?.count ?? 0 };
 }
 
+export interface TopicFirstPost {
+  readonly bodyText: string;
+  readonly authorName: string | null;
+}
+
+/** The first visible post's plain text and author, for a topic's meta description and JSON-LD. */
+export async function readTopicFirstPost(
+  sql: SQL,
+  topicId: string,
+): Promise<TopicFirstPost | null> {
+  const rows = (await sql`
+    SELECT p.body_text, author.display_name AS author_name
+    FROM core.posts p
+    LEFT JOIN core.members author ON author.id = p.author_id
+    WHERE p.topic_id = ${topicId} AND p.visibility = 'visible'
+    ORDER BY p.position
+    LIMIT 1
+  `) as Array<{ body_text: string; author_name: string | null }>;
+  const row = rows[0];
+
+  return row === undefined ? null : { bodyText: row.body_text, authorName: row.author_name };
+}
+
 /** The viewer-specific page containing one post, computed from visible posts before it. */
 export async function readTopicPageOfPost(
   sql: SQL,

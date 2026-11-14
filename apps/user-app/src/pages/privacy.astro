@@ -1,6 +1,7 @@
 ---
 import { createServerT } from "@bulletin/i18n";
 import { readPrivacyPolicy } from "@bulletin/domain/privacy";
+import { buildSeoMetadata } from "@bulletin/domain/seo";
 import { safeHtml } from "@bulletin/templates";
 import { USER_CATALOGS } from "../catalogs.ts";
 import { privacyPolicyContract } from "../contracts.ts";
@@ -14,6 +15,12 @@ const sql = readSql();
 const policy = await readPrivacyPolicy(sql);
 const title = translate("privacy.policy.title");
 const boardName = boardNameFrom(Astro.locals.board?.boardName, translate);
+const seo = buildSeoMetadata({
+  title,
+  boardName,
+  description: translate("seo.privacy.description"),
+  canonicalPath: "/privacy",
+});
 const result = await renderThemedPage({
   sql,
   themeId: Astro.locals.themeId,
@@ -25,6 +32,7 @@ const result = await renderThemedPage({
     hasPolicy: policy.html.trim() !== "",
     policyHtml: safeHtml(policy.html),
     updatedAt: policy.updatedAt?.toISOString() ?? null,
+    seo,
   },
   breadcrumbs: [
     { label: translate("theme.home"), href: "/" },
@@ -43,6 +51,7 @@ const authProps =
   title={`${title} · ${boardName}`}
   locale={locale}
   body={result.html}
+  seo={seo}
   {...authProps}
   visitor={Astro.locals.session === null ? "guest" : "member"}
 />

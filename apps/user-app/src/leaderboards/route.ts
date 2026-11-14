@@ -1,5 +1,6 @@
 import type { RenderCache, RenderStatus, TagVersionSource } from "@bulletin/cache";
 import { readBoardSettings } from "@bulletin/domain/board";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
 import type { SQL } from "bun";
@@ -31,6 +32,7 @@ interface LeaderboardData {
   readonly boardName: string;
   readonly page: LeaderboardView;
   readonly flags: ViewerFlags;
+  readonly seo: SeoMetadata;
 }
 
 export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Promise<{
@@ -42,6 +44,7 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
   readonly tags: readonly string[];
   readonly etag: string | null;
   readonly status: number;
+  readonly seo: SeoMetadata;
   readonly errors: readonly string[];
 }> {
   const viewerFlags = await loadViewerFlags(input.sql, input.session);
@@ -62,11 +65,19 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
       tags: [],
       etag: null,
       status: 404,
+      seo: buildSeoMetadata({
+        title: input.translate("leaderboards.title"),
+        boardName: "",
+        description: input.translate("seo.leaderboards.description"),
+        canonicalPath: "/leaderboards",
+        robots: "noindex",
+      }),
     };
   }
 
   let title = input.translate("leaderboards.title");
   let boardName = "";
+  let latestSeo: SeoMetadata | null = null;
 
   const rendered = await renderCachedPage<LeaderboardData>({
     tags: contractTags(leaderboardContract, {}),
@@ -87,6 +98,12 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
       const name = boardNameFrom(settings.boardName, input.translate);
       title = page.title;
       boardName = name;
+      latestSeo = buildSeoMetadata({
+        title: page.title,
+        boardName: name,
+        description: input.translate("seo.leaderboards.description"),
+        canonicalPath: "/leaderboards",
+      });
 
       return {
         variant: pageVariant({
@@ -98,7 +115,7 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
           colourScheme: input.colourScheme,
           renderFlagsHash: flags.hash,
         }),
-        data: { theme, boardName: name, page, flags },
+        data: { theme, boardName: name, page, flags, seo: latestSeo },
       };
     },
     render: async (data) => {
@@ -109,7 +126,7 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
         locale: input.locale,
         translate: input.translate,
         template: leaderboardContract.templates.page,
-        viewModel: { ...data.page, flags: data.flags.values },
+        viewModel: { ...data.page, seo: data.seo, flags: data.flags.values },
         breadcrumbs: [{ label: input.translate("leaderboards.title"), href: null }],
         route: leaderboardContract,
         pluginsGeneration: input.pluginsGeneration,
@@ -120,5 +137,18 @@ export async function renderLeaderboardRoute(input: LeaderboardRouteInput): Prom
     },
   });
 
-  return { ...rendered, title, boardName, status: 200 };
+  return {
+    ...rendered,
+    title,
+    boardName,
+    status: 200,
+    seo:
+      latestSeo ??
+      buildSeoMetadata({
+        title,
+        boardName,
+        description: input.translate("seo.leaderboards.description"),
+        canonicalPath: "/leaderboards",
+      }),
+  };
 }

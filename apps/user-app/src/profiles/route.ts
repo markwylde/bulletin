@@ -6,7 +6,8 @@ import {
   loadForumTree,
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
-import { readProfile } from "@bulletin/domain/profiles";
+import { readProfile, readPublicMember } from "@bulletin/domain/profiles";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import { canonicalUrl, parseResourcePath, resolveResourceUrl } from "@bulletin/domain/urls";
 import type { ColorScheme, Locale, Translator } from "@bulletin/i18n";
 import { contractTags, type LoadedTheme } from "@bulletin/templates";
@@ -53,6 +54,7 @@ interface ProfilePageRouteResult {
   readonly tags: readonly string[];
   readonly etag: string | null;
   readonly hasUnlockGrant: boolean;
+  readonly seo: SeoMetadata;
   readonly errors: readonly string[];
 }
 
@@ -108,6 +110,13 @@ async function renderErrorPage(
     tags: [],
     etag: null,
     hasUnlockGrant: false,
+    seo: buildSeoMetadata({
+      title: input.translate("theme.error.title"),
+      boardName,
+      description: input.translate("theme.error.notFound"),
+      canonicalPath: `/profile/${input.ref}`,
+      robots: "noindex",
+    }),
     errors: page.errors,
   };
 }
@@ -144,6 +153,8 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
   let title = profile.displayName;
   let boardName = "";
   let hasUnlockGrant = false;
+  let latestSeo: SeoMetadata | null = null;
+  const publicProfile = (await readPublicMember(input.sql, memberId)) !== null;
 
   const rendered = await renderCachedPage<ProfileRenderData>({
     tags,
@@ -180,6 +191,29 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
 
       title = page?.title ?? input.translate("theme.error.title");
       hasUnlockGrant = page?.hasUnlockGrant === true;
+      const description =
+        profile.aboutMd.trim() ||
+        profile.customTitle?.trim() ||
+        input.translate("seo.profile.description", { name: title });
+      const canonicalPath = canonicalUrl("profile", profile.id, title);
+      latestSeo = buildSeoMetadata({
+        title,
+        boardName,
+        description,
+        canonicalPath,
+        robots: page === null || !publicProfile ? "noindex" : "index",
+        type: "profile",
+        jsonLd:
+          page === null
+            ? null
+            : {
+                "@context": "https://schema.org",
+                "@type": "Person",
+                name: title,
+                url: canonicalPath,
+                description,
+              },
+      });
 
       return {
         variant: pageVariant({
@@ -212,7 +246,7 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
                 message: input.translate("theme.error.notFound"),
                 flags: data.flags.values,
               }
-            : { ...data.page.viewModel, flags: data.flags.values },
+            : { ...data.page.viewModel, seo: latestSeo, flags: data.flags.values },
         breadcrumbs: data.page?.breadcrumbs ?? [],
         route: profileContract,
         pluginsGeneration: input.pluginsGeneration,
@@ -229,6 +263,16 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
     status: 200,
     title,
     boardName,
+    seo:
+      latestSeo ??
+      buildSeoMetadata({
+        title,
+        boardName,
+        description: input.translate("seo.profile.description", { name: title }),
+        canonicalPath: canonicalUrl("profile", profile.id, title),
+        robots: "noindex",
+        type: "profile",
+      }),
     hasUnlockGrant,
   };
 }

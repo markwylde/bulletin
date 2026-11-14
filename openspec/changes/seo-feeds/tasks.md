@@ -8,7 +8,7 @@
 
 ## 2. Metadata
 
-- [ ] 2.1 View-model `seo` fields for every public route, and head templates in the default theme (title, description, canonical, OG/Twitter, JSON-LD, hreflang); tests for the canonical scenario
+- [x] 2.1 View-model `seo` fields for every public route, and head templates in the default theme (title, description, canonical, OG/Twitter, JSON-LD, hreflang); tests for the canonical scenario
 - [ ] 2.2 `noindex` rules and the admin-editable `robots.txt`, with tests for the search-page scenario and permission denial on the editor
 
 ## 3. Strings and seed

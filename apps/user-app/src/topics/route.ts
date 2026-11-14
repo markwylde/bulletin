@@ -10,11 +10,13 @@ import {
   loadPermissionSnapshot,
   principalMemberId,
 } from "@bulletin/domain/permissions";
+import { buildSeoMetadata, type SeoMetadata } from "@bulletin/domain/seo";
 import {
   countTopicPosts,
   loadQuoteSources,
   readQuoteReferencesForPage,
   readTopic,
+  readTopicFirstPost,
   readTopicPageOfPost,
   readTopicTarget,
   type TopicRecord,
@@ -67,6 +69,7 @@ interface TopicPageRouteResult {
   readonly tags: readonly string[];
   readonly etag: string | null;
   readonly hasUnlockGrant: boolean;
+  readonly seo: SeoMetadata;
   readonly errors: readonly string[];
 }
 
@@ -87,6 +90,7 @@ interface TopicRenderData {
   readonly page: TopicPageData | null;
   readonly error: { readonly status: 403 | 404 } | null;
   readonly flags: ViewerFlags;
+  readonly seo: SeoMetadata;
 }
 
 async function renderErrorPage(
@@ -127,6 +131,13 @@ async function renderErrorPage(
     tags: [],
     etag: null,
     hasUnlockGrant: false,
+    seo: buildSeoMetadata({
+      title: input.translate("theme.error.title"),
+      boardName,
+      description: input.translate("theme.error.title"),
+      canonicalPath: `/topic/${input.ref}`,
+      robots: "noindex",
+    }),
     errors: page.errors,
   };
 }
@@ -431,14 +442,65 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
       }
 
       const boardName = boardNameFrom(freshSettings.boardName, input.translate);
+      const title = pageData?.viewModel.title ?? input.translate("theme.error.title");
+      const firstPost =
+        freshTopic === null || pageData === null
+          ? null
+          : await readTopicFirstPost(input.sql, freshTopic.id);
+      const guestReadable =
+        freshTopic !== null &&
+        freshForum !== null &&
+        !freshForum.passwordProtected &&
+        freshTopic.visibility === "visible" &&
+        (await can(input.sql, GUEST_PRINCIPAL, "read", {
+          forumId: freshForum.id,
+          tree: freshTree,
+          sessionId: null,
+          snapshot: await loadPermissionSnapshot(input.sql, GUEST_PRINCIPAL, {
+            tree: freshTree,
+            sessionId: null,
+          }),
+        }));
+      const pageNumber = pageData?.page ?? parsed.page ?? 1;
+      const canonicalPath =
+        freshTopic === null
+          ? `/topic/${input.ref}`
+          : canonicalUrl("topic", freshTopic.id, freshTopic.slug, { page: pageNumber });
+      const seo = buildSeoMetadata({
+        title,
+        boardName,
+        description:
+          firstPost?.bodyText.trim() || input.translate("seo.topic.description", { title }),
+        canonicalPath,
+        robots: error === null && guestReadable ? "index" : "noindex",
+        type: "article",
+        jsonLd:
+          freshTopic === null
+            ? null
+            : {
+                "@context": "https://schema.org",
+                "@type": "DiscussionForumPosting",
+                headline: title,
+                url: canonicalPath,
+                datePublished: freshTopic.createdAt.toISOString(),
+                dateModified: (freshTopic.lastPostAt ?? freshTopic.createdAt).toISOString(),
+                author: {
+                  "@type": "Person",
+                  name: firstPost?.authorName ?? boardName,
+                },
+                commentCount: freshTopic.replyCount,
+                isPartOf: { "@type": "WebSite", name: boardName, url: "/" },
+              },
+      });
       const data: TopicRenderData = {
         theme,
         boardName,
         settings: freshSettings,
-        title: pageData?.viewModel.title ?? input.translate("theme.error.title"),
+        title,
         page: pageData,
         error,
         flags,
+        seo,
       };
 
       latest = data;
@@ -473,6 +535,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
           data.error === null
             ? {
                 ...(data.page?.viewModel ?? {}),
+                seo: data.seo,
                 flags: { ...(data.page?.viewModel.flags ?? {}), ...data.flags.values },
               }
             : {
@@ -646,6 +709,7 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
     tags: rendered.tags,
     etag: etagWithFragments(rendered.etag, fragmentState),
     hasUnlockGrant: latest.page?.hasUnlockGrant ?? false,
+    seo: latest.seo,
     errors: rendered.errors,
   };
 }
