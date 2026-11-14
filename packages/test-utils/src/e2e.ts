@@ -36,7 +36,11 @@ interface OpenPage {
  * Developer machines run as a normal user and keep the sandbox.
  */
 function chromeArgv(): string[] {
-  return process.getuid?.() === 0 ? ["--no-sandbox", "--disable-dev-shm-usage"] : [];
+  // Linux Chrome draws classic 15 px scrollbars; macOS overlays them. Hide them so a
+  // 1440 px viewport has a 1440 px layout everywhere, as the viewport tests assert.
+  const argv = process.platform === "linux" ? ["--hide-scrollbars"] : [];
+
+  return process.getuid?.() === 0 ? [...argv, "--no-sandbox", "--disable-dev-shm-usage"] : argv;
 }
 
 /** Opens one page with error capture. The caller owns the process-wide view lifecycle. */

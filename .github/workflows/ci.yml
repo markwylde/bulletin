@@ -42,18 +42,21 @@ jobs:
         run: docker compose -f compose.yaml -f compose.test.yaml down -v --rmi local
 
   e2e:
-    name: Full-stack E2E (${{ matrix.engine }})
+    # Shard 0 runs the full-stack checks (sandbox, integration, benchmark); shards 1-8 split
+    # the browser E2E files between them. Each shard brings up its own stack.
+    name: ${{ matrix.shard == 0 && 'Full-stack checks' || format('E2E {0}/8', matrix.shard) }} (${{ matrix.engine }})
     runs-on: ubuntu-latest
     env:
       # Container runners cannot bind-mount files from the job checkout (compose.ci.yaml).
       COMPOSE_FILE: compose.yaml:compose.ci.yaml
-      # Runners share one Docker daemon: isolate each run's containers, images and volumes.
-      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-e2e-${{ matrix.engine }}
+      # Runners share one Docker daemon: isolate each shard's containers, images and volumes.
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-e2e-${{ matrix.engine }}-${{ matrix.shard }}
     strategy:
       fail-fast: false
       matrix:
         # Podman needs a runner that can run containers inside the job; run it on demand.
         engine: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["docker","podman"]') || fromJSON('["docker"]') }}
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -73,6 +76,7 @@ jobs:
           podman info
 
       - name: Install pinned Chrome for E2E
+        if: matrix.shard != 0
         id: setup-chrome
         uses: browser-actions/setup-chrome@v1
         with:
@@ -80,14 +84,16 @@ jobs:
           install-dependencies: true
 
       - name: Point Bun.WebView at the pinned Chrome
+        if: matrix.shard != 0
         run: |
           echo "BUN_CHROME_PATH=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
           "${{ steps.setup-chrome.outputs.chrome-path }}" --version
 
-      - name: Pick a per-run proxy port
-        # Gitea job containers share the daemon host's network, so concurrent runs must not
-        # all publish 8080. The port flows into every origin via BULLETIN_HTTP_PORT.
-        run: echo "BULLETIN_HTTP_PORT=$((20000 + ${{ github.run_id }} % 20000))" >> "$GITHUB_ENV"
+      - name: Pick a per-shard proxy port
+        # Gitea job containers share the daemon host's network, so concurrent runs and shards
+        # must not all publish 8080. The port flows into every origin via BULLETIN_HTTP_PORT.
+        run: |
+          echo "BULLETIN_HTTP_PORT=$((20000 + (${{ github.run_id }} % 4000) * 10 + ${{ matrix.shard }}))" >> "$GITHUB_ENV"
 
       - name: Start the full stack
         run: |
@@ -108,6 +114,7 @@ jobs:
           curl -fsS -o /dev/null -w "proxy reachable: %{http_code}\n" "http://bulletin.localhost:$BULLETIN_HTTP_PORT/"
 
       - name: Measure sandbox spawn time and memory
+        if: matrix.shard == 0
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
             podman compose exec -T \
@@ -120,6 +127,7 @@ jobs:
           fi
 
       - name: Run malicious-plugin suite
+        if: matrix.shard == 0
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
             podman compose exec -T -e BULLETIN_SANDBOX_TESTS=1 plugin-host \
@@ -130,13 +138,16 @@ jobs:
           fi
 
       - name: Run full-stack integration suites
+        if: matrix.shard == 0
         run: bun run test:integration
 
       - name: Latency benchmark (ADR 0006)
+        if: matrix.shard == 0
         run: bun run benchmark
 
-      - name: Run E2E smoke and locale tests
-        run: bun run test:e2e
+      - name: Run E2E shard
+        if: matrix.shard != 0
+        run: bun run test:e2e --shard=${{ matrix.shard }}/8
 
       - name: Diagnose plugin sandbox syscalls
         if: failure()

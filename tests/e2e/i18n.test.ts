@@ -59,21 +59,30 @@ integrationDescribe("member locale", () => {
   }
 
   test("renders the member locale in the staff app too", async () => {
-    await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
-      await loginAs(view, "admin");
-      const session = await view.evaluate<{ readonly csrfToken: string | null }>(
-        "fetch('/api/auth/session').then((response) => response.json())",
-      );
-      const saved = await view.evaluate<boolean>(
-        `fetch('/api/me/locale', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', 'x-bulletin-csrf': ${JSON.stringify(session.csrfToken ?? "")} }, body: JSON.stringify({ locale: 'fr' }) }).then((response) => response.ok)`,
-      );
-      expect(saved).toBe(true);
-    });
+    // The shared admin's locale is global state: always put it back, or every later admin
+    // test (in this file order or another) runs in French.
+    const setAdminLocale = (locale: Locale) =>
+      withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "admin");
+        const session = await view.evaluate<{ readonly csrfToken: string | null }>(
+          "fetch('/api/auth/session').then((response) => response.json())",
+        );
+        const saved = await view.evaluate<boolean>(
+          `fetch('/api/me/locale', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json', 'x-bulletin-csrf': ${JSON.stringify(session.csrfToken ?? "")} }, body: JSON.stringify({ locale: ${JSON.stringify(locale)} }) }).then((response) => response.ok)`,
+        );
+        expect(saved).toBe(true);
+      });
 
-    await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
-      await loginAs(view, "admin");
-      await waitForText(view, staffFr["staff.dashboard.title"]);
-      expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
-    });
+    await setAdminLocale("fr");
+
+    try {
+      await withPage({ url: STAFF_URL, viewport: "mobile360" }, async (view) => {
+        await loginAs(view, "admin");
+        await waitForText(view, staffFr["staff.dashboard.title"]);
+        expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
+      });
+    } finally {
+      await setAdminLocale("en");
+    }
   }, 180_000);
 });
