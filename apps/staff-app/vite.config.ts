@@ -30,6 +30,9 @@ function cspPlugin(): Plugin {
     nodeEnv,
     connectSrc: [authIssuer],
   });
+  // Staff pages are never indexable (seo-feeds: Indexing controls). The SPA shell also has a
+  // robots meta tag; the header covers every response, including deep links and assets.
+  headers.set("x-robots-tag", "noindex, nofollow");
   const applyHeaders = (
     _request: IncomingMessage,
     response: ServerResponse,

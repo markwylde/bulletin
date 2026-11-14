@@ -56,6 +56,17 @@ integrationDescribe("robots.txt", () => {
     expect(await restored.text()).toContain("Disallow: /search");
   }, 120_000);
 
+  test("nested staff pages are noindex in the header and the shell", async () => {
+    for (const path of ["/", "/forums/2/permissions", "/settings/board"]) {
+      const response = await fetch(`${STAFF_URL}${path}`, { headers: { accept: "text/html" } });
+      const html = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+      expect(html).toContain('<meta name="robots" content="noindex, nofollow"');
+    }
+  }, 60_000);
+
   test("staff without acp.settings cannot save robots.txt", async () => {
     await withPage(
       {
