@@ -45,35 +45,22 @@ jobs:
         if: always()
         run: docker compose -f compose.yaml -f compose.test.yaml down -v --rmi local
 
-  images:
-    # Build the stack's images once per run; every shard starts from them. Runners share one
-    # Docker daemon, so the shards see these tags directly.
-    name: Build stack images
-    runs-on: ubuntu-latest
-    env:
-      COMPOSE_FILE: compose.yaml:compose.ci.yaml
-      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-images
-      CI_IMAGE_TAG: ${{ github.run_id }}
-    steps:
-      - uses: actions/checkout@v4
-      - run: docker compose build
-
   e2e:
     # Shard 0 runs the full-stack checks (sandbox, integration, benchmark); shards 1-8 split
     # the browser E2E files between them. Each shard brings up its own stack.
     name: ${{ matrix.shard == 0 && 'Full-stack checks' || format('E2E {0}/8', matrix.shard) }} (${{ matrix.engine }})
-    needs: images
     runs-on: ubuntu-latest
     env:
       # Container runners cannot bind-mount files from the job checkout (compose.ci.yaml).
       COMPOSE_FILE: compose.yaml:compose.ci.yaml
-      # Runners share one Docker daemon: isolate each shard's containers and volumes.
+      # Runners on one host share its Docker daemon: isolate each shard's containers,
+      # images and volumes. (Runners span several hosts, so images can't be shared between
+      # jobs without a registry; each shard builds from the host's layer cache.)
       COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-e2e-${{ matrix.engine }}-${{ matrix.shard }}
-      CI_IMAGE_TAG: ${{ github.run_id }}
     strategy:
       fail-fast: false
-      # Every shard runs a full stack and Chrome on the one shared Docker host; more than four
-      # at once starves them all and turns the suite into timeouts.
+      # Every shard runs a full stack and Chrome on a runner host's Docker daemon; more than
+      # four at once starves them and turns the suite into timeouts.
       max-parallel: 4
       matrix:
         # Podman needs a runner that can run containers inside the job; run it on demand.
@@ -122,7 +109,7 @@ jobs:
           if [ "${{ matrix.engine }}" = "podman" ]; then
             podman compose up -d --build --wait --wait-timeout 300
           else
-            docker compose up -d --no-build --wait --wait-timeout 300
+            docker compose up -d --build --wait --wait-timeout 300
           fi
 
       - name: Resolve the local origins
@@ -194,16 +181,5 @@ jobs:
           if [ "${{ matrix.engine }}" = "podman" ]; then
             podman compose down -v --rmi local
           else
-            docker compose down -v
+            docker compose down -v --rmi local
           fi
-
-  cleanup-images:
-    name: Remove stack images
-    needs: e2e
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Remove this run's images
-        run: |
-          images=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -E '^bulletin-ci-[a-z-]+:${{ github.run_id }}$' || true)
-          [ -z "$images" ] || docker image rm -f $images
