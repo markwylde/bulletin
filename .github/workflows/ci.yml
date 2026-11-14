@@ -45,7 +45,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: [docker, podman]
+        # Podman needs a runner that can run containers inside the job; run it on demand.
+        engine: ${{ github.event_name == 'workflow_dispatch' && fromJSON('["docker","podman"]') || fromJSON('["docker"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -56,18 +57,18 @@ jobs:
       - name: Install Podman and the Compose v2 provider
         if: matrix.engine == 'podman'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y podman
-          sudo curl -fsSL \
+          apt-get update
+          apt-get install -y podman
+          curl -fsSL \
             https://github.com/docker/compose/releases/download/v2.30.3/docker-compose-linux-x86_64 \
             -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
           podman info
 
       - name: Add local origins to /etc/hosts
         run: |
           echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
-            | sudo tee -a /etc/hosts
+            | tee -a /etc/hosts
 
       - name: Install pinned Chrome for E2E
         id: setup-chrome
