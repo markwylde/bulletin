@@ -10,7 +10,9 @@ import {
 import { createRequestGate, gateClosedResponse } from "./gate.ts";
 import { createLogger, type Logger } from "./log.ts";
 import {
+  createRouteLabeler,
   type MetricsRegistry,
+  methodLabel,
   metrics,
   routeLabel,
   serveMetrics,
@@ -59,8 +61,13 @@ export interface StartServiceOptions {
    * It is never routed by the public proxy.
    */
   readonly metricsPort?: number | null;
-  /** Bounded route label for request latency; defaults to {@link routeLabel}. */
+  /** Bounded route label for request latency; overrides `routes`. */
   readonly routeOf?: (request: Request, url: URL) => string;
+  /**
+   * Declared route patterns (`/api/v1/forums/:id`) used as latency labels. Other paths are
+   * labelled `unmatched` on 404/405 and get at most a bounded number of heuristic labels.
+   */
+  readonly routes?: readonly string[];
 }
 
 export interface RunningService {
@@ -258,6 +265,9 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
 
   const logger = options.logger ?? createLogger({ service: options.service });
   const gate = createRequestGate(options.requestGates ?? []);
+  const labeler = createRouteLabeler({
+    ...(options.routes === undefined ? {} : { patterns: options.routes }),
+  });
   let draining = false;
   let active = 0;
   let idleResolve: (() => void) | undefined;
@@ -405,27 +415,31 @@ export async function startService(options: StartServiceOptions): Promise<Runnin
         path: url.pathname,
       });
 
-      const route = options.routeOf?.(request, url) ?? routeLabel(url.pathname);
-      const timer = standardMetrics.requestDuration.startTimer({ route, method: request.method });
+      const method = methodLabel(request.method);
+      const declared = options.routeOf?.(request, url) ?? labeler.match(url.pathname);
+      // Span names may be finer than metric labels; traces are sampled, not held in memory.
+      const spanRoute = declared ?? routeLabel(url.pathname);
+      const routeFor = (status: number): string => declared ?? labeler.label(url.pathname, status);
+      const timer = standardMetrics.requestDuration.startTimer({ method });
 
       try {
         requestLogger.info("request.started");
         const response = await withServerSpan(
           request,
-          `${request.method} ${route}`,
+          `${method} ${spanRoute}`,
           async (span) => {
             const result = await options.fetch(request);
             span.setAttribute("http.response.status_code", result.status);
             return result;
           },
-          { "http.route": route, "service.name": options.service },
+          { "http.route": spanRoute, "service.name": options.service },
         );
         requestLogger.info("request.completed", { status: response.status });
-        timer({ status: String(response.status) });
+        timer({ route: routeFor(response.status), status: String(response.status) });
         return trackResponse(secure(response));
       } catch (error) {
         requestLogger.error("request.failed", { error });
-        timer({ status: "500" });
+        timer({ route: routeFor(500), status: "500" });
         finishRequest();
         throw error;
       }

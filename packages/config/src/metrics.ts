@@ -485,6 +485,88 @@ export function routeLabel(pathname: string): string {
     .join("/")}`;
 }
 
+/** The fixed label for requests that match no known route (ADR 0020: bounded series). */
+export const UNMATCHED_ROUTE = "unmatched";
+/** Heuristic labels admitted per process before everything else becomes {@link UNMATCHED_ROUTE}. */
+export const DEFAULT_ROUTE_LABEL_LIMIT = 100;
+const KNOWN_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+
+/** Bounds the method label: anything outside the standard methods is `other`. */
+export function methodLabel(method: string): string {
+  const upper = method.toUpperCase();
+  return KNOWN_METHODS.has(upper) ? upper : "other";
+}
+
+function patternMatches(pattern: readonly string[], segments: readonly string[]): boolean {
+  if (pattern.length !== segments.length) {
+    return false;
+  }
+
+  return pattern.every(
+    (part, index) =>
+      part.startsWith(":") ||
+      (part.startsWith("{") && part.endsWith("}")) ||
+      (part.startsWith("[") && part.endsWith("]")) ||
+      part === segments[index],
+  );
+}
+
+export interface RouteLabeler {
+  /** The declared route pattern the path matches, or null. */
+  match(pathname: string): string | null;
+  /**
+   * The metric label for a finished request. Declared routes keep their pattern. Any other
+   * path is `unmatched` when the response was 404/405, and otherwise gets a heuristic label
+   * only while fewer than `maxLabels` distinct ones have been seen, so unauthenticated
+   * requests to made-up paths cannot grow the series without bound.
+   */
+  label(pathname: string, status: number): string;
+}
+
+export function createRouteLabeler(
+  options: { readonly patterns?: readonly string[]; readonly maxLabels?: number } = {},
+): RouteLabeler {
+  const patterns = [...new Set(options.patterns ?? [])].map((pattern) => ({
+    pattern,
+    parts: pattern.split("/").filter((part) => part !== ""),
+  }));
+  const maxLabels = options.maxLabels ?? DEFAULT_ROUTE_LABEL_LIMIT;
+  const admitted = new Set<string>();
+
+  const match = (pathname: string): string | null => {
+    const segments = pathname.split("/").filter((segment) => segment !== "");
+    return patterns.find((entry) => patternMatches(entry.parts, segments))?.pattern ?? null;
+  };
+
+  return {
+    match,
+    label(pathname, status) {
+      const matched = match(pathname);
+
+      if (matched !== null) {
+        return matched;
+      }
+
+      if (status === 404 || status === 405) {
+        return UNMATCHED_ROUTE;
+      }
+
+      const heuristic = routeLabel(pathname);
+
+      if (admitted.has(heuristic)) {
+        return heuristic;
+      }
+
+      if (admitted.size >= maxLabels) {
+        return UNMATCHED_ROUTE;
+      }
+
+      admitted.add(heuristic);
+      return heuristic;
+    },
+  };
+}
+
 export interface MetricSample {
   readonly name: string;
   readonly labels: Labels;

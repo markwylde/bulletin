@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import {
+  createRouteLabeler,
   declareStandardMetrics,
   exposedFamilies,
   METRIC_FAMILIES,
   MetricsRegistry,
+  methodLabel,
   metricsPortFromEnv,
   parsePrometheusText,
   routeLabel,
   serveMetrics,
+  UNMATCHED_ROUTE,
 } from "./metrics.ts";
 
 describe("metrics registry", () => {
@@ -114,5 +117,27 @@ describe("metrics registry", () => {
     } finally {
       server.stop(true);
     }
+  });
+});
+
+describe("bounded route labels", () => {
+  test("declared patterns win; 404s and overflow collapse to one label", () => {
+    const labeler = createRouteLabeler({
+      patterns: ["/api/v1/forums/:id", "/topic/[id]"],
+      maxLabels: 2,
+    });
+
+    expect(labeler.label("/api/v1/forums/12", 200)).toBe("/api/v1/forums/:id");
+    expect(labeler.label("/topic/12-hello", 200)).toBe("/topic/[id]");
+    expect(labeler.label("/api/v1/forums/12/extra", 404)).toBe(UNMATCHED_ROUTE);
+    expect(labeler.label("/a", 401)).toBe("/a");
+    expect(labeler.label("/b", 401)).toBe("/b");
+    expect(labeler.label("/c", 401)).toBe(UNMATCHED_ROUTE);
+    expect(labeler.label("/a", 200)).toBe("/a");
+  });
+
+  test("methods outside the standard set are labelled other", () => {
+    expect(methodLabel("get")).toBe("GET");
+    expect(methodLabel("PROPFIND")).toBe("other");
   });
 });

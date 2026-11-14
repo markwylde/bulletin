@@ -22,7 +22,7 @@ import { createJournalReadinessCheck } from "@bulletin/domain/operations";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
 import { createStorage } from "@bulletin/storage";
 import { auditStaffLocaleChange } from "./admin-log.ts";
-import { createStaffApi } from "./api.ts";
+import { createStaffApi, STAFF_ROUTES } from "./api.ts";
 import { healthTargetsFromEnv } from "./system-health.ts";
 
 const config = loadConfig();
@@ -90,6 +90,7 @@ await startService({
     return api.handle(request);
   },
   checks,
+  routes: STAFF_ROUTES.map((route) => route.path),
   // No staff request runs against restored, not yet re-erased data (ADR 0020, ADR 0012).
   requestGates: [journalCheck],
   budget: {

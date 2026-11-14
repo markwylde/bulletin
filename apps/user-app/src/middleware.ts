@@ -1,7 +1,7 @@
 import { defineMiddleware } from "astro:middleware";
 import { createDrainController } from "@bulletin/config/drain";
 import { createRequestGate, gateClosedResponse, type RequestGate } from "@bulletin/config/gate";
-import { routeLabel, standardMetrics } from "@bulletin/config/metrics";
+import { methodLabel, standardMetrics, UNMATCHED_ROUTE } from "@bulletin/config/metrics";
 import { applySecurityHeaders, createCspNonce } from "@bulletin/config/security";
 import { withServerSpan } from "@bulletin/config/tracing";
 import { parseCookieHeader } from "@bulletin/domain/auth";
@@ -125,12 +125,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const started = performance.now();
   let status = 500;
 
-  const route = context.routePattern || routeLabel(context.url.pathname);
+  // Astro's matched route pattern is bounded; a path no route matched never becomes a label.
+  const route = context.routePattern || UNMATCHED_ROUTE;
+  const method = methodLabel(context.request.method);
 
   try {
     const response = await withServerSpan(
       context.request,
-      `${context.request.method} ${route}`,
+      `${method} ${route}`,
       async (span) => {
         const result = await handle(context, next);
         span.setAttribute("http.response.status_code", result.status);
@@ -145,7 +147,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       standardMetrics.requestDuration.observe(
         {
           route,
-          method: context.request.method,
+          method,
           status: String(status),
         },
         (performance.now() - started) / 1_000,

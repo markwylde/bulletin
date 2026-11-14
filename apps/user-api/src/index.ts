@@ -163,6 +163,7 @@ const journalCheck = createJournalReadinessCheck(sql, storage);
 await startService({
   service: "user-api",
   metricsPort: metricsPortFromEnv(),
+  routes: API_ROUTES.map((route) => route.path),
   logger,
   port,
   async fetch(request) {

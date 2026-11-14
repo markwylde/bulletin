@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { SQL } from "bun";
 import { ConnectionBudgetError } from "./connections.ts";
 import { createLogger } from "./log.ts";
+import { METRIC_FAMILIES, metrics, parsePrometheusText } from "./metrics.ts";
 import { createServiceSql, listenSqlFromEnv, type RunningService, startService } from "./server.ts";
 
 const running: RunningService[] = [];
@@ -113,6 +114,54 @@ describe("shared service lifecycle", () => {
     expect(await served.text()).toBe("ok");
     expect(dispatched).toBe(1);
   });
+
+  test("keeps request metric labels bounded under arbitrary paths and methods", async () => {
+    metrics.resetValues();
+    const { base } = await start({
+      service: "test",
+      port: 0,
+      routes: ["/api/items/:id"],
+      fetch: (request) => {
+        const { pathname } = new URL(request.url);
+
+        if (pathname.startsWith("/api/items/")) {
+          return new Response("ok");
+        }
+
+        // Authentication before routing: any /api path answers 401, so the status alone
+        // cannot tell a real route from a made-up one.
+        return pathname.startsWith("/api/")
+          ? new Response("unauthenticated", { status: 401 })
+          : new Response("not found", { status: 404 });
+      },
+    });
+
+    for (let index = 0; index < 300; index += 1) {
+      const tag = crypto.randomUUID().slice(0, 6);
+      await fetch(`${base}/x${index}/${tag}`);
+      await fetch(`${base}/api/k${index}-${tag}`, { method: index % 2 === 0 ? "GET" : "POST" });
+      await fetch(`${base}/api/items/${index}`);
+      await fetch(`${base}/api/items/${index}`, { method: `M${index}` }).catch(() => undefined);
+    }
+
+    const samples = parsePrometheusText(await metrics.expose()).filter(
+      (sample) => sample.name === `${METRIC_FAMILIES.requestDuration}_count`,
+    );
+    const routes = new Set(samples.map((sample) => sample.labels.route));
+    const methods = new Set(samples.map((sample) => sample.labels.method));
+
+    expect(routes.has("/api/items/:id")).toBe(true);
+    expect(routes.has("unmatched")).toBe(true);
+    expect(routes.size).toBeLessThanOrEqual(102);
+    expect(
+      [...methods].every((method) =>
+        ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "other"].includes(
+          method ?? "",
+        ),
+      ),
+    ).toBe(true);
+    metrics.resetValues();
+  }, 30_000);
 
   test("lets an in-flight request finish before shutdown resolves", async () => {
     let release: (() => void) | undefined;
