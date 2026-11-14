@@ -19,3 +19,6 @@ services:
         FROM caddy:2.11.9-alpine
         COPY apps/proxy/Caddyfile /etc/caddy/Caddyfile
     volumes: !reset []
+    # The job reaches the proxy over the stack network; publishing a host port would
+    # collide between runs that share a Docker daemon.
+    ports: !reset []

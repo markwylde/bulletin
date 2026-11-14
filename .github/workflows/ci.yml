@@ -27,6 +27,8 @@ jobs:
   integration:
     name: Compose database/integration tests
     runs-on: ubuntu-latest
+    env:
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-integration
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -34,10 +36,10 @@ jobs:
           bun-version: 1.4.0
       - run: bun install --frozen-lockfile
       - name: Run the test service
-        run: docker compose -f compose.yaml -f compose.test.yaml --profile test run --rm test
+        run: docker compose -f compose.yaml -f compose.test.yaml --profile test run --rm --build test
       - name: Stop the stack
         if: always()
-        run: docker compose -f compose.yaml -f compose.test.yaml down -v
+        run: docker compose -f compose.yaml -f compose.test.yaml down -v --rmi local
 
   e2e:
     name: Full-stack E2E (${{ matrix.engine }})
@@ -45,6 +47,8 @@ jobs:
     env:
       # Container runners cannot bind-mount files from the job checkout (compose.ci.yaml).
       COMPOSE_FILE: compose.yaml:compose.ci.yaml
+      # Runners share one Docker daemon: isolate each run's containers, images and volumes.
+      COMPOSE_PROJECT_NAME: ci-${{ github.run_id }}-e2e-${{ matrix.engine }}
     strategy:
       fail-fast: false
       matrix:
@@ -83,9 +87,9 @@ jobs:
       - name: Start the full stack
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
-            podman compose up -d --wait --wait-timeout 300
+            podman compose up -d --build --wait --wait-timeout 300
           else
-            docker compose up -d --wait --wait-timeout 300
+            docker compose up -d --build --wait --wait-timeout 300
           fi
 
       - name: Reach the stack from the job container
@@ -149,7 +153,7 @@ jobs:
         if: always()
         run: |
           if [ "${{ matrix.engine }}" = "podman" ]; then
-            podman compose down -v
+            podman compose down -v --rmi local
           else
-            docker compose down -v
+            docker compose down -v --rmi local
           fi
