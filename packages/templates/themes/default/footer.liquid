@@ -1,4 +1,5 @@
 <footer class="bl-footer" data-theme-footer>
   {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
   <p class="bl-footer__text">{% t "theme.footer" %} <span data-board-year>{{ year }}</span></p>
+  {% if flags.feeds %}{% island "FeedLinks" feedLinks %}{% endif %}
 </footer>

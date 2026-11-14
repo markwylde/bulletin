@@ -1,7 +1,10 @@
 import type { APIRoute } from "astro";
 import { feedDocumentFor } from "../seo/feeds.ts";
+import { feedsFlagRoute } from "../seo/guard.ts";
 import { readSql, seoRoute } from "../seo/route.ts";
 
 /** `GET /feed.xml`: the board-wide RSS feed of recent public topics. */
 export const GET: APIRoute = ({ request }) =>
-  seoRoute(request, ({ origin }) => feedDocumentFor({ sql: readSql(), origin, format: "rss" }));
+  feedsFlagRoute(readSql(), request, () =>
+    seoRoute(request, ({ origin }) => feedDocumentFor({ sql: readSql(), origin, format: "rss" })),
+  );

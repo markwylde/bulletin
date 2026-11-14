@@ -133,6 +133,7 @@ export interface PageRegionsInput {
 /** The header, breadcrumb, empty-state and footer regions every themed page renders. */
 export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
   const flags = (input.viewModel as { readonly flags?: unknown } | undefined)?.flags ?? {};
+  const feeds = (flags as { readonly feeds?: unknown }).feeds === true;
 
   return [
     {
@@ -165,6 +166,14 @@ export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
         year: input.year ?? new Date().getFullYear(),
         flags,
         themeChooser: themeChooserView(input.translate),
+        feedLinks: {
+          flags: { feeds },
+          labels: {
+            label: input.translate("seo.feed.links"),
+            rss: input.translate("seo.feed.link.rss"),
+            atom: input.translate("seo.feed.link.atom"),
+          },
+        },
       },
     },
   ];

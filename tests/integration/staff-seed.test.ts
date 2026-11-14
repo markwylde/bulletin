@@ -110,6 +110,7 @@ integrationDescribe("flags seed", () => {
         "conversations",
         "custom_profile_fields",
         "digests",
+        "feeds",
         "follows",
         "friends",
         "ignore_list",

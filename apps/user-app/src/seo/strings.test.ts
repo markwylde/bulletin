@@ -28,6 +28,9 @@ describe("SEO strings", () => {
           "seo.feed.board.title",
           "seo.feed.forum.description",
           "seo.feed.forum.title",
+          "seo.feed.link.atom",
+          "seo.feed.link.rss",
+          "seo.feed.links",
         ],
       });
     }

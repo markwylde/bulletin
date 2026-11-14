@@ -647,6 +647,17 @@ input:focus-visible {
   font-size: 0.875rem;
 }
 
+.bl-footer__feeds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bl-space-small);
+  width: min(100%, var(--bl-width));
+  margin: 0 auto;
+  padding: 0 var(--bl-space) var(--bl-space);
+  color: var(--bl-muted);
+  font-size: 0.875rem;
+}
+
 .bl-hook {
   margin: 0;
   padding-inline-start: var(--bl-space);

@@ -5,6 +5,7 @@ import { FlagsProvider } from "../flags.tsx";
 import {
   apiDocsSchema,
   editorSchema,
+  feedLinksSchema,
   type IslandPropsSchema,
   languageSwitcherSchema,
   localeSuggestionSchema,
@@ -101,6 +102,10 @@ export const CLIENT_ISLANDS: Readonly<Record<string, ClientIsland>> = {
   Editor: defineClientIsland(editorSchema, async () => {
     const module = await import("./Editor.tsx");
     return module.Editor;
+  }),
+  FeedLinks: defineClientIsland(feedLinksSchema, async () => {
+    const module = await import("./FeedLinks.tsx");
+    return module.FeedLinks;
   }),
   Reactions: defineClientIsland(reactionsSchema, async () => {
     const module = await import("./Reactions.tsx");
