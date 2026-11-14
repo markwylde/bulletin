@@ -35,6 +35,7 @@ export const ERASURE_STEPS = [
   "notifications",
   "api_keys",
   "profile_history",
+  "export_archives",
   "restricted_data",
   "anonymise_member",
   "mentions_rerender",
@@ -69,6 +70,7 @@ export interface ErasureResult {
 interface ErasureStart {
   readonly memberId: string;
   readonly postAction: "anonymise" | "delete";
+  readonly oldNames: readonly string[];
   readonly sessionIds: readonly string[];
   readonly apiKeyIds: readonly string[];
   readonly pushDeviceIds: readonly string[];
@@ -106,6 +108,7 @@ function start(value: unknown): ErasureStart | null {
   return {
     memberId,
     postAction,
+    oldNames: strings(record.oldNames),
     sessionIds: strings(record.sessionIds),
     apiKeyIds: strings(record.apiKeyIds),
     pushDeviceIds: strings(record.pushDeviceIds),
@@ -177,33 +180,30 @@ async function runStep(
   await sql`SELECT pii.update_request_step(${requestId}, ${step}, 'completed')`;
 }
 
+async function deleteObject(storage: StorageClient, key: string): Promise<void> {
+  if (!(await storage.exists(key))) {
+    return;
+  }
+
+  await storage.delete(key);
+}
+
 async function deleteAttachmentObjects(
   storage: StorageClient,
   keys: readonly string[],
 ): Promise<void> {
   for (const key of keys) {
-    await storage.delete(key).catch(() => undefined);
+    await deleteObject(storage, key);
     if (key.startsWith("att/")) {
-      await storage.delete(thumbnailKeyFor(key)).catch(() => undefined);
+      await deleteObject(storage, thumbnailKeyFor(key));
     }
   }
 }
 
-async function nextJournalKey(storage: StorageClient, now: Date): Promise<string> {
-  const day = now.toISOString().slice(0, 10);
-  const prefix = `journal/${day}/`;
-  let max = 0;
-
-  for (const object of await storage.list(prefix)) {
-    const name = object.key.slice(prefix.length).replace(/\.json$/, "");
-    const value = Number(name);
-
-    if (Number.isInteger(value) && value > max) {
-      max = value;
-    }
-  }
-
-  return `${prefix}${String(max + 1).padStart(6, "0")}.json`;
+/** Request IDs are unique and retries use the fence date, so this key is collision-safe and
+ * idempotent across worker replicas. */
+export function journalKeyFor(requestId: string, acceptedAt: Date): string {
+  return `journal/${acceptedAt.toISOString().slice(0, 10)}/${requestId.padStart(12, "0")}.json`;
 }
 
 /** Runs one erasure request; retries skip every step already marked completed. */
@@ -235,11 +235,16 @@ export async function runErasureJob(
     SELECT step FROM pii.request_step_states(${requestId}) WHERE state = 'completed'
   `) as Array<{ step: string }>;
   const completed = new Set(completedRows.map((row) => row.step));
-  const oldNames = [
-    ...new Set(
-      [member?.display_name ?? "", ...(history?.names ?? [])].filter((name) => name.trim() !== ""),
-    ),
-  ];
+  const oldNames =
+    info.oldNames.length > 0
+      ? [...info.oldNames]
+      : [
+          ...new Set(
+            [member?.display_name ?? "", ...(history?.names ?? [])].filter(
+              (name) => name.trim() !== "",
+            ),
+          ),
+        ];
   const newName = `Deleted member #${memberId}`;
   const now = options.now ?? new Date();
   const eraser = pluginEraser(options);
@@ -319,20 +324,16 @@ export async function runErasureJob(
       ...(attachment.storage_key === null ? [] : [attachment.storage_key]),
     ]);
 
-    if (attachments.length > 0) {
-      await sql`DELETE FROM core.attachments WHERE member_id = ${memberId}`;
-    }
-
     await deleteAttachmentObjects(storage, keys);
 
     if (avatar?.avatar_hash !== null && avatar?.avatar_hash !== undefined) {
-      await Promise.all(
-        AVATAR_VARIANTS.map((variant) =>
-          storage
-            .delete(avatarKey(memberId, avatar.avatar_hash ?? "", variant))
-            .catch(() => undefined),
-        ),
-      );
+      for (const variant of AVATAR_VARIANTS) {
+        await deleteObject(storage, avatarKey(memberId, avatar.avatar_hash ?? "", variant));
+      }
+    }
+
+    if (attachments.length > 0) {
+      await sql`DELETE FROM core.attachments WHERE member_id = ${memberId}`;
     }
 
     await sql`DELETE FROM core.avatar_deletions WHERE member_id = ${memberId}`;
@@ -496,21 +497,20 @@ export async function runErasureJob(
     await sql`UPDATE core.reports SET assignee_id = NULL WHERE assignee_id = ${memberId}`;
   });
 
-  let exportKeys: string[] = [];
+  await runStep(sql, requestId, "export_archives", completed, async () => {
+    const [row] = (await sql`
+      SELECT pii.erasure_export_keys(${requestId}) AS keys
+    `) as Array<{ keys: unknown }>;
+
+    for (const key of strings(row?.keys)) {
+      await deleteObject(storage, key);
+    }
+
+    await sql`SELECT pii.clear_erasure_export_keys(${requestId})`;
+  });
 
   await runStep(sql, requestId, "restricted_data", completed, async () => {
-    const [result] = (await sql`
-      SELECT pii.erase_restricted_data(${requestId}) AS result
-    `) as Array<{ result: unknown }>;
-    const record =
-      typeof result?.result === "object" && result.result !== null
-        ? (result.result as Record<string, unknown>)
-        : {};
-    exportKeys = strings(record.exportKeys);
-
-    for (const key of exportKeys) {
-      await storage.delete(key).catch(() => undefined);
-    }
+    await sql`SELECT pii.erase_restricted_data(${requestId})`;
   });
 
   await runStep(sql, requestId, "anonymise_member", completed, async () => {
@@ -570,7 +570,10 @@ export async function runErasureJob(
 
     if (patterns.length > 0) {
       await runContentRerenderJob(sql, {
-        sources: [quoteSnapshotRerenderSource, postRerenderSource],
+        sources: [
+          { ...quoteSnapshotRerenderSource, name: `quote_snapshots:erasure:${requestId}` },
+          { ...postRerenderSource, name: `posts:erasure:${requestId}` },
+        ],
       });
     }
   });
@@ -583,7 +586,8 @@ export async function runErasureJob(
       typeof fenceRow?.fence === "object" && fenceRow.fence !== null
         ? (fenceRow.fence as Record<string, unknown>)
         : {};
-    journalKey = await nextJournalKey(storage, now);
+    const acceptedAt = typeof fence.acceptedAt === "string" ? new Date(fence.acceptedAt) : now;
+    journalKey = journalKeyFor(requestId, acceptedAt);
     await storage.put(
       journalKey,
       `${JSON.stringify({

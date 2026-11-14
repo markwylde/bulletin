@@ -130,6 +130,7 @@ export async function dataRequestsResponse(sql: SQL, request: Request): Promise<
     requests: requests.map((entry) => ({
       ...entry,
       memberName: names.get(entry.memberId) ?? null,
+      lastError: entry.lastError,
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString(),
       dueAt: entry.dueAt.toISOString(),

@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { ERASURE_STEPS, runErasureJob } from "@bulletin/db/jobs";
+import { currentContentVersions } from "@bulletin/content";
+import {
+  ERASURE_STEPS,
+  journalKeyFor,
+  rerenderCursorKey,
+  runErasureJob,
+  runExportJob,
+} from "@bulletin/db/jobs";
 import { sessionCookieName } from "@bulletin/domain/auth";
-import { requestDataErasure } from "@bulletin/domain/privacy";
+import { requestDataErasure, requestDataExport } from "@bulletin/domain/privacy";
 import { avatarKey, type StorageClient, thumbnailKeyFor } from "@bulletin/storage";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { SQL } from "bun";
@@ -46,15 +53,18 @@ interface RecordingStorage {
   readonly storage: StorageClient;
   readonly objects: Map<string, Uint8Array>;
   readonly deleted: string[];
+  readonly failing: Set<string>;
 }
 
 function createStorage(): RecordingStorage {
   const objects = new Map<string, Uint8Array>();
   const deleted: string[] = [];
+  const failing = new Set<string>();
 
   return {
     objects,
     deleted,
+    failing,
     storage: {
       async put(key, data) {
         const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
@@ -71,6 +81,9 @@ function createStorage(): RecordingStorage {
         return { size: 0, contentType: "application/octet-stream", etag: "" };
       },
       async delete(key) {
+        if (failing.has(key)) {
+          throw new Error("storage unavailable");
+        }
         deleted.push(key);
         objects.delete(key);
       },
@@ -563,7 +576,17 @@ integrationDescribe("member erasure", () => {
       const fixture = await createFixtures(database);
       const storage = createStorage();
       storage.objects.set(fixture.attachmentKey, new TextEncoder().encode("erase!"));
+      storage.objects.set(
+        thumbnailKeyFor(fixture.attachmentKey),
+        new TextEncoder().encode("thumb"),
+      );
       storage.objects.set(fixture.exportKey, new TextEncoder().encode("zip"));
+      for (const variant of ["lg", "md", "sm"] as const) {
+        storage.objects.set(
+          avatarKey(fixture.memberId, fixture.avatarHash, variant),
+          new TextEncoder().encode("avatar"),
+        );
+      }
       const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
 
       if (request === null) {
@@ -872,6 +895,190 @@ integrationDescribe("member erasure", () => {
       expect(completed?.status).toBe("completed");
     });
   }, 120_000);
+
+  test("retains attachment and avatar work until storage confirms deletion", async () => {
+    await withDb("privacy_erasure_storage_retry", async (database) => {
+      const fixture = await createFixtures(database);
+      const storage = createStorage();
+      storage.objects.set(fixture.attachmentKey, new TextEncoder().encode("erase!"));
+      storage.objects.set(
+        thumbnailKeyFor(fixture.attachmentKey),
+        new TextEncoder().encode("thumb"),
+      );
+      for (const variant of ["lg", "md", "sm"] as const) {
+        storage.objects.set(
+          avatarKey(fixture.memberId, fixture.avatarHash, variant),
+          new TextEncoder().encode("avatar"),
+        );
+      }
+      storage.failing.add(fixture.attachmentKey);
+      const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+      if (request === null) {
+        throw new Error("erasure request was not created");
+      }
+
+      await approveErasure(database, fixture, request.requestId);
+      await expect(
+        runErasureJob(database.sql, storage.storage, request.requestId, {
+          pluginErase: async () => ({ ok: true }),
+        }),
+      ).rejects.toThrow(/storage unavailable/);
+
+      const [attachment] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.attachments WHERE member_id = ${fixture.memberId}
+      `) as Array<{ count: number }>;
+      expect(attachment?.count).toBe(1);
+      const [failed] = (await database.sql`
+        SELECT state FROM pii.data_request_steps
+        WHERE request_id = ${request.requestId} AND step = 'attachments'
+      `) as Array<{ state: string }>;
+      expect(failed?.state).toBe("failed");
+
+      storage.failing.clear();
+      storage.failing.add(avatarKey(fixture.memberId, fixture.avatarHash, "md"));
+      await expect(
+        runErasureJob(database.sql, storage.storage, request.requestId, {
+          pluginErase: async () => ({ ok: true }),
+        }),
+      ).rejects.toThrow(/storage unavailable/);
+
+      storage.failing.clear();
+      const completed = await runErasureJob(database.sql, storage.storage, request.requestId, {
+        pluginErase: async () => ({ ok: true }),
+      });
+      expect(completed?.memberId).toBe(fixture.memberId);
+      const [remaining] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.attachments WHERE member_id = ${fixture.memberId}
+      `) as Array<{ count: number }>;
+      expect(remaining?.count).toBe(0);
+      expect(storage.deleted).toContain(fixture.attachmentKey);
+      expect(storage.deleted).toContain(avatarKey(fixture.memberId, fixture.avatarHash, "lg"));
+      expect(storage.deleted).toContain(avatarKey(fixture.memberId, fixture.avatarHash, "md"));
+    });
+  }, 120_000);
+
+  test("retains export keys until the archive object is deleted", async () => {
+    await withDb("privacy_erasure_export_retry", async (database) => {
+      const fixture = await createFixtures(database);
+      const storage = createStorage();
+      storage.objects.set(fixture.exportKey, new TextEncoder().encode("zip"));
+      storage.failing.add(fixture.exportKey);
+      const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+      if (request === null) {
+        throw new Error("erasure request was not created");
+      }
+
+      await approveErasure(database, fixture, request.requestId);
+      await expect(
+        runErasureJob(database.sql, storage.storage, request.requestId, {
+          pluginErase: async () => ({ ok: true }),
+        }),
+      ).rejects.toThrow(/storage unavailable/);
+
+      const [row] = (await database.sql`
+        SELECT export_key FROM pii.data_requests
+        WHERE member_id = ${fixture.memberId} AND export_key IS NOT NULL
+      `) as Array<{ export_key: string }>;
+      expect(row?.export_key).toBe(fixture.exportKey);
+
+      storage.failing.clear();
+      const completed = await runErasureJob(database.sql, storage.storage, request.requestId, {
+        pluginErase: async () => ({ ok: true }),
+      });
+      expect(completed?.memberId).toBe(fixture.memberId);
+      expect(storage.deleted).toContain(fixture.exportKey);
+    });
+  }, 120_000);
+
+  test("keeps captured names when erasure resumes after anonymisation", async () => {
+    await withDb("privacy_erasure_names", async (database) => {
+      const fixture = await createFixtures(database);
+      const storage = createStorage();
+      const request = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+      if (request === null) {
+        throw new Error("erasure request was not created");
+      }
+
+      await approveErasure(database, fixture, request.requestId);
+      await database.sql`
+        INSERT INTO core.job_cursors (subscriber, last_event_id)
+        VALUES (${rerenderCursorKey("posts", currentContentVersions())}, 999999)
+      `;
+      await database.sql`DELETE FROM core.member_name_history WHERE member_id = ${fixture.memberId}`;
+      await database.sql`
+        UPDATE core.members SET display_name = 'Changed Later' WHERE id = ${fixture.memberId}
+      `;
+
+      const completed = await runErasureJob(database.sql, storage.storage, request.requestId, {
+        pluginErase: async () => ({ ok: true }),
+      });
+      expect(completed?.memberId).toBe(fixture.memberId);
+      const [post] = (await database.sql`
+        SELECT body_md FROM core.posts WHERE id = ${fixture.mentionPostId}
+      `) as Array<{ body_md: string }>;
+      expect(post?.body_md).toBe(
+        `Hello @Deleted member #${fixture.memberId} and @Deleted member #${fixture.memberId}`,
+      );
+      expect(post?.body_md).not.toContain("Alice Original");
+      expect(post?.body_md).not.toContain("Alice Old");
+      expect(post?.body_md).not.toContain("Changed Later");
+    });
+  }, 120_000);
+
+  test("cancels an export that begins before the erasure fence", async () => {
+    await withDb("privacy_erasure_export_fence", async (database) => {
+      const fixture = await createFixtures(database);
+      const storage = createStorage();
+      const exportRequest = await requestDataExport(database.sql, fixture.token, fixture.memberId);
+
+      if (exportRequest === null) {
+        throw new Error("export request was not created");
+      }
+
+      const [begun] = (await database.sql`
+        SELECT pii.begin_export(${exportRequest}) AS member_id
+      `) as Array<{ member_id: string | null }>;
+      expect(begun?.member_id).toBe(fixture.memberId);
+
+      const erasure = await requestDataErasure(database.sql, fixture.token, fixture.memberId);
+
+      if (erasure === null) {
+        throw new Error("erasure request was not created");
+      }
+
+      await approveErasure(database, fixture, erasure.requestId);
+
+      const [cancelled] = (await database.sql`
+        SELECT status FROM pii.data_requests WHERE id = ${exportRequest}
+      `) as Array<{ status: string }>;
+      expect(cancelled?.status).toBe("cancelled");
+
+      const [completed] = (await database.sql`
+        SELECT pii.complete_export(${exportRequest}, 'export/late.zip', now() + interval '7 days') AS ok
+      `) as Array<{ ok: boolean }>;
+      expect(completed?.ok).toBe(false);
+
+      const late = await runExportJob(database.sql, storage.storage, exportRequest, {
+        pluginExport: async () => ({ ok: true, data: {} }),
+      });
+      expect(late).toBeNull();
+
+      const [notified] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.notifications
+        WHERE data_request_id = ${exportRequest}
+      `) as Array<{ count: number }>;
+      expect(notified?.count).toBe(0);
+    });
+  }, 120_000);
+
+  test("makes journal keys unique per request and stable across retries", () => {
+    const accepted = new Date("2026-01-02T03:04:05Z");
+    expect(journalKeyFor("7", accepted)).toBe(journalKeyFor("7", accepted));
+    expect(new Set([journalKeyFor("7", accepted), journalKeyFor("8", accepted)]).size).toBe(2);
+  });
 
   test("can delete posts instead of keeping them anonymised", async () => {
     await withDb("privacy_erasure_delete_posts", async (database) => {

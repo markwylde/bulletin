@@ -73,7 +73,7 @@ export const privacySeedModule: SeedModule = {
       INSERT INTO pii.data_requests (member_id, kind, status, created_at, due_at)
       VALUES (
         ${memberTwo}, 'erasure', 'pending',
-        now() - interval '5 days', now() + interval '25 days'
+        now() - interval '26 days', now() + interval '4 days'
       )
       ON CONFLICT DO NOTHING
     `;

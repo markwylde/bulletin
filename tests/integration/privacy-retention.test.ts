@@ -240,6 +240,7 @@ integrationDescribe("retention sweep", () => {
         ipBans: 1,
         exportsDeleted: 1,
         exportFailures: 0,
+        dataRequests: 0,
       });
       expect(storage.deleted).toEqual([fixtures.oldExportKey]);
 
@@ -328,6 +329,86 @@ integrationDescribe("retention sweep", () => {
         SELECT export_key FROM pii.data_requests WHERE id = ${fixtures.exportRequestId}
       `) as Array<{ export_key: string | null }>;
       expect(cleared?.export_key).toBeNull();
+    });
+  }, 60_000);
+
+  test("uses archive expiry and the two-year completion boundary", async () => {
+    await withDb("retention_boundaries", async (database) => {
+      const now = new Date();
+      const storage = recordingStorage();
+      const [member] = (await database.sql`
+        INSERT INTO core.members (display_name) VALUES ('Retention Boundary')
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (member === undefined) {
+        throw new Error("Could not create the retention member");
+      }
+
+      const [delayed] = (await database.sql`
+        INSERT INTO pii.data_requests (
+          member_id, kind, status, export_key, export_expires_at, created_at, completed_at
+        ) VALUES (
+          ${member.id}, 'export', 'completed', 'export/delayed.zip',
+          ${new Date(now.getTime() + 24 * 60 * 60 * 1_000)}, ${daysAgo(now, 60)},
+          ${daysAgo(now, 59)}
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [oldCompleted] = (await database.sql`
+        INSERT INTO pii.data_requests (
+          member_id, kind, status, created_at, completed_at
+        ) VALUES (
+          ${member.id}, 'export', 'completed', ${daysAgo(now, 800)}, ${daysAgo(now, 731)}
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [recentCompleted] = (await database.sql`
+        INSERT INTO pii.data_requests (
+          member_id, kind, status, created_at, completed_at
+        ) VALUES (
+          ${member.id}, 'erasure', 'rejected', ${daysAgo(now, 800)}, ${daysAgo(now, 729)}
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+      const [oldPending] = (await database.sql`
+        INSERT INTO pii.data_requests (member_id, kind, status, created_at, due_at)
+        VALUES (
+          ${member.id}, 'erasure', 'pending', ${daysAgo(now, 800)},
+          ${daysAgo(now, 770)}
+        )
+        RETURNING id::text AS id
+      `) as Array<{ id: string }>;
+
+      if (
+        delayed === undefined ||
+        oldCompleted === undefined ||
+        recentCompleted === undefined ||
+        oldPending === undefined
+      ) {
+        throw new Error("Could not create retention requests");
+      }
+
+      await database.sql`
+        INSERT INTO pii.data_request_steps (request_id, step, state)
+        VALUES (${oldCompleted.id}, 'old', 'completed')
+      `;
+
+      const result = await runRetention(database.sql, storage.storage, { now });
+
+      expect(result.exportsDeleted).toBe(0);
+      expect(result.dataRequests).toBe(1);
+      expect(storage.deleted).toEqual([]);
+      const rows = (await database.sql`
+        SELECT id::text AS id FROM pii.data_requests ORDER BY id
+      `) as Array<{ id: string }>;
+      expect(rows.map((row) => row.id).sort()).toEqual(
+        [delayed.id, recentCompleted.id, oldPending.id].sort(),
+      );
+      const [steps] = (await database.sql`
+        SELECT count(*)::int AS count FROM pii.data_request_steps WHERE request_id = ${oldCompleted.id}
+      `) as Array<{ count: number }>;
+      expect(steps?.count).toBe(0);
     });
   }, 60_000);
 

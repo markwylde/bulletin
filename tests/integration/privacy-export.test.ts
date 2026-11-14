@@ -83,6 +83,7 @@ function createStorage(attachmentKey: string, attachmentBytes: Uint8Array): Reco
 interface ExportFixtures {
   readonly memberId: string;
   readonly token: string;
+  readonly conversationId: string;
   readonly attachmentKey: string;
   readonly attachmentBytes: Uint8Array;
 }
@@ -233,6 +234,7 @@ async function createFixtures(database: TestDatabase): Promise<ExportFixtures> {
   return {
     memberId: member.id,
     token,
+    conversationId: conversation.id,
     attachmentKey,
     attachmentBytes,
   };
@@ -409,6 +411,93 @@ integrationDescribe("member data export", () => {
         requestId,
       );
       expect(expired.status).toBe(404);
+    });
+  }, 60_000);
+
+  test("does not export a conversation after the member is removed", async () => {
+    await withDb("privacy_export_removed", async (database) => {
+      const fixtures = await createFixtures(database);
+      const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
+      await database.sql`
+        UPDATE core.conversation_participants
+        SET state = 'removed', left_at = now()
+        WHERE conversation_id = ${fixtures.conversationId} AND member_id = ${fixtures.memberId}
+      `;
+      const cookie = `${sessionCookieName("user", "test")}=${fixtures.token}`;
+      const requested = await requestDataExportResponse(
+        database.sql,
+        fixtures.memberId,
+        new Request("http://bulletin.test/api/me/data-export", {
+          method: "POST",
+          headers: { cookie },
+        }),
+        "test",
+      );
+      const requestId = ((await requested.json()) as { requestId: string }).requestId;
+      const result = await runExportJob(database.sql, storage.storage, requestId, {
+        pluginExport: async () => ({ ok: true, data: {} }),
+      });
+      const archive = storage.objects.get(result?.exportKey ?? "");
+
+      if (archive === undefined) {
+        throw new Error("export archive was not uploaded");
+      }
+
+      const files = unzipSync(archive);
+      const conversations = strFromU8(files["conversations.json"] ?? new Uint8Array());
+      expect(conversations).not.toContain("Conversation body");
+      expect(conversations).not.toContain("Export conversation");
+    });
+  }, 60_000);
+
+  test("keeps an export open when a plugin hook fails", async () => {
+    await withDb("privacy_export_plugin_failure", async (database) => {
+      const fixtures = await createFixtures(database);
+      const storage = createStorage(fixtures.attachmentKey, fixtures.attachmentBytes);
+      const cookie = `${sessionCookieName("user", "test")}=${fixtures.token}`;
+      const requested = await requestDataExportResponse(
+        database.sql,
+        fixtures.memberId,
+        new Request("http://bulletin.test/api/me/data-export", {
+          method: "POST",
+          headers: { cookie },
+        }),
+        "test",
+      );
+      const requestId = ((await requested.json()) as { requestId: string }).requestId;
+
+      await expect(
+        runExportJob(database.sql, storage.storage, requestId, {
+          pluginExport: async () => ({ ok: false, error: "plugin down" }),
+        }),
+      ).rejects.toThrow(/plugin down/);
+
+      const [row] = (await database.sql`
+        SELECT status, export_key, last_error FROM pii.data_requests WHERE id = ${requestId}
+      `) as Array<{ status: string; export_key: string | null; last_error: string | null }>;
+      expect(row).toMatchObject({ status: "processing", export_key: null });
+      expect(row?.last_error).toContain("plugin down");
+      const [notification] = (await database.sql`
+        SELECT count(*)::int AS count FROM core.notifications
+        WHERE data_request_id = ${requestId}
+      `) as Array<{ count: number }>;
+      expect(notification?.count).toBe(0);
+
+      let attempts = 0;
+      const retried = await runExportJob(database.sql, storage.storage, requestId, {
+        pluginExport: async () => {
+          attempts += 1;
+          return attempts === 1
+            ? { ok: false, error: "transient" }
+            : { ok: true, data: { recovered: true } };
+        },
+      });
+      expect(attempts).toBe(2);
+      expect(retried?.exportKey).toMatch(/^export\//);
+      const [completed] = (await database.sql`
+        SELECT status, last_error FROM pii.data_requests WHERE id = ${requestId}
+      `) as Array<{ status: string; last_error: string | null }>;
+      expect(completed).toEqual({ status: "completed", last_error: null });
     });
   }, 60_000);
 

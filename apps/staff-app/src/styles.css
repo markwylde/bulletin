@@ -1158,6 +1158,10 @@ textarea.form-input {
   background: color-mix(in srgb, var(--danger, #b42318) 8%, transparent);
 }
 
+.data-row-due-soon {
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
 .data-request-actions {
   display: flex;
   flex-wrap: wrap;

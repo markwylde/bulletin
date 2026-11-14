@@ -116,17 +116,19 @@ export interface PiiPurgeResult {
   readonly loginIps: number;
   readonly accessLog: number;
   readonly sessionMeta: number;
+  readonly dataRequests: number;
 }
 
 export async function purgeExpiredPii(sql: SQL, now: Date = new Date()): Promise<PiiPurgeResult> {
   const rows = (await sql`
-    SELECT post_ips, login_ips, access_log, session_meta
+    SELECT post_ips, login_ips, access_log, session_meta, data_requests
     FROM pii.purge_expired(${now})
   `) as Array<{
     post_ips: string | number;
     login_ips: string | number;
     access_log: string | number;
     session_meta: string | number;
+    data_requests: string | number;
   }>;
   const row = rows[0];
 
@@ -135,6 +137,7 @@ export async function purgeExpiredPii(sql: SQL, now: Date = new Date()): Promise
     loginIps: Number(row?.login_ips ?? 0),
     accessLog: Number(row?.access_log ?? 0),
     sessionMeta: Number(row?.session_meta ?? 0),
+    dataRequests: Number(row?.data_requests ?? 0),
   };
 }
 
@@ -175,6 +178,7 @@ export interface DataRequestRecord {
   readonly reason: string | null;
   readonly decisionReason: string | null;
   readonly postAction: string;
+  readonly lastError: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly dueAt: Date;
@@ -214,7 +218,8 @@ export async function listDataRequests(
 
   const rows = (await sql`
     SELECT id::text AS id, member_id::text AS member_id, kind, status, reason,
-      decision_reason, post_action, created_at, updated_at, due_at, completed_at
+      decision_reason, post_action, last_error, created_at, updated_at, due_at,
+      completed_at
     FROM pii.list_data_requests(${sessionToken}, ${payload}::jsonb)
   `) as Array<{
     id: string;
@@ -224,6 +229,7 @@ export async function listDataRequests(
     reason: string | null;
     decision_reason: string | null;
     post_action: string;
+    last_error: string | null;
     created_at: Date;
     updated_at: Date;
     due_at: Date;
@@ -238,6 +244,7 @@ export async function listDataRequests(
     reason: row.reason,
     decisionReason: row.decision_reason,
     postAction: row.post_action,
+    lastError: row.last_error,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     dueAt: row.due_at,

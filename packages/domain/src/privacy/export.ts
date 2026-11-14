@@ -183,6 +183,7 @@ export async function buildMemberExport(
       FROM core.conversations c
       JOIN core.conversation_participants cp ON cp.conversation_id = c.id
       WHERE cp.member_id = ${memberId}
+        AND cp.state = 'active'
       ORDER BY c.created_at, c.id
     ` as Promise<unknown[]>,
     sql`
@@ -193,6 +194,7 @@ export async function buildMemberExport(
         SELECT cp.conversation_id
         FROM core.conversation_participants cp
         WHERE cp.member_id = ${memberId}
+          AND cp.state = 'active'
       )
       ORDER BY m.conversation_id, m.id
     ` as Promise<unknown[]>,
@@ -279,37 +281,31 @@ export async function buildMemberExport(
 
   for (const plugin of pluginIds) {
     if (options.pluginExport === undefined) {
-      pluginFailures.push(plugin.plugin_id);
-      files[`plugins/${plugin.plugin_id}.json`] = file({
-        pluginId: plugin.plugin_id,
-        error: "no plugin exporter configured",
-      });
-      continue;
+      throw new Error(`Plugin ${plugin.plugin_id} has no export handler configured`);
     }
+
+    let result: PluginExportResult;
 
     try {
-      const result = await options.pluginExport(plugin.plugin_id, memberId);
-
-      if (!result.ok) {
-        pluginFailures.push(plugin.plugin_id);
-        files[`plugins/${plugin.plugin_id}.json`] = file({
-          pluginId: plugin.plugin_id,
-          error: result.error ?? "export failed",
-        });
-        continue;
-      }
-
-      files[`plugins/${plugin.plugin_id}.json`] = file({
-        pluginId: plugin.plugin_id,
-        data: result.data ?? {},
-      });
+      result = await options.pluginExport(plugin.plugin_id, memberId);
     } catch (error) {
-      pluginFailures.push(plugin.plugin_id);
-      files[`plugins/${plugin.plugin_id}.json`] = file({
-        pluginId: plugin.plugin_id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      throw new Error(
+        `Plugin ${plugin.plugin_id} export failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
+
+    if (!result.ok) {
+      throw new Error(
+        `Plugin ${plugin.plugin_id} export failed: ${result.error ?? "unknown error"}`,
+      );
+    }
+
+    files[`plugins/${plugin.plugin_id}.json`] = file({
+      pluginId: plugin.plugin_id,
+      data: result.data ?? {},
+    });
   }
 
   const generatedAt = (options.now ?? new Date()).toISOString();

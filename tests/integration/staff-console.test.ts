@@ -713,6 +713,15 @@ integrationDescribe("staff API permission guard", () => {
           }),
         ]);
 
+        await database.sql`
+          UPDATE pii.data_requests SET last_error = 'plugin down' WHERE id = ${request?.id}
+        `;
+        const failed = await callRoute(api, route("privacy.requests"), admin);
+        expect(
+          ((await failed.json()) as { requests: Array<{ lastError: string | null }> }).requests[0]
+            ?.lastError,
+        ).toBe("plugin down");
+
         expect(await callRoute(api, route("privacy.requests"), moderator)).toHaveProperty(
           "status",
           403,

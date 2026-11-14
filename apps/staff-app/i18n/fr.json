@@ -782,6 +782,8 @@
   "staff.privacy.requests.created": "Demandée",
   "staff.privacy.requests.filterStatus": "Statut",
   "staff.privacy.requests.filterKind": "Type",
+  "staff.privacy.requests.failure": "Erreur de traitement",
+  "staff.privacy.requests.status.cancelled": "Annulée",
   "staff.privacy.requests.filterAll": "Toutes",
   "staff.privacy.requests.filterOverdue": "Uniquement en retard",
   "staff.privacy.requests.status.pending": "En attente",

@@ -2,6 +2,7 @@ import type { Logger } from "@bulletin/config";
 import { ensurePgBossQueue } from "@bulletin/db/events";
 import {
   createUnsubscribeToken,
+  isSystemNotificationType,
   type NotificationEmailContext,
   type NotificationType,
   notificationEmailContext,
@@ -226,7 +227,8 @@ export async function deliverNotificationEmail(
 
     if (
       options.flags !== undefined &&
-      (!(await options.flags.enabled("notifications", row.memberId)) ||
+      ((!isSystemNotificationType(row.type) &&
+        !(await options.flags.enabled("notifications", row.memberId))) ||
         (row.type === "conversation.message" &&
           !(await options.flags.enabled("conversations", row.memberId))))
     ) {

@@ -5,16 +5,18 @@ import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import { requestDueState } from "./due.ts";
 
 interface DataRequest {
   readonly id: string;
   readonly memberId: string;
   readonly memberName: string | null;
   readonly kind: "export" | "erasure";
-  readonly status: "pending" | "processing" | "completed" | "rejected";
+  readonly status: "pending" | "processing" | "completed" | "rejected" | "cancelled";
   readonly reason: string | null;
   readonly decisionReason: string | null;
   readonly postAction: "anonymise" | "delete";
+  readonly lastError: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly dueAt: string;
@@ -76,9 +78,8 @@ export function DataRequestsPage() {
     },
   });
   const now = Date.now();
-  const isOverdue = (request: DataRequest): boolean =>
-    (request.status === "pending" || request.status === "processing") &&
-    new Date(request.dueAt).getTime() < now;
+  const dueState = (request: DataRequest): "overdue" | "soon" | "later" =>
+    requestDueState(request.dueAt, request.status, now);
   const columns: readonly DataTableColumn<DataRequest>[] = [
     {
       id: "member",
@@ -106,11 +107,24 @@ export function DataRequestsPage() {
       id: "due",
       headerKey: "staff.privacy.requests.due",
       cell: (request) => (
-        <span data-request-overdue={isOverdue(request) ? "true" : "false"}>
+        <span
+          data-request-due={dueState(request)}
+          data-request-overdue={dueState(request) === "overdue" ? "true" : "false"}
+        >
           {formatDate(new Date(request.dueAt), locale, { dateStyle: "medium" })}
         </span>
       ),
       sortValue: (request) => request.dueAt,
+    },
+    {
+      id: "failure",
+      headerKey: "staff.privacy.requests.failure",
+      cell: (request) =>
+        request.lastError === null ? null : (
+          <span className="bl-error-text" data-request-last-error={request.id}>
+            {request.lastError}
+          </span>
+        ),
     },
     {
       id: "created",
@@ -140,6 +154,7 @@ export function DataRequestsPage() {
             <option value="processing">{t("staff.privacy.requests.status.processing")}</option>
             <option value="completed">{t("staff.privacy.requests.status.completed")}</option>
             <option value="rejected">{t("staff.privacy.requests.status.rejected")}</option>
+            <option value="cancelled">{t("staff.privacy.requests.status.cancelled")}</option>
           </select>
         </label>
         <label>
@@ -182,7 +197,15 @@ export function DataRequestsPage() {
           getRowLabel={(request) =>
             `${request.memberName ?? request.memberId} ${t(`staff.privacy.requests.kind.${request.kind}`)}`
           }
-          rowClassName={(request) => (isOverdue(request) ? "data-row-overdue" : undefined)}
+          rowClassName={(request) => {
+            const state = dueState(request);
+
+            return state === "overdue"
+              ? "data-row-overdue"
+              : state === "soon"
+                ? "data-row-due-soon"
+                : undefined;
+          }}
           rowActions={(request) => (
             <div className="data-request-actions">
               {request.kind === "erasure" ? (

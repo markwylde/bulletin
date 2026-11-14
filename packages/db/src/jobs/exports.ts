@@ -37,14 +37,32 @@ export interface ExportResult {
   readonly pluginFailures: readonly string[];
 }
 
+function withPluginRetries(
+  loader: (pluginId: string, memberId: string) => Promise<PluginExportResult>,
+): (pluginId: string, memberId: string) => Promise<PluginExportResult> {
+  return async (pluginId, memberId) => {
+    let last: PluginExportResult = { ok: false, error: "plugin export failed" };
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      last = await loader(pluginId, memberId);
+
+      if (last.ok) {
+        return last;
+      }
+    }
+
+    return last;
+  };
+}
+
 function pluginExporter(
   options: ExportJobOptions,
 ): (pluginId: string, memberId: string) => Promise<PluginExportResult> {
   if (options.pluginExport !== undefined) {
-    return options.pluginExport;
+    return withPluginRetries(options.pluginExport);
   }
 
-  return async (pluginId: string, memberId: string) => {
+  return withPluginRetries(async (pluginId: string, memberId: string) => {
     if (options.pluginHostUrl === undefined || options.pluginToken === undefined) {
       return { ok: false, error: "plugin host is not configured" };
     }
@@ -75,7 +93,7 @@ function pluginExporter(
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
-  };
+  });
 }
 
 /** Builds, uploads and announces one export request. */
@@ -95,9 +113,18 @@ export async function runExportJob(
 
   const memberId = started.member_id;
   const settings = await readPrivacySettings(sql);
-  const bundle = await buildMemberExport(sql, storage, requestId, {
-    pluginExport: pluginExporter(options),
-  });
+  let bundle: Awaited<ReturnType<typeof buildMemberExport>>;
+
+  try {
+    bundle = await buildMemberExport(sql, storage, requestId, {
+      pluginExport: pluginExporter(options),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await sql`SELECT pii.export_failed(${requestId}, ${message})`;
+    throw error;
+  }
+
   const exportKey = `export/${crypto.randomUUID()}.zip`;
   const expiresAt = new Date(Date.now() + settings.exportDays * 24 * 60 * 60 * 1_000);
   const sizeBytes = await storage.put(exportKey, bundle.bytes, {

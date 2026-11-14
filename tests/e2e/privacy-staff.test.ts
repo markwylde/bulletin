@@ -48,6 +48,7 @@ integrationDescribe("staff privacy tools", () => {
       async (view) => {
         await loginAs(view, "admin");
         await waitForSelector(view, '[data-page="privacy-requests"]');
+        await waitForSelector(view, '[data-request-due="soon"]');
         await waitForSelector(view, `[data-card-row="${requestId}"]`);
 
         expect(
