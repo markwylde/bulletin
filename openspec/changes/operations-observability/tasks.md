@@ -23,4 +23,4 @@
 
 ## 5. Strings
 
-- [ ] 5.1 Add en/es/fr strings for the health panel and missing-object listing; verify completeness
+- [x] 5.1 Add en/es/fr strings for the health panel and missing-object listing; verify completeness
