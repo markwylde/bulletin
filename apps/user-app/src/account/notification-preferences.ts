@@ -22,6 +22,7 @@ const CHANNEL_LABELS = {
   in_app: { labelKey: "notification.preferences.inApp" },
   email: { labelKey: "notification.preferences.email" },
   digest: { labelKey: "notification.preferences.digest" },
+  push: { labelKey: "notification.preferences.push" },
 } satisfies Record<NotificationChannel, { labelKey: string }>;
 
 export interface NotificationPreferencesPageInput {

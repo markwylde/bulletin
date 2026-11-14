@@ -1,7 +1,7 @@
 import type { SQL } from "bun";
 import { NOTIFICATION_TYPES, type NotificationType } from "./repository.ts";
 
-export const NOTIFICATION_CHANNELS = ["in_app", "email", "digest"] as const;
+export const NOTIFICATION_CHANNELS = ["in_app", "email", "digest", "push"] as const;
 
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
@@ -17,15 +17,17 @@ export interface NotificationChannels {
   readonly in_app: boolean;
   readonly email: boolean;
   readonly digest: boolean;
+  readonly push: boolean;
 }
 
-/** Immediate channels are on by default; digests are opt-in. */
+/** In-app and email are on by default; digests and push are opt-in. */
 export function defaultChannelEnabled(channel: NotificationChannel): boolean {
-  return channel !== "digest";
+  // Push is per-device, so the member enables it on that device.
+  return channel !== "digest" && channel !== "push";
 }
 
 export function defaultNotificationChannels(): NotificationChannels {
-  return { in_app: true, email: true, digest: false };
+  return { in_app: true, email: true, digest: false, push: false };
 }
 
 /** The member's effective settings for every type, with defaults filled in. */
@@ -67,6 +69,7 @@ export async function notificationChannels(
     in_app: true,
     email: true,
     digest: false,
+    push: false,
   };
 
   for (const row of rows) {

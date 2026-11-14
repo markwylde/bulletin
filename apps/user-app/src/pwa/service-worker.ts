@@ -8,6 +8,8 @@ export interface ServiceWorkerInput {
   readonly version: string;
   /** Content-hashed assets from the client build, served cache-first. */
   readonly assets: readonly string[];
+  /** Generic push titles per locale, keyed by the payload's title key. */
+  readonly titles: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
 const ASSET_PREFIX = "/_astro/";
@@ -34,6 +36,7 @@ const BUILD_VERSION = ${literal(input.version)};
 const VERSION = new URL(self.location.href).searchParams.get("v") || BUILD_VERSION;
 const CACHE_NAME = "bulletin-shell-" + VERSION;
 const SHELL = ${literal(shell)};
+const TITLES = ${literal(input.titles)};
 const ASSET_PREFIX = ${literal(ASSET_PREFIX)};
 const OFFLINE_URL = ${literal(OFFLINE_URL)};
 
@@ -109,6 +112,121 @@ async function networkWithOfflineFallback(request) {
     return offline ?? new Response("", { status: 503, statusText: "Offline" });
   }
 }
+
+
+
+function titleFor(locale, key) {
+  const language = typeof locale === "string" ? locale.slice(0, 2).toLowerCase() : "en";
+  return (
+    TITLES[language]?.[key] ??
+    TITLES.en?.[key] ??
+    TITLES.en?.["push.title.generic"] ??
+    ""
+  );
+}
+
+function safePath(value) {
+  if (typeof value !== "string" || value === "") {
+    return "";
+  }
+
+  try {
+    const url = new URL(value, self.location.origin);
+    return url.origin === self.location.origin
+      ? url.pathname + url.search + url.hash
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+async function showPush(event) {
+  let payload = null;
+
+  try {
+    payload = event.data?.json() ?? null;
+  } catch {
+    try {
+      payload = JSON.parse(event.data?.text() ?? "null");
+    } catch {
+      payload = null;
+    }
+  }
+
+  const notificationId = typeof payload?.n === "string" ? payload.n : "";
+  const titleKey = typeof payload?.t === "string" ? payload.t : "push.title.generic";
+
+  if (notificationId === "") {
+    return;
+  }
+
+  let preview = null;
+  let loginRequired = false;
+
+  try {
+    const response = await fetch(
+      "/api/notifications/" + encodeURIComponent(notificationId) + "/preview",
+      { credentials: "include", headers: { accept: "application/json" } },
+    );
+
+    if (response.ok) {
+      preview = await response.json();
+    } else if (response.status === 401) {
+      loginRequired = true;
+    }
+  } catch {
+    // The generic title is still useful when the device cannot reach the forum.
+  }
+
+  const locale = self.navigator.language || "en";
+  const previewTitle = typeof preview?.t === "string" ? preview.t : titleKey;
+  const title = titleFor(locale, previewTitle);
+  const body = typeof preview?.body === "string" ? preview.body : "";
+  const url = safePath(preview?.url) || "/account/notifications";
+
+  await self.registration.showNotification(title, {
+    body,
+    tag: "bulletin-notification-" + notificationId,
+    data: { url, notificationId, loginRequired },
+    icon: "/pwa/icon-192.png",
+    badge: "/pwa/icon-192.png",
+  });
+}
+
+self.addEventListener("push", (event) => {
+  event.waitUntil(showPush(event).catch(() => undefined));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const data = event.notification.data ?? {};
+  const target =
+    data.loginRequired === true
+      ? "/auth/login?return_to=" + encodeURIComponent(safePath(data.url) || "/")
+      : safePath(data.url) || "/";
+
+  event.waitUntil(
+    (async () => {
+      const url = new URL(target, self.location.origin);
+      const windows = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+
+      for (const client of windows) {
+        if ("focus" in client) {
+          await client.focus();
+          if ("navigate" in client) {
+            await client.navigate(url.href);
+          }
+          return;
+        }
+      }
+
+      await self.clients.openWindow(url.href);
+    })(),
+  );
+});
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;

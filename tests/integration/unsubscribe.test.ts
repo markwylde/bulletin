@@ -101,6 +101,7 @@ integrationDescribe("unsubscribe", () => {
         in_app: true,
         email: true,
         digest: false,
+        push: false,
       });
     });
   }, 30_000);
@@ -140,6 +141,7 @@ integrationDescribe("unsubscribe", () => {
         in_app: true,
         email: false,
         digest: false,
+        push: false,
       });
 
       const [audit] = (await database.sql`

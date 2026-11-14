@@ -58,6 +58,13 @@ import { pluginApiResponse, pluginBridgeResponse } from "./plugin-routes.ts";
 import { pollEditResponse, pollResultsResponse, pollVoteResponse } from "./polls.ts";
 import { blockedPostingResponse } from "./posting-guard.ts";
 import { profileSaveResponse } from "./profile.ts";
+import {
+  notificationPreviewResponse,
+  pushConfigResponse,
+  pushDeleteDeviceResponse,
+  pushDevicesResponse,
+  pushSubscribeResponse,
+} from "./push.ts";
 import { reactionMembersResponse, reactionSetResponse } from "./reactions.ts";
 import { markBoardReadResponse, markForumReadResponse } from "./read-tracking.ts";
 import { redirectCountsResponse } from "./redirects.ts";
@@ -382,6 +389,72 @@ await startService({
         return flags.guard("notifications", session.memberId)(request, () =>
           notificationPreferencesResponse(sql, session.memberId, request),
         );
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    const notificationPreviewMatch = /^\/api\/notifications\/(\d+)\/preview$/.exec(pathname);
+
+    if (request.method === "GET" && notificationPreviewMatch !== null) {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return notificationPreviewResponse(
+          sql,
+          session.memberId,
+          notificationPreviewMatch[1] ?? "",
+        );
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/push/config") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return pushConfigResponse(config.nodeEnv);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "GET" && pathname === "/api/push/devices") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return pushDevicesResponse(sql, request, config.nodeEnv);
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/push/subscribe") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return pushSubscribeResponse(sql, request, { nodeEnv: config.nodeEnv });
+      });
+
+      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+    }
+
+    if (request.method === "POST" && pathname === "/api/push/devices/delete") {
+      const response = await auth.handle(request, async ({ session }) => {
+        if (session === null) {
+          return Response.json({ code: "unauthenticated" }, { status: 401 });
+        }
+
+        return pushDeleteDeviceResponse(sql, request, config.nodeEnv);
       });
 
       return response ?? Response.json({ code: "not_found" }, { status: 404 });

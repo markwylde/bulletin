@@ -34,6 +34,7 @@ import {
 import { migrationsCurrent, runMigrations } from "@bulletin/db/migrate";
 import { runBaseSeed } from "@bulletin/db/seed";
 import type { NotificationRecipientFilter } from "@bulletin/domain/notifications";
+import { loadVapidConfig } from "@bulletin/domain/push";
 import { ignoreRecipientFilter } from "@bulletin/domain/relationships";
 import { WEBHOOK_EVENTS } from "@bulletin/domain/webhooks";
 import { CODE_FLAG_DEFINITIONS } from "@bulletin/flags";
@@ -50,6 +51,7 @@ import {
 } from "./notifications.ts";
 import { createPluginJobs, type PluginJobQueue as PluginJobsQueue } from "./plugin-jobs.ts";
 import { createPluginEventJobs, type PluginJobQueue } from "./plugins.ts";
+import { createPushJobs } from "./push.ts";
 import { createReputationEventHandler } from "./reputation.ts";
 
 const config = loadConfig();
@@ -149,6 +151,9 @@ const relay = createRelay({ sql, subscribers, queue: boss.queue });
 const enqueueEmail = async (intentId: string): Promise<void> => {
   await boss.boss.send("email", { intentId }, { singletonKey: `email:${intentId}` });
 };
+const enqueuePush = async (intentId: string): Promise<void> => {
+  await boss.boss.send("push", { intentId }, { singletonKey: `push:${intentId}` });
+};
 const enqueueFanout = async (job: {
   eventId: string;
   afterMemberId: string;
@@ -183,6 +188,13 @@ const emailJobs = await createEmailJobs({
   logger,
   flags: workerFlags,
 });
+const pushJobs = await createPushJobs({
+  boss: boss.boss,
+  sql,
+  vapid: loadVapidConfig(Bun.env, config.nodeEnv),
+  logger,
+  flags: workerFlags,
+});
 const eventWorker = await createEventWorker({
   boss: boss.boss,
   sql,
@@ -199,6 +211,7 @@ const eventWorker = await createEventWorker({
       flags: workerFlags,
       filters: notificationFilters,
       enqueueEmail,
+      enqueuePush,
       enqueueFanout,
     }),
     badges: createBadgeEventHandler({ sql, logger }),
@@ -214,6 +227,7 @@ const notificationFanout = await createNotificationsFanoutWorker({
   flags: workerFlags,
   filters: notificationFilters,
   enqueueEmail,
+  enqueuePush,
 });
 const leaderboardJobs = await createLeaderboardJobs({ boss: boss.boss, sql, logger });
 const badgeJobs = await createBadgeJobs({ boss: boss.boss, sql, logger });
@@ -281,6 +295,7 @@ await startService({
     await notificationFanout.stop();
     await digestJobs.stop();
     await emailJobs.stop();
+    await pushJobs.stop();
     await maintenanceJobs.stop();
     await leaderboardJobs.stop();
     await badgeJobs.stop();
@@ -306,6 +321,7 @@ await startService({
   await notificationFanout.stop();
   await digestJobs.stop();
   await emailJobs.stop();
+  await pushJobs.stop();
   await maintenanceJobs.stop();
   await leaderboardJobs.stop();
   await badgeJobs.stop();

@@ -4,6 +4,7 @@ import { loadEvent, type StoredEvent } from "@bulletin/domain/events";
 import {
   createNotification,
   createNotificationEmailIntent,
+  createNotificationPushIntent,
   eventRecipients,
   memberIsActive,
   type NotificationRecipient,
@@ -33,6 +34,8 @@ export interface NotificationsHandlerOptions {
   readonly filters?: readonly NotificationRecipientFilter[];
   /** Enqueues one email job after commit; a failure makes the event job retry. */
   readonly enqueueEmail?: (intentId: string) => Promise<void>;
+  /** Enqueues one push job after commit; a failure makes the event job retry. */
+  readonly enqueuePush?: (intentId: string) => Promise<void>;
   /** Enqueues one bounded fan-out job; absent in tests (they process inline in chunks). */
   readonly enqueueFanout?: (job: FanoutJob) => Promise<void>;
   readonly flags?: WorkerFlags;
@@ -125,11 +128,12 @@ export async function processNotificationRecipients(
   }
 
   const emailIntents: string[] = [];
+  const pushIntents: string[] = [];
   await options.sql.begin(async (tx) => {
     for (const recipient of recipients) {
       const channels = await notificationChannels(tx, recipient.memberId, recipient.type);
 
-      if (!channels.in_app && !channels.email && !channels.digest) {
+      if (!channels.in_app && !channels.email && !channels.digest && !channels.push) {
         continue;
       }
 
@@ -160,11 +164,28 @@ export async function processNotificationRecipients(
           emailIntents.push(intent.toString());
         }
       }
+
+      if (channels.push && notificationId !== null) {
+        const intent = await createNotificationPushIntent(
+          tx,
+          recipient.memberId,
+          notificationId,
+          event.id,
+        );
+
+        if (intent !== null) {
+          pushIntents.push(intent.toString());
+        }
+      }
     }
   });
 
   for (const intent of emailIntents) {
     await options.enqueueEmail?.(intent);
+  }
+
+  for (const intent of pushIntents) {
+    await options.enqueuePush?.(intent);
   }
 
   return recipients.length;

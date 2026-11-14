@@ -40,6 +40,7 @@
     "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
     "@bulletin/mock-mail": "workspace:*",
+    "@bulletin/mock-push": "workspace:*",
     "@bulletin/mock-s3": "workspace:*",
     "@bulletin/storage": "workspace:*",
     "@bulletin/templates": "workspace:*",

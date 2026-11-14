@@ -4,7 +4,9 @@ import { can } from "../permissions/can.ts";
 import { loadPermissionSnapshot, type PermissionSnapshot } from "../permissions/snapshot.ts";
 import type { ForumTree } from "../permissions/tree.ts";
 import { loadForumTree } from "../permissions/tree-store.ts";
+import { pushTitleKey } from "../push/payload.ts";
 import { listIgnoredIds } from "../relationships/repository.ts";
+import { canonicalUrl } from "../urls/index.ts";
 import { isNotificationTypeValue, notificationPreferenceMatrix } from "./preferences.ts";
 
 /** Notification kinds the subscriber creates; the centre renders each with its own i18n key. */
@@ -1288,6 +1290,7 @@ export async function digestItems(
 }
 
 export interface NotificationEmailContext {
+  readonly notificationId: string;
   readonly memberId: string;
   readonly locale: string | null;
   readonly recipientName: string | null;
@@ -1302,16 +1305,18 @@ export interface NotificationEmailContext {
 }
 
 /**
- * The context the email job needs, or null when the intent is delivered or the referenced topic
- * is no longer readable by the recipient (authorisation at delivery, ADR 0011).
+ * The context a delivery job needs, or null when the intent is delivered or the referenced
+ * topic is no longer readable by the recipient (authorisation at delivery, ADR 0011).
  */
-export async function notificationEmailContext(
+export async function notificationDeliveryContext(
   sql: SQL,
   intentId: string,
+  channel: "email" | "push" = "email",
 ): Promise<NotificationEmailContext | null> {
   const [base] = (await sql`
     SELECT
       i.member_id::text AS member_id,
+      i.ref_id::text AS notification_id,
       m.locale,
       m.display_name AS recipient_name,
       n.type,
@@ -1324,10 +1329,11 @@ export async function notificationEmailContext(
     JOIN core.members m ON m.id = i.member_id
     WHERE i.id = ${intentId}
       AND i.kind = 'notification'
-      AND i.channel = 'email'
+      AND i.channel = ${channel}
       AND i.delivered_at IS NULL
   `) as Array<{
     member_id: string;
+    notification_id: string;
     locale: string | null;
     recipient_name: string | null;
     type: string;
@@ -1403,6 +1409,7 @@ export async function notificationEmailContext(
       }
 
       return {
+        notificationId: base.notification_id,
         memberId: base.member_id,
         locale: base.locale,
         recipientName: base.recipient_name,
@@ -1481,6 +1488,7 @@ export async function notificationEmailContext(
   }
 
   return {
+    notificationId: base.notification_id,
     memberId: base.member_id,
     locale: base.locale,
     recipientName: base.recipient_name,
@@ -1493,6 +1501,110 @@ export async function notificationEmailContext(
     conversationId: row.conversation_id,
     conversationTitle: row.conversation_title,
   };
+}
+
+export interface NotificationPreview {
+  readonly notificationId: string;
+  readonly titleKey: string;
+  /** The topic or conversation title, only after the member's current access is checked. */
+  readonly body: string;
+  readonly url: string;
+}
+
+interface PreviewRow {
+  readonly id: string;
+  readonly type: string;
+  readonly topic_id: string | null;
+  readonly topic_title: string | null;
+  readonly topic_slug: string | null;
+  readonly forum_id: string | null;
+  readonly post_id: string | null;
+  readonly conversation_id: string | null;
+  readonly conversation_title: string | null;
+}
+
+/**
+ * The authenticated details behind one push notification (ADR 0014). The worker's payload
+ * carries no content, so the device asks for this after the push arrives; current visibility
+ * and forum permissions are enforced here, not only when the push was sent.
+ */
+export async function notificationPreview(
+  sql: SQL,
+  memberId: string,
+  notificationId: string,
+): Promise<NotificationPreview | null> {
+  if (!/^\d+$/.test(notificationId)) {
+    return null;
+  }
+
+  const [row] = (await sql`
+    SELECT
+      n.id::text AS id,
+      n.type,
+      n.topic_id::text AS topic_id,
+      t.title AS topic_title,
+      t.slug AS topic_slug,
+      t.forum_id::text AS forum_id,
+      n.post_id::text AS post_id,
+      n.conversation_id::text AS conversation_id,
+      c.title AS conversation_title
+    FROM core.notifications n
+    LEFT JOIN core.topics t ON t.id = n.topic_id
+    LEFT JOIN core.posts p ON p.id = n.post_id
+    LEFT JOIN core.conversations c ON c.id = n.conversation_id
+    WHERE n.id = ${notificationId}
+      AND n.member_id = ${memberId}
+      AND (n.post_id IS NULL OR p.visibility = 'visible')
+      AND (n.topic_id IS NULL OR (t.id IS NOT NULL AND t.visibility = 'visible'))
+      AND (
+        n.conversation_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM core.conversation_participants cp
+          WHERE cp.conversation_id = n.conversation_id
+            AND cp.member_id = n.member_id
+            AND cp.state = 'active'
+        )
+      )
+  `) as PreviewRow[];
+
+  if (row === undefined || !isNotificationTypeValue(row.type)) {
+    return null;
+  }
+
+  if (row.forum_id !== null) {
+    const tree = await loadForumTree(sql);
+    const snapshot = await loadPermissionSnapshot(sql, memberId, { tree, sessionId: null });
+
+    if (!(await can(sql, memberId, "read", { forumId: row.forum_id, tree, snapshot }))) {
+      return null;
+    }
+  }
+
+  const url =
+    row.conversation_id !== null
+      ? `/conversations/${row.conversation_id}`
+      : row.topic_id !== null && row.topic_slug !== null
+        ? canonicalUrl(
+            "topic",
+            row.topic_id,
+            row.topic_slug,
+            row.post_id === null ? {} : { postId: row.post_id },
+          )
+        : "/account/notifications";
+
+  return {
+    notificationId: row.id,
+    titleKey: pushTitleKey(row.type),
+    body: row.conversation_title ?? row.topic_title ?? "",
+    url,
+  };
+}
+
+export async function notificationEmailContext(
+  sql: SQL,
+  intentId: string,
+): Promise<NotificationEmailContext | null> {
+  return notificationDeliveryContext(sql, intentId, "email");
 }
 
 /** Latest durable notification id for a member (stream cursor). */

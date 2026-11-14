@@ -208,7 +208,7 @@ integrationDescribe("conversation notifications", () => {
       const conversationId = await startFixture(database, starter, recipient);
       const handler = createNotificationsEventHandler({ sql: database.sql });
 
-      for (const channel of ["in_app", "email", "digest"] as const) {
+      for (const channel of ["in_app", "email", "digest", "push"] as const) {
         await setNotificationPreference(
           database.sql,
           recipient,

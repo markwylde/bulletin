@@ -13,8 +13,12 @@
     "@bulletin/domain": "workspace:*",
     "@bulletin/flags": "workspace:*",
     "@bulletin/i18n": "workspace:*",
+    "@bulletin/plugin-sdk": "workspace:*",
     "@bulletin/storage": "workspace:*",
     "pg-boss": "12.38.1",
-    "@bulletin/plugin-sdk": "workspace:*"
+    "web-push": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/web-push": "^3.6.4"
   }
 }

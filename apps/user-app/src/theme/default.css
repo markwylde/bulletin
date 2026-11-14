@@ -1361,7 +1361,33 @@ html[data-hide-signatures] [data-signature] {
   flex: 1 1 14rem;
 }
 
-/* PWA reconnect prompt (ADR 0014): touch-sized actions, wraps at 360 px. */
+/* Push device list (ADR 0014): rows become cards at 360 px, touch-sized remove buttons. */
+.bl-device-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--bl-space-small);
+}
+
+.bl-device-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bl-space-small);
+  padding: var(--bl-space-small);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-small);
+}
+
+.bl-device-list__meta {
+  display: block;
+  color: var(--bl-muted);
+  font-size: 0.875rem;
+}
+
+/* PWA reconnect prompt (ADR 0014): touch-sized actions, wrapped at 360 px. */
 .bl-offline-drafts {
   display: flex;
   flex-wrap: wrap;

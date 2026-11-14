@@ -11,6 +11,7 @@ const PII_TABLES = [
   "identities",
   "ip_log",
   "post_ips",
+  "push_subscriptions",
   "session_meta",
 ] as const;
 

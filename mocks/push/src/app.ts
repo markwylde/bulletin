@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { escapeHtml, htmlResponse, jsonResponse, renderPage } from "@bulletin/mock-ui";
+import { decryptPushBody } from "./decrypt.ts";
 
 export interface PushMessage {
   readonly id: string;
   readonly receivedAt: Date;
+  readonly endpoint: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: unknown;
 }
@@ -47,20 +49,47 @@ export function createPushHandler(store: PushStore): (request: Request) => Promi
       return jsonResponse(store.list());
     }
 
-    if (request.method === "POST" && (url.pathname === "/push" || url.pathname === "/send")) {
-      const raw = await request.text();
-      let body: unknown = raw;
+    if (
+      request.method === "POST" &&
+      (url.pathname === "/push" || url.pathname === "/send" || url.pathname.startsWith("/push/"))
+    ) {
+      // `/push/gone` models an expired subscription so tests can prove 410 cleanup.
+      if (/(?:^|\/)gone(?:\/|$)/.test(url.pathname)) {
+        return new Response("Gone", { status: 410 });
+      }
 
-      try {
-        body = JSON.parse(raw) as unknown;
-      } catch {
-        // Keep non-JSON payloads as text; push payloads are opaque to the mock.
+      const headers = Object.fromEntries(request.headers.entries());
+      let body: unknown;
+      const encoding = (headers["content-encoding"] ?? "").toLowerCase();
+
+      if (encoding === "aes128gcm") {
+        try {
+          const decrypted = decryptPushBody(Buffer.from(await request.arrayBuffer()));
+
+          try {
+            body = JSON.parse(decrypted.payload) as unknown;
+          } catch {
+            body = decrypted.payload;
+          }
+        } catch (error) {
+          body = { error: error instanceof Error ? error.message : String(error) };
+        }
+      } else {
+        const raw = await request.text();
+        body = raw;
+
+        try {
+          body = JSON.parse(raw) as unknown;
+        } catch {
+          // Keep non-JSON payloads as text; push payloads are opaque to the mock.
+        }
       }
 
       store.add({
         id: randomUUID(),
         receivedAt: new Date(),
-        headers: Object.fromEntries(request.headers.entries()),
+        endpoint: url.pathname,
+        headers,
         body,
       });
 

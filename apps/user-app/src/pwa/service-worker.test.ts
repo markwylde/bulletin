@@ -5,6 +5,10 @@ describe("service worker source", () => {
   const source = serviceWorkerSource({
     version: "abc123",
     assets: ["/_astro/app-1.js", "/_astro/app-2.css", "/not-an-asset.json"],
+    titles: {
+      en: { "push.title.generic": "Bulletin notification", "push.title.topicReply": "New reply" },
+      es: { "push.title.generic": "Notificación de Bulletin" },
+    },
   });
 
   test("is versioned by the registration URL and drops old shell caches", () => {
@@ -30,6 +34,22 @@ describe("service worker source", () => {
     expect(source).toContain("caches.match(OFFLINE_URL)");
     // No content cache path: only the asset prefix is cache-first.
     expect(source).toContain("url.pathname.startsWith(ASSET_PREFIX)");
+  });
+
+  test("shows a content-free push after fetching an authenticated preview", () => {
+    expect(source).toContain('self.addEventListener("push"');
+    expect(source).toContain("/api/notifications/");
+    expect(source).toContain('credentials: "include"');
+    expect(source).toContain("self.registration.showNotification");
+    expect(source).toContain("const TITLES =");
+    expect(source).toContain('"push.title.topicReply":"New reply"');
+    expect(source).toContain("data: { url, notificationId, loginRequired }");
+  });
+
+  test("opens the content or the login page when a notification is clicked", () => {
+    expect(source).toContain('self.addEventListener("notificationclick"');
+    expect(source).toContain('"/auth/login?return_to="');
+    expect(source).toContain("self.clients.openWindow");
   });
 
   test("handles a clear message without deleting the shell cache", () => {

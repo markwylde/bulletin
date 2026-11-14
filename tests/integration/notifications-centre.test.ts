@@ -18,6 +18,7 @@ import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  NOTIFICATION_CHANNELS,
   NOTIFICATION_TYPES,
   notificationChannels,
   notificationEmailContext,
@@ -496,7 +497,12 @@ integrationDescribe("notification centre", () => {
       const member = await memberId(database, "member-1");
       const matrix = await notificationPreferenceMatrix(database.sql, member);
 
-      expect(matrix["topic.reply"]).toEqual({ in_app: true, email: true, digest: false });
+      expect(matrix["topic.reply"]).toEqual({
+        in_app: true,
+        email: true,
+        digest: false,
+        push: false,
+      });
 
       await setNotificationPreference(database.sql, member, "topic.reply", "email", false);
       await setNotificationPreference(database.sql, member, "reaction.added", "digest", true);
@@ -505,11 +511,13 @@ integrationDescribe("notification centre", () => {
         in_app: true,
         email: false,
         digest: false,
+        push: false,
       });
       expect(await notificationChannels(database.sql, member, "reaction.added")).toEqual({
         in_app: true,
         email: true,
         digest: true,
+        push: false,
       });
     });
   }, 30_000);
@@ -539,7 +547,7 @@ integrationDescribe("notification centre", () => {
     await withSeededDb(async (database) => {
       const fixture = await topicFixture(database);
 
-      for (const channel of ["in_app", "email", "digest"] as const) {
+      for (const channel of ["in_app", "email", "digest", "push"] as const) {
         await setNotificationPreference(
           database.sql,
           fixture.starter,
@@ -679,7 +687,9 @@ integrationDescribe("notification centre", () => {
       });
 
       expect(page.viewModel.types).toHaveLength(NOTIFICATION_TYPES.length);
-      expect(page.viewModel.types.every((type) => type.channels.length === 3)).toBe(true);
+      expect(
+        page.viewModel.types.every((type) => type.channels.length === NOTIFICATION_CHANNELS.length),
+      ).toBe(true);
       expect(page.viewModel.digestOptions.map((option) => option.value)).toEqual([
         "off",
         "daily",
@@ -709,7 +719,19 @@ integrationDescribe("notification centre", () => {
         in_app: true,
         email: false,
         digest: false,
+        push: false,
       });
+
+      const pushSaved = await notificationPreferencesResponse(
+        database.sql,
+        member,
+        new Request("http://user.test/api/notifications/preferences", {
+          method: "POST",
+          body: JSON.stringify({ type: "post.mention", channel: "push", enabled: true }),
+        }),
+      );
+      expect(pushSaved.status).toBe(200);
+      expect((await notificationChannels(database.sql, member, "post.mention")).push).toBe(true);
 
       for (const body of [
         { type: "unknown", channel: "email", enabled: true },

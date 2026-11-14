@@ -44,6 +44,7 @@
     "./warnings": "./src/warnings/index.ts",
     "./filters": "./src/filters/index.ts",
     "./pii": "./src/pii/index.ts",
+    "./push": "./src/push/index.ts",
     "./bans": "./src/bans/index.ts",
     "./themes": "./src/themes/index.ts",
     "./themes/css": "./src/themes/css.ts",
