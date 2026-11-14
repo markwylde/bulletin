@@ -20,7 +20,12 @@ async function purgeForums(keys: readonly string[]): Promise<void> {
   expect(response.status).toBe(200);
 }
 
-function saveGuestRead(forumId: string, allowed: boolean): string {
+/**
+ * Sets one guest `read` cell. Restoring uses `inherits: true`, which deletes the override so
+ * the forum inherits from its category again exactly as seeded; leaving an explicit row behind
+ * would change other tests' permission outcomes (e.g. the CDN revocation test on forum 1).
+ */
+function saveGuestRead(forumId: string, allowed: boolean, inherits = false): string {
   return `(async () => {
     const session = await (
       await fetch("/api/auth/session", { headers: { accept: "application/json" } })
@@ -38,7 +43,7 @@ function saveGuestRead(forumId: string, allowed: boolean): string {
         maskId: guest.id,
         permissionAction: "read",
         allowed: ${allowed},
-        inherits: false,
+        inherits: ${inherits},
       }),
     });
     return response.status;
@@ -110,9 +115,13 @@ integrationDescribe("sitemaps and feeds", () => {
         expect(sitemapBody).not.toContain("/forum/2-announcements");
       } finally {
         if (revoked) {
-          expect(await view.evaluate<number>(saveGuestRead("2", true))).toBe(200);
+          expect(await view.evaluate<number>(saveGuestRead("2", true, true))).toBe(200);
         }
       }
+
+      // The restored forum inherits again and is public once more.
+      const restored = await fetch(`${USER_URL}${feedPath}`);
+      expect(restored.status).toBe(200);
     });
   }, 120_000);
 });
