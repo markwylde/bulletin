@@ -661,9 +661,21 @@ sandboxDescribe("malicious plugin cases", () => {
         restart: { initialDelayMs: 20, maxDelayMs: 20, maxRestarts: 2 },
       },
       async ({ supervisor }) => {
-        await Bun.sleep(800);
+        // The sandbox is killed every 300 ms, so a single sample can land mid-restart. Wait
+        // until it has been killed at least once and is serving again.
+        const deadline = Date.now() + 10_000;
+        let restarted = false;
+
+        while (!restarted && Date.now() < deadline) {
+          restarted = supervisor.status().restarts > 0 && supervisor.ready;
+
+          if (!restarted) {
+            await Bun.sleep(10);
+          }
+        }
+
         expect(supervisor.status().restarts).toBeGreaterThan(0);
-        expect(supervisor.ready).toBe(true);
+        expect(restarted).toBe(true);
       },
     );
   }, 30_000);
