@@ -103,6 +103,11 @@ jobs:
         if: matrix.shard != 0
         run: |
           echo "BUN_CHROME_PATH=${{ steps.setup-chrome.outputs.chrome-path }}" >> "$GITHUB_ENV"
+          # Non-root runners (GitHub's Ubuntu) keep Chrome's sandbox, which needs unprivileged
+          # user namespaces; Ubuntu's AppArmor blocks them for Chrome for Testing.
+          if [ "$(id -u)" != 0 ] && [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
           "${{ steps.setup-chrome.outputs.chrome-path }}" --version
 
       - name: Pick a per-shard proxy port
