@@ -29,7 +29,7 @@ import {
   personalApiKeysResponse,
   revokePersonalApiKeyResponse,
 } from "./api-keys.ts";
-import { saveAppearanceResponse, themeOptionsResponse } from "./appearance.ts";
+import { passiveThemeOptionsResponse, saveAppearanceResponse } from "./appearance.ts";
 import {
   attachmentDeleteRoute,
   attachmentDownloadCountRoute,
@@ -346,7 +346,7 @@ await startService({
       const session = await auth.passiveSession(request);
 
       return flags.guard("theme_chooser", session?.memberId ?? null)(request, () =>
-        themeOptionsResponse(sql, request, session),
+        passiveThemeOptionsResponse(sql, auth, request),
       );
     }
 

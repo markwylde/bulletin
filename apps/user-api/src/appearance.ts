@@ -1,4 +1,4 @@
-import { parseCookieHeader } from "@bulletin/domain/auth";
+import { type AuthService, parseCookieHeader } from "@bulletin/domain/auth";
 import { appearanceOptions, saveMemberAppearance } from "@bulletin/domain/themes";
 import { BP_COOKIE_NAME, type ColorScheme, parseBpCookie } from "@bulletin/i18n";
 import type { SQL } from "bun";
@@ -82,4 +82,16 @@ export async function saveAppearanceResponse(
     { ok: true, themeId, scheme },
     { headers: { "cache-control": "private, no-store" } },
   );
+}
+
+/**
+ * `GET /api/theme-options` as a passive read: a session waiting for silent re-auth is answered
+ * as a guest (200 with the guest list), never with a 401 or with its member-only themes.
+ */
+export async function passiveThemeOptionsResponse(
+  sql: SQL,
+  auth: Pick<AuthService, "passiveSession">,
+  request: Request,
+): Promise<Response> {
+  return themeOptionsResponse(sql, request, await auth.passiveSession(request));
 }
