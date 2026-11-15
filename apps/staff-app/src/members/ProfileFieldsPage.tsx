@@ -242,8 +242,8 @@ export function ProfileFieldsPage() {
         entryIndex === index ? { ...entry, ...patch } : entry,
       ),
     }));
-  const labelField = (locale: LabelKey, labelKey: string) => (
-    <Field label={t(labelKey)}>
+  const labelField = (locale: LabelKey, label: string) => (
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -422,9 +422,9 @@ export function ProfileFieldsPage() {
                       setDraft((current) => ({ ...current, required: event.target.checked }))
                     }
                   />
-                  {labelField("en", "staff.profileFields.labelEn")}
-                  {labelField("es", "staff.profileFields.labelEs")}
-                  {labelField("fr", "staff.profileFields.labelFr")}
+                  {labelField("en", t("staff.profileFields.labelEn"))}
+                  {labelField("es", t("staff.profileFields.labelEs"))}
+                  {labelField("fr", t("staff.profileFields.labelFr"))}
 
                   {usesOptions ? (
                     <fieldset className="field field-group">

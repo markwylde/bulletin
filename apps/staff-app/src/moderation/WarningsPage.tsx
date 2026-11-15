@@ -147,11 +147,11 @@ export function WarningsPage() {
 
   const reasonText = (
     field: "key" | "en" | "es" | "fr",
-    labelKey: string,
+    label: string,
     hook: string,
     maxLength: number,
   ) => (
-    <Field label={t(labelKey)}>
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -167,11 +167,11 @@ export function WarningsPage() {
   );
   const reasonNumber = (
     field: "points" | "expiryDays",
-    labelKey: string,
+    label: string,
     hook: string,
     max: number,
   ) => (
-    <Field label={t(labelKey)}>
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -265,20 +265,20 @@ export function WarningsPage() {
           }
         >
           <div className="stack" data-warning-reason-form>
-            {reasonText("key", "staff.warnings.reason.key", "data-warning-reason-key", 64)}
-            {reasonText("en", "staff.warnings.reason.en", "data-warning-reason-en", 120)}
-            {reasonText("es", "staff.warnings.reason.es", "data-warning-reason-es", 120)}
-            {reasonText("fr", "staff.warnings.reason.fr", "data-warning-reason-fr", 120)}
+            {reasonText("key", t("staff.warnings.reason.key"), "data-warning-reason-key", 64)}
+            {reasonText("en", t("staff.warnings.reason.en"), "data-warning-reason-en", 120)}
+            {reasonText("es", t("staff.warnings.reason.es"), "data-warning-reason-es", 120)}
+            {reasonText("fr", t("staff.warnings.reason.fr"), "data-warning-reason-fr", 120)}
             <div className="form-grid">
               {reasonNumber(
                 "points",
-                "staff.warnings.reason.points",
+                t("staff.warnings.reason.points"),
                 "data-warning-reason-points",
                 1000,
               )}
               {reasonNumber(
                 "expiryDays",
-                "staff.warnings.reason.expiry",
+                t("staff.warnings.reason.expiry"),
                 "data-warning-reason-expiry",
                 3650,
               )}

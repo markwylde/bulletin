@@ -95,8 +95,8 @@ export function AnnouncementsPage() {
   };
 
   type TextKey = "title" | "startsAt" | "endsAt";
-  const dateField = (field: Exclude<TextKey, "title">, labelKey: string, hook: string) => (
-    <Field label={t(labelKey)}>
+  const dateField = (field: Exclude<TextKey, "title">, label: string, hook: string) => (
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -225,8 +225,8 @@ export function AnnouncementsPage() {
                   )}
                 </Field>
                 <div className="form-grid">
-                  {dateField("startsAt", "staff.announcements.field.startsAt", "starts-at")}
-                  {dateField("endsAt", "staff.announcements.field.endsAt", "ends-at")}
+                  {dateField("startsAt", t("staff.announcements.field.startsAt"), "starts-at")}
+                  {dateField("endsAt", t("staff.announcements.field.endsAt"), "ends-at")}
                 </div>
                 <Field label={t("staff.announcements.field.scope")}>
                   {({ id }) => (

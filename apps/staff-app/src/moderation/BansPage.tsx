@@ -115,13 +115,13 @@ export function BansPage() {
   };
 
   const field = (
-    labelKey: string,
+    label: string,
     hook: string,
     value: string | number,
     set: (value: string) => void,
     options: { type?: string; max?: number; placeholder?: string; maxLength?: number } = {},
   ) => (
-    <Field label={t(labelKey)}>
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -150,14 +150,14 @@ export function BansPage() {
           }}
         >
           <div className="toolbar-filters">
-            {field("staff.bans.ip.cidr", "data-ip-ban-cidr", cidr, setCidr, {
+            {field(t("staff.bans.ip.cidr"), "data-ip-ban-cidr", cidr, setCidr, {
               placeholder: t("staff.bans.ip.example"),
             })}
-            {field("staff.bans.reason", "data-ip-ban-reason", ipReason, setIpReason, {
+            {field(t("staff.bans.reason"), "data-ip-ban-reason", ipReason, setIpReason, {
               maxLength: 500,
             })}
             {field(
-              "staff.bans.days",
+              t("staff.bans.days"),
               "data-ip-ban-days",
               ipDays,
               (value) => setIpDays(Number(value)),
@@ -226,12 +226,18 @@ export function BansPage() {
       <div className="page-split page-split-even">
         <Panel title={t("staff.bans.member.title")}>
           <div className="stack" data-member-ban-form>
-            {field("staff.bans.member.id", "data-member-ban-id", memberId, setMemberId)}
-            {field("staff.bans.reason", "data-member-ban-reason", memberReason, setMemberReason, {
-              maxLength: 500,
-            })}
+            {field(t("staff.bans.member.id"), "data-member-ban-id", memberId, setMemberId)}
             {field(
-              "staff.bans.days",
+              t("staff.bans.reason"),
+              "data-member-ban-reason",
+              memberReason,
+              setMemberReason,
+              {
+                maxLength: 500,
+              },
+            )}
+            {field(
+              t("staff.bans.days"),
               "data-member-ban-days",
               memberDays,
               (value) => setMemberDays(Number(value)),
@@ -269,7 +275,7 @@ export function BansPage() {
         <Panel title={t("staff.bans.lookup.title")} description={t("staff.bans.lookup.audited")}>
           <div className="stack">
             <div className="toolbar-filters">
-              {field("staff.bans.lookup.postId", "data-ip-lookup-post", postId, setPostId)}
+              {field(t("staff.bans.lookup.postId"), "data-ip-lookup-post", postId, setPostId)}
               <Button data-ip-lookup-view onClick={() => void lookupPost("post")}>
                 {t("staff.bans.lookup.postIp")}
               </Button>
@@ -298,7 +304,7 @@ export function BansPage() {
             <hr className="divider" />
             <div className="toolbar-filters">
               {field(
-                "staff.bans.lookup.memberId",
+                t("staff.bans.lookup.memberId"),
                 "data-login-ip-member",
                 lookupMember,
                 setLookupMember,

@@ -166,6 +166,20 @@ describe("unused and duplicate keys", () => {
     expect(result.issues.filter((issue) => issue.code === "unused_key")).toEqual([]);
   });
 
+  test("recognises both branches of a conditional key", async () => {
+    const root = await fixture({
+      "apps/forum/i18n/en.json": { "toast.saved": "Saved", "toast.failed": "Failed" },
+      "apps/forum/i18n/es.json": { "toast.saved": "Guardado", "toast.failed": "Error" },
+      "apps/forum/i18n/fr.json": { "toast.saved": "Enregistré", "toast.failed": "Échec" },
+      "apps/forum/src/page.tsx":
+        'pushToast({ messageKey: ok ? "toast.saved" : ("toast.failed") });\n',
+    });
+
+    const result = await checkCatalogs({ root });
+
+    expect(result.issues.filter((issue) => issue.code === "unused_key")).toEqual([]);
+  });
+
   test("ignores test files, fixtures, comments and unrelated string literals", async () => {
     const root = await fixture({
       "apps/forum/i18n/en.json": {

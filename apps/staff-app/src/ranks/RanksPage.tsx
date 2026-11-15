@@ -99,8 +99,8 @@ export function RanksPage() {
     setDraft(EMPTY);
     setEditing(true);
   };
-  const labelField = (locale: "en" | "es" | "fr", labelKey: string) => (
-    <Field label={t(labelKey)}>
+  const labelField = (locale: "en" | "es" | "fr", label: string) => (
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -281,9 +281,9 @@ export function RanksPage() {
                       />
                     )}
                   </Field>
-                  {labelField("en", "staff.ranks.labelEn")}
-                  {labelField("es", "staff.ranks.labelEs")}
-                  {labelField("fr", "staff.ranks.labelFr")}
+                  {labelField("en", t("staff.ranks.labelEn"))}
+                  {labelField("es", t("staff.ranks.labelEs"))}
+                  {labelField("fr", t("staff.ranks.labelFr"))}
                   <FormActions>
                     <Button
                       variant="ghost"

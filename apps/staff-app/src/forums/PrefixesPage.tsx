@@ -103,8 +103,8 @@ export function PrefixesPage() {
     }));
   };
 
-  const textField = (field: "key" | "en" | "es" | "fr", labelKey: string, hook: string) => (
-    <Field label={t(labelKey)}>
+  const textField = (field: "key" | "en" | "es" | "fr", label: string, hook: string) => (
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -210,7 +210,7 @@ export function PrefixesPage() {
             >
               <div className="stack" data-prefix-editor>
                 <div className="form-grid">
-                  {textField("key", "staff.prefixes.key", "key")}
+                  {textField("key", t("staff.prefixes.key"), "key")}
                   <Field label={t("staff.prefixes.colour")}>
                     {({ id }) => (
                       <div className="with-swatch">
@@ -228,9 +228,9 @@ export function PrefixesPage() {
                     )}
                   </Field>
                 </div>
-                {textField("en", "staff.prefixes.label.en", "label-en")}
-                {textField("es", "staff.prefixes.label.es", "label-es")}
-                {textField("fr", "staff.prefixes.label.fr", "label-fr")}
+                {textField("en", t("staff.prefixes.label.en"), "label-en")}
+                {textField("es", t("staff.prefixes.label.es"), "label-es")}
+                {textField("fr", t("staff.prefixes.label.fr"), "label-fr")}
                 <fieldset className="field field-group">
                   <legend className="field-label">{t("staff.prefixes.groups.title")}</legend>
                   <div className="check-grid">

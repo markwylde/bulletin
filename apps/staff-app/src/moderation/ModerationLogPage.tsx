@@ -44,13 +44,13 @@ export function ModerationLogPage() {
   });
 
   const filter = (
-    labelKey: string,
+    label: string,
     hook: string,
     value: string,
     set: (value: string) => void,
     numeric = false,
   ) => (
-    <Field label={t(labelKey)}>
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -68,10 +68,10 @@ export function ModerationLogPage() {
       <Panel flush>
         <div className="toolbar" data-modlog-filters>
           <div className="toolbar-filters">
-            {filter("staff.modlog.action", "data-modlog-action", action, setAction)}
-            {filter("staff.modlog.actor", "data-modlog-actor", actorId, setActorId, true)}
-            {filter("staff.modlog.forum", "data-modlog-forum", forumId, setForumId, true)}
-            {filter("staff.modlog.member", "data-modlog-member", memberId, setMemberId, true)}
+            {filter(t("staff.modlog.action"), "data-modlog-action", action, setAction)}
+            {filter(t("staff.modlog.actor"), "data-modlog-actor", actorId, setActorId, true)}
+            {filter(t("staff.modlog.forum"), "data-modlog-forum", forumId, setForumId, true)}
+            {filter(t("staff.modlog.member"), "data-modlog-member", memberId, setMemberId, true)}
           </div>
         </div>
         {query.isPending ? (

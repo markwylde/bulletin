@@ -109,12 +109,12 @@ export function AdminLogPage() {
   ];
 
   const filterField = (
-    labelKey: string,
+    label: string,
     hook: string,
     field: keyof LogFilters,
     type: "text" | "date" = "text",
   ) => (
-    <Field label={t(labelKey)}>
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -132,10 +132,10 @@ export function AdminLogPage() {
       <Panel flush>
         <form className="toolbar" onSubmit={submit} data-log-filters>
           <div className="toolbar-filters">
-            {filterField("staff.log.filterActor", "data-log-filter-actor", "actor")}
-            {filterField("staff.log.filterAction", "data-log-filter-action", "action")}
-            {filterField("staff.log.filterFrom", "data-log-filter-from", "from", "date")}
-            {filterField("staff.log.filterTo", "data-log-filter-to", "to", "date")}
+            {filterField(t("staff.log.filterActor"), "data-log-filter-actor", "actor")}
+            {filterField(t("staff.log.filterAction"), "data-log-filter-action", "action")}
+            {filterField(t("staff.log.filterFrom"), "data-log-filter-from", "from", "date")}
+            {filterField(t("staff.log.filterTo"), "data-log-filter-to", "to", "date")}
           </div>
           <div className="toolbar-actions">
             <Button

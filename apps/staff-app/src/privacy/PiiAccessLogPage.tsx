@@ -99,12 +99,12 @@ export function PiiAccessLogPage() {
   ];
 
   const textFilter = (
-    labelKey: string,
+    label: string,
     hook: string,
     field: "actorId" | "subjectId" | "purpose" | "from" | "to",
     type: "text" | "date" = "text",
   ) => (
-    <Field label={t(labelKey)}>
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -134,11 +134,11 @@ export function PiiAccessLogPage() {
           }}
         >
           <div className="toolbar-filters">
-            {textFilter("staff.privacy.audit.actor", "data-access-log-actor", "actorId")}
-            {textFilter("staff.privacy.audit.subject", "data-access-log-subject", "subjectId")}
-            {textFilter("staff.privacy.audit.purpose", "data-access-log-purpose", "purpose")}
-            {textFilter("staff.privacy.audit.from", "data-access-log-from", "from", "date")}
-            {textFilter("staff.privacy.audit.to", "data-access-log-to", "to", "date")}
+            {textFilter(t("staff.privacy.audit.actor"), "data-access-log-actor", "actorId")}
+            {textFilter(t("staff.privacy.audit.subject"), "data-access-log-subject", "subjectId")}
+            {textFilter(t("staff.privacy.audit.purpose"), "data-access-log-purpose", "purpose")}
+            {textFilter(t("staff.privacy.audit.from"), "data-access-log-from", "from", "date")}
+            {textFilter(t("staff.privacy.audit.to"), "data-access-log-to", "to", "date")}
           </div>
           <div className="toolbar-actions">
             <Button

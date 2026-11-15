@@ -107,14 +107,14 @@ export function FiltersPage() {
     query.data !== undefined &&
     JSON.stringify(spam) !== JSON.stringify(query.data.settings);
   const numberRow = (
-    labelKey: string,
+    label: string,
     hook: string,
     field: "duplicateCount" | "duplicateWindowMinutes" | "rateCount" | "rateMinutes",
     min: number,
     max: number,
     current: SpamSettings,
   ) => (
-    <SettingsRow label={t(labelKey)}>
+    <SettingsRow label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -318,7 +318,7 @@ export function FiltersPage() {
               )}
             </SettingsRow>
             {numberRow(
-              "staff.filters.spam.duplicateCount",
+              t("staff.filters.spam.duplicateCount"),
               "data-filter-duplicate-count",
               "duplicateCount",
               2,
@@ -326,7 +326,7 @@ export function FiltersPage() {
               settings,
             )}
             {numberRow(
-              "staff.filters.spam.duplicateWindow",
+              t("staff.filters.spam.duplicateWindow"),
               "data-filter-duplicate-window",
               "duplicateWindowMinutes",
               1,
@@ -344,7 +344,7 @@ export function FiltersPage() {
               )}
             </SettingsRow>
             {numberRow(
-              "staff.filters.spam.rateCount",
+              t("staff.filters.spam.rateCount"),
               "data-filter-rate-count",
               "rateCount",
               2,
@@ -352,7 +352,7 @@ export function FiltersPage() {
               settings,
             )}
             {numberRow(
-              "staff.filters.spam.rateMinutes",
+              t("staff.filters.spam.rateMinutes"),
               "data-filter-rate-minutes",
               "rateMinutes",
               1,

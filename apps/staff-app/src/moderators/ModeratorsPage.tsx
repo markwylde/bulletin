@@ -42,6 +42,25 @@ interface ModeratorView {
   readonly powers: readonly ModeratorPower[];
 }
 
+const POWER_LABELS: Readonly<Record<ModeratorPower, { readonly labelKey: string }>> = {
+  edit: { labelKey: "staff.groups.power.edit" },
+  soft_delete: { labelKey: "staff.groups.power.soft_delete" },
+  hard_delete: { labelKey: "staff.groups.power.hard_delete" },
+  restore: { labelKey: "staff.groups.power.restore" },
+  move: { labelKey: "staff.groups.power.move" },
+  merge: { labelKey: "staff.groups.power.merge" },
+  split: { labelKey: "staff.groups.power.split" },
+  pin: { labelKey: "staff.groups.power.pin" },
+  lock: { labelKey: "staff.groups.power.lock" },
+  approve: { labelKey: "staff.groups.power.approve" },
+  see_unapproved: { labelKey: "staff.groups.power.see_unapproved" },
+  see_deleted: { labelKey: "staff.groups.power.see_deleted" },
+  view_ips: { labelKey: "staff.groups.power.view_ips" },
+  warn: { labelKey: "staff.groups.power.warn" },
+  view_edit_history: { labelKey: "staff.groups.power.view_edit_history" },
+  use_multimod: { labelKey: "staff.groups.power.use_multimod" },
+};
+
 interface Draft {
   readonly id: string | null;
   readonly forumId: string;
@@ -125,7 +144,7 @@ export function ModeratorsPage() {
 
   const forumTitle = (id: string): string =>
     forumTitles.data?.forums.find((forum) => forum.id === id)?.title ?? `#${id}`;
-  const powerLabel = (power: ModeratorPower): string => t(`staff.groups.power.${power}`);
+  const powerLabel = (power: ModeratorPower): string => t(POWER_LABELS[power].labelKey);
   const confirmAssignment = query.data?.assignments.find((item) => item.id === confirmId);
 
   return (

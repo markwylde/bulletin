@@ -171,8 +171,8 @@ export function BadgesPage() {
     | "descFr"
     | "imageKey"
     | "forumId";
-  const textField = (field: TextKey, labelKey: string, hook: string) => (
-    <Field label={t(labelKey)}>
+  const textField = (field: TextKey, label: string, hook: string) => (
+    <Field label={label}>
       {({ id }) => (
         <TextInput
           id={id}
@@ -312,7 +312,7 @@ export function BadgesPage() {
               >
                 <div className="stack">
                   <div className="form-grid">
-                    {textField("key", "staff.badges.key", "data-badge-key")}
+                    {textField("key", t("staff.badges.key"), "data-badge-key")}
                     <Field label={t("staff.badges.position")}>
                       {({ id }) => (
                         <TextInput
@@ -331,13 +331,13 @@ export function BadgesPage() {
                       )}
                     </Field>
                   </div>
-                  {textField("imageKey", "staff.badges.imageKey", "data-badge-image")}
-                  {textField("en", "staff.badges.labelEn", "data-badge-label-en")}
-                  {textField("descEn", "staff.badges.descriptionEn", "data-badge-desc-en")}
-                  {textField("es", "staff.badges.labelEs", "data-badge-label-es")}
-                  {textField("descEs", "staff.badges.descriptionEs", "data-badge-desc-es")}
-                  {textField("fr", "staff.badges.labelFr", "data-badge-label-fr")}
-                  {textField("descFr", "staff.badges.descriptionFr", "data-badge-desc-fr")}
+                  {textField("imageKey", t("staff.badges.imageKey"), "data-badge-image")}
+                  {textField("en", t("staff.badges.labelEn"), "data-badge-label-en")}
+                  {textField("descEn", t("staff.badges.descriptionEn"), "data-badge-desc-en")}
+                  {textField("es", t("staff.badges.labelEs"), "data-badge-label-es")}
+                  {textField("descEs", t("staff.badges.descriptionEs"), "data-badge-desc-es")}
+                  {textField("fr", t("staff.badges.labelFr"), "data-badge-label-fr")}
+                  {textField("descFr", t("staff.badges.descriptionFr"), "data-badge-desc-fr")}
                   <div className="form-grid">
                     <Field label={t("staff.badges.rule")}>
                       {({ id }) => (
@@ -378,7 +378,7 @@ export function BadgesPage() {
                       </Field>
                     )}
                     {draft.ruleType === "posts_in_forum"
-                      ? textField("forumId", "staff.badges.forumId", "data-badge-forum")
+                      ? textField("forumId", t("staff.badges.forumId"), "data-badge-forum")
                       : null}
                   </div>
                   <FormActions>

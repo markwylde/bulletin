@@ -331,6 +331,24 @@ function stringValue(expression: ts.Expression | undefined): string | undefined 
     : undefined;
 }
 
+/** Literal keys an expression can evaluate to, following both branches of `a ? "x" : "y"`. */
+function keyValues(expression: ts.Expression | undefined): string[] {
+  if (expression === undefined) {
+    return [];
+  }
+
+  if (ts.isParenthesizedExpression(expression)) {
+    return keyValues(expression.expression);
+  }
+
+  if (ts.isConditionalExpression(expression)) {
+    return [...keyValues(expression.whenTrue), ...keyValues(expression.whenFalse)];
+  }
+
+  const value = stringValue(expression);
+  return value === undefined ? [] : [value];
+}
+
 function callKey(node: ts.CallExpression): string | undefined {
   const name = expressionName(node.expression);
 
@@ -388,9 +406,7 @@ function typescriptReferences(source: string, file: string): Set<string> {
         if (value !== undefined && ts.isStringLiteral(value)) {
           keys.add(value.text);
         } else if (value !== undefined && ts.isJsxExpression(value)) {
-          const key = stringValue(value.expression);
-
-          if (key !== undefined) {
+          for (const key of keyValues(value.expression)) {
             keys.add(key);
           }
         }
@@ -403,9 +419,7 @@ function typescriptReferences(source: string, file: string): Set<string> {
       ts.isIdentifier(node.name) &&
       TRANSLATION_KEY_PROPERTIES.has(node.name.text)
     ) {
-      const key = stringValue(node.initializer);
-
-      if (key !== undefined) {
+      for (const key of keyValues(node.initializer)) {
         keys.add(key);
       }
     }
