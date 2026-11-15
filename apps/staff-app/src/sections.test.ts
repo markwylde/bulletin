@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   canAccessSection,
+  navigationAreas,
+  STAFF_AREAS,
   STAFF_SECTIONS,
   type StaffSection,
+  sectionForPath,
   sectionsWithFlags,
   visibleSections,
 } from "./sections.ts";
@@ -10,9 +13,9 @@ import {
 const settingsSection: StaffSection = {
   id: "settings",
   path: "/settings",
-  navGroup: "overview",
+  area: "system",
+  group: "configuration",
   permission: "acp.settings",
-  icon: "dashboard",
   labelKey: "staff.nav.dashboard",
 };
 
@@ -125,7 +128,7 @@ describe("staff section registry", () => {
         public_api: true,
         webhooks: true,
       }).map((section) => section.id),
-    ).toEqual(["dashboard", "webhooks", "apiKeys"]);
+    ).toEqual(["dashboard", "apiKeys", "webhooks"]);
   });
 
   test("shows dead letters only with acp.system", () => {
@@ -135,5 +138,36 @@ describe("staff section registry", () => {
     expect(visibleSections(["acp.access", "acp.system"]).map((section) => section.id)).toContain(
       "deadLetters",
     );
+  });
+
+  test("puts every section in a declared area and group", () => {
+    for (const section of STAFF_SECTIONS) {
+      const area = STAFF_AREAS.find((candidate) => candidate.id === section.area);
+
+      expect(area).toBeDefined();
+      expect(area?.groups.map((group) => group.id)).toContain(section.group);
+    }
+
+    expect(new Set(STAFF_SECTIONS.map((section) => section.path)).size).toBe(STAFF_SECTIONS.length);
+  });
+
+  test("builds navigation only from reachable sections", () => {
+    const areas = navigationAreas(visibleSections(["acp.access", "acp.system"]));
+
+    expect(areas.map((view) => view.area.id)).toEqual(["overview", "system"]);
+    expect(areas[1]?.home.id).toBe("systemHealth");
+    expect(areas[1]?.groups.map((view) => view.group.id)).toEqual(["health"]);
+    expect(navigationAreas(visibleSections(["acp.access"])).map((view) => view.area.id)).toEqual([
+      "overview",
+    ]);
+  });
+
+  test("resolves the section for a location, including nested paths", () => {
+    expect(sectionForPath(STAFF_SECTIONS, "/")?.id).toBe("dashboard");
+    expect(sectionForPath(STAFF_SECTIONS, "/moderation/bans")?.id).toBe("bans");
+    expect(sectionForPath(STAFF_SECTIONS, "/moderation/bans/")?.id).toBe("bans");
+    expect(sectionForPath(STAFF_SECTIONS, "/groups/settings")?.id).toBe("groupSettings");
+    expect(sectionForPath(STAFF_SECTIONS, "/groups/42")?.id).toBe("groups");
+    expect(sectionForPath(STAFF_SECTIONS, "/nowhere")).toBeUndefined();
   });
 });
