@@ -67,8 +67,8 @@ describe("default theme tokens", () => {
     const tokens = await loadDefaultThemeTokens();
 
     expect(Object.keys(tokens).sort()).toEqual([...THEME_SCHEMES].sort());
-    expect(tokens.light.text).toBe("#1c2430");
-    expect(tokens.dark.text).toBe("#e7ecf3");
+    expect(tokens.light.text).toBe("#101828");
+    expect(tokens.dark.text).toBe("#e7e9ee");
     expect(checkThemeContrast(tokens)).toEqual([]);
   });
 

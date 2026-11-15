@@ -1,0 +1,287 @@
+/*
+ * Base: font faces, reset, typography and the spacing scale. No component styling here.
+ */
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-var.woff2") format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-var-latin-ext.woff2") format("woff2-variations");
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308,
+    U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113,
+    U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/inter-var-italic.woff2") format("woff2-variations");
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* 4 px rhythm. */
+  --bl-s1: 0.25rem;
+  --bl-s2: 0.5rem;
+  --bl-s3: 0.75rem;
+  --bl-s4: 1rem;
+  --bl-s5: 1.25rem;
+  --bl-s6: 1.5rem;
+  --bl-s8: 2rem;
+  --bl-s10: 2.5rem;
+  --bl-s12: 3rem;
+  --bl-s16: 4rem;
+
+  /* Type scale. */
+  --bl-text-xs: 0.75rem;
+  --bl-text-sm: 0.8125rem;
+  --bl-text-md: 0.875rem;
+  --bl-text-base: 0.9375rem;
+  --bl-text-lg: 1.0625rem;
+  --bl-text-xl: 1.25rem;
+  --bl-text-2xl: 1.5rem;
+  --bl-text-3xl: 1.875rem;
+
+  /* Page gutter: 16 px phones, 24 px tablets, 32 px desktops (ADR 0021). */
+  --bl-gutter: 1rem;
+  --bl-header-height: 3.5rem;
+  --bl-control-height: 2.25rem;
+  --bl-control-height-small: 1.875rem;
+
+  /* The only elevation in the theme: popovers and dialogs. */
+  --bl-elevation: 0 0 0 1px var(--bl-border), 0 8px 24px -12px rgb(16 24 40 / 0.18);
+  --bl-ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@media (min-width: 48rem) {
+  :root {
+    --bl-gutter: 1.5rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --bl-gutter: 2rem;
+    --bl-header-height: 3.75rem;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: calc(var(--bl-header-height) + var(--bl-s4));
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--bl-bg);
+  color: var(--bl-text);
+  font-family: var(--bl-font);
+  font-size: var(--bl-text-base);
+  line-height: 1.55;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-wrap: break-word;
+}
+
+/* The layout wraps the theme body in one div; make it the flex column that pins the footer. */
+body > div:first-child {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.011em;
+  color: var(--bl-text);
+}
+
+p,
+ul,
+ol,
+dl,
+figure,
+blockquote,
+pre {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+}
+
+img,
+svg,
+video,
+canvas,
+iframe {
+  max-width: 100%;
+}
+
+img,
+video {
+  height: auto;
+}
+
+a {
+  color: var(--bl-accent);
+  text-decoration: none;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--bl-border);
+  margin: var(--bl-s6) 0;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--bl-font-mono);
+  font-size: 0.875em;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+summary {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--bl-accent-soft);
+  color: var(--bl-text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--bl-focus);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Accessibility helpers. */
+.bl-sr-only,
+.bl-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.bl-skip-link {
+  position: absolute;
+  top: var(--bl-s2);
+  left: var(--bl-s2);
+  z-index: 100;
+  padding: var(--bl-s2) var(--bl-s3);
+  border-radius: var(--bl-radius);
+  background: var(--bl-accent);
+  color: var(--bl-accent-text);
+  font-weight: 600;
+  transform: translateY(-200%);
+}
+
+.bl-skip-link:focus {
+  transform: none;
+  text-decoration: none;
+}
+
+/* Text utilities used across templates. */
+.bl-muted {
+  color: var(--bl-muted);
+}
+
+.bl-subtle {
+  color: var(--bl-subtle);
+}
+
+.bl-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.bl-error-text {
+  color: var(--bl-danger);
+  font-size: var(--bl-text-md);
+}

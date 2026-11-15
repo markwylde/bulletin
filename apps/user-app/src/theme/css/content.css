@@ -1,0 +1,276 @@
+/*
+ * Content: rendered member writing — posts, messages, announcements, signatures, policies.
+ * Class names inside the body come from the content pipeline (packages/content) and are stable.
+ */
+
+.bl-post__body,
+.bl-content,
+.bl-message__body,
+.bl-announcement__body,
+.bl-moderation-item__preview,
+.bl-post__signature {
+  font-size: var(--bl-text-base);
+  line-height: 1.65;
+  color: var(--bl-text);
+  overflow-wrap: anywhere;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) > * + * {
+  margin-top: 0.85em;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 1.4em;
+  font-weight: 650;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) h1 {
+  font-size: 1.4em;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) h2 {
+  font-size: 1.25em;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) h3 {
+  font-size: 1.1em;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body, .bl-announcement__body) a {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--bl-accent) 35%, transparent);
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body, .bl-announcement__body) a:hover {
+  text-decoration-color: currentColor;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) :is(ul, ol) {
+  padding-left: 1.4em;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) li + li {
+  margin-top: 0.25em;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) img {
+  border-radius: var(--bl-radius);
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) :not(pre) > code {
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius-small);
+  background: var(--bl-surface-muted);
+  font-size: 0.85em;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) pre {
+  padding: var(--bl-s3) var(--bl-s4);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius);
+  background: var(--bl-surface-muted);
+  overflow-x: auto;
+  line-height: 1.5;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: var(--bl-text-md);
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) :is(th, td) {
+  padding: var(--bl-s2) var(--bl-s3);
+  border: 1px solid var(--bl-border);
+  text-align: left;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) th {
+  background: var(--bl-surface-muted);
+  font-weight: 600;
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) hr {
+  margin: 1.5em 0;
+}
+
+/* Quotes from the pipeline: `blockquote.quote` with an optional source link. */
+:is(.bl-post__body, .bl-content, .bl-message__body) blockquote {
+  padding: var(--bl-s2) var(--bl-s4);
+  border-left: 3px solid var(--bl-border-strong);
+  color: var(--bl-muted);
+}
+
+:is(.bl-post__body, .bl-content, .bl-message__body) blockquote.quote {
+  padding: var(--bl-s3) var(--bl-s4);
+  border: 1px solid var(--bl-border);
+  border-left: 3px solid var(--bl-accent);
+  border-radius: var(--bl-radius);
+  background: var(--bl-surface-muted);
+  color: var(--bl-text);
+  font-size: 0.95em;
+}
+
+.quote-body > * + * {
+  margin-top: 0.6em;
+}
+
+.quote-source {
+  display: inline-block;
+  margin-top: var(--bl-s2);
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-sm);
+  text-decoration: none !important;
+}
+
+.quote-source:hover {
+  color: var(--bl-accent);
+}
+
+blockquote.quote-unavailable,
+blockquote.quote-redacted {
+  color: var(--bl-subtle) !important;
+  font-style: italic;
+}
+
+/* Video and provider embeds: 16:9 frames with a hairline border. */
+.embed {
+  position: relative;
+  max-width: 40rem;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius);
+  overflow: hidden;
+  background: var(--bl-surface-muted);
+}
+
+.embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* Link previews. */
+.unfurl-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--bl-s1);
+  max-width: 36rem;
+  padding: var(--bl-s3) var(--bl-s4);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius);
+  background: var(--bl-surface);
+  color: var(--bl-text);
+  text-decoration: none !important;
+}
+
+.unfurl-card:hover {
+  border-color: var(--bl-border-strong);
+  background: var(--bl-surface-hover);
+}
+
+.unfurl-image {
+  width: 100%;
+  max-height: 12rem;
+  margin-bottom: var(--bl-s2);
+  object-fit: cover;
+}
+
+.unfurl-title {
+  font-weight: 600;
+}
+
+.unfurl-description {
+  color: var(--bl-muted);
+  font-size: var(--bl-text-md);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.unfurl-site {
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Attachments: inline images and file chips. */
+.bl-attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bl-s2);
+  list-style: none;
+}
+
+.bl-attachment-image {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.bl-attachment-image img {
+  max-height: 28rem;
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius);
+}
+
+.bl-attachment-file {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bl-s2);
+  max-width: 100%;
+  padding: var(--bl-s2) var(--bl-s3);
+  border: 1px solid var(--bl-border);
+  border-radius: var(--bl-radius);
+  background: var(--bl-surface);
+  color: var(--bl-text);
+  font-size: var(--bl-text-md);
+  text-decoration: none !important;
+}
+
+.bl-attachment-file:hover {
+  border-color: var(--bl-border-strong);
+  background: var(--bl-surface-hover);
+}
+
+.bl-attachment-file__name {
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bl-attachment-file__meta {
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-sm);
+  white-space: nowrap;
+}
+
+.bl-attachment-missing {
+  display: inline-block;
+  padding: var(--bl-s2) var(--bl-s3);
+  border: 1px dashed var(--bl-border-strong);
+  border-radius: var(--bl-radius);
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-md);
+}
+
+/* Mentions. */
+:is(.bl-post__body, .bl-content, .bl-message__body) a[data-mention],
+.mention {
+  padding: 0 0.2em;
+  border-radius: var(--bl-radius-small);
+  background: var(--bl-accent-soft);
+  color: var(--bl-accent);
+  font-weight: 550;
+  text-decoration: none;
+}
