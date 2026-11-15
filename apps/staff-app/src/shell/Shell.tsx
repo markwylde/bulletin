@@ -114,7 +114,13 @@ function ShellBreadcrumbs({
   ];
 
   // An area whose home is this section reads "Area" then "Section"; the area is not a link.
-  return <Breadcrumbs items={items} label={t("staff.breadcrumbs")} />;
+  return (
+    <Breadcrumbs
+      items={items}
+      label={t("staff.breadcrumbs")}
+      fallbackParent={{ label: t("staff.area.overview"), to: "/" }}
+    />
+  );
 }
 
 export function Shell() {

@@ -278,6 +278,7 @@ export function FlagsPage() {
   const columns: readonly DataTableColumn<FlagAdminView>[] = [
     {
       id: "key",
+      primary: true,
       headerKey: "staff.flags.key",
       cell: (flag) => <code className="mono">{flag.key}</code>,
       sortValue: (flag) => flag.key,
@@ -307,7 +308,9 @@ export function FlagsPage() {
     {
       id: "age",
       headerKey: "staff.flags.age",
-      cell: (flag) => t("staff.flags.ageDays", { days: flag.ageDays }),
+      cell: (flag) => (
+        <span className="nowrap">{t("staff.flags.ageDays", { days: flag.ageDays })}</span>
+      ),
       sortValue: (flag) => flag.ageDays,
       align: "end",
     },

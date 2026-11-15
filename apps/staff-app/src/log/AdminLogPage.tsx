@@ -69,6 +69,7 @@ export function AdminLogPage() {
   const columns: readonly DataTableColumn<AdminLogEntry>[] = [
     {
       id: "action",
+      primary: true,
       headerKey: "staff.log.action",
       cell: (entry) => <code className="mono">{entry.action}</code>,
       sortValue: (entry) => entry.action,

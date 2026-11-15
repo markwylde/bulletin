@@ -55,11 +55,14 @@ export function Table<Row>({ columns, rows, rowKey, empty, caption, rowProps }: 
                 {columns.map((column) => (
                   <td
                     key={column.id}
-                    data-label={column.primary ? undefined : column.header}
+                    data-label={
+                      column.primary || column.id === "actions" ? undefined : column.header
+                    }
                     className={
                       [
                         column.align === "end" ? "align-end" : null,
                         column.primary ? "cell-primary" : null,
+                        column.id === "actions" ? "cell-actions" : null,
                       ]
                         .filter(Boolean)
                         .join(" ") || undefined

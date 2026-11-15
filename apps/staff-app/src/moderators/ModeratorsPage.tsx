@@ -181,7 +181,13 @@ export function ModeratorsPage() {
                     header: t("staff.moderators.assignee"),
                     cell: (assignment) => (
                       <span className="cluster">
-                        <span>{assignment.memberName ?? assignment.groupKey ?? ""}</span>
+                        <span>
+                          {assignment.memberName ??
+                            query.data?.groups.find((group) => group.id === assignment.groupId)
+                              ?.title ??
+                            assignment.groupKey ??
+                            ""}
+                        </span>
                         <Badge>
                           {assignment.memberId === null
                             ? t("staff.moderators.group")

@@ -12,15 +12,18 @@ export interface Crumb {
 export function Breadcrumbs({
   items,
   label,
+  fallbackParent,
 }: {
   readonly items: readonly Crumb[];
   readonly label: string;
+  /** The phone back link when no crumb in the trail is a link, such as an area's home page. */
+  readonly fallbackParent?: Crumb;
 }) {
   if (items.length === 0) {
     return null;
   }
 
-  const parent = [...items].reverse().find((item) => item.to !== undefined);
+  const parent = [...items].reverse().find((item) => item.to !== undefined) ?? fallbackParent;
 
   return (
     <nav className="breadcrumbs" aria-label={label} data-breadcrumbs>

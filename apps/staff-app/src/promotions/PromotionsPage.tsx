@@ -89,6 +89,8 @@ export function PromotionsPage() {
       }));
     }
   }, [query.data, draft.fromGroupId]);
+  const groupTitle = (id: string, key: string): string =>
+    query.data?.groups.find((group) => group.id === id)?.title ?? key;
 
   const criteriaPayload = (): Record<string, number> => {
     const result: Record<string, number> = {};
@@ -175,9 +177,9 @@ export function PromotionsPage() {
                     primary: true,
                     cell: (rule) => (
                       <span className="cluster">
-                        <code>{rule.fromGroupKey}</code>
+                        <span>{groupTitle(rule.fromGroupId, rule.fromGroupKey)}</span>
                         <IconArrowRight size={14} className="muted" />
-                        <code>{rule.toGroupKey}</code>
+                        <span>{groupTitle(rule.toGroupId, rule.toGroupKey)}</span>
                       </span>
                     ),
                   },

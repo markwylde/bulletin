@@ -51,6 +51,10 @@ export function DevSensitiveCheck() {
 
   return (
     <section className="dev-tools" data-dev-tools>
+      <div className="dev-tools-text">
+        <h2>{t("staff.dev.tools.title")}</h2>
+        <p className="muted">{t("staff.dev.tools.body")}</p>
+      </div>
       <button
         type="button"
         className="btn btn-secondary btn-sm"
@@ -59,8 +63,16 @@ export function DevSensitiveCheck() {
       >
         {t("auth.sensitiveCheck")}
       </button>
-      {sensitive === "ok" ? <p data-sensitive-result="ok">{t("auth.sensitiveOk")}</p> : null}
-      {sensitive === "error" ? <p data-sensitive-error>{t("auth.sensitiveError")}</p> : null}
+      {sensitive === "ok" ? (
+        <p className="dev-tools-result" data-sensitive-result="ok">
+          {t("auth.sensitiveOk")}
+        </p>
+      ) : null}
+      {sensitive === "error" ? (
+        <p className="dev-tools-result" data-sensitive-error>
+          {t("auth.sensitiveError")}
+        </p>
+      ) : null}
     </section>
   );
 }

@@ -19,7 +19,7 @@ integrationDescribe("sample plugins", () => {
       const states = await view.evaluate<Record<string, string>>(`Object.fromEntries(
         [...document.querySelectorAll("[data-plugin-card]")].map((card) => [
           card.getAttribute("data-plugin-card"),
-          card.querySelector("[data-plugin-state]")?.textContent ?? "",
+          card.querySelector("[data-plugin-state]")?.getAttribute("data-plugin-state") ?? "",
         ])
       )`);
       expect(states["hide-post-count"]).toBe("disabled");

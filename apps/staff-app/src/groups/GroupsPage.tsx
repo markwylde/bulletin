@@ -139,6 +139,7 @@ export function GroupsPage() {
   const columns: readonly DataTableColumn<GroupView>[] = [
     {
       id: "title",
+      primary: true,
       headerKey: "staff.groups.title",
       cell: (group) => (
         <span className="with-swatch">

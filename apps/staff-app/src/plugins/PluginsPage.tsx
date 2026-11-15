@@ -20,6 +20,31 @@ import {
   type Tone,
 } from "../ui/index.ts";
 
+function pluginStateLabel(t: ReturnType<typeof useT>, state: string): string {
+  switch (state) {
+    case "installing":
+      return t("staff.plugins.state.installing");
+    case "active":
+      return t("staff.plugins.state.active");
+    case "disabled":
+      return t("staff.plugins.state.disabled");
+    case "upgrading":
+      return t("staff.plugins.state.upgrading");
+    case "failed":
+      return t("staff.plugins.state.failed");
+    case "uninstalled":
+      return t("staff.plugins.state.uninstalled");
+    default:
+      return state;
+  }
+}
+
+function timingLabel(t: ReturnType<typeof useT>, key: string, ms: number): string {
+  return key === "activationMs"
+    ? t("staff.plugins.timing.activation", { ms })
+    : t("staff.plugins.timing.other", { ms });
+}
+
 function capabilityLabel(t: ReturnType<typeof useT>, capability: Capability): string {
   switch (capability.capability) {
     case "core.read":
@@ -52,6 +77,8 @@ function capabilityLabel(t: ReturnType<typeof useT>, capability: Capability): st
       return t("staff.plugins.capability.pii");
     case "gdpr":
       return t("staff.plugins.capability.gdpr");
+    case "db":
+      return t("staff.plugins.capability.db");
     default:
       return capability.capability.startsWith("egress:")
         ? t("staff.plugins.capability.egressHost")
@@ -314,7 +341,9 @@ export function PluginsPage() {
                   <div className="stack stack-sm">
                     <span className="cluster">
                       <Badge tone={stateTone(plugin)} dot>
-                        <span data-plugin-state>{plugin.state}</span>
+                        <span data-plugin-state={plugin.state}>
+                          {pluginStateLabel(t, plugin.state)}
+                        </span>
                       </Badge>
                       <span className="subtle mono">{plugin.version}</span>
                       <span className="subtle">
@@ -322,10 +351,13 @@ export function PluginsPage() {
                       </span>
                     </span>
                     {Object.entries(plugin.timings).length === 0 ? null : (
-                      <p className="subtle mono" data-plugin-timings>
-                        {Object.entries(plugin.timings)
-                          .map(([key, value]) => `${key}: ${String(value)} ms`)
-                          .join(" · ")}
+                      <p className="subtle" data-plugin-timings>
+                        {Object.entries(plugin.timings).map(([key, value], index) => (
+                          <span key={key} data-plugin-timing={key}>
+                            {index === 0 ? null : " · "}
+                            {timingLabel(t, key, value)}
+                          </span>
+                        ))}
                       </p>
                     )}
                     <ul className="plain-list" data-plugin-capabilities>

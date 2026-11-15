@@ -10,6 +10,13 @@ export interface DataTableColumn<Row> {
   /** Required for a sortable column. */
   readonly sortValue?: (row: Row) => string | number | null;
   readonly align?: "start" | "end";
+  /** In the phone card view this cell becomes the card title instead of a labelled row. */
+  readonly primary?: boolean;
+}
+
+/** An `actions` column renders as an unlabelled, right-aligned button row in the card view. */
+function isActionsColumn(column: { readonly id: string }): boolean {
+  return column.id === "actions";
 }
 
 export interface DataTableBulkAction {
@@ -137,6 +144,11 @@ export function DataTable<Row>({
     [columns],
   );
   const ordered = sort === null ? rows : sortRows(rows, columns, sort);
+  const primaryColumn = columns.find((column) => column.primary === true);
+  const actionColumns = columns.filter(isActionsColumn);
+  const cardColumns = columns.filter(
+    (column) => column !== primaryColumn && !isActionsColumn(column),
+  );
   const pagination = paginate
     ? paginateRows(ordered, page, pageSize)
     : { rows: ordered, page: 1, pageCount: 1 };
@@ -403,12 +415,14 @@ export function DataTable<Row>({
                       onChange={() => toggleRow(id)}
                     />
                   ) : null}
-                  {getRowLabel === undefined ? null : (
+                  {primaryColumn !== undefined ? (
+                    <span className="data-card-title">{primaryColumn.cell(row)}</span>
+                  ) : getRowLabel === undefined ? null : (
                     <span className="data-card-title">{getRowLabel(row)}</span>
                   )}
                 </div>
                 <dl className="data-card-cells">
-                  {columns.map((column) => (
+                  {cardColumns.map((column) => (
                     <div
                       key={column.id}
                       className={
@@ -420,6 +434,11 @@ export function DataTable<Row>({
                     </div>
                   ))}
                 </dl>
+                {actionColumns.map((column) => (
+                  <div key={column.id} className="data-card-actions">
+                    {column.cell(row)}
+                  </div>
+                ))}
                 {rowActions === undefined ? null : (
                   <div className="data-card-actions">{rowActions(row)}</div>
                 )}

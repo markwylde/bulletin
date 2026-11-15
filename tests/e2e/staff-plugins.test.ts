@@ -26,7 +26,7 @@ integrationDescribe("staff plugin manager", () => {
 
       expect(
         await view.evaluate<string>(
-          "document.querySelector('[data-plugin-card=\"sandbox-demo\"] [data-plugin-state]').textContent",
+          "document.querySelector('[data-plugin-card=\"sandbox-demo\"] [data-plugin-state]').getAttribute('data-plugin-state')",
         ),
       ).toBe("active");
       expect(
@@ -36,9 +36,9 @@ integrationDescribe("staff plugin manager", () => {
       ).toContain("Receive domain events");
       expect(
         await view.evaluate<string>(
-          'document.querySelector("[data-plugin-timings]")?.innerText ?? ""',
+          'document.querySelector("[data-plugin-timing=\\"activationMs\\"]")?.innerText ?? ""',
         ),
-      ).toContain("activationMs");
+      ).toContain("ms");
       expect(
         await view.evaluate<number>(
           "document.documentElement.scrollWidth - document.documentElement.clientWidth",

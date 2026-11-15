@@ -234,7 +234,11 @@ export function GroupSettingsPage() {
                   title={t(SECTION_LABEL_KEYS[section])}
                 >
                   {list.map((definition) => (
-                    <div key={definition.key} data-setting-row={definition.key}>
+                    <div
+                      key={definition.key}
+                      className="settings-row-item"
+                      data-setting-row={definition.key}
+                    >
                       <SettingsRow
                         label={t(definition.labelKey)}
                         description={t(mergeLabelKey(definition.merge))}

@@ -378,6 +378,21 @@ a.btn:hover {
   }
 }
 
+/* A row whose control is a single switch keeps the switch beside its label, right-aligned. */
+.settings-row:has(.switch) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.settings-row:has(.switch) .settings-row-control {
+  align-items: flex-end;
+}
+
+.settings-row-item + .settings-row-item > .settings-row {
+  border-top: 1px solid var(--border);
+}
+
 .checkbox {
   display: inline-flex;
   align-items: flex-start;
@@ -570,6 +585,15 @@ a.btn:hover {
   }
 
   .table td.cell-primary::before {
+    content: none;
+  }
+
+  .table td.cell-actions {
+    justify-content: flex-end;
+    padding-top: var(--space-2);
+  }
+
+  .table td.cell-actions::before {
     content: none;
   }
 }
@@ -1015,6 +1039,7 @@ a.btn:hover {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  justify-content: flex-end;
   padding-top: var(--space-1);
 }
 
@@ -1248,6 +1273,11 @@ a.btn:hover {
   gap: var(--space-2);
 }
 
+/* Badges keep their own width inside a vertical stack. */
+.stack > .badge {
+  align-self: flex-start;
+}
+
 .stack-xs {
   gap: var(--space-1);
 }
@@ -1351,10 +1381,25 @@ a.btn:hover {
   max-width: 16rem;
 }
 
+/* Outside a toolbar row (in a vertical stack) the basis must not become a height. */
+.stack > .toolbar-filters {
+  flex: none;
+}
+
 .toolbar-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+}
+
+/* Phones: each filter takes the full row so inputs line up instead of leaving ragged gaps. */
+@media (max-width: 639px) {
+  .toolbar-filters > .field,
+  .toolbar-filters > .search-input,
+  .toolbar > .search-input {
+    flex-basis: 100%;
+    max-width: none;
+  }
 }
 
 .search-input {
@@ -2226,13 +2271,38 @@ li + li > .list-row-button {
 }
 
 /* Development-only tools under the dashboard */
+/* Development-only tools: a quiet panel, never shipped in production builds. */
 .dev-tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
-  padding-top: var(--space-5);
-  border-top: 1px dashed var(--border);
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-muted);
+}
+
+.dev-tools-text {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.dev-tools-text h2 {
+  font-size: var(--text-base);
+  font-weight: 600;
+}
+
+.dev-tools-text p {
+  font-size: var(--text-sm);
+}
+
+.dev-tools-result {
+  flex-basis: 100%;
+  font-size: var(--text-sm);
 }
 
 /* Nothing in a panel may widen the page on phones. */
@@ -2255,4 +2325,9 @@ li + li > .list-row-button {
 
 .code-block {
   max-width: 100%;
+}
+
+/* Keeps a short value such as "30 days" on one line. */
+.nowrap {
+  white-space: nowrap;
 }

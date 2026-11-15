@@ -99,7 +99,7 @@ export function ModerationLogPage() {
                 },
                 {
                   id: "actor",
-                  header: t("staff.modlog.actor"),
+                  header: t("staff.modlog.moderator"),
                   cell: (entry) => entry.actorName ?? t("staff.dashboard.log.system"),
                 },
                 {

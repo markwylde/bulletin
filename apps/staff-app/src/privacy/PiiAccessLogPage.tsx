@@ -60,6 +60,14 @@ export function PiiAccessLogPage() {
       );
     },
   });
+  const none = (
+    <>
+      <span className="subtle" aria-hidden="true">
+        —
+      </span>
+      <span className="sr-only">{t("staff.privacy.audit.none")}</span>
+    </>
+  );
   const columns: readonly DataTableColumn<AccessLogEntry>[] = [
     {
       id: "actor",
@@ -70,7 +78,7 @@ export function PiiAccessLogPage() {
     {
       id: "subject",
       headerKey: "staff.privacy.audit.subject",
-      cell: (entry) => entry.subjectName ?? entry.subjectMemberId ?? t("staff.privacy.audit.none"),
+      cell: (entry) => entry.subjectName ?? entry.subjectMemberId ?? none,
       sortValue: (entry) => entry.subjectName,
     },
     {
@@ -83,8 +91,7 @@ export function PiiAccessLogPage() {
       id: "resource",
       headerKey: "staff.privacy.audit.resource",
       cell: (entry) =>
-        [entry.resourceType, entry.resourceId].filter((value) => value !== null).join(" ") ||
-        t("staff.privacy.audit.none"),
+        [entry.resourceType, entry.resourceId].filter((value) => value !== null).join(" ") || none,
     },
     {
       id: "time",
