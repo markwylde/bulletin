@@ -110,6 +110,7 @@ const memberId = Astro.locals.session?.memberId ?? "";
     {pwaEnabled ? <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" /> : null}
     {pwaEnabled ? <link rel="apple-touch-icon" href="/pwa/icon-180.png" /> : null}
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preload" href="/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin />
     {themeHead === null ? (
       <>
         <meta name="robots" content={robotsDirective} />
@@ -131,6 +132,8 @@ const memberId = Astro.locals.session?.memberId ?? "";
     <slot />
     <!-- The theme layer must follow the app's emitted default stylesheet. -->
     <link rel="stylesheet" href="/theme-css" />
+    <script>import "../shell/header.ts";</script>
+    <script>import "../shell/auth.ts";</script>
     <script>import "../islands.ts";</script>
     <script>import "../plugins/bridge.ts";</script>
     <script>import "../visits.ts";</script>

@@ -169,6 +169,8 @@ export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
         boardName: input.boardName,
         year: input.year ?? new Date().getFullYear(),
         flags,
+        // The language and appearance choices live in the footer, not the header (ADR 0021).
+        language: languageSwitcherView(input.locale, input.translate),
         themeChooser: themeChooserView(input.translate),
         feedLinks: {
           flags: { feeds },
