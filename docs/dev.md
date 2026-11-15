@@ -66,7 +66,7 @@ minimum it needs:
 
 ```yaml
 cap_add: [SYS_ADMIN]
-security_opt: [seccomp=unconfined, label=disable]
+security_opt: [seccomp=unconfined, apparmor=unconfined, label=disable]
 cgroup: host
 volumes: ["/sys/fs/cgroup:/sys/fs/cgroup:rw"]
 ```

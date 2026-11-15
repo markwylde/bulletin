@@ -155,7 +155,7 @@ describe("compose stack", () => {
     const pluginHost = compose.services?.["plugin-host"];
 
     expect(pluginHost?.cap_add).toEqual(["SYS_ADMIN"]);
-    expect(pluginHost?.security_opt).toEqual(["seccomp=unconfined", "label=disable"]);
+    expect(pluginHost?.security_opt).toEqual(["seccomp=unconfined", "apparmor=unconfined", "label=disable"]);
     expect(pluginHost?.cgroup).toBe("host");
     expect(pluginHost?.volumes).toContain("/sys/fs/cgroup:/sys/fs/cgroup:rw");
 

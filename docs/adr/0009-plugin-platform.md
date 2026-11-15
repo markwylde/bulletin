@@ -208,7 +208,8 @@ the same compose contract and malicious suite on Docker and on rootless Podman.
   re-adding a smaller set breaks nsjail's namespace and mount setup in this image.
 - `seccomp=unconfined` on the outer container: Docker's default profile rejects
   `CLONE_NEWUSER`. The jail installs its own filter, which is the security boundary.
-  `label=disable` is needed on SELinux hosts.
+  `label=disable` is needed on SELinux hosts, and `apparmor=unconfined` on AppArmor hosts
+  (Ubuntu), where the `docker-default` profile denies the jail's mounts.
 - `cgroup: host` and a writable `/sys/fs/cgroup`. Rootful engines can write the host cgroup
   root; rootless Podman needs the systemd-delegated `user.slice` parent, discovered at
   startup. No per-plugin container fallback was needed on either tested engine.
