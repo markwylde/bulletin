@@ -72,7 +72,8 @@ for (const viewportName of ["mobile360", "desktop"] as ViewportName[]) {
         }
 
         await view.navigate(new URL(`/moderation/reports/${reportId}`, USER_URL).toString());
-        await waitForSelector(view, "[data-report-page]", 20_000);
+        // The status controls only work once the page script has attached its handlers.
+        await waitForSelector(view, '[data-report-page][data-report-ready="true"]', 20_000);
         await waitForSelector(view, "[data-report-status-select]", 20_000);
         await setInputValue(view, "[data-report-status-select]", "resolved");
         await waitForSelector(view, "[data-report-status-save]:not([disabled])", 20_000);

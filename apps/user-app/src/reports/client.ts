@@ -99,6 +99,8 @@ if (root !== null) {
       }
     }
   });
+
+  root.dataset.reportReady = "true";
 }
 
 interface ReportTarget {
