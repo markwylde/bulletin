@@ -341,13 +341,13 @@ await startService({
     }
 
     if (request.method === "GET" && pathname === "/api/theme-options") {
-      const response = await auth.handle(request, async ({ session }) =>
-        flags.guard("theme_chooser", session?.memberId ?? null)(request, () =>
-          themeOptionsResponse(sql, request, session),
-        ),
-      );
+      // A passive read from the footer chooser on every page: a session waiting for silent
+      // re-auth gets the guest list rather than a 401 (the list is public for guests anyway).
+      const session = await auth.passiveSession(request);
 
-      return response ?? Response.json({ code: "not_found" }, { status: 404 });
+      return flags.guard("theme_chooser", session?.memberId ?? null)(request, () =>
+        themeOptionsResponse(sql, request, session),
+      );
     }
 
     if (request.method === "POST" && pathname === "/api/me/appearance") {

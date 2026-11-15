@@ -96,6 +96,13 @@ export type AuthNext = (context: AuthRequestContext) => Promise<Response>;
 export interface AuthService {
   /** Handles auth endpoints and (in development) the test-only session endpoints. */
   handle(request: Request, next?: AuthNext): Promise<Response | null>;
+  /**
+   * The request's live session for a passive, guest-safe read, or null for a guest. A session
+   * that is waiting for silent re-auth reads as a guest instead of answering 401, so background
+   * requests made while the shell renews it never fail (the renewal itself still goes through
+   * `/api/auth/session`). Never use it for writes or member-only data.
+   */
+  passiveSession(request: Request): Promise<SessionRecord | null>;
   close(): Promise<void>;
   readonly sessions: SessionStore;
 }
@@ -921,6 +928,16 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
 
   return {
     sessions,
+    async passiveSession(request) {
+      const token = parseCookieHeader(request.headers.get("cookie"))[cookieName];
+      const session = token === undefined ? null : await sessions.find(options.kind, token);
+
+      if (session === null || options.kind !== "user") {
+        return session;
+      }
+
+      return Date.now() > session.reauthAt.getTime() + REAUTH_GRACE_MS ? null : session;
+    },
     async handle(request, next) {
       const { pathname } = new URL(request.url);
 

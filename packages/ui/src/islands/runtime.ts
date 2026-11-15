@@ -3,6 +3,8 @@ import { CLIENT_ISLANDS } from "./client.ts";
 const NAME_ATTRIBUTE = "data-name";
 const PROPS_ATTRIBUTE = "data-props";
 const HYDRATED_ATTRIBUTE = "data-hydrated";
+/** How long below-the-fold islands wait for the window `load` event before hydrating anyway. */
+const LOAD_GRACE_MS = 1_500;
 const FAILED_ATTRIBUTE = "data-hydrate-error";
 
 /** Islands hydrate this far outside the viewport, so scrolling feels instant. */
@@ -126,7 +128,13 @@ export function hydrateIslands(options: HydrateIslandsOptions = {}): void {
   // (for example one carrying plugin client apps) can push them past any fixed preload
   // margin, and deep links or restored scroll positions rely on the same widgets. Hydrate the
   // rest once the page has loaded, in an idle slice, so the first paint stays untouched.
+  let remainingDone = false;
   const hydrateRemaining = (): void => {
+    if (remainingDone) {
+      return;
+    }
+
+    remainingDone = true;
     observer.disconnect();
 
     for (const island of pending) {
@@ -146,5 +154,9 @@ export function hydrateIslands(options: HydrateIslandsOptions = {}): void {
     scheduleRemaining();
   } else {
     window.addEventListener("load", scheduleRemaining, { once: true });
+    // A slow subresource (a large image, an embed, a busy CI runner) can hold `load` back for
+    // a long time, which would leave below-the-fold islands such as the footer's language and
+    // appearance choosers inert. Do not wait for it past a short grace period.
+    setTimeout(scheduleRemaining, LOAD_GRACE_MS);
   }
 }
