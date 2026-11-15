@@ -154,7 +154,8 @@ export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
   const flags = (input.viewModel as { readonly flags?: unknown } | undefined)?.flags ?? {};
   const feeds = (flags as { readonly feeds?: unknown }).feeds === true;
 
-  const accountActive = input.template === undefined ? undefined : ACCOUNT_NAV_ACTIVE[input.template];
+  const accountActive =
+    input.template === undefined ? undefined : ACCOUNT_NAV_ACTIVE[input.template];
   // The nav depends on flags and the page only, never on the member (ADR 0006).
   const accountNav: readonly ThemeRegion[] =
     accountActive === undefined

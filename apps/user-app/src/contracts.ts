@@ -165,7 +165,10 @@ export const displayNameContract = defineContract({
 
 export const accountContract = defineContract<AccountViewModel>({
   route: "/account",
-  templates: { page: "account", regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"] },
+  templates: {
+    page: "account",
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
+  },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
   cdnCacheable: false,
@@ -272,7 +275,10 @@ export const notificationsContract = defineContract<AccountViewModel>({
 
 export const followsContract = defineContract<AccountViewModel>({
   route: "/account/follows",
-  templates: { page: "account-follows", regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"] },
+  templates: {
+    page: "account-follows",
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
+  },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
   cdnCacheable: false,

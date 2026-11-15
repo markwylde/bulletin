@@ -523,4 +523,3 @@ const inboxPage = document.querySelector<HTMLElement>("[data-conversations-page]
 if (inboxPage !== null) {
   inboxPage.dataset.conversationsReady = "true";
 }
-
