@@ -7,6 +7,7 @@
  *
  *   bun scripts/ui-shots.ts [--out .shots/name] [--only user|staff] [--pages index,topic]
  *                           [--vp 360,768,1440] [--scheme light,dark] [--concurrency 4]
+ *                           [--viewport] [--scale 2]
  *                           [--max-height 6000]
  */
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
@@ -55,9 +56,15 @@ const { values: args } = parseArgs({
     scheme: { type: "string", default: "light,dark" },
     concurrency: { type: "string", default: "4" },
     "max-height": { type: "string", default: "6000" },
+    /** Capture only the visible viewport (blog-ready shots) instead of the full page. */
+    viewport: { type: "boolean", default: false },
+    /** Device pixel ratio for the capture; 2 gives crisp images for publishing. */
+    scale: { type: "string", default: "1" },
   },
 });
 
+const VIEWPORT_ONLY = args.viewport === true;
+const SCALE = Number(args.scale ?? "1") || 1;
 const USER = userOrigin();
 const STAFF = staffOrigin();
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
@@ -224,13 +231,19 @@ async function emulate(view: Bun.WebView, width: number, scheme: Scheme): Promis
   await view.cdp("Emulation.setDeviceMetricsOverride", {
     width,
     height: HEIGHTS[width] ?? 900,
-    deviceScaleFactor: 1,
+    deviceScaleFactor: SCALE,
     mobile: width < 500,
   });
 }
 
 /** Full-page PNG, capped at --max-height so endless lists stay reviewable. */
 async function capture(view: Bun.WebView, width: number, file: string): Promise<void> {
+  if (VIEWPORT_ONLY) {
+    const shot = await view.cdp<{ data: string }>("Page.captureScreenshot", { format: "png" });
+    await Bun.write(file, Buffer.from(shot.data, "base64"));
+    return;
+  }
+
   const height = await view.evaluate<number>(
     "Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight ?? 0)",
   );
