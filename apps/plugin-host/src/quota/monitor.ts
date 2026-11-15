@@ -130,6 +130,8 @@ export class PluginQuotaMonitor {
 
   /** Admin action: allow writes again (the next check revokes again if still over quota). */
   async restoreWrites(): Promise<QuotaStatus> {
+    // A check already in flight could otherwise revoke again right after this grant.
+    await this.#checking?.catch(() => undefined);
     const sql = new SQL(this.#adminUrl, { max: 1, connectionTimeout: 5 });
 
     try {
