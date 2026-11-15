@@ -188,6 +188,9 @@ export function CommandPalette({
             } else if (event.key === "ArrowUp") {
               event.preventDefault();
               setActive((index) => Math.max(0, index - 1));
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              onClose();
             } else if (event.key === "Enter") {
               event.preventDefault();
               choose(results[active]);

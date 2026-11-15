@@ -39,22 +39,23 @@ integrationDescribe("staff navigation", () => {
       await waitForSelector(view, '[data-nav-panel="members"]');
       await waitForExpression(view, 'location.pathname === "/members/profiles"');
       await waitForSelector(view, '[data-nav-group="access"] [data-section="groups"]');
-      expect(
-        await view.evaluate<string | null>(
-          'document.querySelector(\'[data-area="members"]\').getAttribute("aria-current")',
-        ),
-      ).toBe("page");
+      await waitForExpression(
+        view,
+        'document.querySelector(\'[data-area="members"]\').getAttribute("aria-current") === "page"',
+      );
 
       await clickSelector(view, '[data-nav-group="access"] [data-section="groups"]');
       await waitForExpression(view, 'location.pathname === "/groups"');
-      expect(
-        await view.evaluate<string | null>(
-          'document.querySelector(\'[data-section="groups"]\').getAttribute("aria-current")',
-        ),
-      ).toBe("page");
+      await waitForExpression(
+        view,
+        'document.querySelector(\'[data-section="groups"]\').getAttribute("aria-current") === "page"',
+      );
 
       // Breadcrumbs: area link, then the current section.
-      await waitForSelector(view, "[data-breadcrumbs]");
+      await waitForExpression(
+        view,
+        'document.querySelectorAll("[data-breadcrumbs] li").length === 2 && document.querySelector("[data-breadcrumbs] [aria-current]")?.textContent === document.querySelector(\'[data-section="groups"]\').textContent',
+      );
       const crumbs = await view.evaluate<{ text: string; href: string | null }[]>(
         `[...document.querySelectorAll("[data-breadcrumbs] li")].map((item) => ({
           text: item.textContent.trim(),
@@ -126,6 +127,7 @@ integrationDescribe("staff navigation", () => {
         await view.evaluate(
           'document.querySelector("[data-command-input]").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))',
         );
+        await waitForExpression(view, '!document.querySelector("[data-command-palette]").open');
 
         await view.navigate(`${STAFF_URL}/settings/board`);
         await waitForSelector(view, "[data-not-found]");

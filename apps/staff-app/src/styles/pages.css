@@ -513,3 +513,110 @@
     margin: 0 calc(var(--space-4) * -1);
   }
 }
+
+.setting-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.setting-cell input[type="number"] {
+  width: 5.5rem;
+}
+
+.override-value {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 420px) {
+  .form-duration {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ADR 0014: matrices become stacked rows on phones, never a horizontal scroll. */
+@media (max-width: 767px) {
+  .matrix-scroll {
+    overflow: visible;
+    border: 0;
+  }
+
+  .matrix-table {
+    display: block;
+    min-width: 0;
+  }
+
+  .matrix-table thead {
+    display: none;
+  }
+
+  .matrix-table tbody,
+  .matrix-table tr,
+  .content .matrix-table th,
+  .content .matrix-table td {
+    display: block;
+    width: auto;
+  }
+
+  .matrix-table tr {
+    margin-block: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg);
+  }
+
+  .content .matrix-table th,
+  .content .matrix-table td {
+    height: auto;
+    padding: var(--space-1) 0;
+    border: 0;
+    background: none;
+    white-space: normal;
+  }
+
+  .content .matrix-table th[scope="row"] {
+    color: var(--text);
+    font-size: var(--text-base);
+    font-weight: 600;
+  }
+
+  .content .matrix-table td {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .content .matrix-table td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+  }
+
+  .setting-cell {
+    width: 100%;
+  }
+}
+
+/* Long words, domains and secrets wrap instead of widening a 360 px layout. */
+.admin-list > li,
+.data-card-cell dd,
+[data-api-key-secret] code,
+[data-api-key-row] code {
+  overflow-wrap: anywhere;
+}
+
+[data-api-key-secret] code,
+[data-api-key-row] code {
+  word-break: break-all;
+}
+
+.emoticon-row img,
+.emoticon-list img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
