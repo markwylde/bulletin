@@ -9,7 +9,17 @@ import { join } from "node:path";
  */
 const BROWSER_NOISE: readonly RegExp[] = [
   /^Error while trying to use the following icon from the Manifest: .*\/pwa\/icon-\d+\.png/,
+  // Chromium downloads the user app's install icon after the page loads, from the browser
+  // rather than the page. When a test navigates straight on to the staff origin, that late
+  // download is checked against (and reported under) the staff page's CSP, which rightly keeps
+  // user-origin images out (ADR 0018). The staff app never references the icon itself.
+  /^Refused to load the image 'https?:\/\/[^'/]+\/pwa\/icon-\d+\.png(\?[^']*)?' because it violates the following Content Security Policy directive: "img-src /,
 ];
+
+/** Console errors the browser raises on its own, never the page under test. */
+export function isBrowserNoise(message: string): boolean {
+  return BROWSER_NOISE.some((pattern) => pattern.test(message));
+}
 
 export const VIEWPORTS = {
   mobile360: { width: 360, height: 780 },
@@ -81,7 +91,7 @@ async function openPage(options: PageOptions): Promise<OpenPage> {
     errors.push(details?.exception?.description ?? details?.text ?? "Uncaught page exception");
   });
   const allowedConsoleError = (message: string): boolean =>
-    BROWSER_NOISE.some((pattern) => pattern.test(message)) ||
+    isBrowserNoise(message) ||
     (options.allowConsoleErrors ?? []).some((pattern) => pattern.test(message));
   candidate.addEventListener<{
     readonly type?: string;
