@@ -1521,7 +1521,7 @@ a.btn:hover {
   margin-left: auto;
 }
 
-.panel-body > .list {
+.panel-body:not(.panel-body-flush) > .list {
   margin: calc(var(--space-4) * -1);
 }
 

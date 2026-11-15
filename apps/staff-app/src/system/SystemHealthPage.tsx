@@ -294,7 +294,16 @@ export function SystemHealthPage() {
                       data-health-ok={plugin.healthy}
                     >
                       <span className="list-row-main mono">{plugin.pluginId}</span>
-                      <Badge tone={plugin.healthy ? "success" : "danger"} dot>
+                      <Badge
+                        tone={
+                          !plugin.enabled && !plugin.breakerTripped
+                            ? "neutral"
+                            : plugin.healthy
+                              ? "success"
+                              : "danger"
+                        }
+                        dot
+                      >
                         {plugin.breakerTripped
                           ? t("staff.systemHealth.breakerTripped")
                           : !plugin.enabled
