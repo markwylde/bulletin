@@ -94,7 +94,7 @@ async function expectThemedPage(
 
   expect(painted.dark).toBe(scheme === "dark");
   expect(painted.overflow).toBeLessThanOrEqual(1);
-  expect(painted.bodyBackground).toBe(scheme === "dark" ? "rgb(20, 26, 34)" : "rgb(244, 246, 249)");
+  expect(painted.bodyBackground).toBe(scheme === "dark" ? "rgb(14, 16, 20)" : "rgb(246, 247, 249)");
   expect(painted.bodyRatio).toBeGreaterThanOrEqual(4.5);
   expect(painted.brandRatio).toBeGreaterThanOrEqual(4.5);
   expect(painted.footerRatio).toBeGreaterThanOrEqual(4.5);

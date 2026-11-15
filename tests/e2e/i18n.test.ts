@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Locale } from "@bulletin/i18n";
-import { loginAs, waitForText, withPage } from "@bulletin/test-utils/e2e";
+import { loginAs, waitForExpression, waitForText, withPage } from "@bulletin/test-utils/e2e";
 import { staffBaseUrl, userBaseUrl } from "@bulletin/test-utils/urls";
 import staffEn from "../../apps/staff-app/i18n/en.json";
 import staffEs from "../../apps/staff-app/i18n/es.json";
@@ -52,7 +52,11 @@ integrationDescribe("member locale", () => {
     test(`renders the saved member locale on ${viewport}`, async () => {
       await withPage({ url: USER_URL, viewport }, async (view) => {
         await loginAs(view, "member-fr");
-        await waitForText(view, userFr["auth.logout"]);
+        // The logout button sits in the closed account menu, so read its text directly.
+        await waitForExpression(
+          view,
+          `document.querySelector("[data-logout]")?.textContent?.trim() === ${JSON.stringify(userFr["auth.logout"])}`,
+        );
         expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
       });
     }, 120_000);

@@ -130,7 +130,7 @@ integrationDescribe("theme management", () => {
       await waitForSelector(view, 'html[data-scheme="dark"]', 20_000);
       expect(await view.evaluate<string>("document.cookie")).toContain(`.${chosenTheme}.dark`);
       expect(await view.evaluate<string>("getComputedStyle(document.body).backgroundColor")).toBe(
-        "rgb(20, 26, 34)",
+        "rgb(14, 16, 20)",
       );
     });
 
@@ -176,7 +176,7 @@ integrationDescribe("theme management", () => {
         ),
       ).toBe(chosenTheme);
       expect(await view.evaluate<string>("getComputedStyle(document.body).backgroundColor")).toBe(
-        "rgb(20, 26, 34)",
+        "rgb(14, 16, 20)",
       );
     });
   }, 120_000);

@@ -3,6 +3,7 @@ import {
   clickSelector,
   loginAs,
   setInputValue,
+  waitForExpression,
   waitForSelector,
   waitForText,
   withPage,
@@ -57,8 +58,8 @@ integrationDescribe("display-name step", () => {
         await setInputValue(view, "[data-display-name-input]", CHOSEN_NAME);
         await clickSelector(view, "[data-display-name-submit]");
 
+        await waitForExpression(view, 'location.pathname === "/"', 20_000);
         await waitForSelector(view, "[data-display-name]", 20_000);
-        expect(new URL(view.url).pathname).toBe("/");
         await waitForText(view, CHOSEN_NAME, 20_000);
       } finally {
         // Leave the seeded profile without a name for the next run.

@@ -112,7 +112,12 @@ integrationDescribe("board state and translations", () => {
 
       await withPage({ url: USER_URL, viewport: "mobile360" }, async (view) => {
         await loginAs(view, "member-fr");
-        await waitForText(view, "Se déconnecter", 20_000);
+        // The logout button sits in the closed account menu, so read its text directly.
+        await waitForExpression(
+          view,
+          'document.querySelector("[data-logout]")?.textContent?.trim() === "Se déconnecter"',
+          20_000,
+        );
         expect(await view.evaluate<string>("document.documentElement.lang")).toBe("fr");
       });
     } finally {
