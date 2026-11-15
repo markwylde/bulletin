@@ -40,7 +40,7 @@
 - [ ] 5.5 Privacy and System: retention, policy, requests, PII log, admin log, health, missing files, dead letters, board settings
 
 ## 6. Polish and gate
-- [ ] 6.1 Full shot review at 3 viewports × 2 schemes; fix spacing, alignment and overflow
-- [ ] 6.2 E2E: breadcrumbs, staff nav, overflow at 360; full suite green
-- [ ] 6.3 After screenshots saved for the part 2 post
-- [ ] 6.4 Gate: `bun run i18n:build && bun run check`, `BULLETIN_INTEGRATION=1 bun run test:integration` (CI's "Compose database/integration tests") and the full `bun scripts/run-e2e.ts`; every phase gate runs all three
+- [x] 6.1 Full shot review at 3 viewports × 2 schemes; fix spacing, alignment and overflow
+- [x] 6.2 E2E: breadcrumbs, staff nav, overflow at 360; full suite green
+- [x] 6.3 After screenshots saved for the part 2 post
+- [x] 6.4 Gate: `bun run i18n:build && bun run check`, `BULLETIN_INTEGRATION=1 bun run test:integration` (CI's "Compose database/integration tests") and the full `bun scripts/run-e2e.ts`; every phase gate runs all three
