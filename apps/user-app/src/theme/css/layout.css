@@ -605,15 +605,15 @@
 
 .bl-footer__inner {
   display: grid;
-  gap: var(--bl-s5);
+  gap: var(--bl-s4);
   max-width: var(--bl-width);
   margin-inline: auto;
-  padding: var(--bl-s8) var(--bl-gutter);
+  padding: var(--bl-s6) var(--bl-gutter);
 }
 
 .bl-footer__top {
   display: grid;
-  gap: var(--bl-s4);
+  gap: var(--bl-s3);
 }
 
 .bl-footer__about {
@@ -635,7 +635,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--bl-s2) var(--bl-s5);
+  gap: var(--bl-s1) var(--bl-s4);
 }
 
 .bl-footer__links a,
@@ -661,16 +661,45 @@
   color: var(--bl-border-strong);
 }
 
+/* Phones: language, theme and scheme share one row of compact selects. */
 .bl-footer__prefs {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--bl-s3) var(--bl-s4);
-  padding-top: var(--bl-s5);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+  align-items: end;
+  gap: var(--bl-s2) var(--bl-s3);
+  padding-top: var(--bl-s4);
   border-top: 1px solid var(--bl-border);
 }
 
+.bl-footer__prefs bl-island,
+.bl-footer__prefs .bl-appearance:not([hidden]) {
+  display: contents;
+}
+
+/* Beats the component's own select sizing (components.css loads after this file). */
+.bl-footer .bl-footer__prefs :is(.bl-language__select, .bl-input) {
+  width: 100%;
+  min-width: 0;
+}
+
+.bl-footer__prefs [data-appearance-error],
+.bl-footer__prefs [data-language-error] {
+  grid-column: 1 / -1;
+}
+
 @media (min-width: 48rem) {
+  .bl-footer__prefs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--bl-s3) var(--bl-s4);
+  }
+
+  .bl-footer .bl-footer__prefs :is(.bl-language__select, .bl-input) {
+    width: auto;
+    min-width: 9rem;
+  }
+
   .bl-footer__top {
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;

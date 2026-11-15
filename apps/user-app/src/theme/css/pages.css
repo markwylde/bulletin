@@ -1072,7 +1072,8 @@ img.bl-author-card__badge {
   border: 1px solid var(--bl-border-strong);
   border-radius: var(--bl-radius);
   background: var(--bl-surface);
-  overflow: hidden;
+  /* clip, not hidden: hidden would make the editor a scroll container and break the sticky toolbar. */
+  overflow: clip;
 }
 
 .bl-editor:focus-within {
@@ -1094,6 +1095,10 @@ img.bl-author-card__badge {
 }
 
 .bl-editor__toolbar {
+  /* Stays under the sticky header while a phone keyboard shrinks the viewport. */
+  position: sticky;
+  top: var(--bl-header-height);
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   gap: 0.125rem;
