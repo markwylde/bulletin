@@ -16,31 +16,34 @@
   data-label-report-failed="{% t "report.dialog.failed" %}"
   data-label-report-already="{% t "report.dialog.already" %}">
   {{ breadcrumbs }}
-  <p class="bl-muted"><a href="/conversations" data-conversation-back>{% t "conversation.back" %}</a></p>
-  <header class="bl-page__header">
+  <header class="bl-page-header bl-thread-header">
+    <div class="bl-page-header__text">
+    <a class="bl-thread-header__back" href="/conversations" data-conversation-back><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M12 5l-5 5 5 5" /></svg><span>{% t "conversation.back" %}</span></a>
     <h1 class="bl-page__title" data-conversation-title>{{ title }}</h1>
-    <p class="bl-muted" data-conversation-participants>
-      {% for participant in participants %}
-        <span data-conversation-participant="{{ participant.id }}">{{ participant.name }}</span>
-        {% unless forloop.last %}, {% endunless %}
-      {% endfor %}
+    <p class="bl-page-header__meta" data-conversation-participants>
+      {%- for participant in participants -%}
+        <span data-conversation-participant="{{ participant.id }}">{{ participant.name }}</span>{% unless forloop.last %}, {% endunless %}
+      {%- endfor -%}
     </p>
-    <div class="bl-actions">
+    </div>
+    <div class="bl-page-header__actions">
       <button class="bl-button bl-button--quiet bl-button--small" type="button" data-conversation-archive="{% if archived %}false{% else %}true{% endif %}" data-label-archive="{% t "conversation.archive" %}" data-label-unarchive="{% t "conversation.unarchive" %}">{% if archived %}{% t "conversation.unarchive" %}{% else %}{% t "conversation.archive" %}{% endif %}</button>
     </div>
   </header>
 
+  <div class="bl-thread">
+  <div class="bl-thread__main">
   <ol class="bl-message-list" data-conversation-messages>
     {% for message in messages %}
       <li class="bl-message" data-conversation-message="{{ message.id }}">
         <header class="bl-message__header">
           {% if message.authorHref %}
-            <a href="{{ message.authorHref }}" data-conversation-author>{{ message.authorName }}</a>
+            <a class="bl-message__author" href="{{ message.authorHref }}" data-conversation-author>{{ message.authorName }}</a>
           {% else %}
-            <span data-conversation-author>{{ message.authorName }}</span>
+            <span class="bl-message__author" data-conversation-author>{{ message.authorName }}</span>
           {% endif %}
-          <time class="bl-muted" datetime="{{ message.iso }}">{{ message.time }}</time>
-          <button class="bl-button bl-button--quiet bl-button--small" type="button" data-report-message="{{ message.id }}" data-overlay-member-only hidden>{% t "report.reportMessage" %}</button>
+          <time class="bl-message__time" datetime="{{ message.iso }}">{{ message.time }}</time>
+          <button class="bl-post__action bl-message__report" type="button" data-report-message="{{ message.id }}" data-overlay-member-only hidden><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M5 17V3.5m0 0h9l-2 3.5 2 3.5H5" /></svg><span>{% t "report.reportMessage" %}</span></button>
         </header>
         <div class="bl-message__body">{{ message.body }}</div>
         {% if message.files %}{{ message.files }}{% endif %}
@@ -49,7 +52,7 @@
   </ol>
 
   {% if canReply and editor %}
-    <section class="bl-card" data-reply-section>
+    <section class="bl-card bl-thread__reply" data-reply-section>
       <h2 class="bl-card__title">{% t "conversation.reply" %}</h2>
       <form class="bl-form" data-conversation-reply-form data-conversation-id="{{ conversationId }}"
         data-label-pm-disabled="{% t "conversation.error.pmDisabled" %}"
@@ -61,6 +64,8 @@
     </section>
   {% endif %}
 
+  </div>
+  <aside class="bl-thread__side">
   {% if isStarter %}
     <section class="bl-card" data-conversation-manage
       data-label-recipient-limit="{% t "conversation.error.recipientLimit" limit: "__limit__" %}"
@@ -106,6 +111,9 @@
     <button class="bl-button bl-button--quiet" type="button" data-conversation-leave data-confirm="{% t "conversation.leaveConfirm" %}">{% t "conversation.leave" %}</button>
     <p class="bl-error-text" data-leave-error hidden>{% t "conversation.leaveFailed" %}</p>
   </section>
+
+  </aside>
+  </div>
 
   <p class="bl-error-text" data-conversation-error hidden>{% t "conversation.updateFailed" %}</p>
 </main>

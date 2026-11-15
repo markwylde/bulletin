@@ -1,46 +1,54 @@
 {{ header }}
 <main id="main" class="bl-main" data-notifications-page>
   {{ breadcrumbs }}
-  <h1 class="bl-page__title">{{ title }}</h1>
-  <p class="bl-muted">{% t "notifications.intro" %}</p>
-
-  <div class="bl-notifications-actions">
-    <a class="bl-muted" href="/account/notifications/preferences" data-notification-preferences-link>{% t "notification.preferences.open" %}</a>
-    <button class="bl-button bl-button--quiet bl-button--small" type="button" data-notifications-read-all{% if readAllDisabled %} disabled{% endif %}>{% t "notifications.markAll" %}</button>
+  <div class="bl-account-layout">
+    {{ accountNav }}
+    <div class="bl-account-layout__main">
+    <header class="bl-page-header">
+      <div class="bl-page-header__text">
+        <h1 class="bl-page__title">{{ title }}</h1>
+        <p class="bl-page-header__meta">{% t "notifications.intro" %}</p>
+      </div>
+      <div class="bl-page-header__actions bl-notifications-actions">
+        <a class="bl-button bl-button--quiet bl-button--small" href="/account/notifications/preferences" data-notification-preferences-link>{% t "notification.preferences.open" %}</a>
+        <button class="bl-button bl-button--small" type="button" data-notifications-read-all{% if readAllDisabled %} disabled{% endif %}>{% t "notifications.markAll" %}</button>
+      </div>
+    </header>
     <p class="bl-muted" data-notifications-read-status hidden>{% t "notifications.allRead" %}</p>
     <p class="bl-error-text" data-notifications-error hidden>{% t "notifications.readFailed" %}</p>
-  </div>
 
-  {% if hasNotifications %}
-    {% for section in sections %}
-      <section class="bl-card" data-notification-section="{{ section.key }}">
-        <h2 class="bl-card__title">{{ section.label }}</h2>
-        <ul class="bl-notification-list">
-          {% for entry in section.entries %}
-            <li class="bl-notification{% if entry.unread %} is-unread{% endif %}" data-notification-row="{{ entry.id }}" data-unread="{{ entry.unreadAttr }}">
-              {% if entry.href %}
-                <a class="bl-notification__text" href="{{ entry.href }}" data-notification-link="{{ entry.id }}">{{ entry.text }}</a>
-              {% else %}
-                <span class="bl-notification__text">{{ entry.text }}</span>
-              {% endif %}
-              <time class="bl-muted" datetime="{{ entry.iso }}" data-notification-time>{{ entry.time }}</time>
-            </li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endfor %}
-    {% if pagination.hasPrevious or pagination.hasNext %}
-      <nav class="bl-pagination" data-notifications-pagination aria-label="{% t "notifications.pagination" %}">
-        {% if pagination.hasPrevious %}
-          <a class="bl-pagination__link" href="/account/notifications?page={{ pagination.page | minus: 1 }}" rel="prev" data-page-prev>{% t "notifications.previousPage" %}</a>
-        {% endif %}
-        {% if pagination.hasNext %}
-          <a class="bl-pagination__link" href="/account/notifications?page={{ pagination.page | plus: 1 }}" rel="next" data-page-next>{% t "notifications.nextPage" %}</a>
-        {% endif %}
-      </nav>
+    {% if hasNotifications %}
+      {% for section in sections %}
+        <section class="bl-list-group" data-notification-section="{{ section.key }}">
+          <h2 class="bl-list-group__title">{{ section.label }}</h2>
+          <ul class="bl-notification-list">
+            {% for entry in section.entries %}
+              <li class="bl-notification{% if entry.unread %} is-unread{% endif %}" data-notification-row="{{ entry.id }}" data-unread="{{ entry.unreadAttr }}">
+                {% if entry.href %}
+                  <a class="bl-notification__text" href="{{ entry.href }}" data-notification-link="{{ entry.id }}">{{ entry.text }}</a>
+                {% else %}
+                  <span class="bl-notification__text">{{ entry.text }}</span>
+                {% endif %}
+                <time class="bl-muted" datetime="{{ entry.iso }}" data-notification-time>{{ entry.time }}</time>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endfor %}
+      {% if pagination.hasPrevious or pagination.hasNext %}
+        <nav class="bl-pagination" data-notifications-pagination aria-label="{% t "notifications.pagination" %}">
+          {% if pagination.hasPrevious %}
+            <a class="bl-pagination__link" href="/account/notifications?page={{ pagination.page | minus: 1 }}" rel="prev" data-page-prev>{% t "notifications.previousPage" %}</a>
+          {% endif %}
+          {% if pagination.hasNext %}
+            <a class="bl-pagination__link" href="/account/notifications?page={{ pagination.page | plus: 1 }}" rel="next" data-page-next>{% t "notifications.nextPage" %}</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      {{ emptyState }}
     {% endif %}
-  {% else %}
-    {{ emptyState }}
-  {% endif %}
+    </div>
+  </div>
 </main>
 {{ footer }}

@@ -1,83 +1,91 @@
 {{ header }}
 <main id="main" class="bl-main" data-notification-preferences-page>
   {{ breadcrumbs }}
-  <h1 class="bl-page__title">{{ title }}</h1>
-  <p class="bl-muted">{% t "notification.preferences.intro" %}</p>
+  <div class="bl-account-layout">
+    {{ accountNav }}
+    <div class="bl-account-layout__main">
+    <header class="bl-page-header">
+      <div class="bl-page-header__text">
+        <h1 class="bl-page__title">{{ title }}</h1>
+        <p class="bl-page-header__meta">{% t "notification.preferences.intro" %}</p>
+      </div>
+    </header>
 
-  {% if flags.digests %}
-  <label class="control">
-    <span>{% t "notification.preferences.digestFrequency" %}</span>
-    <select data-digest-frequency>
-      {% for option in digestOptions %}
-        <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-      {% endfor %}
-    </select>
-  </label>
-  {% endif %}
+    {% if flags.digests %}
+    <label class="bl-field bl-digest-field">
+      <span class="bl-label">{% t "notification.preferences.digestFrequency" %}</span>
+      <select class="bl-input" data-digest-frequency>
+        {% for option in digestOptions %}
+          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
 
-  <div class="matrix-scroll">
-    <table class="matrix-table" data-notification-preferences>
-      <thead>
-        <tr>
-          <th scope="col">{% t "notification.preferences.type" %}</th>
-          {% for channel in types[0].channels %}
-            <th scope="col">{{ channel.label }}</th>
-          {% endfor %}
-        </tr>
-      </thead>
-      <tbody>
-        {% for type in types %}
-          <tr data-preference-type="{{ type.type }}">
-            <th scope="row">{{ type.label }}</th>
-            {% for channel in type.channels %}
-              <td>
-                <input
-                  type="checkbox"
-                  data-notification-preference
-                  data-preference-type="{{ type.type }}"
-                  data-preference-channel="{{ channel.channel }}"
-                  aria-label="{{ type.label }}: {{ channel.label }}"
-                  {% if channel.enabled %}checked{% endif %}
-                />
-              </td>
+    <div class="matrix-scroll bl-matrix">
+      <table class="matrix-table" data-notification-preferences>
+        <thead>
+          <tr>
+            <th scope="col">{% t "notification.preferences.type" %}</th>
+            {% for channel in types[0].channels %}
+              <th scope="col">{{ channel.label }}</th>
             {% endfor %}
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for type in types %}
+            <tr data-preference-type="{{ type.type }}">
+              <th scope="row">{{ type.label }}</th>
+              {% for channel in type.channels %}
+                <td>
+                  <input
+                    type="checkbox"
+                    data-notification-preference
+                    data-preference-type="{{ type.type }}"
+                    data-preference-channel="{{ channel.channel }}"
+                    aria-label="{{ type.label }}: {{ channel.label }}"
+                    {% if channel.enabled %}checked{% endif %}
+                  />
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <p class="bl-muted" data-notification-preference-status hidden>{% t "notification.preferences.saved" %}</p>
+    <p class="bl-error-text" data-notification-preference-error hidden>{% t "notification.preferences.saveFailed" %}</p>
+
+    {% if flags.web_push and flags.pwa %}
+    <section class="bl-card" data-push-settings
+      data-label-unsupported="{% t "push.settings.unsupported" %}"
+      data-label-permission-denied="{% t "push.settings.permissionDenied" %}"
+      data-label-enable="{% t "push.settings.enable" %}"
+      data-label-enabling="{% t "push.settings.enabling" %}"
+      data-label-enabled="{% t "push.settings.enabled" %}"
+      data-label-no-devices="{% t "push.settings.noDevices" %}"
+      data-label-created="{% t "push.settings.created" date: "__DATE__" %}"
+      data-label-last-used="{% t "push.settings.lastUsed" date: "__DATE__" %}"
+      data-label-never-used="{% t "push.settings.neverUsed" %}"
+      data-label-unknown-device="{% t "push.settings.unknownDevice" %}"
+      data-label-remove="{% t "push.settings.remove" %}"
+      data-label-removing="{% t "push.settings.removing" %}"
+      data-label-removed="{% t "push.settings.removed" %}"
+      data-label-remove-failed="{% t "push.settings.removeFailed" %}"
+      data-label-enable-failed="{% t "push.settings.enableFailed" %}"
+      data-label-load-failed="{% t "push.settings.loadFailed" %}">
+      <h2 class="bl-card__title">{% t "push.settings.title" %}</h2>
+      <p class="bl-muted">{% t "push.settings.intro" %}</p>
+      <p class="bl-muted" data-push-status role="status" hidden></p>
+      <button class="bl-button" type="button" data-push-enable hidden>{% t "push.settings.enable" %}</button>
+      <h3>{% t "push.settings.devices" %}</h3>
+      <p class="bl-muted" data-push-empty hidden>{% t "push.settings.noDevices" %}</p>
+      <ul class="bl-device-list" data-push-devices></ul>
+      <p class="bl-error-text" data-push-error hidden>{% t "push.settings.loadFailed" %}</p>
+    </section>
+    {% endif %}
+    </div>
   </div>
-
-  <p class="bl-muted" data-notification-preference-status hidden>{% t "notification.preferences.saved" %}</p>
-  <p class="bl-error-text" data-notification-preference-error hidden>{% t "notification.preferences.saveFailed" %}</p>
-
-  {% if flags.web_push and flags.pwa %}
-  <section class="bl-card" data-push-settings
-    data-label-unsupported="{% t "push.settings.unsupported" %}"
-    data-label-permission-denied="{% t "push.settings.permissionDenied" %}"
-    data-label-enable="{% t "push.settings.enable" %}"
-    data-label-enabling="{% t "push.settings.enabling" %}"
-    data-label-enabled="{% t "push.settings.enabled" %}"
-    data-label-no-devices="{% t "push.settings.noDevices" %}"
-    data-label-created="{% t "push.settings.created" date: "__DATE__" %}"
-    data-label-last-used="{% t "push.settings.lastUsed" date: "__DATE__" %}"
-    data-label-never-used="{% t "push.settings.neverUsed" %}"
-    data-label-unknown-device="{% t "push.settings.unknownDevice" %}"
-    data-label-remove="{% t "push.settings.remove" %}"
-    data-label-removing="{% t "push.settings.removing" %}"
-    data-label-removed="{% t "push.settings.removed" %}"
-    data-label-remove-failed="{% t "push.settings.removeFailed" %}"
-    data-label-enable-failed="{% t "push.settings.enableFailed" %}"
-    data-label-load-failed="{% t "push.settings.loadFailed" %}">
-    <h2 class="bl-card__title">{% t "push.settings.title" %}</h2>
-    <p class="bl-muted">{% t "push.settings.intro" %}</p>
-    <p class="bl-muted" data-push-status role="status" hidden></p>
-    <button class="bl-button" type="button" data-push-enable hidden>{% t "push.settings.enable" %}</button>
-    <h3>{% t "push.settings.devices" %}</h3>
-    <p class="bl-muted" data-push-empty hidden>{% t "push.settings.noDevices" %}</p>
-    <ul class="bl-device-list" data-push-devices></ul>
-    <p class="bl-error-text" data-push-error hidden>{% t "push.settings.loadFailed" %}</p>
-  </section>
-  {% endif %}
-
 </main>
 {{ footer }}

@@ -124,7 +124,22 @@ export function themeChooserView(translate: Translator): ThemeChooserView {
   };
 }
 
+/** Account templates and the side-nav entry each one highlights (ADR 0021). */
+const ACCOUNT_NAV_ACTIVE: Readonly<Record<string, string>> = {
+  account: "overview",
+  "account-profile": "profile",
+  "account-notifications": "notifications",
+  "account-notification-preferences": "notificationPreferences",
+  "account-follows": "follows",
+  "account-attachments": "attachments",
+  "account-privacy": "privacy",
+  "account-api-keys": "apiKeys",
+  "account-warnings": "warnings",
+};
+
 export interface PageRegionsInput {
+  /** The page template; account templates also get the `accountNav` region. */
+  readonly template?: string;
   readonly boardName: string;
   readonly locale: Locale;
   readonly translate: Translator;
@@ -139,7 +154,15 @@ export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
   const flags = (input.viewModel as { readonly flags?: unknown } | undefined)?.flags ?? {};
   const feeds = (flags as { readonly feeds?: unknown }).feeds === true;
 
+  const accountActive = input.template === undefined ? undefined : ACCOUNT_NAV_ACTIVE[input.template];
+  // The nav depends on flags and the page only, never on the member (ADR 0006).
+  const accountNav: readonly ThemeRegion[] =
+    accountActive === undefined
+      ? []
+      : [{ name: "account-nav", key: "accountNav", viewModel: { flags, active: accountActive } }];
+
   return [
+    ...accountNav,
     {
       name: "header",
       // Never membership-dependent: a member and a guest with the same bits share this HTML.

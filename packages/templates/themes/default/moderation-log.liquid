@@ -1,28 +1,44 @@
 {{ header }}
 <main id="main" class="bl-main" data-moderation-log-page>
   {{ breadcrumbs }}
-  <header class="bl-page__header">
-    <h1 class="bl-page__title">{{ title }}</h1>
-    <p class="bl-muted">{% t "modlog.intro" %}</p>
-    <form class="bl-form" data-modlog-filter-form method="get">
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page__title">{{ title }}</h1>
+      <p class="bl-page-header__meta">{% t "modlog.intro" %}</p>
+    </div>
+  </header>
+  <nav class="bl-subnav" aria-label="{% t "moderation.nav.label" %}" data-moderation-nav>
+    <a class="bl-subnav__link" href="/moderation/queue">{% t "moderation.queue.title" %}</a>
+    <a class="bl-subnav__link" href="/moderation/reports" data-reports-link>{% t "report.centre.title" %}</a>
+    <a class="bl-subnav__link" href="/moderation/log" aria-current="page" data-modlog-link>{% t "modlog.title" %}</a>
+  </nav>
+
+  <form class="bl-panel bl-filter-bar bl-modlog-filters" data-modlog-filter-form method="get">
+    <div class="bl-field">
       <label class="bl-label" for="modlog-action">{% t "modlog.action" %}</label>
       <input class="bl-input" id="modlog-action" name="action" value="{{ action }}" />
+    </div>
+    <div class="bl-field">
       <label class="bl-label" for="modlog-forum">{% t "modlog.forum" %}</label>
-      <input class="bl-input" id="modlog-forum" name="forumId" value="{{ forumId }}" />
+      <input class="bl-input" id="modlog-forum" name="forumId" value="{{ forumId }}" inputmode="numeric" />
+    </div>
+    <div class="bl-field">
       <label class="bl-label" for="modlog-member">{% t "modlog.member" %}</label>
-      <input class="bl-input" id="modlog-member" name="memberId" value="{{ memberId }}" />
+      <input class="bl-input" id="modlog-member" name="memberId" value="{{ memberId }}" inputmode="numeric" />
+    </div>
+    <div class="bl-filter-bar__actions">
       <button class="bl-button" type="submit">{% t "modlog.filter" %}</button>
-    </form>
-  </header>
+    </div>
+  </form>
 
   {% if hasEntries %}
-    <ul class="log-list" data-modlog-list>
+    <ul class="log-list bl-modlog" data-modlog-list>
       {% for entry in entries %}
-        <li data-modlog-entry="{{ entry.id }}">
-          <span class="log-action">{{ entry.action }}</span>
-          <span class="log-actor">{{ entry.actorName }}</span>
-          <span class="bl-muted">{{ entry.forumTitle }}{% if entry.memberName %} · {{ entry.memberName }}{% endif %}</span>
-          <time class="bl-muted" datetime="{{ entry.iso }}">{{ entry.time }}</time>
+        <li class="bl-modlog__entry" data-modlog-entry="{{ entry.id }}">
+          <code class="log-action bl-modlog__action">{{ entry.action }}</code>
+          <span class="log-actor bl-modlog__actor">{{ entry.actorName }}</span>
+          <span class="bl-modlog__target">{{ entry.forumTitle }}{% if entry.forumTitle != "" and entry.memberName %} · {% endif %}{{ entry.memberName }}</span>
+          <time class="bl-modlog__time" datetime="{{ entry.iso }}">{{ entry.time }}</time>
         </li>
       {% endfor %}
     </ul>

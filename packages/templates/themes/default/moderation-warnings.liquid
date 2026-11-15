@@ -4,9 +4,10 @@
   data-label-issue-saved="{% t "warnings.issue.saved" %}"
   data-label-revoke-failed="{% t "warnings.revoke.failed" %}">
   {{ breadcrumbs }}
-  <header class="bl-page__header">
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
     <h1 class="bl-page__title">{{ title }}</h1>
-    <p class="bl-muted">{% t "warnings.memberPoints" count: points %}</p>
+    <p class="bl-page-header__meta">{% t "warnings.memberPoints" count: points %}</p>
     {% if restrictions.size > 0 %}
       <ul class="bl-warning-restrictions">
         {% for restriction in restrictions %}
@@ -14,6 +15,7 @@
         {% endfor %}
       </ul>
     {% endif %}
+    </div>
   </header>
 
   <section class="bl-card" data-warning-issue>

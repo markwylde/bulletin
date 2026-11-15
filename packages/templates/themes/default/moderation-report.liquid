@@ -5,21 +5,28 @@
   data-label-assigned="{% t "report.detail.assigned" %}"
   data-label-unassigned="{% t "report.detail.unassigned" %}">
   {{ breadcrumbs }}
-  <header class="bl-page__header">
-    <h1 class="bl-page__title">{{ title }}</h1>
-    <p class="bl-muted">
-      <span class="bl-badge" data-report-status-label>{{ report.statusKey }}</span>
-      {{ report.targetLabel }} · {{ report.createdAt }}
-    </p>
-    <p class="bl-muted">
-      {% if report.subjectHref %}<a href="{{ report.subjectHref }}">{{ report.subject }}</a>{% else %}{{ report.subject }}{% endif %}
-    </p>
-    <p class="bl-muted">{% t "report.centre.assignee" %}: <span data-report-assignee>{{ report.assignee }}</span></p>
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page__title">{{ title }}</h1>
+      <p class="bl-page-header__meta">
+        <span class="bl-badge bl-report__status bl-report__status--{{ report.status }}" data-report-status-label>{{ report.statusKey }}</span>
+        {{ report.targetLabel }} · {{ report.createdAt }} ·
+        {% if report.subjectHref %}<a href="{{ report.subjectHref }}">{{ report.subject }}</a>{% else %}{{ report.subject }}{% endif %}
+      </p>
+    </div>
   </header>
+  <nav class="bl-subnav" aria-label="{% t "moderation.nav.label" %}" data-moderation-nav>
+    <a class="bl-subnav__link" href="/moderation/queue">{% t "moderation.queue.title" %}</a>
+    <a class="bl-subnav__link" href="/moderation/reports" aria-current="page" data-reports-link>{% t "report.centre.title" %}</a>
+    <a class="bl-subnav__link" href="/moderation/log" data-modlog-link>{% t "modlog.title" %}</a>
+  </nav>
 
+  <div class="bl-thread">
+  <aside class="bl-thread__side bl-report-side">
   <section class="bl-card" data-report-manage>
     <h2 class="bl-card__title">{% t "report.detail.manage" %}</h2>
-    <div class="bl-actions">
+    <p class="bl-muted">{% t "report.centre.assignee" %}: <span data-report-assignee>{{ report.assignee }}</span></p>
+    <div class="bl-report-manage">
       <label class="bl-label" for="report-status">{% t "report.detail.status" %}</label>
       <select class="bl-input" id="report-status" data-report-status-select>
         {% for option in statusOptions %}
@@ -33,6 +40,8 @@
     </div>
     <p class="bl-muted" data-report-action-status hidden></p>
   </section>
+  </aside>
+  <div class="bl-thread__main">
 
   {% if report.pmMessages != null %}
     <section class="bl-card" data-report-pm-context>
@@ -58,8 +67,8 @@
     <ul class="bl-report__reporters">
       {% for reporter in report.reporters %}
         <li data-report-reporter="{{ reporter.id }}">
-          {{ reporter.name }} — {{ reporter.reason }} · <span class="bl-muted">{{ reporter.time }}</span>
-          {% if reporter.comment != "" %}<p class="bl-muted">{{ reporter.comment }}</p>{% endif %}
+          <strong>{{ reporter.name }}</strong> — {{ reporter.reason }} · <span class="bl-muted">{{ reporter.time }}</span>
+          {% if reporter.comment != "" %}<p class="bl-report__comment">{{ reporter.comment }}</p>{% endif %}
         </li>
       {% endfor %}
     </ul>
@@ -71,8 +80,8 @@
       <ul class="bl-report__comments">
         {% for comment in report.comments %}
           <li data-report-comment="{{ comment.id }}">
+            <p class="bl-report__comment-meta"><strong>{{ comment.actor }}</strong> · {{ comment.time }}</p>
             <p>{{ comment.body }}</p>
-            <p class="bl-muted">{{ comment.actor }} · {{ comment.time }}</p>
           </li>
         {% endfor %}
       </ul>
@@ -86,5 +95,7 @@
       <p class="bl-error-text" data-form-error hidden>{% t "report.detail.failed" %}</p>
     </form>
   </section>
+  </div>
+  </div>
 </main>
 {{ footer }}

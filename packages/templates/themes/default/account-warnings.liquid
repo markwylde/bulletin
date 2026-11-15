@@ -3,46 +3,51 @@
   data-label-ack-failed="{% t "warnings.ack.failed" %}"
   data-label-ack-saved="{% t "warnings.ack.saved" %}">
   {{ breadcrumbs }}
-  <header class="bl-page__header">
-    <h1 class="bl-page__title">{{ title }}</h1>
-    <p class="bl-muted">{% t "warnings.points" count: points %}</p>
-    {% if pendingAck %}
-      <div class="bl-card bl-warning-ack" data-warning-ack>
-        <p>{% t "warnings.ack.required" %}</p>
-        <button class="bl-button" type="button" data-warning-ack-button>{% t "warnings.ack.button" %}</button>
-        <p class="bl-error-text" data-warning-ack-error hidden></p>
-      </div>
-    {% endif %}
-    {% if restrictions.size > 0 %}
-      <section class="bl-card" data-warning-restrictions>
-        <h2 class="bl-card__title">{% t "warnings.restrictions.title" %}</h2>
-        <ul>
-          {% for restriction in restrictions %}
-            <li data-warning-restriction="{{ restriction.kind }}">
-              {{ restriction.label }}{% if restriction.until %} — {% t "warnings.restrictions.until" date: restriction.until %}{% endif %}
-            </li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endif %}
-  </header>
+  <div class="bl-account-layout">
+    {{ accountNav }}
+    <div class="bl-account-layout__main">
+    <header class="bl-page__header">
+      <h1 class="bl-page__title">{{ title }}</h1>
+      <p class="bl-muted">{% t "warnings.points" count: points %}</p>
+      {% if pendingAck %}
+        <div class="bl-card bl-warning-ack" data-warning-ack>
+          <p>{% t "warnings.ack.required" %}</p>
+          <button class="bl-button" type="button" data-warning-ack-button>{% t "warnings.ack.button" %}</button>
+          <p class="bl-error-text" data-warning-ack-error hidden></p>
+        </div>
+      {% endif %}
+      {% if restrictions.size > 0 %}
+        <section class="bl-card" data-warning-restrictions>
+          <h2 class="bl-card__title">{% t "warnings.restrictions.title" %}</h2>
+          <ul>
+            {% for restriction in restrictions %}
+              <li data-warning-restriction="{{ restriction.kind }}">
+                {{ restriction.label }}{% if restriction.until %} — {% t "warnings.restrictions.until" date: restriction.until %}{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+    </header>
 
-  {% if hasWarnings %}
-    <ul class="bl-warning-list" data-warning-list>
-      {% for warning in warnings %}
-        <li class="bl-card bl-warning" data-warning-id="{{ warning.id }}" data-warning-revoked="{{ warning.revoked }}">
-          <div class="bl-warning__meta">
-            <span class="bl-badge">{{ warning.reason }}</span>
-            <span class="bl-muted">{% t "warnings.pointsValue" count: warning.points %}</span>
-            <span class="bl-muted">{% t "warnings.expires" date: warning.expiresAt %}</span>
-            {% if warning.revoked %}<span class="bl-badge bl-badge--danger">{% t "warnings.revoked" %}</span>{% endif %}
-          </div>
-          {% if warning.memberNote != "" %}<p>{{ warning.memberNote }}</p>{% endif %}
-        </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    {{ emptyState }}
-  {% endif %}
+    {% if hasWarnings %}
+      <ul class="bl-warning-list" data-warning-list>
+        {% for warning in warnings %}
+          <li class="bl-card bl-warning" data-warning-id="{{ warning.id }}" data-warning-revoked="{{ warning.revoked }}">
+            <div class="bl-warning__meta">
+              <span class="bl-badge">{{ warning.reason }}</span>
+              <span class="bl-muted">{% t "warnings.pointsValue" count: warning.points %}</span>
+              <span class="bl-muted">{% t "warnings.expires" date: warning.expiresAt %}</span>
+              {% if warning.revoked %}<span class="bl-badge bl-badge--danger">{% t "warnings.revoked" %}</span>{% endif %}
+            </div>
+            {% if warning.memberNote != "" %}<p>{{ warning.memberNote }}</p>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      {{ emptyState }}
+    {% endif %}
+    </div>
+  </div>
 </main>
 {{ footer }}

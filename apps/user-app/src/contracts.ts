@@ -165,7 +165,7 @@ export const displayNameContract = defineContract({
 
 export const accountContract = defineContract<AccountViewModel>({
   route: "/account",
-  templates: { page: "account", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  templates: { page: "account", regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"] },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
   cdnCacheable: false,
@@ -177,7 +177,7 @@ export const privacyContract = defineContract<AccountViewModel>({
   route: "/account/privacy",
   templates: {
     page: "account-privacy",
-    regions: ["header", "breadcrumbs", "empty", "footer"],
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
   },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
@@ -200,7 +200,7 @@ export const profileEditContract = defineContract<AccountViewModel>({
   route: "/account/profile",
   templates: {
     page: "account-profile",
-    regions: ["header", "breadcrumbs", "empty", "footer"],
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
   },
   deps: [],
   tags: (model) => [`member:${model.memberId}`, GLOBAL_CACHE_TAGS.profileFields],
@@ -232,7 +232,7 @@ export const notificationPreferencesContract = defineContract<AccountViewModel>(
   route: "/account/notifications/preferences",
   templates: {
     page: "account-notification-preferences",
-    regions: ["header", "breadcrumbs", "empty", "footer"],
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
   },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
@@ -262,7 +262,7 @@ export const notificationsContract = defineContract<AccountViewModel>({
   route: "/account/notifications",
   templates: {
     page: "account-notifications",
-    regions: ["header", "breadcrumbs", "empty", "footer"],
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
   },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
@@ -272,7 +272,7 @@ export const notificationsContract = defineContract<AccountViewModel>({
 
 export const followsContract = defineContract<AccountViewModel>({
   route: "/account/follows",
-  templates: { page: "account-follows", regions: ["header", "breadcrumbs", "empty", "footer"] },
+  templates: { page: "account-follows", regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"] },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
   cdnCacheable: false,
@@ -283,7 +283,7 @@ export const attachmentsContract = defineContract<AccountViewModel>({
   route: "/account/attachments",
   templates: {
     page: "account-attachments",
-    regions: ["header", "breadcrumbs", "empty", "footer"],
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
   },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
@@ -297,7 +297,7 @@ export const warningsContract = defineContract<AccountViewModel>({
   route: "/account/warnings",
   templates: {
     page: "account-warnings",
-    regions: ["header", "breadcrumbs", "empty", "footer"],
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
   },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],
@@ -474,7 +474,7 @@ export const apiKeysContract = defineContract<AccountViewModel>({
   route: "/account/api-keys",
   templates: {
     page: "account-api-keys",
-    regions: ["header", "breadcrumbs", "empty", "footer"],
+    regions: ["account-nav", "header", "breadcrumbs", "empty", "footer"],
   },
   deps: [],
   tags: (model) => [`member:${model.memberId}`],

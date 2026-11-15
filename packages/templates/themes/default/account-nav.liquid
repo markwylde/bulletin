@@ -1,0 +1,16 @@
+<nav class="bl-account-nav" aria-label="{% t "account.nav.label" %}" data-account-nav>
+  <ul class="bl-account-nav__list">
+    <li><a class="bl-account-nav__link" href="/account"{% if active == "overview" %} aria-current="page"{% endif %} data-account-nav-overview>{% t "account.nav.overview" %}</a></li>
+    <li><a class="bl-account-nav__link" href="/account/profile"{% if active == "profile" %} aria-current="page"{% endif %} data-account-nav-profile>{% t "profile.edit.title" %}</a></li>
+    {% if flags.notifications %}
+      <li><a class="bl-account-nav__link" href="/account/notifications"{% if active == "notifications" %} aria-current="page"{% endif %} data-account-notifications>{% t "notifications.title" %}</a></li>
+      <li><a class="bl-account-nav__link" href="/account/notifications/preferences"{% if active == "notificationPreferences" %} aria-current="page"{% endif %} data-account-nav-notification-preferences>{% t "notification.preferences.title" %}</a></li>
+    {% endif %}
+    {% if flags.conversations %}<li><a class="bl-account-nav__link" href="/conversations" data-account-conversations>{% t "conversation.title" %}</a></li>{% endif %}
+    {% if flags.follows %}<li><a class="bl-account-nav__link" href="/account/follows"{% if active == "follows" %} aria-current="page"{% endif %} data-account-follows>{% t "account.follows.title" %}</a></li>{% endif %}
+    <li><a class="bl-account-nav__link" href="/account/attachments"{% if active == "attachments" %} aria-current="page"{% endif %} data-account-nav-attachments>{% t "account.attachments.title" %}</a></li>
+    <li><a class="bl-account-nav__link" href="/account/privacy"{% if active == "privacy" %} aria-current="page"{% endif %} data-account-privacy>{% t "account.privacy.title" %}</a></li>
+    {% if flags.public_api %}<li><a class="bl-account-nav__link" href="/account/api-keys"{% if active == "apiKeys" %} aria-current="page"{% endif %} data-account-api-keys>{% t "apiKeys.title" %}</a></li>{% endif %}
+    {% if flags.warnings %}<li><a class="bl-account-nav__link" href="/account/warnings"{% if active == "warnings" %} aria-current="page"{% endif %} data-account-warnings>{% t "warnings.title" %}</a></li>{% endif %}
+  </ul>
+</nav>

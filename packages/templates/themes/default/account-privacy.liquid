@@ -1,44 +1,49 @@
 {{ header }}
 <main id="main" class="bl-main" data-account-privacy>
   {{ breadcrumbs }}
-  <h1 class="bl-page__title">{% t "account.privacy.title" %}</h1>
-  <p class="bl-muted">{% t "account.privacy.intro" %}</p>
+  <div class="bl-account-layout">
+    {{ accountNav }}
+    <div class="bl-account-layout__main">
+    <h1 class="bl-page__title">{% t "account.privacy.title" %}</h1>
+    <p class="bl-muted">{% t "account.privacy.intro" %}</p>
 
-  <p class="bl-muted" data-privacy-status hidden></p>
-  <p class="bl-error-text" data-privacy-error hidden></p>
+    <p class="bl-muted" data-privacy-status hidden></p>
+    <p class="bl-error-text" data-privacy-error hidden></p>
 
-  <section class="bl-card" data-privacy-export-section>
-    <h2 class="bl-card__title">{% t "account.privacy.exportTitle" %}</h2>
-    <p class="bl-muted">{% t "account.privacy.exportBody" %}</p>
-    <button class="bl-button" type="button" data-privacy-export>{% t "account.privacy.exportRequest" %}</button>
-    <h3 class="bl-card__title">{% t "account.privacy.requestsTitle" %}</h3>
-    <ul class="bl-session-list" data-privacy-requests>
-      <li class="bl-muted">{% t "account.privacy.loading" %}</li>
-    </ul>
-  </section>
+    <section class="bl-card" data-privacy-export-section>
+      <h2 class="bl-card__title">{% t "account.privacy.exportTitle" %}</h2>
+      <p class="bl-muted">{% t "account.privacy.exportBody" %}</p>
+      <button class="bl-button" type="button" data-privacy-export>{% t "account.privacy.exportRequest" %}</button>
+      <h3 class="bl-card__title">{% t "account.privacy.requestsTitle" %}</h3>
+      <ul class="bl-session-list" data-privacy-requests>
+        <li class="bl-muted">{% t "account.privacy.loading" %}</li>
+      </ul>
+    </section>
 
-  <section class="bl-card" data-privacy-erasure-section>
-    <h2 class="bl-card__title">{% t "account.privacy.erasureTitle" %}</h2>
-    <p class="bl-muted">{% t "account.privacy.erasureBody" %}</p>
-    <h3 class="bl-card__title">{% t "account.privacy.retainedTitle" %}</h3>
-    <ul class="bl-history" data-privacy-retained>
-      {% for entry in retained %}
-        <li class="bl-history__item" data-privacy-retained-entry="{{ entry.key }}">
-          <span>{{ entry.basis }}</span>
-        </li>
-      {% endfor %}
-    </ul>
-    <button class="bl-button bl-button--quiet" type="button" data-privacy-erasure>{% t "account.privacy.erasureRequest" %}</button>
-  </section>
+    <section class="bl-card" data-privacy-erasure-section>
+      <h2 class="bl-card__title">{% t "account.privacy.erasureTitle" %}</h2>
+      <p class="bl-muted">{% t "account.privacy.erasureBody" %}</p>
+      <h3 class="bl-card__title">{% t "account.privacy.retainedTitle" %}</h3>
+      <ul class="bl-history" data-privacy-retained>
+        {% for entry in retained %}
+          <li class="bl-history__item" data-privacy-retained-entry="{{ entry.key }}">
+            <span>{{ entry.basis }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <button class="bl-button bl-button--quiet" type="button" data-privacy-erasure>{% t "account.privacy.erasureRequest" %}</button>
+    </section>
 
-  <section class="bl-card" data-privacy-policy-section>
-    <h2 class="bl-card__title">{% t "account.privacy.policyTitle" %}</h2>
-    {% if hasPolicy %}
-      <div class="bl-content" data-privacy-policy>{{ policyHtml }}</div>
-    {% else %}
-      <p class="bl-muted">{% t "account.privacy.policyEmpty" %}</p>
-    {% endif %}
-    <a class="bl-button bl-button--quiet" href="/privacy" data-privacy-policy-link>{% t "account.privacy.policyOpen" %}</a>
-  </section>
+    <section class="bl-card" data-privacy-policy-section>
+      <h2 class="bl-card__title">{% t "account.privacy.policyTitle" %}</h2>
+      {% if hasPolicy %}
+        <div class="bl-content" data-privacy-policy>{{ policyHtml }}</div>
+      {% else %}
+        <p class="bl-muted">{% t "account.privacy.policyEmpty" %}</p>
+      {% endif %}
+      <a class="bl-button bl-button--quiet" href="/privacy" data-privacy-policy-link>{% t "account.privacy.policyOpen" %}</a>
+    </section>
+    </div>
+  </div>
 </main>
 {{ footer }}

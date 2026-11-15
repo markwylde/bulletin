@@ -6,6 +6,7 @@ import {
   reportAccess,
 } from "@bulletin/domain/reports";
 import type { Locale, Translator } from "@bulletin/i18n";
+import { type SafeHtml, safeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
 import type { BreadcrumbItem } from "../theme/render.ts";
 
@@ -168,7 +169,7 @@ export async function buildReportsPage(input: {
 export interface ReportPmMessageView {
   readonly messageId: string;
   readonly author: string;
-  readonly body: string;
+  readonly body: SafeHtml;
   readonly time: string;
   readonly reported: boolean;
 }
@@ -258,7 +259,8 @@ export function buildReportDetailView(input: {
             : report.pmMessages.map((message) => ({
                 messageId: message.messageId,
                 author: message.authorName ?? translate("member.deletedName"),
-                body: message.bodyHtml,
+                // Stored pipeline HTML; the whole page is sanitised again on render (ADR 0008).
+                body: safeHtml(message.bodyHtml),
                 time: formatDate(locale, message.createdAt),
                 reported: message.reported,
               })),

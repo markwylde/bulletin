@@ -1,39 +1,44 @@
 {{ header }}
 <main id="main" class="bl-main" data-account-api-keys>
   {{ breadcrumbs }}
-  <h1 class="bl-page__title">{% t "apiKeys.title" %}</h1>
-  <p class="bl-muted">{% t "apiKeys.intro" %}</p>
+  <div class="bl-account-layout">
+    {{ accountNav }}
+    <div class="bl-account-layout__main">
+    <h1 class="bl-page__title">{% t "apiKeys.title" %}</h1>
+    <p class="bl-muted">{% t "apiKeys.intro" %}</p>
 
-  <section class="bl-card" aria-labelledby="api-keys-list-title">
-    <h2 class="bl-card__title" id="api-keys-list-title">{% t "apiKeys.list.title" %}</h2>
-    <p class="bl-muted" data-api-keys-loading>{% t "apiKeys.loading" %}</p>
-    <p class="bl-muted" data-api-keys-empty hidden>{% t "apiKeys.empty" %}</p>
-    <p class="bl-error-text" data-api-keys-error hidden role="alert">{% t "apiKeys.loadError" %}</p>
-    <ul class="bl-api-keys" data-api-keys-list></ul>
-  </section>
+    <section class="bl-card" aria-labelledby="api-keys-list-title">
+      <h2 class="bl-card__title" id="api-keys-list-title">{% t "apiKeys.list.title" %}</h2>
+      <p class="bl-muted" data-api-keys-loading>{% t "apiKeys.loading" %}</p>
+      <p class="bl-muted" data-api-keys-empty hidden>{% t "apiKeys.empty" %}</p>
+      <p class="bl-error-text" data-api-keys-error hidden role="alert">{% t "apiKeys.loadError" %}</p>
+      <ul class="bl-api-keys" data-api-keys-list></ul>
+    </section>
 
-  <section class="bl-card" aria-labelledby="api-key-create-title">
-    <h2 class="bl-card__title" id="api-key-create-title">{% t "apiKeys.create.title" %}</h2>
-    <form class="bl-form" data-api-key-form>
-      <label class="bl-label" for="api-key-label">{% t "apiKeys.label" %}</label>
-      <input class="bl-input" id="api-key-label" data-api-key-label autocomplete="off" maxlength="100" required />
+    <section class="bl-card" aria-labelledby="api-key-create-title">
+      <h2 class="bl-card__title" id="api-key-create-title">{% t "apiKeys.create.title" %}</h2>
+      <form class="bl-form" data-api-key-form>
+        <label class="bl-label" for="api-key-label">{% t "apiKeys.label" %}</label>
+        <input class="bl-input" id="api-key-label" data-api-key-label autocomplete="off" maxlength="100" required />
 
-      <label class="bl-label" for="api-key-expiry">{% t "apiKeys.expires" %}</label>
-      <input class="bl-input" id="api-key-expiry" data-api-key-expiry type="date" />
+        <label class="bl-label" for="api-key-expiry">{% t "apiKeys.expires" %}</label>
+        <input class="bl-input" id="api-key-expiry" data-api-key-expiry type="date" />
 
-      <fieldset class="bl-fieldset" data-api-key-scopes>
-        <legend class="bl-label">{% t "apiKeys.scopes" %}</legend>
-      </fieldset>
+        <fieldset class="bl-fieldset" data-api-key-scopes>
+          <legend class="bl-label">{% t "apiKeys.scopes" %}</legend>
+        </fieldset>
 
-      <button class="bl-button" type="submit" data-api-key-submit>{% t "apiKeys.create.submit" %}</button>
-      <p class="bl-error-text" data-api-key-error hidden role="alert"></p>
-    </form>
+        <button class="bl-button" type="submit" data-api-key-submit>{% t "apiKeys.create.submit" %}</button>
+        <p class="bl-error-text" data-api-key-error hidden role="alert"></p>
+      </form>
 
-    <div class="bl-card" data-api-key-secret hidden>
-      <p>{% t "apiKeys.secretOnce" %}</p>
-      <code data-api-key-secret-value></code>
+      <div class="bl-card" data-api-key-secret hidden>
+        <p>{% t "apiKeys.secretOnce" %}</p>
+        <code data-api-key-secret-value></code>
+      </div>
+      <p class="bl-muted" data-api-key-message hidden role="status"></p>
+    </section>
     </div>
-    <p class="bl-muted" data-api-key-message hidden role="status"></p>
-  </section>
+  </div>
 </main>
 {{ footer }}

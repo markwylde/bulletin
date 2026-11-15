@@ -1,31 +1,33 @@
 {{ header }}
 <main id="main" class="bl-main" data-reports-page>
   {{ breadcrumbs }}
-  <header class="bl-page__header">
-    <h1 class="bl-page__title">{{ title }}</h1>
-    <p class="bl-muted">{% t "report.centre.intro" %}</p>
-    <p class="bl-muted">{% t "report.centre.total" count: total %}</p>
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page__title">{{ title }}</h1>
+      <p class="bl-page-header__meta">{% t "report.centre.intro" %} · {% t "report.centre.total" count: total %}</p>
+    </div>
   </header>
+  <nav class="bl-subnav" aria-label="{% t "moderation.nav.label" %}" data-moderation-nav>
+    <a class="bl-subnav__link" href="/moderation/queue">{% t "moderation.queue.title" %}</a>
+    <a class="bl-subnav__link" href="/moderation/reports" aria-current="page" data-reports-link>{% t "report.centre.title" %}</a>
+    <a class="bl-subnav__link" href="/moderation/log" data-modlog-link>{% t "modlog.title" %}</a>
+  </nav>
 
-  <nav class="bl-actions" data-report-filters aria-label="{% t "report.filter.label" %}">
+  <nav class="bl-pills" data-report-filters aria-label="{% t "report.filter.label" %}">
     {% for filter in filters %}
-      <a class="bl-button bl-button--quiet bl-button--small{% if status == filter.value %} is-active{% endif %}" href="{{ filter.href }}" data-report-filter="{{ filter.value }}">{{ filter.label }}</a>
+      <a class="bl-pill{% if status == filter.value %} is-active{% endif %}" href="{{ filter.href }}"{% if status == filter.value %} aria-current="true"{% endif %} data-report-filter="{{ filter.value }}">{{ filter.label }}</a>
     {% endfor %}
   </nav>
 
   {% if hasReports %}
     <ul class="bl-report-list" data-report-list>
       {% for report in reports %}
-        <li class="bl-card bl-report" data-report-id="{{ report.id }}" data-report-status="{{ report.status }}">
-          <div class="bl-report__meta">
-            <span class="bl-badge" data-report-status-label>{{ report.statusKey }}</span>
-            <span class="bl-muted">{{ report.targetLabel }} · {{ report.updatedAt }}</span>
+        <li class="bl-report" data-report-id="{{ report.id }}" data-report-status="{{ report.status }}">
+          <div class="bl-report__head">
+            <span class="bl-badge bl-report__status bl-report__status--{{ report.status }}" data-report-status-label>{{ report.statusKey }}</span>
+            <a class="bl-report__title" href="/moderation/reports/{{ report.id }}" data-report-link="{{ report.id }}">{{ report.subject }}</a>
           </div>
-          <h2 class="bl-report__title">
-            <a href="/moderation/reports/{{ report.id }}" data-report-link="{{ report.id }}">{{ report.subject }}</a>
-          </h2>
-          {% if report.href %}<p class="bl-muted"><a href="{{ report.href }}">{% t "report.centre.viewContent" %}</a></p>{% endif %}
-          <p class="bl-muted">{% t "report.centre.assignee" %}: {{ report.assignee }} · {% t "report.centre.commentCount" count: report.commentCount %}</p>
+          <p class="bl-report__meta">{{ report.targetLabel }} · {{ report.updatedAt }} · {% t "report.centre.assignee" %}: {{ report.assignee }} · {% t "report.centre.commentCount" count: report.commentCount %}{% if report.href %} · <a href="{{ report.href }}">{% t "report.centre.viewContent" %}</a>{% endif %}</p>
           <ul class="bl-report__reporters">
             {% for reporter in report.reporters %}
               <li data-report-reporter="{{ reporter.id }}">{{ reporter.name }} — {{ reporter.reason }}{% if reporter.comment != "" %}: <span class="bl-muted">{{ reporter.comment }}</span>{% endif %}</li>

@@ -7,37 +7,42 @@
   data-label-failed="{% t "moderation.queue.failed" %}"
   data-label-nothing="{% t "moderation.queue.nothingSelected" %}">
   {{ breadcrumbs }}
-  <header class="bl-page__header">
-    <h1 class="bl-page__title">{{ title }}</h1>
-    <p class="bl-muted">{% t "moderation.queue.intro" %}</p>
-    <p class="bl-muted"><a href="/moderation/reports" data-reports-link>{% t "moderation.reports.open" %}</a> · <a href="/moderation/log" data-modlog-link>{% t "modlog.title" %}</a></p>
-    <p class="bl-muted">
-      {% t "moderation.queue.pending" %} <strong data-moderation-count>{{ total }}</strong>
-    </p>
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page__title">{{ title }}</h1>
+      <p class="bl-page-header__meta">{% t "moderation.queue.intro" %} · {% t "moderation.queue.pending" %} <strong data-moderation-count>{{ total }}</strong></p>
+    </div>
   </header>
+  <nav class="bl-subnav" aria-label="{% t "moderation.nav.label" %}" data-moderation-nav>
+    <a class="bl-subnav__link" href="/moderation/queue" aria-current="page">{% t "moderation.queue.title" %}</a>
+    <a class="bl-subnav__link" href="/moderation/reports" data-reports-link>{% t "report.centre.title" %}</a>
+    <a class="bl-subnav__link" href="/moderation/log" data-modlog-link>{% t "modlog.title" %}</a>
+  </nav>
 
-  <div class="bl-moderation-actions">
+  <div class="bl-bulk-bar bl-moderation-actions">
     <label class="bl-check"><input type="checkbox" data-moderation-select-all /> {% t "moderation.queue.selectAll" %}</label>
-    <button class="bl-button" type="button" data-moderation-approve disabled>{% t "moderation.queue.approve" %}</button>
-    <button class="bl-button bl-button--quiet" type="button" data-moderation-reject disabled>{% t "moderation.queue.reject" %}</button>
+    <div class="bl-bulk-bar__actions">
+      <button class="bl-button bl-button--small" type="button" data-moderation-approve disabled>{% t "moderation.queue.approve" %}</button>
+      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-moderation-reject disabled>{% t "moderation.queue.reject" %}</button>
+    </div>
   </div>
   <p class="bl-muted" data-moderation-status hidden></p>
 
   {% if hasItems %}
     <ul class="bl-moderation-list" data-moderation-list>
       {% for item in items %}
-        <li class="bl-card bl-moderation-item" data-moderation-item="{{ item.postId }}">
-          <label class="bl-check">
-            <input type="checkbox" data-moderation-check value="{{ item.postId }}" />
-            <span>{% if item.kind == "topic" %}{% t "moderation.queue.kindTopic" %}{% else %}{% t "moderation.queue.kindPost" %}{% endif %}</span>
+        <li class="bl-moderation-item" data-moderation-item="{{ item.postId }}">
+          <label class="bl-check bl-moderation-item__check">
+            <input type="checkbox" data-moderation-check value="{{ item.postId }}" aria-label="{% t "moderation.bulk.select" %}" />
           </label>
-          <h2 class="bl-moderation-item__title">
-            <a href="{{ item.href }}" data-moderation-topic="{{ item.postId }}">{{ item.title }}</a>
-          </h2>
-          <p class="bl-moderation-item__preview">{{ item.preview }}</p>
-          <p class="bl-muted">
-            {{ item.author }} · {{ item.forumTitle }} · {{ item.reason }} · {{ item.createdAt }}
-          </p>
+          <div class="bl-moderation-item__main">
+            <div class="bl-moderation-item__head">
+              <span class="bl-badge">{% if item.kind == "topic" %}{% t "moderation.queue.kindTopic" %}{% else %}{% t "moderation.queue.kindPost" %}{% endif %}</span>
+              <a class="bl-moderation-item__title" href="{{ item.href }}" data-moderation-topic="{{ item.postId }}">{{ item.title }}</a>
+            </div>
+            <p class="bl-moderation-item__preview">{{ item.preview }}</p>
+            <p class="bl-moderation-item__meta">{{ item.author }} · {{ item.forumTitle }} · {{ item.reason }} · {{ item.createdAt }}</p>
+          </div>
         </li>
       {% endfor %}
     </ul>
