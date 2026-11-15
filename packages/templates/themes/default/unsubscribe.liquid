@@ -1,12 +1,13 @@
 {{ header }}
 <main id="main" class="bl-main" data-unsubscribe-page data-unsubscribe-state="{{ state }}">
-  <section class="bl-card">
-    <h1 class="bl-page__title">{{ title }}</h1>
-    <p class="bl-muted">{{ body }}</p>
+  <section class="bl-state bl-state--panel">
+    <svg class="bl-state__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.75" y="5.75" width="16.5" height="12.5" rx="2" /><path d="m4.5 7 7.5 6 7.5-6" /></svg>
+    <h1 class="bl-state__title">{{ title }}</h1>
+    <p class="bl-state__body">{{ body }}</p>
     {% if showForm %}
-      <form method="post" action="/api/notifications/unsubscribe">
+      <form class="bl-state__actions" method="post" action="/api/notifications/unsubscribe">
         <input type="hidden" name="token" value="{{ token }}" />
-        <button class="bl-button" type="submit" data-unsubscribe-confirm>{{ confirmLabel }}</button>
+        <button class="bl-button bl-button--primary bl-button--block" type="submit" data-unsubscribe-confirm>{{ confirmLabel }}</button>
       </form>
     {% endif %}
   </section>

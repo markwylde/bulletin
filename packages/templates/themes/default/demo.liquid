@@ -3,9 +3,11 @@
 {% if flags.unfurls %}<span data-unfurls-enabled hidden></span>{% endif %}
 <main id="main" class="bl-main" data-demo-page data-demo-id="{{ forumId }}"{% if locked %}{% else %} data-overlay-ctx="forum:{{ forumId }}"{% endif %}>
   {{ breadcrumbs }}
-  <header class="bl-page__header">
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
     <h1 class="bl-page__title" data-demo-title>{{ forumTitle }}</h1>
-    <p class="bl-muted" data-demo-kind>{% if isCategory %}{% t "demo.categoryIntro" %}{% else %}{% t "demo.forumIntro" %}{% endif %}</p>
+    <p class="bl-page-header__meta" data-demo-kind>{% if isCategory %}{% t "demo.categoryIntro" %}{% else %}{% t "demo.forumIntro" %}{% endif %}</p>
+    </div>
   </header>
 
   {% if editor %}

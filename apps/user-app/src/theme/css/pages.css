@@ -1644,8 +1644,37 @@ img.bl-author-card__badge {
   display: flex;
   gap: var(--bl-s1);
   margin: 0;
-  padding: var(--bl-s1) var(--bl-s2) 0;
+  padding: 0 var(--bl-s2);
   border: 0;
+  border-bottom: 1px solid var(--bl-border);
+  background: var(--bl-surface-muted);
+}
+
+.bl-editor__modes .bl-button {
+  height: auto;
+  min-height: 0;
+  padding: var(--bl-s2) var(--bl-s2) calc(var(--bl-s2) - 2px);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--bl-muted);
+  font-size: var(--bl-text-sm);
+}
+
+.bl-editor__modes .bl-button:hover {
+  background: none;
+  color: var(--bl-text);
+}
+
+.bl-editor__modes .bl-button[aria-pressed="true"] {
+  border-bottom-color: var(--bl-accent);
+  color: var(--bl-text);
+}
+
+.bl-form:has(.bl-editor) {
+  max-width: none;
 }
 
 .bl-editor__toolbar {
@@ -3323,4 +3352,36 @@ img.bl-author-card__badge {
   .bl-report-side {
     order: 2;
   }
+}
+
+/* ── Standalone pages ───────────────────────────────────────────────────── */
+
+.bl-state--form {
+  text-align: start;
+}
+
+.bl-state--form .bl-state__icon,
+.bl-state--form .bl-state__title,
+.bl-state--form .bl-state__body {
+  margin-inline: auto;
+  text-align: center;
+}
+
+.bl-state--form .bl-form {
+  width: 100%;
+  margin-top: var(--bl-s4);
+}
+
+.bl-prose-card {
+  max-width: 48rem;
+  padding: var(--bl-s5) var(--bl-s5);
+}
+
+.bl-prose-card > h1:first-child {
+  display: none;
+}
+
+.bl-api-docs {
+  display: grid;
+  gap: var(--bl-s3);
 }
