@@ -1,16 +1,21 @@
 import type { SeedModule } from "./framework.ts";
 
-const SUNSET_FOOTER = `<footer class="bl-footer" data-theme-footer data-theme-variant="sunset">
-  {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
-  <p class="bl-footer__text">{% t "theme.footer" %} <span data-board-year>{{ year }}</span></p>
+/** A demo child footer: the default layout plus a variant marker the E2E themes look for. */
+function demoFooter(variant: string): string {
+  return `<footer class="bl-footer" data-theme-footer data-theme-variant="${variant}">
+  <div class="bl-footer__inner">
+    <p class="bl-footer__text">© <span data-board-year>{{ year }}</span> {{ boardName }} · {% t "theme.footer" %}</p>
+    <div class="bl-footer__prefs">
+      {% island "LanguageSwitcher" language %}
+      {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
+    </div>
+  </div>
 </footer>
 `;
+}
 
-const VIP_FOOTER = `<footer class="bl-footer" data-theme-footer data-theme-variant="vip">
-  {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
-  <p class="bl-footer__text">{% t "theme.footer" %} <span data-board-year>{{ year }}</span></p>
-</footer>
-`;
+const SUNSET_FOOTER = demoFooter("sunset");
+const VIP_FOOTER = demoFooter("vip");
 
 /**
  * A second theme, a VIP-only theme and their distinct tokens (task 5.2). The marketplace

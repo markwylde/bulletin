@@ -92,7 +92,7 @@ export type ThemeCheckIssue =
 
 /** Islands every theme route must place. `Editor` is required on topic pages (ADR 0008). */
 export const REQUIRED_THEME_ISLANDS: Readonly<Record<string, readonly string[]>> = {
-  header: ["LanguageSwitcher"],
+  footer: ["LanguageSwitcher"],
   topic: ["Editor"],
 };
 
