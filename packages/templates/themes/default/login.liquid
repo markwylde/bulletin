@@ -1,10 +1,11 @@
 {{ header }}
 <main id="main" class="bl-main" data-login-page>
-  <section class="bl-card">
-    <h1 class="bl-page__title">{% t "auth.login" %}</h1>
-    <p class="bl-muted">{% t "auth.loginPage.body" %}</p>
-    <div class="bl-actions">
-      <button type="button" class="bl-button" data-login>{% t "auth.login" %}</button>
+  <section class="bl-state bl-state--panel">
+    <svg class="bl-state__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8.5" r="3.75" /><path d="M4.75 19.25a7.25 7.25 0 0 1 14.5 0" /></svg>
+    <h1 class="bl-state__title">{% t "auth.login" %}</h1>
+    <p class="bl-state__body">{% t "auth.loginPage.body" %}</p>
+    <div class="bl-state__actions">
+      <button type="button" class="bl-button bl-button--primary bl-button--block" data-login>{% t "auth.login" %}</button>
     </div>
     <p class="bl-error-text" data-auth-error hidden>{% t "auth.loginError" %}</p>
   </section>

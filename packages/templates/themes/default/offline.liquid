@@ -1,10 +1,11 @@
 {{ header }}
 <main id="main" class="bl-main" data-offline-page>
-  <section class="bl-card">
-    <h1 class="bl-page__title">{% t "pwa.offline.title" %}</h1>
-    <p class="bl-muted">{% t "pwa.offline.body" %}</p>
-    <div class="bl-actions">
-      <a class="bl-button" href="/" data-offline-retry>{% t "pwa.offline.retry" %}</a>
+  <section class="bl-state">
+    <svg class="bl-state__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.5 8.5a14 14 0 0 1 19 0" /><path d="M5.5 12a9.5 9.5 0 0 1 13 0" /><path d="M8.75 15.5a5 5 0 0 1 6.5 0" /><circle cx="12" cy="19" r="1" /><path d="m3 3 18 18" /></svg>
+    <h1 class="bl-state__title">{% t "pwa.offline.title" %}</h1>
+    <p class="bl-state__body">{% t "pwa.offline.body" %}</p>
+    <div class="bl-state__actions">
+      <a class="bl-button bl-button--primary" href="/" data-offline-retry>{% t "pwa.offline.retry" %}</a>
     </div>
   </section>
 </main>

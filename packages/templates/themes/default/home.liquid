@@ -1,188 +1,204 @@
 {{ header }}
 <main id="main" class="bl-main" data-online hidden data-board-index data-overlay-ctx="board">
-  <section class="bl-card">
-    <h1 class="bl-page__title" data-i18n="user.placeholder.title" data-board-name>{{ boardName }}</h1>
-    <p class="bl-muted" data-i18n="user.placeholder.body" data-board-description>{{ boardDescription }}</p>
-    <div class="bl-actions" data-auth data-auth-state="loading">
-      <button type="button" class="bl-button" data-login data-i18n="auth.login" hidden>{% t "auth.login" %}</button>
-      <p data-signed-in hidden>
-        <span data-i18n="auth.signedIn">{% t "auth.signedIn" %}</span>
-        <span data-display-name></span>
-      </p>
-      <button type="button" class="bl-button" data-logout data-i18n="auth.logout" hidden>{% t "auth.logout" %}</button>
-      <p class="bl-error-text" data-auth-error data-i18n="auth.loginError" hidden>{% t "auth.loginError" %}</p>
-      <p class="bl-error-text" data-logout-error data-i18n="auth.logoutError" hidden>{% t "auth.logoutError" %}</p>
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page-header__title" data-i18n="user.placeholder.title" data-board-name>{{ boardName }}</h1>
+      <p class="bl-page-header__description" data-i18n="user.placeholder.body" data-board-description>{{ boardDescription }}</p>
     </div>
-    <div class="bl-card" data-reauth hidden>
-      <p data-i18n="auth.reauthPrompt">{% t "auth.reauthPrompt" %}</p>
-      <div class="bl-actions">
-        <button type="button" class="bl-button" data-reauth-continue data-i18n="auth.continue">{% t "auth.continue" %}</button>
-        <button type="button" class="bl-button bl-button--quiet" data-resume data-i18n="auth.resume" hidden>{% t "auth.resume" %}</button>
-      </div>
+    <div class="bl-page-header__actions">
+      <button class="bl-button bl-button--secondary bl-button--small" type="button" data-mark-board-read data-overlay-member-only hidden>
+        <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="m4 10.5 3.5 3.5L16 5.5" /></svg>
+        {% t "read.markBoard" %}
+      </button>
     </div>
-  </section>
+  </header>
 
   {% if flags.announcements and announcements.size > 0 %}
     <section class="bl-announcements" data-announcements aria-label="{% t "forum.announcements" %}">
       {% for announcement in announcements %}
-        <article class="bl-card bl-announcement" data-announcement="{{ announcement.id }}">
-          <h2 class="bl-announcement__title">{{ announcement.title }}</h2>
-          <p class="bl-announcement__body">{{ announcement.body }}</p>
+        <article class="bl-announcement" data-announcement="{{ announcement.id }}">
+          <svg class="bl-announcement__icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3.75 8.25v3.5h2.5L12 15.5v-11L6.25 8.25Z" /><path d="M14.75 7.5a3.5 3.5 0 0 1 0 5" /></svg>
+          <div class="bl-announcement__content">
+            <h2 class="bl-announcement__title">{{ announcement.title }}</h2>
+            <div class="bl-announcement__body">{{ announcement.body }}</div>
+          </div>
           {% if announcement.dismissible %}
-            <button type="button" class="bl-button bl-button--quiet bl-button--small" data-announcement-dismiss="{{ announcement.id }}" data-overlay-member-only hidden>{% t "announcement.dismiss" %}</button>
+            <button type="button" class="bl-icon-button bl-icon-button--small bl-announcement__dismiss" data-announcement-dismiss="{{ announcement.id }}" data-overlay-member-only hidden aria-label="{% t "announcement.dismiss" %}" title="{% t "announcement.dismiss" %}">
+              <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="m5.5 5.5 9 9m0-9-9 9" /></svg>
+            </button>
           {% endif %}
         </article>
       {% endfor %}
     </section>
   {% endif %}
 
-  {% if statistics %}
-  <section class="bl-card" data-board-statistics>
-    <h2 class="bl-card__title">{% t "index.stats.title" %}</h2>
-    <dl class="bl-board-stats">
-      <div><dt>{% t "index.stats.topicsLabel" %}</dt><dd data-stat-topics>{{ statistics.topics }}</dd></div>
-      <div><dt>{% t "index.stats.postsLabel" %}</dt><dd data-stat-posts>{{ statistics.posts }}</dd></div>
-      <div><dt>{% t "index.stats.membersLabel" %}</dt><dd data-stat-members>{{ statistics.members }}</dd></div>
-      {% if statistics.newestMember %}
-        <div><dt>{% t "index.stats.newest" %}</dt><dd><a href="{{ statistics.newestMember.href }}">{{ statistics.newestMember.name }}</a></dd></div>
-      {% endif %}
-      {% if statistics.recordOnline %}
-        <div><dt>{% t "index.stats.record" %}</dt><dd>{{ statistics.recordOnline.count }}{% if statistics.recordOnline.date %} · {{ statistics.recordOnline.date }}{% endif %}</dd></div>
-      {% endif %}
-    </dl>
-    {% if flags.leaderboards and todayTopPoster %}
-      <p class="bl-muted" data-today-top-poster>{% t "index.stats.todayTop" %} <a href="{{ todayTopPoster.href }}">{{ todayTopPoster.name }}</a></p>
-    {% endif %}
-  </section>
-  {% endif %}
-
-  {% if flags.whos_online and online %}
-  <section class="bl-card" data-online-summary>
-    <h2 class="bl-card__title">{% t "index.online.title" %}</h2>
-    <p class="bl-muted">{{ online.memberCount }} · {{ online.guestCount }}</p>
-    {% if online.members.size > 0 %}
-      <ul class="bl-online-list">
-        {% for member in online.members %}
-          <li data-online-member="{{ member.id }}">
-            <a href="{{ member.href }}"{% if member.groupColour %} style="color: {{ member.groupColour }}"{% endif %}>{{ member.name }}</a>
-            {% if member.groupTitle %}<span class="bl-muted">· {{ member.groupTitle }}</span>{% endif %}
+  {% if rootForums.size > 0 %}
+    <section class="bl-board-category bl-board-category--root" data-root-forums-section>
+      <ul class="bl-forum-list" data-root-forums>
+        {% for forum in rootForums %}
+          <li class="bl-forum" data-forum-row="{{ forum.id }}" data-overlay-forum="{{ forum.id }}">
+            <span class="bl-forum__icon" aria-hidden="true">
+              {% if forum.redirect %}<svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M8.5 11.5a3.25 3.25 0 0 0 4.6 0l2.4-2.4a3.25 3.25 0 0 0-4.6-4.6l-.9.9" /><path d="M11.5 8.5a3.25 3.25 0 0 0-4.6 0l-2.4 2.4a3.25 3.25 0 0 0 4.6 4.6l.9-.9" /></svg>{% else %}<svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M4.25 4.75h11.5a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H9l-3.75 2.75V14.25h-1a1.5 1.5 0 0 1-1.5-1.5v-6.5a1.5 1.5 0 0 1 1.5-1.5Z" /></svg>{% endif %}
+              <span class="bl-forum__unread" data-overlay-forum-unread data-overlay-forum-id="{{ forum.id }}"></span>
+            </span>
+            <div class="bl-forum__main">
+              <h3 class="bl-forum__title"><a href="{{ forum.href }}" data-forum-link="{{ forum.id }}">{{ forum.title }}</a></h3>
+              {% if forum.description.size > 0 %}
+                <p class="bl-forum__description" data-forum-description>{{ forum.description }}</p>
+              {% endif %}
+              {% if forum.redirect %}
+                <p class="bl-forum__redirect" data-redirect>
+                  <a href="{{ forum.redirect.url }}" rel="nofollow noopener">{{ forum.redirect.url }}</a>
+                  <span class="bl-badge" data-redirect-clicks="{{ forum.id }}" data-redirect-count="{{ forum.redirect.count }}" data-click-suffix-one="{% t "index.clickSuffix.one" %}" data-click-suffix-other="{% t "index.clickSuffix.other" %}">{{ forum.redirect.clicks }}</span>
+                </p>
+              {% endif %}
+              {% if forum.subforums.size > 0 %}
+                <ul class="bl-forum__subforums" data-subforums="{{ forum.id }}" aria-label="{% t "index.subforums" %}">
+                  {% for subforum in forum.subforums %}
+                    <li><a href="{{ subforum.href }}" data-subforum-link="{{ subforum.id }}">{{ subforum.title }}</a></li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+            {% unless forum.redirect %}
+            <div class="bl-forum__stats">
+              <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
+              <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
+            </div>
+            <div class="bl-forum__last">
+              {% if forum.lastPost %}
+                <span class="bl-forum__last-date" data-last-post="{{ forum.id }}">{{ forum.lastPost.date }}</span>
+                {% if forum.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: forum.lastPost.memberName %}</span>{% endif %}
+              {% else %}
+                <span class="bl-forum__last-none" aria-hidden="true">—</span>
+              {% endif %}
+            </div>
+            {% endunless %}
           </li>
         {% endfor %}
       </ul>
-    {% endif %}
-    <a class="bl-button bl-button--quiet bl-button--small" href="/members/online">{% t "index.online.fullList" %}</a>
-  </section>
+    </section>
   {% endif %}
 
-  <button class="bl-button bl-button--quiet bl-button--small" type="button" data-mark-board-read data-overlay-member-only hidden>{% t "read.markBoard" %}</button>
-
-  {% if rootForums.size > 0 %}
-    <ul class="bl-forum-list" data-root-forums>
-      {% for forum in rootForums %}
-        <li class="bl-forum-list__item" data-forum-row="{{ forum.id }}" data-overlay-forum="{{ forum.id }}">
-          <div class="bl-forum-row__main">
-            <a class="bl-forum-list__link" href="{{ forum.href }}" data-forum-link="{{ forum.id }}">{{ forum.title }}</a>
-            {% if forum.description.size > 0 %}
-              <p class="bl-muted" data-forum-description>{{ forum.description }}</p>
-            {% endif %}
-            {% if forum.redirect %}
-              <p class="bl-muted" data-redirect>
-                <a href="{{ forum.redirect.url }}" rel="nofollow noopener">{{ forum.redirect.url }}</a>
-                <span class="bl-badge" data-redirect-clicks="{{ forum.id }}" data-redirect-count="{{ forum.redirect.count }}" data-click-suffix-one="{% t "index.clickSuffix.one" %}" data-click-suffix-other="{% t "index.clickSuffix.other" %}">{{ forum.redirect.clicks }}</span>
-              </p>
-            {% endif %}
-            {% if forum.subforums.size > 0 %}
-              <ul class="bl-subforum-list" data-subforums="{{ forum.id }}" aria-label="{% t "index.subforums" %}">
-                {% for subforum in forum.subforums %}
-                  <li><a href="{{ subforum.href }}" data-subforum-link="{{ subforum.id }}">{{ subforum.title }}</a></li>
-                {% endfor %}
-              </ul>
-            {% endif %}
-          </div>
-          <div class="bl-forum-row__stats">
-            <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
-            <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
-            <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ forum.id }}">—</span>
-            {% if forum.lastPost %}
-              <span class="bl-muted" data-last-post="{{ forum.id }}">
-                {% if forum.lastPost.memberName %}
-                  {% t "index.lastPostBy" date: forum.lastPost.date, member: forum.lastPost.memberName %}
-                {% else %}
-                  {% t "index.lastPost" date: forum.lastPost.date %}
-                {% endif %}
-              </span>
-            {% endif %}
-          </div>
-        </li>
-      {% endfor %}
-    </ul>
-  {% endif %}
-
-  {% if categories.size > 0 %}
-    {% for category in categories %}
-      <section class="bl-board-category" data-category="{{ category.id }}" data-overlay-forum="{{ category.id }}">
-        <header class="bl-board-category__header">
-          <h2 class="bl-board-category__title">
+  {% for category in categories %}
+    <section class="bl-board-category" data-category="{{ category.id }}" data-overlay-forum="{{ category.id }}" aria-labelledby="category-{{ category.id }}">
+      <header class="bl-board-category__header">
+        <div class="bl-board-category__heading">
+          <h2 class="bl-board-category__title" id="category-{{ category.id }}">
             <a href="{{ category.href }}" data-category-link="{{ category.id }}">{{ category.title }}</a>
-            <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ category.id }}">—</span>
           </h2>
+          <span class="bl-unread-dot" data-overlay-forum-unread data-overlay-forum-id="{{ category.id }}"></span>
           {% if category.description.size > 0 %}
-            <p class="bl-muted" data-category-description>{{ category.description }}</p>
+            <p class="bl-board-category__description" data-category-description>{{ category.description }}</p>
           {% endif %}
-        </header>
-        <ul class="bl-forum-list" data-category-forums="{{ category.id }}">
-          {% for forum in category.forums %}
-            <li class="bl-forum-list__item" data-forum-row="{{ forum.id }}" data-overlay-forum="{{ forum.id }}">
-              <div class="bl-forum-row__main">
-                <a class="bl-forum-list__link" href="{{ forum.href }}" data-forum-link="{{ forum.id }}">{{ forum.title }}</a>
-                {% if forum.description.size > 0 %}
-                  <p class="bl-muted" data-forum-description>{{ forum.description }}</p>
-                {% endif %}
-                {% if forum.redirect %}
-                  <p class="bl-muted" data-redirect>
-                    <a href="{{ forum.redirect.url }}" rel="nofollow noopener">{{ forum.redirect.url }}</a>
-                    <span class="bl-badge" data-redirect-clicks="{{ forum.id }}" data-redirect-count="{{ forum.redirect.count }}" data-click-suffix-one="{% t "index.clickSuffix.one" %}" data-click-suffix-other="{% t "index.clickSuffix.other" %}">{{ forum.redirect.clicks }}</span>
-                  </p>
-                {% endif %}
-                {% if forum.subforums.size > 0 %}
-                  <ul class="bl-subforum-list" data-subforums="{{ forum.id }}" aria-label="{% t "index.subforums" %}">
-                    {% for subforum in forum.subforums %}
-                      <li><a href="{{ subforum.href }}" data-subforum-link="{{ subforum.id }}">{{ subforum.title }}</a></li>
-                    {% endfor %}
-                  </ul>
-                {% endif %}
-              </div>
-              <div class="bl-forum-row__stats">
-                <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
-                <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
-                <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ forum.id }}">—</span>
-                {% if forum.lastPost %}
-                  <span class="bl-muted" data-last-post="{{ forum.id }}">
-                    {% if forum.lastPost.memberName %}
-                      {% t "index.lastPostBy" date: forum.lastPost.date, member: forum.lastPost.memberName %}
-                    {% else %}
-                      {% t "index.lastPost" date: forum.lastPost.date %}
-                    {% endif %}
-                  </span>
-                {% endif %}
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
-      </section>
-    {% endfor %}
-  {% endif %}
+        </div>
+        <div class="bl-forum-columns" aria-hidden="true">
+          <span>{% t "index.column.stats" %}</span>
+          <span>{% t "index.column.lastPost" %}</span>
+        </div>
+      </header>
+      <ul class="bl-forum-list" data-category-forums="{{ category.id }}">
+        {% for forum in category.forums %}
+          <li class="bl-forum" data-forum-row="{{ forum.id }}" data-overlay-forum="{{ forum.id }}">
+            <span class="bl-forum__icon" aria-hidden="true">
+              {% if forum.redirect %}<svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M8.5 11.5a3.25 3.25 0 0 0 4.6 0l2.4-2.4a3.25 3.25 0 0 0-4.6-4.6l-.9.9" /><path d="M11.5 8.5a3.25 3.25 0 0 0-4.6 0l-2.4 2.4a3.25 3.25 0 0 0 4.6 4.6l.9-.9" /></svg>{% else %}<svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M4.25 4.75h11.5a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H9l-3.75 2.75V14.25h-1a1.5 1.5 0 0 1-1.5-1.5v-6.5a1.5 1.5 0 0 1 1.5-1.5Z" /></svg>{% endif %}
+              <span class="bl-forum__unread" data-overlay-forum-unread data-overlay-forum-id="{{ forum.id }}"></span>
+            </span>
+            <div class="bl-forum__main">
+              <h3 class="bl-forum__title"><a href="{{ forum.href }}" data-forum-link="{{ forum.id }}">{{ forum.title }}</a></h3>
+              {% if forum.description.size > 0 %}
+                <p class="bl-forum__description" data-forum-description>{{ forum.description }}</p>
+              {% endif %}
+              {% if forum.redirect %}
+                <p class="bl-forum__redirect" data-redirect>
+                  <a href="{{ forum.redirect.url }}" rel="nofollow noopener">{{ forum.redirect.url }}</a>
+                  <span class="bl-badge" data-redirect-clicks="{{ forum.id }}" data-redirect-count="{{ forum.redirect.count }}" data-click-suffix-one="{% t "index.clickSuffix.one" %}" data-click-suffix-other="{% t "index.clickSuffix.other" %}">{{ forum.redirect.clicks }}</span>
+                </p>
+              {% endif %}
+              {% if forum.subforums.size > 0 %}
+                <ul class="bl-forum__subforums" data-subforums="{{ forum.id }}" aria-label="{% t "index.subforums" %}">
+                  {% for subforum in forum.subforums %}
+                    <li><a href="{{ subforum.href }}" data-subforum-link="{{ subforum.id }}">{{ subforum.title }}</a></li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+            {% unless forum.redirect %}
+            <div class="bl-forum__stats">
+              <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
+              <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
+            </div>
+            <div class="bl-forum__last">
+              {% if forum.lastPost %}
+                <span class="bl-forum__last-date" data-last-post="{{ forum.id }}">{{ forum.lastPost.date }}</span>
+                {% if forum.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: forum.lastPost.memberName %}</span>{% endif %}
+              {% else %}
+                <span class="bl-forum__last-none" aria-hidden="true">—</span>
+              {% endif %}
+            </div>
+            {% endunless %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
 
   {% if categories.size == 0 and rootForums.size == 0 %}
     {{ emptyState }}
   {% endif %}
+
+  {% if statistics or flags.whos_online and online %}
+  <section class="bl-board-stats" aria-label="{% t "index.stats.title" %}">
+    {% if flags.whos_online and online %}
+    <div class="bl-board-stats__section" data-online-summary>
+      <div class="bl-board-stats__head">
+        <h2 class="bl-board-stats__title">{% t "index.online.title" %}</h2>
+        <a class="bl-board-stats__more" href="/members/online">{% t "index.online.fullList" %}</a>
+      </div>
+      <p class="bl-board-stats__summary">{{ online.memberCount }} · {{ online.guestCount }}</p>
+      {% if online.members.size > 0 %}
+        <ul class="bl-online-list">
+          {% for member in online.members %}
+            <li data-online-member="{{ member.id }}">
+              <a href="{{ member.href }}"{% if member.groupColour %} style="color: {{ member.groupColour }}"{% endif %}{% if member.groupTitle %} title="{{ member.groupTitle }}"{% endif %}>{{ member.name }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if statistics %}
+    <div class="bl-board-stats__section" data-board-statistics>
+      <div class="bl-board-stats__head">
+        <h2 class="bl-board-stats__title">{% t "index.stats.title" %}</h2>
+      </div>
+      <dl class="bl-stat-grid">
+        <div class="bl-stat"><dt>{% t "index.stats.topicsLabel" %}</dt><dd data-stat-topics>{{ statistics.topics }}</dd></div>
+        <div class="bl-stat"><dt>{% t "index.stats.postsLabel" %}</dt><dd data-stat-posts>{{ statistics.posts }}</dd></div>
+        <div class="bl-stat"><dt>{% t "index.stats.membersLabel" %}</dt><dd data-stat-members>{{ statistics.members }}</dd></div>
+        {% if statistics.newestMember %}
+          <div class="bl-stat"><dt>{% t "index.stats.newest" %}</dt><dd><a href="{{ statistics.newestMember.href }}">{{ statistics.newestMember.name }}</a></dd></div>
+        {% endif %}
+        {% if statistics.recordOnline %}
+          <div class="bl-stat"><dt>{% t "index.stats.record" %}</dt><dd>{{ statistics.recordOnline.count }}{% if statistics.recordOnline.date %} <span class="bl-stat__note">{{ statistics.recordOnline.date }}</span>{% endif %}</dd></div>
+        {% endif %}
+        {% if flags.leaderboards and todayTopPoster %}
+          <div class="bl-stat" data-today-top-poster><dt>{% t "index.stats.todayTop" %}</dt><dd><a href="{{ todayTopPoster.href }}">{{ todayTopPoster.name }}</a></dd></div>
+        {% endif %}
+      </dl>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
 </main>
 <main class="bl-main" data-offline hidden>
-  <section class="bl-card">
-    <h1 class="bl-page__title" data-i18n="board.offline.title">{% t "board.offline.title" %}</h1>
-    <p class="bl-muted" data-offline-message>{% t "board.offline.defaultMessage" %}</p>
-    <div class="bl-actions">
-      <a class="bl-button" data-offline-login data-i18n="board.offline.signIn" href="/auth/login">{% t "board.offline.signIn" %}</a>
+  <section class="bl-state bl-state--panel">
+    <svg class="bl-state__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8.5 10.5V7.75a3.5 3.5 0 0 1 7 0v2.75" /></svg>
+    <h1 class="bl-state__title" data-i18n="board.offline.title">{% t "board.offline.title" %}</h1>
+    <p class="bl-state__body" data-offline-message>{% t "board.offline.defaultMessage" %}</p>
+    <div class="bl-state__actions">
+      <a class="bl-button bl-button--primary" data-offline-login data-i18n="board.offline.signIn" href="/auth/login">{% t "board.offline.signIn" %}</a>
     </div>
   </section>
 </main>

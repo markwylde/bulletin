@@ -105,13 +105,13 @@ describe("default theme checks", () => {
       throw new Error("Missing route contracts");
     }
 
-    // LanguageSwitcher lives in the header; removing it breaks the routes that only get it
-    // from the header. The account page also places its own, so it still composes one.
-    const headerWithoutSwitcher = templates.header?.replace(
+    // LanguageSwitcher lives in the footer (ADR 0021); removing it breaks the routes that only
+    // get it from the footer. The account page also places its own, so it still composes one.
+    const footerWithoutSwitcher = templates.footer?.replace(
       /\{%-?\s*island\s+"LanguageSwitcher"[^%]*%\}/g,
       "",
     );
-    const broken = { ...templates, header: headerWithoutSwitcher ?? "" };
+    const broken = { ...templates, footer: footerWithoutSwitcher ?? "" };
 
     for (const contract of [demo, ROUTE_CONTRACTS["/"], ROUTE_CONTRACTS["/auth/login"]]) {
       if (contract === undefined) {

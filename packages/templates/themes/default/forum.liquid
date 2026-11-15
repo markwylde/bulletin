@@ -48,11 +48,16 @@
       {% if flags.announcements and announcements.size > 0 %}
         <section class="bl-announcements" data-announcements aria-label="{% t "forum.announcements" %}">
           {% for announcement in announcements %}
-            <article class="bl-card bl-announcement" data-announcement="{{ announcement.id }}">
-              <h2 class="bl-announcement__title">{{ announcement.title }}</h2>
-              <p class="bl-announcement__body">{{ announcement.body }}</p>
+            <article class="bl-announcement" data-announcement="{{ announcement.id }}">
+              <svg class="bl-announcement__icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M3.75 8.25v3.5h2.5L12 15.5v-11L6.25 8.25Z" /><path d="M14.75 7.5a3.5 3.5 0 0 1 0 5" /></svg>
+              <div class="bl-announcement__content">
+                <h2 class="bl-announcement__title">{{ announcement.title }}</h2>
+                <div class="bl-announcement__body">{{ announcement.body }}</div>
+              </div>
               {% if announcement.dismissible %}
-                <button type="button" class="bl-button bl-button--quiet bl-button--small" data-announcement-dismiss="{{ announcement.id }}" data-overlay-member-only hidden>{% t "announcement.dismiss" %}</button>
+                <button type="button" class="bl-icon-button bl-icon-button--small bl-announcement__dismiss" data-announcement-dismiss="{{ announcement.id }}" data-overlay-member-only hidden aria-label="{% t "announcement.dismiss" %}" title="{% t "announcement.dismiss" %}">
+                  <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="m5.5 5.5 9 9m0-9-9 9" /></svg>
+                </button>
               {% endif %}
             </article>
           {% endfor %}

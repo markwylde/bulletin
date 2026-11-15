@@ -1,10 +1,14 @@
 {{ header }}
 <main id="main" class="bl-main" data-theme-error data-error-code="{{ code }}">
   {{ breadcrumbs }}
-  <section class="bl-error">
-    <h1 class="bl-error__title">{% t "theme.error.title" %}</h1>
-    <p class="bl-error__body">{{ message }}</p>
-    <a class="bl-button" href="/">{% t "theme.error.home" %}</a>
+  <section class="bl-state">
+    <p class="bl-state__code">{% if code == "not_found" or code == "attachment_missing" %}404{% elsif code == "forbidden" or code == "unauthenticated" %}403{% else %}{% t "theme.error.label" %}{% endif %}</p>
+    <h1 class="bl-state__title">{% t "theme.error.title" %}</h1>
+    <p class="bl-state__body">{{ message }}</p>
+    <div class="bl-state__actions">
+      <a class="bl-button bl-button--primary" href="/">{% t "theme.error.home" %}</a>
+      <a class="bl-button bl-button--secondary" href="/search">{% t "theme.error.search" %}</a>
+    </div>
   </section>
 </main>
 {{ footer }}

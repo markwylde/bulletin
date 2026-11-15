@@ -1,5 +1,8 @@
 {{ header }}
 <main id="main" class="bl-main" data-signing-in>
-  <p class="bl-muted" data-i18n="auth.signingIn">{% t "auth.signingIn" %}</p>
+  <section class="bl-state">
+    <span class="bl-spinner" aria-hidden="true"></span>
+    <p class="bl-state__body" data-i18n="auth.signingIn">{% t "auth.signingIn" %}</p>
+  </section>
 </main>
 {{ footer }}

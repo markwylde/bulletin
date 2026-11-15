@@ -1,5 +1,22 @@
 <footer class="bl-footer" data-theme-footer>
-  {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
-  <p class="bl-footer__text">{% t "theme.footer" %} <span data-board-year>{{ year }}</span></p>
-  {% if flags.feeds %}{% island "FeedLinks" feedLinks %}{% endif %}
+  <div class="bl-footer__inner">
+    <div class="bl-footer__top">
+      <div class="bl-footer__about">
+        <a class="bl-footer__name" href="/">{{ boardName }}</a>
+        <p class="bl-footer__text">© <span data-board-year>{{ year }}</span> {{ boardName }} · {% t "theme.footer" %}</p>
+      </div>
+      <nav class="bl-footer__links" aria-label="{% t "theme.footer.links" %}">
+        <a href="/">{% t "theme.nav.forums" %}</a>
+        {% if flags.member_directory %}<a href="/members">{% t "members.title" %}</a>{% endif %}
+        {% if flags.leaderboards %}<a href="/leaderboards">{% t "leaderboards.title" %}</a>{% endif %}
+        <a href="/privacy">{% t "theme.footer.privacy" %}</a>
+        {% if flags.public_api %}<a href="/api-docs">{% t "theme.footer.api" %}</a>{% endif %}
+        {% if flags.feeds %}{% island "FeedLinks" feedLinks %}{% endif %}
+      </nav>
+    </div>
+    <div class="bl-footer__prefs">
+      {% island "LanguageSwitcher" language %}
+      {% if flags.theme_chooser %}{% island "ThemeChooser" themeChooser %}{% endif %}
+    </div>
+  </div>
 </footer>
