@@ -967,8 +967,8 @@ a.bl-notification__text:hover {
 }
 
 .bl-post__main {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: var(--bl-s3);
   min-width: 0;
   padding: var(--bl-s3) var(--bl-s4) var(--bl-s3);
@@ -1036,6 +1036,9 @@ html[data-hide-signatures] [data-signature] {
   align-items: center;
   justify-content: space-between;
   gap: var(--bl-s2) var(--bl-s4);
+  /* Pinned to the bottom of the post, so a tall author column leaves room above the actions
+     rather than an empty band under them. */
+  margin-top: auto;
   padding-top: var(--bl-s1);
 }
 
@@ -2624,6 +2627,12 @@ img.bl-author-card__badge {
 
 .bl-message__body {
   padding: var(--bl-s2) var(--bl-s4) var(--bl-s4);
+}
+
+/* Files sit inside the message's own padding, aligned with the text above them. */
+.bl-message > .bl-attachment-list {
+  margin: calc(var(--bl-s1) * -1) var(--bl-s4) var(--bl-s4);
+  padding: 0;
 }
 
 .bl-participant-list {

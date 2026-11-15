@@ -48,14 +48,15 @@ const bridgeReady = new Promise((resolve) => {
   });
 });
 
+/** Calls the plugin's own route; the host records the viewer-aware answer on the frame. */
 async function tip() {
   const bridge = await bridgeReady;
-  const response = await bridge.call({ type: "route", path: "tip", method: "GET" });
-  const body = response?.data?.body ?? "";
-  result.textContent = body || "no response";
+  return bridge.call({ type: "route", path: "tip", method: "GET" });
 }
 
 button.addEventListener("click", () => {
-  void tip();
+  void tip().then((response) => {
+    result.textContent = response?.data?.body ? "Thanks!" : "";
+  });
 });
 void tip();

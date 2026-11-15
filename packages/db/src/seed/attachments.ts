@@ -16,6 +16,7 @@ import {
 } from "@bulletin/storage";
 import type { SQL } from "bun";
 import type { SeedModule } from "./framework.ts";
+import { identiconPng } from "./identicon.ts";
 
 /** A small, valid 8×8 PNG used for every seeded avatar and image attachment. */
 const PNG =
@@ -160,8 +161,9 @@ async function seedAvatar(
   sql: SQL,
   storage: StorageClient | undefined,
   member: string,
+  seed: string,
 ): Promise<void> {
-  const processed = await processAvatarImage(pngBytes());
+  const processed = await processAvatarImage(identiconPng(seed));
 
   if (storage !== undefined) {
     for (const variant of ["lg", "md", "sm"] as const) {
@@ -263,7 +265,7 @@ export const attachmentSeedModule: SeedModule = {
     }
 
     for (const sub of AVATAR_SUBS) {
-      await seedAvatar(sql, storage, await memberId(sql, sub));
+      await seedAvatar(sql, storage, await memberId(sql, sub), sub);
     }
 
     const publicAuthor = await memberId(sql, "member-1");

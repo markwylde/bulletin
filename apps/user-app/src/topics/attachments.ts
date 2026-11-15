@@ -55,7 +55,8 @@ export function formatFileSize(bytes: number, locale: Locale): string {
     return new Intl.NumberFormat(locale, {
       style: "unit",
       unit: "byte",
-      unitDisplay: "short",
+      // "short" reads "34 byte" in English; "narrow" gives "34B" / "34o".
+      unitDisplay: "narrow",
       maximumFractionDigits: 0,
     }).format(value);
   }

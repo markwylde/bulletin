@@ -9,22 +9,43 @@
     <style>
       /* Follows the host's colour scheme: the frame stays transparent in light and dark. */
       :root { color-scheme: light dark; }
-      body { font: 14px system-ui, sans-serif; margin: 0; padding: 4px 0; background: transparent; color: CanvasText; }
+      body {
+        font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 2px 0;
+        background: transparent;
+        color: color-mix(in srgb, CanvasText 72%, transparent);
+      }
+      .tip { display: inline-flex; align-items: center; gap: 6px; }
       button {
-        padding: 8px 12px;
-        border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 28px;
+        padding: 4px 8px;
+        border: 0;
         border-radius: 6px;
         background: transparent;
         color: inherit;
         font: inherit;
+        font-weight: 500;
         cursor: pointer;
       }
-      button:hover { background: color-mix(in srgb, CanvasText 6%, transparent); }
+      button:hover { background: color-mix(in srgb, CanvasText 7%, transparent); color: CanvasText; }
+      button:focus-visible { outline: 2px solid color-mix(in srgb, #2457d6 70%, transparent); outline-offset: 1px; }
+      svg { width: 14px; height: 14px; flex: none; }
+      output:empty { display: none; }
+      output { font-size: 12px; }
     </style>
   </head>
   <body>
-    <button type="button" id="tip">Tip this post</button>
-    <output id="result" aria-live="polite"></output>
+    <span class="tip">
+      <button type="button" id="tip" aria-label="Tip this post">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 13.5S2.5 10.4 2.5 6.3A2.8 2.8 0 0 1 8 5a2.8 2.8 0 0 1 5.5 1.3c0 4.1-5.5 7.2-5.5 7.2Z"/></svg>
+        <span>Tip</span>
+      </button>
+      <output id="result" aria-live="polite"></output>
+    </span>
     <script src="./app.js"></script>
   </body>
 </html>

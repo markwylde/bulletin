@@ -252,7 +252,17 @@ export async function renderProfileRoute(input: ProfileRouteInput): Promise<Prof
                 flags: data.flags.values,
               }
             : { ...data.page.viewModel, seo: latestSeo, flags: data.flags.values },
-        breadcrumbs: data.page?.breadcrumbs ?? [],
+        // Home › Members › Name, with the directory crumb linked only while the directory is on.
+        breadcrumbs:
+          data.page === null
+            ? []
+            : [
+                {
+                  label: input.translate("members.title"),
+                  href: data.flags.values.member_directory === true ? "/members" : null,
+                },
+                ...data.page.breadcrumbs,
+              ],
         route: profileContract,
         pluginsGeneration: input.pluginsGeneration,
         theme: data.theme,

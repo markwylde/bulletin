@@ -480,6 +480,10 @@
   color: var(--bl-text);
 }
 
+.bl-breadcrumbs__text {
+  color: var(--bl-muted);
+}
+
 .bl-breadcrumbs__current {
   color: var(--bl-subtle);
   overflow: hidden;
