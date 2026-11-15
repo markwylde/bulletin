@@ -1,7 +1,26 @@
 import { useT } from "@bulletin/ui";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  EmptyState,
+  Field,
+  FormActions,
+  IconPlus,
+  IconTrash,
+  MenuItem,
+  Notice,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Table,
+  TextInput,
+} from "../ui/index.ts";
 
 interface IntegrationKey {
   readonly id: string;
@@ -51,13 +70,14 @@ function formatDate(value: string | null): string {
 
 export function ApiKeysPage() {
   const t = useT();
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [label, setLabel] = useState("");
   const [groupIds, setGroupIds] = useState<readonly string[]>([]);
   const [scopes, setScopes] = useState<readonly string[]>(["read:forums"]);
   const [expiresAt, setExpiresAt] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [revokeId, setRevokeId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["staff", "api-keys"],
     queryFn: () => apiGet<KeysView>("/api/staff/api-keys"),
@@ -70,7 +90,10 @@ export function ApiKeysPage() {
         setSecret(data.key);
       }
 
-      setMessage(body.action === "revoke" ? t("staff.apiKeys.revoked") : t("staff.apiKeys.saved"));
+      toast.pushToast({
+        messageKey: body.action === "revoke" ? "staff.apiKeys.revoked" : "staff.apiKeys.saved",
+        tone: "success",
+      });
 
       if (body.action === "create") {
         setLabel("");
@@ -84,11 +107,13 @@ export function ApiKeysPage() {
         typeof error === "object" && error !== null && "code" in error
           ? String((error as { code?: unknown }).code)
           : "";
-      setMessage(
-        code === "display_name_taken"
-          ? t("staff.apiKeys.displayNameTaken")
-          : t("staff.apiKeys.saveError"),
-      );
+      toast.pushToast({
+        messageKey:
+          code === "display_name_taken"
+            ? "staff.apiKeys.displayNameTaken"
+            : "staff.apiKeys.saveError",
+        tone: "error",
+      });
     },
   });
 
@@ -98,145 +123,165 @@ export function ApiKeysPage() {
     label.trim().length >= 3 && groupIds.length > 0 && scopes.length > 0 && !mutate.isPending;
 
   return (
-    <div className="page" data-page="api-keys">
-      <header className="page-header">
-        <h1>{t("staff.apiKeys.title")}</h1>
-        <p>{t("staff.apiKeys.intro")}</p>
-      </header>
-
-      {message === null ? null : (
-        <p className="widget-muted" role="status" data-api-key-message>
-          {message}
-        </p>
-      )}
+    <Page id="api-keys" title={t("staff.apiKeys.title")} description={t("staff.apiKeys.intro")}>
       {secret === null ? null : (
-        <div className="widget-error" role="status" data-api-key-secret>
-          <p>{t("staff.apiKeys.secretOnce")}</p>
-          <code data-api-key-secret-value>{secret}</code>
-        </div>
+        <Notice
+          tone="warning"
+          role="status"
+          data-api-key-secret
+          title={t("staff.apiKeys.secretOnce")}
+          action={
+            <Button size="sm" variant="ghost" onClick={() => setSecret(null)}>
+              {t("staff.apiKeys.dismissSecret")}
+            </Button>
+          }
+        >
+          <code className="mono break" data-api-key-secret-value>
+            {secret}
+          </code>
+        </Notice>
       )}
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.apiKeys.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
+      <QueryState query={query} errorLabel={t("staff.apiKeys.loadError")}>
+        {(data) => (
+          <Panel flush title={t("staff.apiKeys.list.title")}>
+            <Table
+              caption={t("staff.apiKeys.list.title")}
+              rows={data.keys}
+              rowKey={(key) => key.id}
+              rowProps={(key) => ({ "data-api-key-row": key.id })}
+              empty={<EmptyState title={t("staff.apiKeys.empty")} />}
+              columns={[
+                {
+                  id: "principal",
+                  header: t("staff.apiKeys.principal"),
+                  primary: true,
+                  cell: (key) => (
+                    <span className="stack stack-xs">
+                      <span>{key.principalName ?? key.label}</span>
+                      <code className="mono subtle">{`blt_${key.prefix}_…`}</code>
+                    </span>
+                  ),
+                },
+                {
+                  id: "scopes",
+                  header: t("staff.apiKeys.scopes"),
+                  cell: (key) => (
+                    <span className="cluster">
+                      {key.scopes.map((scope) => (
+                        <Badge key={scope}>{t(scopeLabel(scope))}</Badge>
+                      ))}
+                    </span>
+                  ),
+                },
+                {
+                  id: "lastUsed",
+                  header: t("staff.apiKeys.lastUsed"),
+                  cell: (key) => formatDate(key.lastUsedAt),
+                },
+                {
+                  id: "status",
+                  header: t("staff.apiKeys.status"),
+                  cell: (key) =>
+                    key.revokedAt === null ? (
+                      <Badge tone="success" dot>
+                        {t("staff.apiKeys.active")}
+                      </Badge>
+                    ) : (
+                      <Badge>{t("staff.apiKeys.revoked")}</Badge>
+                    ),
+                },
+                {
+                  id: "actions",
+                  header: t("staff.rowActions"),
+                  align: "end",
+                  width: "3rem",
+                  cell: (key) => (
+                    <RowActions label={t("staff.rowActions")}>
+                      <MenuItem
+                        tone="danger"
+                        icon={<IconTrash size={16} />}
+                        data-api-key-revoke={key.id}
+                        disabled={mutate.isPending || key.revokedAt !== null}
+                        onClick={() => setRevokeId(key.id)}
+                      >
+                        {t("staff.apiKeys.revoke")}
+                      </MenuItem>
+                    </RowActions>
+                  ),
+                },
+              ]}
+            />
+          </Panel>
+        )}
+      </QueryState>
 
       {query.isSuccess ? (
-        <>
-          <section className="admin-panel" aria-labelledby="api-keys-list-title">
-            <h2 id="api-keys-list-title">{t("staff.apiKeys.list.title")}</h2>
-            <div className="matrix-scroll" data-matrix-scroll>
-              <table className="matrix-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{t("staff.apiKeys.prefix")}</th>
-                    <th scope="col">{t("staff.apiKeys.principal")}</th>
-                    <th scope="col">{t("staff.apiKeys.scopes")}</th>
-                    <th scope="col">{t("staff.apiKeys.lastUsed")}</th>
-                    <th scope="col">{t("staff.apiKeys.status")}</th>
-                    <th scope="col">{t("staff.apiKeys.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data.keys.map((key) => (
-                    <tr key={key.id} data-api-key-row={key.id}>
-                      <td data-label={t("staff.apiKeys.prefix")}>
-                        <code>{`blt_${key.prefix}_…`}</code>
-                      </td>
-                      <td data-label={t("staff.apiKeys.principal")}>
-                        {key.principalName ?? key.label}
-                      </td>
-                      <td data-label={t("staff.apiKeys.scopes")}>
-                        {key.scopes.map((scope) => t(scopeLabel(scope))).join(", ")}
-                      </td>
-                      <td data-label={t("staff.apiKeys.lastUsed")}>{formatDate(key.lastUsedAt)}</td>
-                      <td data-label={t("staff.apiKeys.status")}>
-                        {key.revokedAt === null
-                          ? t("staff.apiKeys.active")
-                          : t("staff.apiKeys.revoked")}
-                      </td>
-                      <td data-label={t("staff.apiKeys.actions")}>
-                        <button
-                          type="button"
-                          data-api-key-revoke={key.id}
-                          disabled={mutate.isPending || key.revokedAt !== null}
-                          onClick={() => mutate.mutate({ action: "revoke", id: key.id })}
-                        >
-                          {t("staff.apiKeys.revoke")}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="admin-panel" data-api-key-editor>
-            <h2>{t("staff.apiKeys.form.title")}</h2>
-            <div className="admin-form">
-              <label>
-                <span>{t("staff.apiKeys.label")}</span>
-                <input
-                  data-api-key-label
-                  value={label}
-                  maxLength={32}
-                  onChange={(event) => setLabel(event.target.value)}
-                />
-              </label>
-              <label>
-                <span>{t("staff.apiKeys.expires")}</span>
-                <input
-                  data-api-key-expiry
-                  type="date"
-                  value={expiresAt}
-                  onChange={(event) => setExpiresAt(event.target.value)}
-                />
-              </label>
+        <Panel title={t("staff.apiKeys.form.title")} data-api-key-editor>
+          <div className="stack">
+            <div className="form-grid">
+              <Field label={t("staff.apiKeys.label")}>
+                {({ id }) => (
+                  <TextInput
+                    id={id}
+                    data-api-key-label
+                    value={label}
+                    maxLength={32}
+                    onChange={(event) => setLabel(event.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label={t("staff.apiKeys.expires")}>
+                {({ id }) => (
+                  <TextInput
+                    id={id}
+                    data-api-key-expiry
+                    type="date"
+                    value={expiresAt}
+                    onChange={(event) => setExpiresAt(event.target.value)}
+                  />
+                )}
+              </Field>
             </div>
 
-            <fieldset className="admin-form" data-api-key-groups>
+            <fieldset className="field-group" data-api-key-groups>
               <legend>{t("staff.apiKeys.groups")}</legend>
-              {groups.map((group) => (
-                <label key={group.id}>
-                  <input
-                    type="checkbox"
+              <div className="check-grid">
+                {groups.map((group) => (
+                  <Checkbox
+                    key={group.id}
+                    label={group.title}
                     data-api-key-group={group.id}
                     checked={groupIds.includes(group.id)}
                     onChange={(input) =>
                       setGroupIds((current) => toggle(current, group.id, input.target.checked))
                     }
                   />
-                  <span>{group.title}</span>
-                </label>
-              ))}
+                ))}
+              </div>
             </fieldset>
 
-            <fieldset className="admin-form" data-api-key-scopes>
+            <fieldset className="field-group" data-api-key-scopes>
               <legend>{t("staff.apiKeys.scopes")}</legend>
-              {availableScopes.map((scope) => (
-                <label key={scope}>
-                  <input
-                    type="checkbox"
+              <div className="check-grid">
+                {availableScopes.map((scope) => (
+                  <Checkbox
+                    key={scope}
+                    label={t(scopeLabel(scope))}
                     data-api-key-scope={scope}
                     checked={scopes.includes(scope)}
                     onChange={(input) =>
                       setScopes((current) => toggle(current, scope, input.target.checked))
                     }
                   />
-                  <span>{t(scopeLabel(scope))}</span>
-                </label>
-              ))}
+                ))}
+              </div>
             </fieldset>
 
-            <div className="admin-form">
-              <button
-                type="button"
+            <FormActions>
+              <Button
+                variant="primary"
+                icon={<IconPlus size={16} />}
                 data-api-key-create
                 disabled={!canCreate}
                 onClick={() =>
@@ -250,11 +295,29 @@ export function ApiKeysPage() {
                 }
               >
                 {t("staff.apiKeys.create")}
-              </button>
-            </div>
-          </section>
-        </>
+              </Button>
+            </FormActions>
+          </div>
+        </Panel>
       ) : null}
-    </div>
+
+      <ConfirmDialog
+        open={revokeId !== null}
+        titleKey="staff.apiKeys.confirmRevoke.title"
+        bodyKey="staff.apiKeys.confirmRevoke.body"
+        confirmLabelKey="staff.apiKeys.revoke"
+        tone="danger"
+        busy={mutate.isPending}
+        onCancel={() => setRevokeId(null)}
+        onConfirm={() => {
+          const id = revokeId;
+          setRevokeId(null);
+
+          if (id !== null) {
+            mutate.mutate({ action: "revoke", id });
+          }
+        }}
+      />
+    </Page>
   );
 }

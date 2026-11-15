@@ -2,6 +2,7 @@ import { useT } from "@bulletin/ui";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet } from "../api.ts";
+import { EmptyState, Field, Notice, Page, Panel, Skeleton, Table, TextInput } from "../ui/index.ts";
 
 interface LogEntry {
   readonly id: string;
@@ -42,67 +43,96 @@ export function ModerationLogPage() {
     },
   });
 
+  const filter = (
+    labelKey: string,
+    hook: string,
+    value: string,
+    set: (value: string) => void,
+    numeric = false,
+  ) => (
+    <Field label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          {...{ [hook]: true }}
+          inputMode={numeric ? "numeric" : undefined}
+          value={value}
+          onChange={(event) => set(event.target.value)}
+        />
+      )}
+    </Field>
+  );
+
   return (
-    <div className="page" data-page="moderation-log">
-      <header className="page-header">
-        <h1>{t("staff.modlog.title")}</h1>
-        <p>{t("staff.modlog.intro")}</p>
-      </header>
-
-      <div className="admin-form" data-modlog-filters>
-        <label>
-          <span>{t("staff.modlog.action")}</span>
-          <input
-            data-modlog-action
-            value={action}
-            onChange={(event) => setAction(event.target.value)}
-          />
-        </label>
-        <label>
-          <span>{t("staff.modlog.actor")}</span>
-          <input
-            data-modlog-actor
-            value={actorId}
-            onChange={(event) => setActorId(event.target.value)}
-          />
-        </label>
-        <label>
-          <span>{t("staff.modlog.forum")}</span>
-          <input
-            data-modlog-forum
-            value={forumId}
-            onChange={(event) => setForumId(event.target.value)}
-          />
-        </label>
-        <label>
-          <span>{t("staff.modlog.member")}</span>
-          <input
-            data-modlog-member
-            value={memberId}
-            onChange={(event) => setMemberId(event.target.value)}
-          />
-        </label>
-      </div>
-
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? <p role="alert">{t("staff.widget.error")}</p> : null}
-      {query.data !== undefined && query.data.entries.length === 0 ? (
-        <p className="widget-muted">{t("staff.modlog.empty")}</p>
-      ) : null}
-      <ul className="log-list" data-modlog-list>
-        {(query.data?.entries ?? []).map((entry) => (
-          <li key={entry.id} data-modlog-entry={entry.id}>
-            <span className="log-action">{entry.action}</span>
-            <span className="log-actor">{entry.actorName ?? t("staff.dashboard.log.system")}</span>
-            <span className="widget-muted">
-              {entry.forumTitle ?? ""}
-              {entry.memberName === null ? "" : ` · ${entry.memberName}`}
-              {entry.targetType === null ? "" : ` · ${entry.targetType}:${entry.targetId ?? ""}`}
-            </span>
-            <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleString()}</time>
-          </li>
-        ))}
-      </ul>
-    </div>
+    <Page id="moderation-log" title={t("staff.modlog.title")} description={t("staff.modlog.intro")}>
+      <Panel flush>
+        <div className="toolbar" data-modlog-filters>
+          <div className="toolbar-filters">
+            {filter("staff.modlog.action", "data-modlog-action", action, setAction)}
+            {filter("staff.modlog.actor", "data-modlog-actor", actorId, setActorId, true)}
+            {filter("staff.modlog.forum", "data-modlog-forum", forumId, setForumId, true)}
+            {filter("staff.modlog.member", "data-modlog-member", memberId, setMemberId, true)}
+          </div>
+        </div>
+        {query.isPending ? (
+          <div className="panel-body">
+            <Skeleton lines={5} label={t("staff.widget.loading")} />
+          </div>
+        ) : query.isError ? (
+          <div className="panel-body">
+            <Notice tone="danger" role="alert" title={t("staff.widget.error")} />
+          </div>
+        ) : (
+          <div data-modlog-list>
+            <Table
+              caption={t("staff.modlog.title")}
+              rows={query.data.entries}
+              rowKey={(entry) => entry.id}
+              rowProps={(entry) => ({ "data-modlog-entry": entry.id })}
+              empty={<EmptyState title={t("staff.modlog.empty")} />}
+              columns={[
+                {
+                  id: "action",
+                  header: t("staff.modlog.action"),
+                  primary: true,
+                  cell: (entry) => <code>{entry.action}</code>,
+                },
+                {
+                  id: "actor",
+                  header: t("staff.modlog.actor"),
+                  cell: (entry) => entry.actorName ?? t("staff.dashboard.log.system"),
+                },
+                {
+                  id: "context",
+                  header: t("staff.modlog.context"),
+                  cell: (entry) => (
+                    <span className="muted break">
+                      {[
+                        entry.forumTitle,
+                        entry.memberName,
+                        entry.targetType === null
+                          ? null
+                          : `${entry.targetType}:${entry.targetId ?? ""}`,
+                      ]
+                        .filter((part) => part !== null && part !== "")
+                        .join(" · ")}
+                    </span>
+                  ),
+                },
+                {
+                  id: "when",
+                  header: t("staff.modlog.when"),
+                  cell: (entry) => (
+                    <time dateTime={entry.createdAt} className="muted">
+                      {new Date(entry.createdAt).toLocaleString()}
+                    </time>
+                  ),
+                },
+              ]}
+            />
+          </div>
+        )}
+      </Panel>
+    </Page>
   );
 }

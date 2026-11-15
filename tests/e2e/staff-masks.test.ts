@@ -18,6 +18,8 @@ integrationDescribe("staff permission masks", () => {
     await withPage({ url: `${STAFF_URL}/permissions`, viewport: "mobile360" }, async (view) => {
       await loginAs(view, "admin");
       await waitForSelector(view, '[data-page="masks"]');
+      await waitForSelector(view, "[data-mask-new]", 20_000);
+      await clickSelector(view, "[data-mask-new]");
       await waitForSelector(view, "[data-mask-create]", 20_000);
       await waitForExpression(view, "!document.querySelector('[data-matrix-disabled]')", 20_000);
       // An installed plugin's forum action is a matrix column (ADR 0009).
@@ -122,6 +124,8 @@ integrationDescribe("staff permission masks", () => {
       // The delete button stays disabled while the bulk mutation is still pending.
       await waitForSelector(view, "[data-mask-delete]:not([disabled])", 20_000);
       await clickSelector(view, "[data-mask-delete]");
+      await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+      await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
       await waitForExpression(view, `!document.querySelector('[data-mask-row="${key}"]')`, 20_000);
     });
   }, 180_000);

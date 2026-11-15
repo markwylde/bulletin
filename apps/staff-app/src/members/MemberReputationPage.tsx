@@ -3,6 +3,23 @@ import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  IconButton,
+  IconRefresh,
+  IconTrash,
+  MenuItem,
+  Notice,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Skeleton,
+  Table,
+} from "../ui/index.ts";
+import { MemberLookup } from "./MemberLookup.tsx";
 
 interface ReputationEntryView {
   readonly id: string;
@@ -78,176 +95,186 @@ export function MemberReputationPage() {
   });
 
   return (
-    <div className="page" data-page="member-reputation">
-      <header className="page-header">
-        <h1>{t("staff.reputation.title")}</h1>
-        <p>{t("staff.reputation.intro")}</p>
-      </header>
+    <Page
+      id="member-reputation"
+      title={t("staff.reputation.title")}
+      description={t("staff.reputation.intro")}
+    >
+      <MemberLookup
+        label={t("staff.reputation.memberId")}
+        loadLabel={t("staff.reputation.load")}
+        value={memberId}
+        onChange={setMemberId}
+        onLoad={(id) => {
+          if (id !== null) {
+            setLoadedId(id);
+          }
+        }}
+        inputProps={{ "data-reputation-member": true }}
+        buttonProps={{ "data-reputation-load": true }}
+      />
 
-      <section className="admin-panel" aria-labelledby="reputation-recounts-title">
-        <h2 id="reputation-recounts-title">{t("staff.reputation.recounts.title")}</h2>
-        {recounts.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-        {recounts.isError ? (
-          <div className="widget-error" role="alert">
-            <p>{t("staff.reputation.recounts.error")}</p>
-            <button type="button" onClick={() => void recounts.refetch()}>
-              {t("staff.widget.retry")}
-            </button>
-          </div>
-        ) : null}
-        {recounts.isSuccess ? (
-          recounts.data.runs.length === 0 ? (
-            <p className="widget-muted">{t("staff.reputation.recounts.empty")}</p>
-          ) : (
-            <ul className="bl-recount-list" data-recount-list>
-              {recounts.data.runs.map((run) => (
-                <li key={run.id} data-recount-run={run.id}>
-                  <strong>
-                    {run.status === "running"
-                      ? t("staff.reputation.recounts.running")
-                      : t("staff.reputation.recounts.done")}
-                  </strong>{" "}
-                  <span className="widget-muted">
-                    {t("staff.reputation.recounts.progress", {
-                      processed: run.processedMembers,
-                      total: run.totalMembers,
-                    })}
-                  </span>{" "}
-                  <span className="widget-muted">
-                    {t("staff.reputation.recounts.changed", { count: run.changedMembers })}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )
-        ) : null}
-        <div className="admin-form">
-          <button type="button" onClick={() => void recounts.refetch()}>
-            {t("staff.reputation.recounts.refresh")}
-          </button>
-        </div>
-      </section>
-
-      <section className="admin-panel" aria-labelledby="reputation-lookup-title">
-        <h2 id="reputation-lookup-title">{t("staff.reputation.lookup.title")}</h2>
-        <div className="admin-form">
-          <label>
-            <span>{t("staff.reputation.memberId")}</span>
-            <input
-              inputMode="numeric"
-              data-reputation-member
-              value={memberId}
-              onChange={(event) => setMemberId(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            data-reputation-load
-            disabled={!/^\d+$/.test(memberId)}
-            onClick={() => setLoadedId(memberId)}
-          >
-            {t("staff.reputation.load")}
-          </button>
-        </div>
-        {query.isError ? (
-          <div className="widget-error" role="alert">
-            <p>{t("staff.reputation.loadError")}</p>
-            <button type="button" onClick={() => void query.refetch()}>
-              {t("staff.widget.retry")}
-            </button>
-          </div>
-        ) : null}
-        {query.isPending && loadedId !== null ? (
-          <p className="widget-muted">{t("staff.widget.loading")}</p>
-        ) : null}
-      </section>
-
-      {query.isSuccess ? (
-        <section className="admin-panel" aria-labelledby="reputation-entries-title">
-          <h2 id="reputation-entries-title">{t("staff.reputation.entries.title")}</h2>
-          <p data-reputation-total>
-            {t("staff.reputation.total")}: <strong>{query.data.total}</strong>
-          </p>
-          <div className="admin-form">
-            <button
-              type="button"
-              data-reputation-recount
-              disabled={mutate.isPending}
-              onClick={() => mutate.mutate({ action: "recount", memberId: query.data.memberId })}
+      {loadedId === null ? null : (
+        <QueryState query={query} errorLabel={t("staff.reputation.loadError")}>
+          {(data) => (
+            <Panel
+              flush
+              title={t("staff.reputation.entries.title")}
+              description={
+                <span data-reputation-total>
+                  {t("staff.reputation.total")}: <strong>{data.total}</strong>
+                </span>
+              }
+              actions={
+                <Button
+                  size="sm"
+                  icon={<IconRefresh size={16} />}
+                  data-reputation-recount
+                  disabled={mutate.isPending}
+                  onClick={() => mutate.mutate({ action: "recount", memberId: data.memberId })}
+                >
+                  {t("staff.reputation.recount")}
+                </Button>
+              }
             >
-              {t("staff.reputation.recount")}
-            </button>
-          </div>
-
-          {query.data.entries.length === 0 ? (
-            <p className="widget-muted">{t("staff.reputation.empty")}</p>
-          ) : (
-            <div className="matrix-scroll" data-matrix-scroll>
-              <table className="matrix-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{t("staff.reputation.points")}</th>
-                    <th scope="col">{t("staff.reputation.source")}</th>
-                    <th scope="col">{t("staff.reputation.giver")}</th>
-                    <th scope="col">{t("staff.reputation.topic")}</th>
-                    <th scope="col">{t("staff.reputation.when")}</th>
-                    <th scope="col">{t("staff.reputation.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data.entries.map((entry) => (
-                    <tr key={entry.id} data-reputation-entry={entry.id}>
-                      <td data-label={t("staff.reputation.points")}>{entry.points}</td>
-                      <td data-label={t("staff.reputation.source")}>
-                        {entry.source === "vote"
-                          ? t("staff.reputation.source.vote")
-                          : t("staff.reputation.source.reaction")}
-                      </td>
-                      <td data-label={t("staff.reputation.giver")}>
-                        {entry.giverName ?? t("staff.reputation.unknownGiver")}
-                      </td>
-                      <td data-label={t("staff.reputation.topic")}>
-                        {entry.topicTitle ?? t("staff.reputation.hiddenTopic")}
-                      </td>
-                      <td data-label={t("staff.reputation.when")}>
+              <Table
+                caption={t("staff.reputation.entries.title")}
+                rows={data.entries}
+                rowKey={(entry) => entry.id}
+                rowProps={(entry) => ({ "data-reputation-entry": entry.id })}
+                empty={<EmptyState title={t("staff.reputation.empty")} />}
+                columns={[
+                  {
+                    id: "points",
+                    header: t("staff.reputation.points"),
+                    align: "end",
+                    width: "5rem",
+                    cell: (entry) => (
+                      <Badge tone={entry.points < 0 ? "danger" : "success"}>
+                        {entry.points > 0 ? `+${entry.points}` : entry.points}
+                      </Badge>
+                    ),
+                  },
+                  {
+                    id: "source",
+                    header: t("staff.reputation.source"),
+                    cell: (entry) =>
+                      entry.source === "vote"
+                        ? t("staff.reputation.source.vote")
+                        : t("staff.reputation.source.reaction"),
+                  },
+                  {
+                    id: "giver",
+                    header: t("staff.reputation.giver"),
+                    cell: (entry) => entry.giverName ?? t("staff.reputation.unknownGiver"),
+                  },
+                  {
+                    id: "topic",
+                    header: t("staff.reputation.topic"),
+                    primary: true,
+                    cell: (entry) => entry.topicTitle ?? t("staff.reputation.hiddenTopic"),
+                  },
+                  {
+                    id: "when",
+                    header: t("staff.reputation.when"),
+                    cell: (entry) => (
+                      <time dateTime={entry.createdAt} className="muted">
                         {new Date(entry.createdAt).toLocaleString(locale)}
-                      </td>
-                      <td data-label={t("staff.reputation.actions")}>
-                        <button
-                          type="button"
+                      </time>
+                    ),
+                  },
+                  {
+                    id: "actions",
+                    header: t("staff.reputation.actions"),
+                    align: "end",
+                    width: "3rem",
+                    cell: (entry) => (
+                      <RowActions label={t("staff.rowActions")}>
+                        <MenuItem
+                          tone="danger"
+                          icon={<IconTrash size={16} />}
                           data-reputation-remove={entry.id}
                           disabled={mutate.isPending}
                           onClick={() => setRemoveEntryId(entry.id)}
                         >
                           {t("staff.reputation.remove")}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        </MenuItem>
+                      </RowActions>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
           )}
+        </QueryState>
+      )}
 
-          <ConfirmDialog
-            open={removeEntryId !== null}
-            titleKey="staff.reputation.confirm.title"
-            bodyKey="staff.reputation.confirm.body"
-            confirmLabelKey="staff.reputation.remove"
-            tone="danger"
-            busy={mutate.isPending}
-            onConfirm={() => {
-              const entryId = removeEntryId;
-              setRemoveEntryId(null);
+      <Panel
+        title={t("staff.reputation.recounts.title")}
+        flush
+        actions={
+          <IconButton
+            size="sm"
+            label={t("staff.reputation.recounts.refresh")}
+            onClick={() => void recounts.refetch()}
+          >
+            <IconRefresh size={16} />
+          </IconButton>
+        }
+      >
+        {recounts.isPending ? (
+          <div className="panel-body">
+            <Skeleton lines={2} label={t("staff.widget.loading")} />
+          </div>
+        ) : recounts.isError ? (
+          <div className="panel-body">
+            <Notice tone="danger" role="alert" title={t("staff.reputation.recounts.error")} />
+          </div>
+        ) : recounts.data.runs.length === 0 ? (
+          <EmptyState title={t("staff.reputation.recounts.empty")} />
+        ) : (
+          <ul className="list" data-recount-list>
+            {recounts.data.runs.map((run) => (
+              <li key={run.id} className="list-row" data-recount-run={run.id}>
+                <div className="list-row-main">
+                  <span className="list-row-title">
+                    {t("staff.reputation.recounts.progress", {
+                      processed: run.processedMembers,
+                      total: run.totalMembers,
+                    })}
+                  </span>
+                  <span className="list-row-meta">
+                    {t("staff.reputation.recounts.changed", { count: run.changedMembers })}
+                  </span>
+                </div>
+                <Badge tone={run.status === "running" ? "accent" : "neutral"} dot>
+                  {run.status === "running"
+                    ? t("staff.reputation.recounts.running")
+                    : t("staff.reputation.recounts.done")}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
 
-              if (entryId !== null && loadedId !== null) {
-                mutate.mutate({ action: "remove", memberId: loadedId, entryId });
-              }
-            }}
-            onCancel={() => setRemoveEntryId(null)}
-          />
-        </section>
-      ) : null}
-    </div>
+      <ConfirmDialog
+        open={removeEntryId !== null}
+        titleKey="staff.reputation.confirm.title"
+        bodyKey="staff.reputation.confirm.body"
+        confirmLabelKey="staff.reputation.remove"
+        tone="danger"
+        busy={mutate.isPending}
+        onConfirm={() => {
+          const entryId = removeEntryId;
+          setRemoveEntryId(null);
+
+          if (entryId !== null && loadedId !== null) {
+            mutate.mutate({ action: "remove", memberId: loadedId, entryId });
+          }
+        }}
+        onCancel={() => setRemoveEntryId(null)}
+      />
+    </Page>
   );
 }

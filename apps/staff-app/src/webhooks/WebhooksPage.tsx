@@ -1,7 +1,32 @@
 import { useT } from "@bulletin/ui";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  EmptyState,
+  Field,
+  FormActions,
+  IconButton,
+  IconEdit,
+  IconPlus,
+  IconRefresh,
+  IconTrash,
+  MenuItem,
+  Notice,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Select,
+  Switch,
+  Table,
+  TextInput,
+  type Tone,
+} from "../ui/index.ts";
 
 interface ServiceMember {
   readonly id: string;
@@ -96,12 +121,26 @@ function toggle(values: readonly string[], value: string, checked: boolean): rea
   return checked ? [...new Set([...values, value])] : values.filter((entry) => entry !== value);
 }
 
+function statusTone(status: string): Tone {
+  switch (status) {
+    case "delivered":
+      return "success";
+    case "failed":
+      return "danger";
+    case "pending":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
 export function WebhooksPage() {
   const t = useT();
+  const toast = useToast();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [secret, setSecret] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["staff", "webhooks"],
     queryFn: () => apiGet<WebhooksView>("/api/staff/webhooks"),
@@ -115,14 +154,14 @@ export function WebhooksPage() {
       }
 
       if (body.action === "save") {
-        setDraft(EMPTY);
-        setMessage(t("staff.webhooks.saved"));
-      } else if (body.action === "redeliver") {
-        setMessage(t("staff.webhooks.redelivered"));
-      } else {
-        setMessage(t("staff.webhooks.saved"));
+        setDraft((current) => ({ ...EMPTY, principalMemberId: current.principalMemberId }));
       }
 
+      toast.pushToast({
+        messageKey:
+          body.action === "redeliver" ? "staff.webhooks.redelivered" : "staff.webhooks.saved",
+        tone: "success",
+      });
       void queryClient.invalidateQueries({ queryKey: ["staff", "webhooks"] });
     },
     onError: (error: unknown) => {
@@ -130,11 +169,11 @@ export function WebhooksPage() {
         typeof error === "object" && error !== null && "code" in error
           ? String((error as { code?: unknown }).code)
           : "";
-      setMessage(
-        code === "invalid_target"
-          ? t("staff.webhooks.invalidTarget")
-          : t("staff.webhooks.saveError"),
-      );
+      toast.pushToast({
+        messageKey:
+          code === "invalid_target" ? "staff.webhooks.invalidTarget" : "staff.webhooks.saveError",
+        tone: "error",
+      });
     },
   });
 
@@ -151,7 +190,6 @@ export function WebhooksPage() {
 
   const edit = (webhook: WebhookRow): void => {
     setSecret(null);
-    setMessage(null);
     setDraft({
       id: webhook.id,
       url: webhook.url,
@@ -169,276 +207,360 @@ export function WebhooksPage() {
     !mutate.isPending;
 
   return (
-    <div className="page" data-page="webhooks">
-      <header className="page-header">
-        <h1>{t("staff.webhooks.title")}</h1>
-        <p>{t("staff.webhooks.intro")}</p>
-      </header>
-
-      {message === null ? null : (
-        <p className="widget-muted" role="status" data-webhook-message>
-          {message}
-        </p>
-      )}
+    <Page
+      id="webhooks"
+      title={t("staff.webhooks.title")}
+      description={t("staff.webhooks.intro")}
+      actions={
+        <Button
+          icon={<IconPlus size={16} />}
+          data-webhook-new
+          onClick={() =>
+            setDraft((current) => ({ ...EMPTY, principalMemberId: current.principalMemberId }))
+          }
+        >
+          {t("staff.webhooks.new")}
+        </Button>
+      }
+    >
       {secret === null ? null : (
-        <div className="widget-error" role="status" data-webhook-secret>
-          <p>{t("staff.webhooks.secretOnce")}</p>
-          <code>{secret}</code>
-        </div>
+        <Notice
+          tone="warning"
+          role="status"
+          data-webhook-secret
+          title={t("staff.webhooks.secretOnce")}
+          action={
+            <Button size="sm" variant="ghost" onClick={() => setSecret(null)}>
+              {t("staff.apiKeys.dismissSecret")}
+            </Button>
+          }
+        >
+          <code className="mono break">{secret}</code>
+        </Notice>
       )}
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.webhooks.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-
-      {query.isSuccess ? (
-        <>
-          <section className="admin-panel" aria-labelledby="webhooks-list-title">
-            <h2 id="webhooks-list-title">{t("staff.webhooks.list.title")}</h2>
-            <div className="matrix-scroll" data-matrix-scroll>
-              <table className="matrix-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{t("staff.webhooks.url")}</th>
-                    <th scope="col">{t("staff.webhooks.principal")}</th>
-                    <th scope="col">{t("staff.webhooks.events")}</th>
-                    <th scope="col">{t("staff.webhooks.enabled")}</th>
-                    <th scope="col">{t("staff.webhooks.lastDelivery")}</th>
-                    <th scope="col">{t("staff.webhooks.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data.webhooks.map((webhook) => (
-                    <tr key={webhook.id} data-webhook-row={webhook.id}>
-                      <td data-label={t("staff.webhooks.url")}>{webhook.url}</td>
-                      <td data-label={t("staff.webhooks.principal")}>
-                        {webhook.principalName ?? "—"}
-                      </td>
-                      <td data-label={t("staff.webhooks.events")}>
-                        {webhook.events.map((event) => t(labelKey(EVENT_LABELS, event))).join(", ")}
-                      </td>
-                      <td data-label={t("staff.webhooks.enabled")}>
-                        {webhook.enabled
-                          ? t("staff.webhooks.enabled.yes")
-                          : t("staff.webhooks.enabled.no")}
-                        {webhook.disabledReason === null ? null : (
-                          <span className="widget-muted"> ({t("staff.webhooks.disabled")})</span>
-                        )}
-                      </td>
-                      <td data-label={t("staff.webhooks.lastDelivery")}>
-                        {webhook.lastDeliveryStatus === null
-                          ? "—"
-                          : t(labelKey(STATUS_LABELS, webhook.lastDeliveryStatus))}
-                      </td>
-                      <td data-label={t("staff.webhooks.actions")}>
-                        <button
-                          type="button"
+      <QueryState query={query} errorLabel={t("staff.webhooks.loadError")}>
+        {(data) => (
+          <>
+            <Panel flush title={t("staff.webhooks.list.title")}>
+              <Table
+                caption={t("staff.webhooks.list.title")}
+                rows={data.webhooks}
+                rowKey={(webhook) => webhook.id}
+                rowProps={(webhook) => ({
+                  "data-webhook-row": webhook.id,
+                  className: webhook.id === draft.id ? "is-selected" : undefined,
+                })}
+                empty={<EmptyState title={t("staff.webhooks.empty")} />}
+                columns={[
+                  {
+                    id: "url",
+                    header: t("staff.webhooks.url"),
+                    primary: true,
+                    cell: (webhook) => (
+                      <span className="stack stack-xs">
+                        <span className="mono break">{webhook.url}</span>
+                        <span className="subtle">
+                          {webhook.events
+                            .map((event) => t(labelKey(EVENT_LABELS, event)))
+                            .join(", ")}
+                        </span>
+                      </span>
+                    ),
+                  },
+                  {
+                    id: "principal",
+                    header: t("staff.webhooks.principal"),
+                    cell: (webhook) => webhook.principalName ?? "—",
+                  },
+                  {
+                    id: "enabled",
+                    header: t("staff.webhooks.enabled"),
+                    cell: (webhook) =>
+                      webhook.enabled ? (
+                        <Badge tone="success" dot>
+                          {t("staff.webhooks.enabled.yes")}
+                        </Badge>
+                      ) : (
+                        <Badge tone={webhook.disabledReason === null ? "neutral" : "warning"}>
+                          {webhook.disabledReason === null
+                            ? t("staff.webhooks.enabled.no")
+                            : t("staff.webhooks.disabled")}
+                        </Badge>
+                      ),
+                  },
+                  {
+                    id: "lastDelivery",
+                    header: t("staff.webhooks.lastDelivery"),
+                    cell: (webhook) =>
+                      webhook.lastDeliveryStatus === null ? (
+                        <span className="subtle">—</span>
+                      ) : (
+                        <Badge tone={statusTone(webhook.lastDeliveryStatus)}>
+                          {t(labelKey(STATUS_LABELS, webhook.lastDeliveryStatus))}
+                        </Badge>
+                      ),
+                  },
+                  {
+                    id: "actions",
+                    header: t("staff.rowActions"),
+                    align: "end",
+                    width: "5.5rem",
+                    cell: (webhook) => (
+                      <span className="cluster cluster-end">
+                        <IconButton
+                          size="sm"
+                          label={t("staff.webhooks.edit")}
                           data-webhook-edit={webhook.id}
                           onClick={() => edit(webhook)}
                         >
-                          {t("staff.webhooks.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          data-webhook-toggle={webhook.id}
-                          disabled={mutate.isPending}
-                          onClick={() =>
-                            mutate.mutate({
-                              action: "toggle",
-                              id: webhook.id,
-                              enabled: !webhook.enabled,
-                            })
-                          }
-                        >
-                          {webhook.enabled
-                            ? t("staff.webhooks.disable")
-                            : t("staff.webhooks.enable")}
-                        </button>
-                        <button
-                          type="button"
-                          data-webhook-delete={webhook.id}
-                          disabled={mutate.isPending}
-                          onClick={() => mutate.mutate({ action: "delete", id: webhook.id })}
-                        >
-                          {t("staff.webhooks.delete")}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button type="button" data-webhook-new onClick={() => setDraft(EMPTY)}>
-              {t("staff.webhooks.new")}
-            </button>
-          </section>
+                          <IconEdit size={16} />
+                        </IconButton>
+                        <RowActions label={t("staff.rowActions")}>
+                          <MenuItem
+                            data-webhook-toggle={webhook.id}
+                            disabled={mutate.isPending}
+                            onClick={() =>
+                              mutate.mutate({
+                                action: "toggle",
+                                id: webhook.id,
+                                enabled: !webhook.enabled,
+                              })
+                            }
+                          >
+                            {webhook.enabled
+                              ? t("staff.webhooks.disable")
+                              : t("staff.webhooks.enable")}
+                          </MenuItem>
+                          <MenuItem
+                            tone="danger"
+                            icon={<IconTrash size={16} />}
+                            data-webhook-delete={webhook.id}
+                            disabled={mutate.isPending}
+                            onClick={() => setDeleteId(webhook.id)}
+                          >
+                            {t("staff.webhooks.delete")}
+                          </MenuItem>
+                        </RowActions>
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
 
-          <section className="admin-panel" data-webhook-editor>
-            <h2>{t("staff.webhooks.form.title")}</h2>
-            <div className="admin-form">
-              <label>
-                <span>{t("staff.webhooks.url")}</span>
-                <input
-                  data-webhook-url
-                  type="url"
-                  value={draft.url}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, url: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>{t("staff.webhooks.principal")}</span>
-                <select
-                  data-webhook-principal
-                  value={draft.principalMemberId}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, principalMemberId: event.target.value }))
-                  }
-                >
-                  {query.data.serviceMembers.length === 0 ? (
-                    <option value="">{t("staff.webhooks.principalEmpty")}</option>
-                  ) : null}
-                  {query.data.serviceMembers.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name ?? member.id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <fieldset className="admin-form" data-webhook-events>
-              <legend>{t("staff.webhooks.events")}</legend>
-              {query.data.events.map((event) => (
-                <label key={event}>
-                  <input
-                    type="checkbox"
-                    data-webhook-event={event}
-                    checked={draft.events.includes(event)}
-                    onChange={(input) =>
-                      setDraft((current) => ({
-                        ...current,
-                        events: toggle(current.events, event, input.target.checked),
-                      }))
-                    }
-                  />
-                  <span>{t(labelKey(EVENT_LABELS, event))}</span>
-                </label>
-              ))}
-            </fieldset>
-            <fieldset className="admin-form" data-webhook-content>
-              <legend>{t("staff.webhooks.contentFields")}</legend>
-              {query.data.contentFields.map((field) => (
-                <label key={field}>
-                  <input
-                    type="checkbox"
-                    data-webhook-content-field={field}
-                    checked={draft.contentFields.includes(field)}
-                    onChange={(input) =>
-                      setDraft((current) => ({
-                        ...current,
-                        contentFields: toggle(current.contentFields, field, input.target.checked),
-                      }))
-                    }
-                  />
-                  <span>{t(labelKey(CONTENT_LABELS, field))}</span>
-                </label>
-              ))}
-            </fieldset>
-            <div className="admin-form">
-              <label>
-                <input
-                  type="checkbox"
+            <Panel
+              title={
+                draft.id === null
+                  ? t("staff.webhooks.form.title")
+                  : t("staff.webhooks.form.editTitle")
+              }
+              data-webhook-editor
+            >
+              <div className="stack">
+                <div className="form-grid">
+                  <Field label={t("staff.webhooks.url")}>
+                    {({ id }) => (
+                      <TextInput
+                        id={id}
+                        data-webhook-url
+                        type="url"
+                        placeholder="https://"
+                        value={draft.url}
+                        onChange={(event) =>
+                          setDraft((current) => ({ ...current, url: event.target.value }))
+                        }
+                      />
+                    )}
+                  </Field>
+                  <Field label={t("staff.webhooks.principal")}>
+                    {({ id }) => (
+                      <Select
+                        id={id}
+                        data-webhook-principal
+                        value={draft.principalMemberId}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            principalMemberId: event.target.value,
+                          }))
+                        }
+                      >
+                        {data.serviceMembers.length === 0 ? (
+                          <option value="">{t("staff.webhooks.principalEmpty")}</option>
+                        ) : null}
+                        {data.serviceMembers.map((member) => (
+                          <option key={member.id} value={member.id}>
+                            {member.name ?? member.id}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                </div>
+                <fieldset className="field-group" data-webhook-events>
+                  <legend>{t("staff.webhooks.events")}</legend>
+                  <div className="check-grid">
+                    {data.events.map((event) => (
+                      <Checkbox
+                        key={event}
+                        label={t(labelKey(EVENT_LABELS, event))}
+                        data-webhook-event={event}
+                        checked={draft.events.includes(event)}
+                        onChange={(input) =>
+                          setDraft((current) => ({
+                            ...current,
+                            events: toggle(current.events, event, input.target.checked),
+                          }))
+                        }
+                      />
+                    ))}
+                  </div>
+                </fieldset>
+                <fieldset className="field-group" data-webhook-content>
+                  <legend>{t("staff.webhooks.contentFields")}</legend>
+                  <div className="check-grid">
+                    {data.contentFields.map((field) => (
+                      <Checkbox
+                        key={field}
+                        label={t(labelKey(CONTENT_LABELS, field))}
+                        data-webhook-content-field={field}
+                        checked={draft.contentFields.includes(field)}
+                        onChange={(input) =>
+                          setDraft((current) => ({
+                            ...current,
+                            contentFields: toggle(
+                              current.contentFields,
+                              field,
+                              input.target.checked,
+                            ),
+                          }))
+                        }
+                      />
+                    ))}
+                  </div>
+                </fieldset>
+                <Switch
                   data-webhook-enabled
+                  label={t("staff.webhooks.enabled")}
                   checked={draft.enabled}
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, enabled: event.target.checked }))
                   }
                 />
-                <span>{t("staff.webhooks.enabled")}</span>
-              </label>
-              <button
-                type="button"
-                data-webhook-save
-                disabled={!canSave}
-                onClick={() =>
-                  mutate.mutate({
-                    action: "save",
-                    ...(draft.id === null ? {} : { id: draft.id }),
-                    url: draft.url,
-                    principalMemberId: draft.principalMemberId,
-                    events: draft.events,
-                    contentFields: draft.contentFields,
-                    enabled: draft.enabled,
-                  })
-                }
-              >
-                {t("staff.webhooks.save")}
-              </button>
-            </div>
-          </section>
+                <FormActions>
+                  <Button
+                    variant="primary"
+                    data-webhook-save
+                    disabled={!canSave}
+                    onClick={() =>
+                      mutate.mutate({
+                        action: "save",
+                        ...(draft.id === null ? {} : { id: draft.id }),
+                        url: draft.url,
+                        principalMemberId: draft.principalMemberId,
+                        events: draft.events,
+                        contentFields: draft.contentFields,
+                        enabled: draft.enabled,
+                      })
+                    }
+                  >
+                    {t("staff.webhooks.save")}
+                  </Button>
+                </FormActions>
+              </div>
+            </Panel>
 
-          <section className="admin-panel" aria-labelledby="webhook-deliveries-title">
-            <h2 id="webhook-deliveries-title">{t("staff.webhooks.deliveries.title")}</h2>
-            <div className="matrix-scroll" data-matrix-scroll>
-              <table className="matrix-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{t("staff.webhooks.deliveries.event")}</th>
-                    <th scope="col">{t("staff.webhooks.deliveries.attempt")}</th>
-                    <th scope="col">{t("staff.webhooks.deliveries.status")}</th>
-                    <th scope="col">{t("staff.webhooks.deliveries.httpStatus")}</th>
-                    <th scope="col">{t("staff.webhooks.deliveries.responseMs")}</th>
-                    <th scope="col">{t("staff.webhooks.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data.deliveries.map((delivery) => (
-                    <tr key={delivery.id} data-webhook-delivery={delivery.id}>
-                      <td data-label={t("staff.webhooks.deliveries.event")}>
-                        {delivery.eventType}
-                      </td>
-                      <td data-label={t("staff.webhooks.deliveries.attempt")}>
-                        {delivery.attempt}
-                      </td>
-                      <td data-label={t("staff.webhooks.deliveries.status")}>
-                        {t(labelKey(STATUS_LABELS, delivery.status))}
+            <Panel flush title={t("staff.webhooks.deliveries.title")}>
+              <Table
+                caption={t("staff.webhooks.deliveries.title")}
+                rows={data.deliveries}
+                rowKey={(delivery) => delivery.id}
+                rowProps={(delivery) => ({ "data-webhook-delivery": delivery.id })}
+                empty={<EmptyState title={t("staff.webhooks.deliveries.empty")} />}
+                columns={[
+                  {
+                    id: "event",
+                    header: t("staff.webhooks.deliveries.event"),
+                    primary: true,
+                    cell: (delivery) => <code className="mono">{delivery.eventType}</code>,
+                  },
+                  {
+                    id: "status",
+                    header: t("staff.webhooks.deliveries.status"),
+                    cell: (delivery) => (
+                      <span className="stack stack-xs">
+                        <Badge tone={statusTone(delivery.status)}>
+                          {t(labelKey(STATUS_LABELS, delivery.status))}
+                        </Badge>
                         {delivery.error === null ? null : (
-                          <span className="widget-muted"> {delivery.error}</span>
+                          <span className="subtle break">{delivery.error}</span>
                         )}
-                      </td>
-                      <td data-label={t("staff.webhooks.deliveries.httpStatus")}>
-                        {delivery.httpStatus ?? "—"}
-                      </td>
-                      <td data-label={t("staff.webhooks.deliveries.responseMs")}>
-                        {delivery.responseMs === null ? "—" : `${delivery.responseMs} ms`}
-                      </td>
-                      <td data-label={t("staff.webhooks.actions")}>
-                        <button
-                          type="button"
-                          data-webhook-redeliver={delivery.id}
-                          disabled={mutate.isPending}
-                          onClick={() =>
-                            mutate.mutate({ action: "redeliver", deliveryId: delivery.id })
-                          }
-                        >
-                          {t("staff.webhooks.redeliver")}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </>
-      ) : null}
-    </div>
+                      </span>
+                    ),
+                  },
+                  {
+                    id: "attempt",
+                    header: t("staff.webhooks.deliveries.attempt"),
+                    align: "end",
+                    cell: (delivery) => delivery.attempt,
+                  },
+                  {
+                    id: "http",
+                    header: t("staff.webhooks.deliveries.httpStatus"),
+                    align: "end",
+                    cell: (delivery) => delivery.httpStatus ?? "—",
+                  },
+                  {
+                    id: "ms",
+                    header: t("staff.webhooks.deliveries.responseMs"),
+                    align: "end",
+                    cell: (delivery) =>
+                      delivery.responseMs === null ? "—" : `${delivery.responseMs} ms`,
+                  },
+                  {
+                    id: "actions",
+                    header: t("staff.rowActions"),
+                    align: "end",
+                    width: "3rem",
+                    cell: (delivery) => (
+                      <IconButton
+                        size="sm"
+                        label={t("staff.webhooks.redeliver")}
+                        data-webhook-redeliver={delivery.id}
+                        disabled={mutate.isPending}
+                        onClick={() =>
+                          mutate.mutate({ action: "redeliver", deliveryId: delivery.id })
+                        }
+                      >
+                        <IconRefresh size={16} />
+                      </IconButton>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
+          </>
+        )}
+      </QueryState>
+
+      <ConfirmDialog
+        open={deleteId !== null}
+        titleKey="staff.webhooks.confirmDelete.title"
+        bodyKey="staff.webhooks.confirmDelete.body"
+        confirmLabelKey="staff.webhooks.delete"
+        tone="danger"
+        busy={mutate.isPending}
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          const id = deleteId;
+          setDeleteId(null);
+
+          if (id !== null) {
+            mutate.mutate({ action: "delete", id });
+          }
+        }}
+      />
+    </Page>
   );
 }

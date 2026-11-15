@@ -8,6 +8,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
 import {
+  Badge,
+  Button,
+  DescriptionList,
+  EmptyState,
+  IconArrowDown,
+  IconArrowUp,
+  IconButton,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  Page,
+  Panel,
+  QueryState,
+} from "../ui/index.ts";
+import {
   type DraftRules,
   type DraftRuleType,
   describeChange,
@@ -45,11 +60,11 @@ function RuleSummary({ rules }: { readonly rules: readonly FlagRule[] }) {
   const t = useT();
 
   if (rules.length === 0) {
-    return <span className="widget-muted">{t("staff.flags.rules.none")}</span>;
+    return <span className="subtle">{t("staff.flags.rules.none")}</span>;
   }
 
   return (
-    <ul className="flag-rules">
+    <ul className="plain-list">
       {rules.map((rule, index) => (
         // Rules are an ordered list, so the position is the only stable identity.
         // biome-ignore lint/suspicious/noArrayIndexKey: rule order is the content
@@ -81,83 +96,109 @@ function FlagEditor({
   const t = useT();
 
   return (
-    <section
-      className="flag-editor"
+    <Panel
+      title={
+        <>
+          {t("staff.flags.editor.title")} <code className="mono">{flag.key}</code>
+        </>
+      }
+      description={flag.description}
       data-flag-editor={flag.key}
-      aria-labelledby="flag-editor-title"
     >
-      <h2 id="flag-editor-title">
-        {t("staff.flags.editor.title")} <span className="log-action">{flag.key}</span>
-      </h2>
-      <p>{flag.description}</p>
-      <dl className="flag-meta">
-        <div>
-          <dt>{t("staff.flags.owner")}</dt>
-          <dd>{flag.owner}</dd>
-        </div>
-        <div>
-          <dt>{t("staff.flags.default")}</dt>
-          <dd>{flag.defaultValue ? t("staff.flags.on") : t("staff.flags.off")}</dd>
-        </div>
-        <div>
-          <dt>{t("staff.flags.render")}</dt>
-          <dd>{flag.affectsRender ? t("staff.flags.render.yes") : t("staff.flags.render.no")}</dd>
-        </div>
-      </dl>
+      <div className="stack">
+        <DescriptionList
+          items={[
+            { id: "owner", label: t("staff.flags.owner"), value: flag.owner },
+            {
+              id: "default",
+              label: t("staff.flags.default"),
+              value: flag.defaultValue ? t("staff.flags.on") : t("staff.flags.off"),
+            },
+            {
+              id: "render",
+              label: t("staff.flags.render"),
+              value: flag.affectsRender ? t("staff.flags.render.yes") : t("staff.flags.render.no"),
+            },
+          ]}
+        />
 
-      <div className="flag-rule-toolbar">
-        <button type="button" data-add-rule="group" onClick={() => onAddRule("group")}>
-          {t("staff.flags.rule.addGroup")}
-        </button>
-        <button type="button" data-add-rule="percentage" onClick={() => onAddRule("percentage")}>
-          {t("staff.flags.rule.addPercentage")}
-        </button>
+        <div className="cluster">
+          <Button
+            size="sm"
+            icon={<IconPlus size={16} />}
+            data-add-rule="group"
+            onClick={() => onAddRule("group")}
+          >
+            {t("staff.flags.rule.addGroup")}
+          </Button>
+          <Button
+            size="sm"
+            icon={<IconPlus size={16} />}
+            data-add-rule="percentage"
+            onClick={() => onAddRule("percentage")}
+          >
+            {t("staff.flags.rule.addPercentage")}
+          </Button>
+        </div>
+
+        {draft.rules.length === 0 ? (
+          <p className="subtle">{t("staff.flags.rule.none")}</p>
+        ) : (
+          <ol className="list step-list" aria-label={t("staff.flags.rule.order")}>
+            {draft.rules.map((rule, index) => (
+              <li key={rule.id} className="step-row" data-rule-order={rule.id}>
+                <span className="step-row-index" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <span className="step-row-main list-row-title">
+                  {t("staff.flags.rule.position", { index: index + 1 })} ·{" "}
+                  {rule.type === "group"
+                    ? t("staff.flags.rule.typeGroup")
+                    : t("staff.flags.rule.typePercentage")}
+                </span>
+                <span className="cluster cluster-end">
+                  <IconButton
+                    size="sm"
+                    label={t("staff.flags.rule.moveUp")}
+                    data-rule-up={rule.id}
+                    disabled={index === 0}
+                    onClick={() => onMoveRule(index, -1)}
+                  >
+                    <IconArrowUp size={16} />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    label={t("staff.flags.rule.moveDown")}
+                    data-rule-down={rule.id}
+                    disabled={index === draft.rules.length - 1}
+                    onClick={() => onMoveRule(index, 1)}
+                  >
+                    <IconArrowDown size={16} />
+                  </IconButton>
+                  <IconButton
+                    size="sm"
+                    label={t("staff.flags.rule.remove")}
+                    data-rule-remove={rule.id}
+                    onClick={() => onRemoveRule(rule.id)}
+                  >
+                    <IconTrash size={16} />
+                  </IconButton>
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {/* Also rendered with no rules, so staff can save an empty list and restore the default. */}
+        <FormRenderer
+          definition={ruleFormDefinition(draft.rules)}
+          values={draft.values}
+          onChange={onChange}
+          onSubmit={(values) => onSubmit(rulesFromValues(draft.rules, values))}
+          submitting={submitting}
+        />
       </div>
-
-      {draft.rules.length === 0 ? (
-        <p className="widget-muted">{t("staff.flags.rule.none")}</p>
-      ) : (
-        <ul className="flag-rule-order" aria-label={t("staff.flags.rule.order")}>
-          {draft.rules.map((rule, index) => (
-            <li key={rule.id} data-rule-order={rule.id}>
-              <span>{t("staff.flags.rule.position", { index: index + 1 })}</span>
-              <button
-                type="button"
-                data-rule-up={rule.id}
-                disabled={index === 0}
-                onClick={() => onMoveRule(index, -1)}
-              >
-                {t("staff.flags.rule.moveUp")}
-              </button>
-              <button
-                type="button"
-                data-rule-down={rule.id}
-                disabled={index === draft.rules.length - 1}
-                onClick={() => onMoveRule(index, 1)}
-              >
-                {t("staff.flags.rule.moveDown")}
-              </button>
-              <button
-                type="button"
-                data-rule-remove={rule.id}
-                onClick={() => onRemoveRule(rule.id)}
-              >
-                {t("staff.flags.rule.remove")}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/* Also rendered with no rules, so staff can save an empty list and restore the default. */}
-      <FormRenderer
-        definition={ruleFormDefinition(draft.rules)}
-        values={draft.values}
-        onChange={onChange}
-        onSubmit={(values) => onSubmit(rulesFromValues(draft.rules, values))}
-        submitting={submitting}
-      />
-    </section>
+    </Panel>
   );
 }
 
@@ -238,7 +279,7 @@ export function FlagsPage() {
     {
       id: "key",
       headerKey: "staff.flags.key",
-      cell: (flag) => <span className="log-action">{flag.key}</span>,
+      cell: (flag) => <code className="mono">{flag.key}</code>,
       sortValue: (flag) => flag.key,
     },
     {
@@ -275,109 +316,101 @@ export function FlagsPage() {
       headerKey: "staff.flags.status",
       cell: (flag) =>
         flag.stale ? (
-          <span className="flag-status flag-status-stale" data-flag-stale={flag.key}>
+          <Badge tone="warning" data-flag-stale={flag.key}>
             {t("staff.flags.stale")}
-          </span>
+          </Badge>
         ) : (
-          <span className="flag-status" data-flag-live={flag.key}>
+          <Badge tone="success" data-flag-live={flag.key}>
             {t("staff.flags.active")}
-          </span>
+          </Badge>
         ),
       sortValue: (flag) => (flag.stale ? 1 : 0),
     },
   ];
 
   return (
-    <div className="page" data-page="flags">
-      <header className="page-header">
-        <h1>{t("staff.flags.title")}</h1>
-        <p>{t("staff.flags.intro")}</p>
-      </header>
+    <Page id="flags" title={t("staff.flags.title")} description={t("staff.flags.intro")}>
+      <Panel flush title={t("staff.flags.list.title")}>
+        <QueryState query={flagsQuery} errorLabel={t("staff.flags.loadError")}>
+          {(data) => (
+            <div data-flags-table>
+              <DataTable
+                rows={data.flags}
+                columns={columns}
+                getRowId={(flag) => flag.key}
+                getRowLabel={(flag) => flag.key}
+                // The flags are a code-declared inventory, not a paged dataset: paginating would
+                // hide a newly added flag behind a page staff never think to open.
+                paginate={false}
+                captionKey="staff.flags.caption"
+                emptyKey="staff.flags.empty"
+                rowClassName={(flag) => (flag.stale ? "data-row-stale" : undefined)}
+                rowActions={(flag) => (
+                  <IconButton
+                    size="sm"
+                    label={t("staff.flags.edit")}
+                    data-edit-flag={flag.key}
+                    onClick={() => selectFlag(flag)}
+                  >
+                    <IconEdit size={16} />
+                  </IconButton>
+                )}
+              />
+            </div>
+          )}
+        </QueryState>
+      </Panel>
 
-      <section className="flags-list" aria-labelledby="flags-list-title">
-        <h2 id="flags-list-title">{t("staff.flags.list.title")}</h2>
-        {flagsQuery.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-        {flagsQuery.isError ? (
-          <div className="widget-error" role="alert">
-            <p>{t("staff.flags.loadError")}</p>
-            <button type="button" onClick={() => void flagsQuery.refetch()}>
-              {t("staff.widget.retry")}
-            </button>
-          </div>
-        ) : null}
-        {flagsQuery.isSuccess ? (
-          <div data-flags-table>
-            <DataTable
-              rows={flagsQuery.data.flags}
-              columns={columns}
-              getRowId={(flag) => flag.key}
-              getRowLabel={(flag) => flag.key}
-              // The flags are a code-declared inventory, not a paged dataset: paginating would
-              // hide a newly added flag behind a page staff never think to open.
-              paginate={false}
-              captionKey="staff.flags.caption"
-              emptyKey="staff.flags.empty"
-              rowClassName={(flag) => (flag.stale ? "data-row-stale" : undefined)}
-              rowActions={(flag) => (
-                <button type="button" data-edit-flag={flag.key} onClick={() => selectFlag(flag)}>
-                  {t("staff.flags.edit")}
-                </button>
-              )}
-            />
-          </div>
-        ) : null}
-      </section>
+      <div className="page-split page-split-even">
+        {selected === null ? (
+          <Panel title={t("staff.flags.editor.title")} data-flag-editor="none">
+            <EmptyState title={t("staff.flags.choose")} />
+          </Panel>
+        ) : (
+          <FlagEditor
+            key={selected.key}
+            flag={selected}
+            draft={draft}
+            submitting={save.isPending}
+            onChange={(values) => setDraft((current) => ({ ...current, values }))}
+            onAddRule={addRule}
+            onRemoveRule={removeRule}
+            onMoveRule={moveRule}
+            onSubmit={(rules) => save.mutate(rules)}
+          />
+        )}
 
-      {selected === null ? (
-        <section className="flag-editor" data-flag-editor="none">
-          <h2>{t("staff.flags.editor.title")}</h2>
-          <p className="widget-muted">{t("staff.flags.choose")}</p>
-        </section>
-      ) : (
-        <FlagEditor
-          key={selected.key}
-          flag={selected}
-          draft={draft}
-          submitting={save.isPending}
-          onChange={(values) => setDraft((current) => ({ ...current, values }))}
-          onAddRule={addRule}
-          onRemoveRule={removeRule}
-          onMoveRule={moveRule}
-          onSubmit={(rules) => save.mutate(rules)}
-        />
-      )}
-
-      <section className="flags-log" aria-labelledby="flags-log-title" data-flag-log>
-        <h2 id="flags-log-title">{t("staff.flags.log.title")}</h2>
-        {logQuery.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-        {logQuery.isError ? (
-          <div className="widget-error" role="alert">
-            <p>{t("staff.flags.log.loadError")}</p>
-            <button type="button" onClick={() => void logQuery.refetch()}>
-              {t("staff.widget.retry")}
-            </button>
-          </div>
-        ) : null}
-        {logQuery.isSuccess && logQuery.data.entries.length === 0 ? (
-          <p className="widget-muted">{t("staff.flags.log.empty")}</p>
-        ) : null}
-        {logQuery.isSuccess && logQuery.data.entries.length > 0 ? (
-          <ul className="log-list">
-            {logQuery.data.entries.map((entry) => (
-              <li key={entry.id} data-flag-log-entry={entry.id}>
-                <span className="log-actor">{entry.actor ?? t("staff.dashboard.log.system")}</span>
-                <time dateTime={entry.createdAt}>
-                  {formatDate(new Date(entry.createdAt), locale, {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
-                </time>
-                <span>{describeChange(t, entry.summary) ?? entry.action}</span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-    </div>
+        <Panel flush title={t("staff.flags.log.title")} data-flag-log>
+          <QueryState query={logQuery} errorLabel={t("staff.flags.log.loadError")}>
+            {(data) =>
+              data.entries.length === 0 ? (
+                <EmptyState title={t("staff.flags.log.empty")} />
+              ) : (
+                <ul className="list">
+                  {data.entries.map((entry) => (
+                    <li key={entry.id} className="list-row" data-flag-log-entry={entry.id}>
+                      <div className="list-row-main">
+                        <span className="list-row-title">
+                          {describeChange(t, entry.summary) ?? entry.action}
+                        </span>
+                        <span className="list-row-meta">
+                          {entry.actor ?? t("staff.dashboard.log.system")} ·{" "}
+                          <time dateTime={entry.createdAt}>
+                            {formatDate(new Date(entry.createdAt), locale, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}
+                          </time>
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )
+            }
+          </QueryState>
+        </Panel>
+      </div>
+    </Page>
   );
 }

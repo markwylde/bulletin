@@ -29,7 +29,7 @@ integrationDescribe("avatar crop", () => {
         .toBuffer(),
     );
     const userAccount = new URL("/account", USER_URL).toString();
-    const staffSettings = new URL("/groups/settings", staffBaseUrl()).toString();
+    const staffSettings = new URL("/groups/settings?group=members", staffBaseUrl()).toString();
     const cells = [
       "members:members.avatar_max_width",
       "members:members.avatar_max_height",
@@ -42,11 +42,11 @@ integrationDescribe("avatar crop", () => {
 
         for (const cell of cells) {
           await waitForSelector(view, `[data-setting-cell="${cell}"]`, 20_000);
-          await waitForSelector(view, `[data-setting-save="${cell}"]:not([disabled])`, 20_000);
           await setInputValue(view, `[data-setting-cell="${cell}"]`, "128");
-          await clickSelector(view, `[data-setting-save="${cell}"]`);
-          await waitForSelector(view, '[data-toast-tone="success"]');
         }
+        await waitForSelector(view, "[data-settings-save]:not([disabled])", 20_000);
+        await clickSelector(view, "[data-settings-save]");
+        await waitForSelector(view, '[data-toast-tone="success"]');
 
         await view.navigate(userAccount);
         await loginAs(view, "member-1");
@@ -68,11 +68,11 @@ integrationDescribe("avatar crop", () => {
 
         for (const cell of cells) {
           await waitForSelector(view, `[data-setting-cell="${cell}"]`, 20_000);
-          await waitForSelector(view, `[data-setting-save="${cell}"]:not([disabled])`, 20_000);
           await setInputValue(view, `[data-setting-cell="${cell}"]`, "512");
-          await clickSelector(view, `[data-setting-save="${cell}"]`);
-          await waitForSelector(view, '[data-toast-tone="success"]');
         }
+        await waitForSelector(view, "[data-settings-save]:not([disabled])", 20_000);
+        await clickSelector(view, "[data-settings-save]");
+        await waitForSelector(view, '[data-toast-tone="success"]');
       });
     } finally {
       await rm(directory, { recursive: true, force: true });

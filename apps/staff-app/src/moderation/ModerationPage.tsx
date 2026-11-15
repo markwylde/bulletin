@@ -3,6 +3,17 @@ import { useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  EmptyState,
+  IconCheck,
+  IconInbox,
+  Page,
+  Panel,
+  QueryState,
+} from "../ui/index.ts";
 
 interface QueueItem {
   readonly postId: string;
@@ -79,74 +90,113 @@ export function ModerationPage() {
   };
   const pending = mutate.isPending;
 
+  const allSelected = items.length > 0 && selected.length === items.length;
+
   return (
-    <div className="page" data-page="moderation">
-      <header className="page-header">
-        <h1>{t("staff.moderation.title")}</h1>
-        <p>{t("staff.moderation.intro")}</p>
-        <p data-moderation-pending>
+    <Page
+      id="moderation"
+      title={t("staff.moderation.title")}
+      description={t("staff.moderation.intro")}
+      meta={
+        <Badge tone={(query.data?.total ?? 0) > 0 ? "warning" : "neutral"} data-moderation-pending>
           {t("staff.moderation.pending", { count: query.data?.total ?? 0 })}
-        </p>
-      </header>
+        </Badge>
+      }
+    >
+      <QueryState query={query} errorLabel={t("staff.widget.error")}>
+        {() => (
+          <Panel flush>
+            <div className="toolbar" data-moderation-actions>
+              <div className="toolbar-filters">
+                <Checkbox
+                  label={t("staff.moderation.selectAll")}
+                  data-moderation-select-all
+                  checked={allSelected}
+                  disabled={items.length === 0}
+                  ref={(input) => {
+                    if (input !== null) {
+                      input.indeterminate = selected.length > 0 && !allSelected;
+                    }
+                  }}
+                  onChange={() => setSelected(allSelected ? [] : items.map((item) => item.postId))}
+                />
+                {selected.length > 0 ? (
+                  <span className="subtle">
+                    {t("staff.moderation.selected", { count: selected.length })}
+                  </span>
+                ) : null}
+              </div>
+              <div className="toolbar-actions">
+                <Button
+                  data-moderation-reject
+                  disabled={pending || selected.length === 0}
+                  onClick={() => mutate.mutate("reject")}
+                >
+                  {t("staff.moderation.reject")}
+                </Button>
+                <Button
+                  variant="primary"
+                  icon={<IconCheck size={16} />}
+                  data-moderation-approve
+                  disabled={pending || selected.length === 0}
+                  onClick={() => mutate.mutate("approve")}
+                >
+                  {t("staff.moderation.approve")}
+                </Button>
+              </div>
+            </div>
 
-      {query.isPending ? <p>{t("staff.widget.loading")}</p> : null}
-      {query.isError ? <p role="alert">{t("staff.widget.error")}</p> : null}
+            {items.length === 0 ? (
+              <div data-moderation-empty>
+                <EmptyState icon={<IconInbox size={22} />} title={t("staff.moderation.empty")} />
+              </div>
+            ) : null}
 
-      <div className="admin-form__actions" data-moderation-actions>
-        <button
-          type="button"
-          data-moderation-approve
-          disabled={pending || selected.length === 0}
-          onClick={() => mutate.mutate("approve")}
-        >
-          {t("staff.moderation.approve")}
-        </button>
-        <button
-          type="button"
-          className="button-quiet"
-          data-moderation-reject
-          disabled={pending || selected.length === 0}
-          onClick={() => mutate.mutate("reject")}
-        >
-          {t("staff.moderation.reject")}
-        </button>
-      </div>
-
-      {!query.isPending && items.length === 0 ? (
-        <p className="widget-muted" data-moderation-empty>
-          {t("staff.moderation.empty")}
-        </p>
-      ) : null}
-
-      <ul className="moderation-list" data-moderation-list>
-        {items.map((item) => (
-          <li key={item.postId} className="card" data-moderation-item={item.postId}>
-            <label className="check">
-              <input
-                type="checkbox"
-                data-moderation-check={item.postId}
-                checked={selected.includes(item.postId)}
-                onChange={() => toggle(item.postId)}
-              />
-              <span>
-                {item.kind === "topic"
-                  ? t("staff.moderation.kindTopic")
-                  : t("staff.moderation.kindPost")}
-              </span>
-            </label>
-            <h2>{item.topicTitle}</h2>
-            <p>{item.preview}</p>
-            <p className="widget-muted">
-              {item.authorName ?? t("staff.moderation.deletedAuthor")} · {item.forumTitle} ·{" "}
-              {reasonText(t, item.reason)} ·{" "}
-              {new Intl.DateTimeFormat(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short",
-              }).format(new Date(item.createdAt))}
-            </p>
-          </li>
-        ))}
-      </ul>
-    </div>
+            <ul className="list" data-moderation-list>
+              {items.map((item) => (
+                <li
+                  key={item.postId}
+                  className={
+                    selected.includes(item.postId)
+                      ? "list-row queue-row is-selected"
+                      : "list-row queue-row"
+                  }
+                  data-moderation-item={item.postId}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={item.topicTitle}
+                    data-moderation-check={item.postId}
+                    checked={selected.includes(item.postId)}
+                    onChange={() => toggle(item.postId)}
+                  />
+                  <div className="list-row-main">
+                    <span className="cluster">
+                      <Badge tone={item.kind === "topic" ? "accent" : "neutral"}>
+                        {item.kind === "topic"
+                          ? t("staff.moderation.kindTopic")
+                          : t("staff.moderation.kindPost")}
+                      </Badge>
+                      <h2 className="list-row-title queue-title">{item.topicTitle}</h2>
+                    </span>
+                    <p className="queue-preview">{item.preview}</p>
+                    <span className="list-row-meta">
+                      {item.authorName ?? t("staff.moderation.deletedAuthor")} · {item.forumTitle} ·{" "}
+                      {reasonText(t, item.reason)} ·{" "}
+                      <time dateTime={item.createdAt}>
+                        {new Intl.DateTimeFormat(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        }).format(new Date(item.createdAt))}
+                      </time>
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Panel>
+        )}
+      </QueryState>
+    </Page>
   );
 }

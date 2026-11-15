@@ -3,6 +3,22 @@ import { useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Field,
+  Page,
+  Panel,
+  QueryState,
+  SaveBar,
+  Select,
+  SettingsRow,
+  SettingsSection,
+  Textarea,
+  TextInput,
+} from "../ui/index.ts";
+import { MemberLookup } from "./MemberLookup.tsx";
 
 interface FieldOptionView {
   readonly value: string;
@@ -65,7 +81,7 @@ function FieldInput({
     const selected = new Set(Array.isArray(value) ? value : []);
 
     return (
-      <div className="checkbox-list">
+      <div className="stack stack-sm">
         {field.options.map((option) => (
           <label className="checkbox" key={option.value}>
             <input
@@ -94,7 +110,7 @@ function FieldInput({
 
   if (field.type === "select") {
     return (
-      <select
+      <Select
         data-profile-value={field.id}
         value={typeof value === "string" ? value : ""}
         onChange={(event) => onChange(event.target.value)}
@@ -105,13 +121,13 @@ function FieldInput({
             {option.labels[locale] ?? option.labels.en ?? option.value}
           </option>
         ))}
-      </select>
+      </Select>
     );
   }
 
   if (field.type === "long_text") {
     return (
-      <textarea
+      <Textarea
         data-profile-value={field.id}
         rows={4}
         value={typeof value === "string" ? value : ""}
@@ -130,7 +146,7 @@ function FieldInput({
           : "text";
 
   return (
-    <input
+    <TextInput
       type={inputType}
       data-profile-value={field.id}
       step={field.type === "number" ? "any" : undefined}
@@ -224,152 +240,178 @@ export function MemberProfilesPage() {
     });
   };
 
+  const initialValues = query.isSuccess
+    ? Object.fromEntries(query.data.fields.map((field) => [field.id, emptyValue(field)]))
+    : {};
+  const dirty =
+    query.isSuccess &&
+    (about !== query.data.about ||
+      hideOnline !== query.data.hideOnline ||
+      hideFromMemberList !== query.data.hideFromMemberList ||
+      JSON.stringify(values) !== JSON.stringify(initialValues));
+  const reset = (): void => {
+    if (!query.isSuccess) {
+      return;
+    }
+
+    setAbout(query.data.about);
+    setHideOnline(query.data.hideOnline);
+    setHideFromMemberList(query.data.hideFromMemberList);
+    setValues(initialValues);
+  };
+
   return (
-    <div className="page" data-page="member-profiles">
-      <header className="page-header">
-        <h1>{t("staff.memberProfiles.title")}</h1>
-        <p>{t("staff.memberProfiles.intro")}</p>
-      </header>
+    <Page
+      id="member-profiles"
+      title={t("staff.memberProfiles.title")}
+      description={t("staff.memberProfiles.intro")}
+      width="narrow"
+    >
+      <MemberLookup
+        label={t("staff.memberProfiles.memberId")}
+        loadLabel={t("staff.memberProfiles.load")}
+        value={memberId}
+        onChange={setMemberId}
+        onLoad={(id) => {
+          if (id !== null) {
+            setLoadedId(id);
+          }
+        }}
+        inputProps={{ "data-profile-member-id": true }}
+        buttonProps={{ "data-profile-member-load": true }}
+      />
 
-      <section className="admin-panel" aria-labelledby="member-profile-lookup-title">
-        <h2 id="member-profile-lookup-title">{t("staff.memberProfiles.lookup")}</h2>
-        <div className="admin-form">
-          <label>
-            <span>{t("staff.memberProfiles.memberId")}</span>
-            <input
-              inputMode="numeric"
-              data-profile-member-id
-              value={memberId}
-              onChange={(event) => setMemberId(event.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            data-profile-member-load
-            disabled={!/^\d+$/.test(memberId)}
-            onClick={() => setLoadedId(memberId)}
-          >
-            {t("staff.memberProfiles.load")}
-          </button>
-        </div>
-        {query.isError ? (
-          <div className="widget-error" role="alert">
-            <p>{t("staff.memberProfiles.loadError")}</p>
-            <button type="button" onClick={() => void query.refetch()}>
-              {t("staff.widget.retry")}
-            </button>
-          </div>
-        ) : null}
-        {query.isPending && loadedId !== null ? (
-          <p className="widget-muted">{t("staff.widget.loading")}</p>
-        ) : null}
-      </section>
-
-      {query.isSuccess ? (
-        <section className="admin-panel" aria-labelledby="member-profile-editor-title">
-          <h2 id="member-profile-editor-title" data-profile-display-name>
-            {query.data.displayName}
-          </h2>
-
-          <div className="admin-form">
-            <label>
-              <span>{t("staff.memberProfiles.about")}</span>
-              <textarea
-                data-profile-about
-                rows={6}
-                maxLength={20000}
-                value={about}
-                onChange={(event) => setAbout(event.target.value)}
-              />
-            </label>
-          </div>
-
-          <div className="admin-form">
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                data-profile-hide-online
-                checked={hideOnline}
-                onChange={(event) => setHideOnline(event.target.checked)}
-              />
-              <span>{t("staff.memberProfiles.hideOnline")}</span>
-            </label>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                data-profile-hide-from-list
-                checked={hideFromMemberList}
-                onChange={(event) => setHideFromMemberList(event.target.checked)}
-              />
-              <span>{t("staff.memberProfiles.hideFromList")}</span>
-            </label>
-          </div>
-
-          {query.data.fields.length > 0 ? (
-            <div className="admin-form">
-              <h3>{t("staff.memberProfiles.fields")}</h3>
-              {query.data.fields.map((field) => (
-                <div className="admin-field" key={field.id} data-profile-field={field.id}>
-                  <span className="admin-field__label">
-                    {field.labels[locale] ?? field.labels.en ?? ""}
-                    {field.required ? " *" : ""}
-                  </span>
-                  <FieldInput
-                    field={field}
-                    value={values[field.id] ?? emptyValue(field)}
-                    onChange={(value) =>
-                      setValues((current) => ({ ...current, [field.id]: value }))
-                    }
-                  />
+      {loadedId === null ? null : (
+        <QueryState query={query} errorLabel={t("staff.memberProfiles.loadError")}>
+          {(profile) => (
+            <>
+              <SettingsSection title={<span data-profile-display-name>{profile.displayName}</span>}>
+                <SettingsRow label={t("staff.memberProfiles.about")}>
+                  {({ id }) => (
+                    <Textarea
+                      id={id}
+                      data-profile-about
+                      rows={6}
+                      maxLength={20000}
+                      value={about}
+                      onChange={(event) => setAbout(event.target.value)}
+                    />
+                  )}
+                </SettingsRow>
+                <div className="settings-row">
+                  <div className="settings-row-text">
+                    <span className="field-label">{t("staff.memberProfiles.privacy")}</span>
+                  </div>
+                  <div className="settings-row-control">
+                    <Checkbox
+                      data-profile-hide-online
+                      checked={hideOnline}
+                      onChange={(event) => setHideOnline(event.target.checked)}
+                      label={t("staff.memberProfiles.hideOnline")}
+                    />
+                    <Checkbox
+                      data-profile-hide-from-list
+                      checked={hideFromMemberList}
+                      onChange={(event) => setHideFromMemberList(event.target.checked)}
+                      label={t("staff.memberProfiles.hideFromList")}
+                    />
+                  </div>
                 </div>
-              ))}
-            </div>
-          ) : null}
+              </SettingsSection>
 
-          {badgeQuery.isSuccess ? (
-            <div className="admin-form">
-              <h3>{t("staff.memberProfiles.badges")}</h3>
-              <label>
-                <span>{t("staff.memberProfiles.badgeReason")}</span>
-                <input
-                  data-badge-reason
-                  value={badgeReason}
-                  onChange={(event) => setBadgeReason(event.target.value)}
-                />
-              </label>
-              <ul className="badge-list">
-                {badgeQuery.data.badges.map((badge) => (
-                  <li key={badge.id} data-member-badge={badge.id}>
-                    <span>{badge.label}</span>
-                    <button
-                      type="button"
-                      data-member-badge-action={badge.awarded ? "revoke" : "award"}
-                      onClick={() =>
-                        badgeMutate.mutate({
-                          memberId: query.data?.memberId ?? "",
-                          badgeId: badge.id,
-                          action: badge.awarded ? "revoke" : "award",
-                          reason: badgeReason,
-                        })
-                      }
-                    >
-                      {badge.awarded
-                        ? t("staff.memberProfiles.revokeBadge")
-                        : t("staff.memberProfiles.awardBadge")}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+              {profile.fields.length > 0 ? (
+                <SettingsSection title={t("staff.memberProfiles.fields")}>
+                  {profile.fields.map((field) => (
+                    <div className="settings-row" key={field.id} data-profile-field={field.id}>
+                      <div className="settings-row-text">
+                        <span className="field-label">
+                          {field.labels[locale] ?? field.labels.en ?? ""}
+                          {field.required ? " *" : ""}
+                        </span>
+                      </div>
+                      <div className="settings-row-control">
+                        <FieldInput
+                          field={field}
+                          value={values[field.id] ?? emptyValue(field)}
+                          onChange={(value) =>
+                            setValues((current) => ({ ...current, [field.id]: value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </SettingsSection>
+              ) : null}
 
-          <div className="admin-form">
-            <button type="button" data-profile-save disabled={mutate.isPending} onClick={save}>
-              {t("staff.memberProfiles.save")}
-            </button>
-          </div>
-        </section>
-      ) : null}
-    </div>
+              <SaveBar dirty={dirty} message={t("staff.unsavedChanges")}>
+                {dirty ? (
+                  <Button variant="ghost" onClick={reset}>
+                    {t("staff.discard")}
+                  </Button>
+                ) : null}
+                <Button
+                  variant="primary"
+                  data-profile-save
+                  disabled={mutate.isPending}
+                  onClick={save}
+                >
+                  {t("staff.memberProfiles.save")}
+                </Button>
+              </SaveBar>
+
+              {badgeQuery.isSuccess ? (
+                <Panel title={t("staff.memberProfiles.badges")} flush>
+                  <div className="toolbar">
+                    <div className="toolbar-filters">
+                      <Field label={t("staff.memberProfiles.badgeReason")}>
+                        {({ id }) => (
+                          <TextInput
+                            id={id}
+                            data-badge-reason
+                            value={badgeReason}
+                            onChange={(event) => setBadgeReason(event.target.value)}
+                          />
+                        )}
+                      </Field>
+                    </div>
+                  </div>
+                  <ul className="list">
+                    {badgeQuery.data.badges.map((badge) => (
+                      <li key={badge.id} className="list-row" data-member-badge={badge.id}>
+                        <div className="list-row-main">
+                          <span className="list-row-title">{badge.label}</span>
+                        </div>
+                        {badge.awarded ? (
+                          <Badge tone="success">{t("staff.memberProfiles.awarded")}</Badge>
+                        ) : null}
+                        <div className="list-row-actions">
+                          <Button
+                            size="sm"
+                            variant={badge.awarded ? "ghost" : "secondary"}
+                            data-member-badge-action={badge.awarded ? "revoke" : "award"}
+                            onClick={() =>
+                              badgeMutate.mutate({
+                                memberId: profile.memberId,
+                                badgeId: badge.id,
+                                action: badge.awarded ? "revoke" : "award",
+                                reason: badgeReason,
+                              })
+                            }
+                          >
+                            {badge.awarded
+                              ? t("staff.memberProfiles.revokeBadge")
+                              : t("staff.memberProfiles.awardBadge")}
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </Panel>
+              ) : null}
+            </>
+          )}
+        </QueryState>
+      )}
+    </Page>
   );
 }

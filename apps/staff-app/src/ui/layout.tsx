@@ -94,7 +94,7 @@ export function Panel({
       aria-labelledby={title === undefined ? undefined : titleId}
       {...props}
     >
-      {title === undefined && actions === undefined ? null : (
+      {title === undefined && description === undefined && actions === undefined ? null : (
         <header className="panel-head">
           <div className="panel-head-text">
             {title === undefined ? null : <h2 id={titleId}>{title}</h2>}
@@ -234,7 +234,7 @@ export function Notice({
   children,
   action,
   ...props
-}: HTMLAttributes<HTMLDivElement> & {
+}: Omit<HTMLAttributes<HTMLDivElement>, "title"> & {
   readonly tone?: Tone;
   readonly title?: ReactNode;
   readonly action?: ReactNode;

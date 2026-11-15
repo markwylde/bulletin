@@ -1,8 +1,26 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Dialog,
+  EmptyState,
+  Field,
+  FormActions,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  MenuItem,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Switch,
+  TextInput,
+} from "../ui/index.ts";
 
 interface EmoticonView {
   readonly id: string;
@@ -72,6 +90,7 @@ export function EmoticonsPage() {
   const [emoticonSetId, setEmoticonSetId] = useState<string | null>(null);
   const [editingEmoticonId, setEditingEmoticonId] = useState<string | null>(null);
   const [emoticonDraft, setEmoticonDraft] = useState<EmoticonDraft>(EMPTY_EMOTICON);
+  const [confirm, setConfirm] = useState<{ kind: "set" | "emoticon"; id: string } | null>(null);
   const query = useQuery({
     queryKey: ["staff", "emoticons"],
     queryFn: () => apiGet<EmoticonsView>("/api/staff/emoticons"),
@@ -151,207 +170,284 @@ export function EmoticonsPage() {
         onSuccess: () => {
           setEmoticonDraft(EMPTY_EMOTICON);
           setEditingEmoticonId(null);
+          setEmoticonSetId(null);
         },
       },
     );
   };
 
+  const closeEmoticon = (): void => {
+    setEmoticonSetId(null);
+    setEditingEmoticonId(null);
+    setEmoticonDraft(EMPTY_EMOTICON);
+  };
+
   return (
-    <div className="page" data-page="emoticons">
-      <header className="page-header">
-        <h1>{t("staff.emoticons.title")}</h1>
-        <p>{t("staff.emoticons.intro")}</p>
-      </header>
-
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.emoticons.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-
-      {query.isSuccess ? (
-        <>
-          <section className="admin-panel" aria-labelledby="emoticon-sets-title">
-            <h2 id="emoticon-sets-title">{t("staff.emoticons.sets")}</h2>
-            <ul className="emoticon-set-list" data-emoticon-set-list>
-              {query.data.sets.map((set) => (
-                <li className="emoticon-set" key={set.id} data-emoticon-set={set.id}>
-                  <header className="emoticon-set__header">
-                    <strong>{set.title}</strong>
-                    <span className="widget-muted">
-                      {t("staff.emoticons.setMeta", {
-                        key: set.key,
-                        count: set.emoticons.length,
-                      })}
-                      {set.editorVisible ? "" : ` · ${t("staff.emoticons.hidden")}`}
+    <Page
+      id="emoticons"
+      title={t("staff.emoticons.title")}
+      description={t("staff.emoticons.intro")}
+    >
+      <QueryState query={query} errorLabel={t("staff.emoticons.loadError")}>
+        {(data) => (
+          <div className="page-split">
+            <div className="stack" data-emoticon-set-list>
+              {data.sets.length === 0 ? (
+                <Panel>
+                  <EmptyState title={t("staff.emoticons.empty")} />
+                </Panel>
+              ) : null}
+              {data.sets.map((set) => (
+                <Panel
+                  key={set.id}
+                  flush
+                  data-emoticon-set={set.id}
+                  title={
+                    <span className="cluster">
+                      {set.title}
+                      {set.editorVisible ? null : <Badge>{t("staff.emoticons.hidden")}</Badge>}
                     </span>
-                    <button
-                      type="button"
-                      data-emoticon-add={set.id}
-                      onClick={() => setEmoticonSetId(set.id)}
-                    >
-                      {t("staff.emoticons.addEmoticon")}
-                    </button>
-                    <button
-                      type="button"
-                      data-emoticon-set-delete={set.id}
-                      onClick={() => mutate.mutate({ action: "set-delete", id: set.id })}
-                    >
-                      {t("staff.emoticons.deleteSet")}
-                    </button>
-                  </header>
-                  <ul className="emoticon-list" data-emoticon-list>
-                    {set.emoticons.map((emoticon) => (
-                      <li className="emoticon-row" key={emoticon.id} data-emoticon={emoticon.id}>
-                        <img src={emoticon.src} alt={emoticon.alt} width={24} height={24} />
-                        <code>:{emoticon.code}:</code>
-                        <span>{emoticon.alt}</span>
-                        <span className="widget-muted">{emoticon.position}</span>
-                        <button
-                          type="button"
-                          data-emoticon-edit={emoticon.id}
-                          onClick={() => {
-                            setEmoticonSetId(set.id);
-                            setEditingEmoticonId(emoticon.id);
-                            setEmoticonDraft({
-                              code: emoticon.code,
-                              alt: emoticon.alt,
-                              position: emoticon.position,
-                              imageBase64: "",
-                              contentType: "",
-                            });
-                          }}
-                        >
-                          {t("staff.emoticons.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          data-emoticon-delete={emoticon.id}
-                          onClick={() =>
-                            mutate.mutate({ action: "emoticon-delete", id: emoticon.id })
-                          }
-                        >
-                          {t("staff.emoticons.delete")}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-            {query.data.sets.length === 0 ? (
-              <p className="widget-muted">{t("staff.emoticons.empty")}</p>
-            ) : null}
-          </section>
-
-          <section className="admin-panel" aria-labelledby="emoticon-set-editor-title">
-            <h2 id="emoticon-set-editor-title">{t("staff.emoticons.setForm")}</h2>
-            <div className="admin-form" data-emoticon-set-form>
-              <label>
-                <span>{t("staff.emoticons.field.key")}</span>
-                <input
-                  data-emoticon-set-field="key"
-                  value={setDraft.key}
-                  onChange={(event) => setSetDraft((c) => ({ ...c, key: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>{t("staff.emoticons.field.title")}</span>
-                <input
-                  data-emoticon-set-field="title"
-                  value={setDraft.title}
-                  onChange={(event) => setSetDraft((c) => ({ ...c, title: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>{t("staff.emoticons.field.position")}</span>
-                <input
-                  type="number"
-                  min={0}
-                  data-emoticon-set-field="position"
-                  value={setDraft.position}
-                  onChange={(event) =>
-                    setSetDraft((c) => ({ ...c, position: Number(event.target.value) || 0 }))
                   }
-                />
-              </label>
-              <label className="admin-check">
-                <input
-                  type="checkbox"
+                  description={t("staff.emoticons.setMeta", {
+                    key: set.key,
+                    count: set.emoticons.length,
+                  })}
+                  actions={
+                    <span className="cluster cluster-end">
+                      <Button
+                        size="sm"
+                        icon={<IconPlus size={14} />}
+                        data-emoticon-add={set.id}
+                        onClick={() => {
+                          setEditingEmoticonId(null);
+                          setEmoticonDraft(EMPTY_EMOTICON);
+                          setEmoticonSetId(set.id);
+                        }}
+                      >
+                        {t("staff.emoticons.addEmoticon")}
+                      </Button>
+                      <RowActions label={t("staff.rowActions")}>
+                        <MenuItem
+                          tone="danger"
+                          icon={<IconTrash size={16} />}
+                          data-emoticon-set-delete={set.id}
+                          onClick={() => setConfirm({ kind: "set", id: set.id })}
+                        >
+                          {t("staff.emoticons.deleteSet")}
+                        </MenuItem>
+                      </RowActions>
+                    </span>
+                  }
+                >
+                  {set.emoticons.length === 0 ? (
+                    <EmptyState title={t("staff.emoticons.setEmpty")} />
+                  ) : (
+                    <ul className="emoticon-grid" data-emoticon-list>
+                      {set.emoticons.map((emoticon) => (
+                        <li className="emoticon-tile" key={emoticon.id} data-emoticon={emoticon.id}>
+                          <img src={emoticon.src} alt={emoticon.alt} width={28} height={28} />
+                          <span className="emoticon-tile-text">
+                            <code>:{emoticon.code}:</code>
+                            <span className="subtle truncate">{emoticon.alt}</span>
+                          </span>
+                          <RowActions label={t("staff.rowActions")}>
+                            <MenuItem
+                              icon={<IconEdit size={16} />}
+                              data-emoticon-edit={emoticon.id}
+                              onClick={() => {
+                                setEmoticonSetId(set.id);
+                                setEditingEmoticonId(emoticon.id);
+                                setEmoticonDraft({
+                                  code: emoticon.code,
+                                  alt: emoticon.alt,
+                                  position: emoticon.position,
+                                  imageBase64: "",
+                                  contentType: "",
+                                });
+                              }}
+                            >
+                              {t("staff.emoticons.edit")}
+                            </MenuItem>
+                            <MenuItem
+                              tone="danger"
+                              icon={<IconTrash size={16} />}
+                              data-emoticon-delete={emoticon.id}
+                              onClick={() => setConfirm({ kind: "emoticon", id: emoticon.id })}
+                            >
+                              {t("staff.emoticons.delete")}
+                            </MenuItem>
+                          </RowActions>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Panel>
+              ))}
+            </div>
+
+            <Panel title={t("staff.emoticons.setForm")}>
+              <div className="stack" data-emoticon-set-form>
+                <div className="form-grid">
+                  <Field label={t("staff.emoticons.field.key")}>
+                    {({ id }) => (
+                      <TextInput
+                        id={id}
+                        data-emoticon-set-field="key"
+                        value={setDraft.key}
+                        onChange={(event) =>
+                          setSetDraft((c) => ({ ...c, key: event.target.value }))
+                        }
+                      />
+                    )}
+                  </Field>
+                  <Field label={t("staff.emoticons.field.position")}>
+                    {({ id }) => (
+                      <TextInput
+                        id={id}
+                        type="number"
+                        min={0}
+                        data-emoticon-set-field="position"
+                        value={setDraft.position}
+                        onChange={(event) =>
+                          setSetDraft((c) => ({ ...c, position: Number(event.target.value) || 0 }))
+                        }
+                      />
+                    )}
+                  </Field>
+                </div>
+                <Field label={t("staff.emoticons.field.title")}>
+                  {({ id }) => (
+                    <TextInput
+                      id={id}
+                      data-emoticon-set-field="title"
+                      value={setDraft.title}
+                      onChange={(event) =>
+                        setSetDraft((c) => ({ ...c, title: event.target.value }))
+                      }
+                    />
+                  )}
+                </Field>
+                <Switch
                   data-emoticon-set-field="visible"
+                  label={t("staff.emoticons.field.visible")}
                   checked={setDraft.editorVisible}
                   onChange={(event) =>
                     setSetDraft((c) => ({ ...c, editorVisible: event.target.checked }))
                   }
                 />
-                <span>{t("staff.emoticons.field.visible")}</span>
-              </label>
-              <button type="button" data-emoticon-set-save onClick={saveSet}>
-                {t("staff.emoticons.saveSet")}
-              </button>
-            </div>
-          </section>
-
-          {emoticonSetId === null ? null : (
-            <section className="admin-panel" aria-labelledby="emoticon-editor-title">
-              <h2 id="emoticon-editor-title">{t("staff.emoticons.emoticonForm")}</h2>
-              <div className="admin-form" data-emoticon-form>
-                <label>
-                  <span>{t("staff.emoticons.field.code")}</span>
-                  <input
-                    data-emoticon-field="code"
-                    value={emoticonDraft.code}
-                    onChange={(event) =>
-                      setEmoticonDraft((c) => ({ ...c, code: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.emoticons.field.alt")}</span>
-                  <input
-                    data-emoticon-field="alt"
-                    value={emoticonDraft.alt}
-                    onChange={(event) =>
-                      setEmoticonDraft((c) => ({ ...c, alt: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.emoticons.field.position")}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    data-emoticon-field="position"
-                    value={emoticonDraft.position}
-                    onChange={(event) =>
-                      setEmoticonDraft((c) => ({
-                        ...c,
-                        position: Number(event.target.value) || 0,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.emoticons.field.image")}</span>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp"
-                    data-emoticon-field="image"
-                    onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <button type="button" data-emoticon-save onClick={saveEmoticon}>
-                  {t("staff.emoticons.saveEmoticon")}
-                </button>
+                <FormActions>
+                  <Button variant="primary" data-emoticon-set-save onClick={saveSet}>
+                    {t("staff.emoticons.saveSet")}
+                  </Button>
+                </FormActions>
               </div>
-            </section>
-          )}
-        </>
-      ) : null}
-    </div>
+            </Panel>
+          </div>
+        )}
+      </QueryState>
+
+      <Dialog
+        open={emoticonSetId !== null}
+        title={t("staff.emoticons.emoticonForm")}
+        closeLabel={t("staff.nav.close")}
+        onClose={closeEmoticon}
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeEmoticon}>
+              {t("staff.emoticons.cancel")}
+            </Button>
+            <Button variant="primary" data-emoticon-save onClick={saveEmoticon}>
+              {t("staff.emoticons.saveEmoticon")}
+            </Button>
+          </>
+        }
+      >
+        <div className="stack" data-emoticon-form>
+          <div className="form-grid">
+            <Field label={t("staff.emoticons.field.code")}>
+              {({ id }) => (
+                <TextInput
+                  id={id}
+                  data-emoticon-field="code"
+                  value={emoticonDraft.code}
+                  onChange={(event) =>
+                    setEmoticonDraft((c) => ({ ...c, code: event.target.value }))
+                  }
+                />
+              )}
+            </Field>
+            <Field label={t("staff.emoticons.field.position")}>
+              {({ id }) => (
+                <TextInput
+                  id={id}
+                  type="number"
+                  min={0}
+                  data-emoticon-field="position"
+                  value={emoticonDraft.position}
+                  onChange={(event) =>
+                    setEmoticonDraft((c) => ({
+                      ...c,
+                      position: Number(event.target.value) || 0,
+                    }))
+                  }
+                />
+              )}
+            </Field>
+          </div>
+          <Field label={t("staff.emoticons.field.alt")}>
+            {({ id }) => (
+              <TextInput
+                id={id}
+                data-emoticon-field="alt"
+                value={emoticonDraft.alt}
+                onChange={(event) => setEmoticonDraft((c) => ({ ...c, alt: event.target.value }))}
+              />
+            )}
+          </Field>
+          <Field label={t("staff.emoticons.field.image")}>
+            {({ id }) => (
+              <input
+                id={id}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                data-emoticon-field="image"
+                onChange={(event) => void chooseFile(event.target.files?.[0] ?? null)}
+              />
+            )}
+          </Field>
+        </div>
+      </Dialog>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        titleKey={
+          confirm?.kind === "set"
+            ? "staff.emoticons.confirmDeleteSet.title"
+            : "staff.emoticons.confirmDelete.title"
+        }
+        bodyKey={
+          confirm?.kind === "set"
+            ? "staff.emoticons.confirmDeleteSet.body"
+            : "staff.emoticons.confirmDelete.body"
+        }
+        confirmLabelKey={
+          confirm?.kind === "set" ? "staff.emoticons.deleteSet" : "staff.emoticons.delete"
+        }
+        tone="danger"
+        busy={mutate.isPending}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          const target = confirm;
+          setConfirm(null);
+
+          if (target !== null) {
+            mutate.mutate({
+              action: target.kind === "set" ? "set-delete" : "emoticon-delete",
+              id: target.id,
+            });
+          }
+        }}
+      />
+    </Page>
   );
 }

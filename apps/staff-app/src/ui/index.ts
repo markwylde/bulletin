@@ -11,4 +11,5 @@ export * from "./forms.tsx";
 export * from "./icons.tsx";
 export * from "./layout.tsx";
 export * from "./overlays.tsx";
+export * from "./page.tsx";
 export * from "./Table.tsx";

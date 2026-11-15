@@ -1,8 +1,29 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  EmptyState,
+  Field,
+  FormActions,
+  IconButton,
+  IconClose,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  MenuItem,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Select,
+  Table,
+  TextInput,
+} from "../ui/index.ts";
 
 interface OptionView {
   readonly value: string;
@@ -135,6 +156,7 @@ export function ProfileFieldsPage() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<FieldDraft>(emptyDraft);
   const [editing, setEditing] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["staff", "profile-fields"],
     queryFn: () => apiGet<FieldsView>("/api/staff/profile-fields"),
@@ -158,6 +180,7 @@ export function ProfileFieldsPage() {
   });
 
   const groups = query.data?.groups ?? [];
+  const fields = query.data?.fields ?? [];
   const usesOptions = draft.type === "select" || draft.type === "multiselect";
 
   const startCreate = (): void => {
@@ -211,339 +234,379 @@ export function ProfileFieldsPage() {
     });
   };
 
+  type LabelKey = "en" | "es" | "fr";
+  const setOption = (index: number, patch: Partial<(typeof draft.options)[number]>): void =>
+    setDraft((current) => ({
+      ...current,
+      options: current.options.map((entry, entryIndex) =>
+        entryIndex === index ? { ...entry, ...patch } : entry,
+      ),
+    }));
+  const labelField = (locale: LabelKey, labelKey: string) => (
+    <Field label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          {...{ [`data-profile-field-label-${locale}`]: true }}
+          value={draft[locale]}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, [locale]: event.target.value }))
+          }
+        />
+      )}
+    </Field>
+  );
+  const visibility = (field: (typeof fields)[number]): string =>
+    field.groups.length === 0
+      ? t("staff.profileFields.everyone")
+      : field.groups
+          .filter((group) => group.canView)
+          .map((group) => group.groupTitle)
+          .join(", ");
+
   return (
-    <div className="page" data-page="profile-fields">
-      <header className="page-header">
-        <h1>{t("staff.profileFields.title")}</h1>
-        <p>{t("staff.profileFields.intro")}</p>
-      </header>
-
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.profileFields.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-
-      {query.isSuccess ? (
-        <>
-          <section className="admin-panel" aria-labelledby="profile-field-list-title">
-            <h2 id="profile-field-list-title">{t("staff.profileFields.list")}</h2>
-            <div className="admin-form">
-              <button type="button" data-profile-field-new onClick={startCreate}>
-                {t("staff.profileFields.add")}
-              </button>
-            </div>
-            {query.data.fields.length === 0 ? (
-              <p className="widget-muted" data-profile-fields-empty>
-                {t("staff.profileFields.empty")}
-              </p>
-            ) : (
-              <ul className="profile-field-list" data-profile-field-list>
-                {query.data.fields.map((field) => (
-                  <li className="profile-field-row" key={field.id} data-profile-field={field.id}>
-                    <div className="profile-field-row__main">
-                      <strong>{field.labels.en ?? ""}</strong>{" "}
-                      <span className="widget-muted">
-                        <TypeLabel type={field.type} />
-                        {field.required ? ` · ${t("staff.profileFields.required")}` : ""}
-                        {` · ${t("staff.profileFields.position", { position: field.position })}`}
-                      </span>
-                      <div className="widget-muted">
-                        {t("staff.profileFields.visibility", {
-                          groups:
-                            field.groups.length === 0
-                              ? t("staff.profileFields.everyone")
-                              : field.groups
-                                  .filter((group) => group.canView)
-                                  .map((group) => group.groupTitle)
-                                  .join(", "),
-                        })}
+    <Page
+      id="profile-fields"
+      title={t("staff.profileFields.title")}
+      description={t("staff.profileFields.intro")}
+      actions={
+        <Button
+          variant="primary"
+          icon={<IconPlus size={16} />}
+          data-profile-field-new
+          disabled={!query.isSuccess}
+          onClick={startCreate}
+        >
+          {t("staff.profileFields.add")}
+        </Button>
+      }
+    >
+      <QueryState query={query} errorLabel={t("staff.profileFields.loadError")}>
+        {() => (
+          <div className={editing ? "page-split" : undefined}>
+            <Panel flush title={t("staff.profileFields.list")} data-profile-field-list>
+              <Table
+                caption={t("staff.profileFields.list")}
+                rows={fields}
+                rowKey={(field) => field.id}
+                rowProps={(field) => ({
+                  "data-profile-field": field.id,
+                  className: editing && field.id === draft.id ? "is-selected" : undefined,
+                })}
+                empty={
+                  <div data-profile-fields-empty>
+                    <EmptyState
+                      title={t("staff.profileFields.empty")}
+                      action={
+                        <Button size="sm" onClick={startCreate}>
+                          {t("staff.profileFields.add")}
+                        </Button>
+                      }
+                    />
+                  </div>
+                }
+                columns={[
+                  {
+                    id: "label",
+                    header: t("staff.profileFields.labelEn"),
+                    primary: true,
+                    cell: (field) => (
+                      <div className="stack stack-sm">
+                        <span className="list-row-title">
+                          {field.labels.en ?? ""}{" "}
+                          {field.required ? (
+                            <Badge tone="accent">{t("staff.profileFields.required")}</Badge>
+                          ) : null}
+                        </span>
+                        <span className="subtle">
+                          {t("staff.profileFields.visibility", { groups: visibility(field) })}
+                        </span>
                       </div>
-                    </div>
-                    <div className="admin-form">
-                      <button
-                        type="button"
-                        data-profile-field-edit={field.id}
-                        onClick={() => startEdit(field)}
-                      >
-                        {t("staff.profileFields.edit")}
-                      </button>
-                      <button
-                        type="button"
-                        data-profile-field-delete={field.id}
-                        onClick={() => mutate.mutate({ action: "delete", id: field.id })}
-                      >
-                        {t("staff.profileFields.delete")}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                    ),
+                  },
+                  {
+                    id: "type",
+                    header: t("staff.profileFields.type"),
+                    cell: (field) => <TypeLabel type={field.type} />,
+                  },
+                  {
+                    id: "position",
+                    header: t("staff.profileFields.positionLabel"),
+                    align: "end",
+                    cell: (field) => field.position,
+                  },
+                  {
+                    id: "actions",
+                    header: t("staff.rowActions"),
+                    align: "end",
+                    width: "5.5rem",
+                    cell: (field) => (
+                      <span className="cluster cluster-end">
+                        <IconButton
+                          size="sm"
+                          label={t("staff.profileFields.edit")}
+                          data-profile-field-edit={field.id}
+                          onClick={() => startEdit(field)}
+                        >
+                          <IconEdit size={16} />
+                        </IconButton>
+                        <RowActions label={t("staff.rowActions")}>
+                          <MenuItem
+                            tone="danger"
+                            icon={<IconTrash size={16} />}
+                            data-profile-field-delete={field.id}
+                            onClick={() => setDeleteId(field.id)}
+                          >
+                            {t("staff.profileFields.delete")}
+                          </MenuItem>
+                        </RowActions>
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
 
-          {editing ? (
-            <section className="admin-panel" aria-labelledby="profile-field-editor-title">
-              <h2 id="profile-field-editor-title">
-                {draft.id === null
-                  ? t("staff.profileFields.create")
-                  : t("staff.profileFields.editTitle")}
-              </h2>
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.profileFields.type")}</span>
-                  <select
-                    data-profile-field-type
-                    value={draft.type}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, type: event.target.value }))
-                    }
-                  >
-                    {TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        <TypeLabel type={type} />
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>{t("staff.profileFields.positionLabel")}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    data-profile-field-position
-                    value={draft.position}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        position: Number(event.target.value),
-                      }))
-                    }
-                  />
-                </label>
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
+            {editing ? (
+              <Panel
+                data-profile-field-editor
+                title={
+                  draft.id === null
+                    ? t("staff.profileFields.create")
+                    : t("staff.profileFields.editTitle")
+                }
+              >
+                <div className="stack">
+                  <div className="form-grid">
+                    <Field label={t("staff.profileFields.type")}>
+                      {({ id }) => (
+                        <Select
+                          id={id}
+                          data-profile-field-type
+                          value={draft.type}
+                          onChange={(event) =>
+                            setDraft((current) => ({ ...current, type: event.target.value }))
+                          }
+                        >
+                          {TYPES.map((type) => (
+                            <option key={type} value={type}>
+                              <TypeLabel type={type} />
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                    <Field label={t("staff.profileFields.positionLabel")}>
+                      {({ id }) => (
+                        <TextInput
+                          id={id}
+                          type="number"
+                          min={0}
+                          data-profile-field-position
+                          value={draft.position}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              position: Number(event.target.value),
+                            }))
+                          }
+                        />
+                      )}
+                    </Field>
+                  </div>
+                  <Checkbox
                     data-profile-field-required
+                    label={t("staff.profileFields.requiredLabel")}
                     checked={draft.required}
                     onChange={(event) =>
                       setDraft((current) => ({ ...current, required: event.target.checked }))
                     }
                   />
-                  <span>{t("staff.profileFields.requiredLabel")}</span>
-                </label>
-              </div>
+                  {labelField("en", "staff.profileFields.labelEn")}
+                  {labelField("es", "staff.profileFields.labelEs")}
+                  {labelField("fr", "staff.profileFields.labelFr")}
 
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.profileFields.labelEn")}</span>
-                  <input
-                    data-profile-field-label-en
-                    value={draft.en}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, en: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.profileFields.labelEs")}</span>
-                  <input
-                    data-profile-field-label-es
-                    value={draft.es}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, es: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.profileFields.labelFr")}</span>
-                  <input
-                    data-profile-field-label-fr
-                    value={draft.fr}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, fr: event.target.value }))
-                    }
-                  />
-                </label>
-              </div>
+                  {usesOptions ? (
+                    <fieldset className="field field-group">
+                      <legend className="field-label">{t("staff.profileFields.options")}</legend>
+                      <div className="stack stack-sm">
+                        {draft.options.map((option, index) => (
+                          <div className="option-row" key={option.id}>
+                            <TextInput
+                              aria-label={t("staff.profileFields.optionValue")}
+                              placeholder={t("staff.profileFields.optionValue")}
+                              value={option.value}
+                              onChange={(event) => setOption(index, { value: event.target.value })}
+                            />
+                            {(["en", "es", "fr"] as const).map((locale) => (
+                              <TextInput
+                                key={locale}
+                                aria-label={t(
+                                  locale === "en"
+                                    ? "staff.profileFields.labelEn"
+                                    : locale === "es"
+                                      ? "staff.profileFields.labelEs"
+                                      : "staff.profileFields.labelFr",
+                                )}
+                                placeholder={locale.toUpperCase()}
+                                value={option[locale]}
+                                onChange={(event) =>
+                                  setOption(index, { [locale]: event.target.value })
+                                }
+                              />
+                            ))}
+                            <IconButton
+                              size="sm"
+                              label={t("staff.profileFields.removeOption")}
+                              onClick={() =>
+                                setDraft((current) => ({
+                                  ...current,
+                                  options: current.options.filter(
+                                    (_entry, entryIndex) => entryIndex !== index,
+                                  ),
+                                }))
+                              }
+                            >
+                              <IconClose size={16} />
+                            </IconButton>
+                          </div>
+                        ))}
+                        <div>
+                          <Button
+                            size="sm"
+                            icon={<IconPlus size={14} />}
+                            data-profile-field-add-option
+                            onClick={() =>
+                              setDraft((current) => ({
+                                ...current,
+                                options: [
+                                  ...current.options,
+                                  { id: crypto.randomUUID(), value: "", en: "", es: "", fr: "" },
+                                ],
+                              }))
+                            }
+                          >
+                            {t("staff.profileFields.addOption")}
+                          </Button>
+                        </div>
+                      </div>
+                    </fieldset>
+                  ) : null}
 
-              {usesOptions ? (
-                <div className="admin-form">
-                  <h3>{t("staff.profileFields.options")}</h3>
-                  {draft.options.map((option, index) => (
-                    <div className="profile-field-option" key={option.id}>
-                      <input
-                        placeholder={t("staff.profileFields.optionValue")}
-                        value={option.value}
-                        onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            options: current.options.map((entry, entryIndex) =>
-                              entryIndex === index
-                                ? { ...entry, value: event.target.value }
-                                : entry,
-                            ),
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder={t("staff.profileFields.labelEn")}
-                        value={option.en}
-                        onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            options: current.options.map((entry, entryIndex) =>
-                              entryIndex === index ? { ...entry, en: event.target.value } : entry,
-                            ),
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder={t("staff.profileFields.labelEs")}
-                        value={option.es}
-                        onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            options: current.options.map((entry, entryIndex) =>
-                              entryIndex === index ? { ...entry, es: event.target.value } : entry,
-                            ),
-                          }))
-                        }
-                      />
-                      <input
-                        placeholder={t("staff.profileFields.labelFr")}
-                        value={option.fr}
-                        onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            options: current.options.map((entry, entryIndex) =>
-                              entryIndex === index ? { ...entry, fr: event.target.value } : entry,
-                            ),
-                          }))
-                        }
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDraft((current) => ({
-                            ...current,
-                            options: current.options.filter(
-                              (_entry, entryIndex) => entryIndex !== index,
-                            ),
-                          }))
-                        }
-                      >
-                        {t("staff.profileFields.removeOption")}
-                      </button>
+                  <fieldset className="field field-group">
+                    <legend className="field-label">{t("staff.profileFields.groups")}</legend>
+                    <p className="field-description">{t("staff.profileFields.groupsHelp")}</p>
+                    <div className="mini-table">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th scope="col">{t("staff.profileFields.group")}</th>
+                            <th scope="col" className="align-end">
+                              {t("staff.profileFields.canView")}
+                            </th>
+                            <th scope="col" className="align-end">
+                              {t("staff.profileFields.canEdit")}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groups.map((group) => {
+                            const rule = draft.groups.find((entry) => entry.groupId === group.id);
+
+                            return (
+                              <tr key={group.id} data-profile-field-group={group.id}>
+                                <th scope="row">{group.title}</th>
+                                <td className="align-end">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`${group.title}: ${t("staff.profileFields.canView")}`}
+                                    checked={rule?.canView === true}
+                                    onChange={(event) =>
+                                      setDraft((current) => ({
+                                        ...current,
+                                        groups: current.groups.map((entry) =>
+                                          entry.groupId === group.id
+                                            ? {
+                                                ...entry,
+                                                canView: event.target.checked,
+                                                canEdit: event.target.checked
+                                                  ? entry.canEdit
+                                                  : false,
+                                              }
+                                            : entry,
+                                        ),
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td className="align-end">
+                                  <input
+                                    type="checkbox"
+                                    aria-label={`${group.title}: ${t("staff.profileFields.canEdit")}`}
+                                    checked={rule?.canEdit === true}
+                                    disabled={rule?.canView !== true}
+                                    onChange={(event) =>
+                                      setDraft((current) => ({
+                                        ...current,
+                                        groups: current.groups.map((entry) =>
+                                          entry.groupId === group.id
+                                            ? { ...entry, canEdit: event.target.checked }
+                                            : entry,
+                                        ),
+                                      }))
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
-                  ))}
-                  <button
-                    type="button"
-                    data-profile-field-add-option
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        options: [
-                          ...current.options,
-                          { id: crypto.randomUUID(), value: "", en: "", es: "", fr: "" },
-                        ],
-                      }))
-                    }
-                  >
-                    {t("staff.profileFields.addOption")}
-                  </button>
+                  </fieldset>
+
+                  <FormActions>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setEditing(false);
+                        setDraft(emptyDraft());
+                      }}
+                    >
+                      {t("staff.profileFields.cancel")}
+                    </Button>
+                    <Button
+                      variant="primary"
+                      data-profile-field-save
+                      disabled={mutate.isPending}
+                      onClick={save}
+                    >
+                      {t("staff.profileFields.save")}
+                    </Button>
+                  </FormActions>
                 </div>
-              ) : null}
+              </Panel>
+            ) : null}
+          </div>
+        )}
+      </QueryState>
+      <ConfirmDialog
+        open={deleteId !== null}
+        titleKey="staff.profileFields.confirmDelete.title"
+        bodyKey="staff.profileFields.confirmDelete.body"
+        confirmLabelKey="staff.profileFields.delete"
+        tone="danger"
+        busy={mutate.isPending}
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          const id = deleteId;
+          setDeleteId(null);
 
-              <div className="admin-form">
-                <h3>{t("staff.profileFields.groups")}</h3>
-                <p className="widget-muted">{t("staff.profileFields.groupsHelp")}</p>
-                <table className="matrix-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">{t("staff.profileFields.group")}</th>
-                      <th scope="col">{t("staff.profileFields.canView")}</th>
-                      <th scope="col">{t("staff.profileFields.canEdit")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groups.map((group) => {
-                      const rule = draft.groups.find((entry) => entry.groupId === group.id);
-
-                      return (
-                        <tr key={group.id} data-profile-field-group={group.id}>
-                          <td>{group.title}</td>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={rule?.canView === true}
-                              onChange={(event) =>
-                                setDraft((current) => ({
-                                  ...current,
-                                  groups: current.groups.map((entry) =>
-                                    entry.groupId === group.id
-                                      ? {
-                                          ...entry,
-                                          canView: event.target.checked,
-                                          canEdit: event.target.checked ? entry.canEdit : false,
-                                        }
-                                      : entry,
-                                  ),
-                                }))
-                              }
-                            />
-                          </td>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={rule?.canEdit === true}
-                              disabled={rule?.canView !== true}
-                              onChange={(event) =>
-                                setDraft((current) => ({
-                                  ...current,
-                                  groups: current.groups.map((entry) =>
-                                    entry.groupId === group.id
-                                      ? { ...entry, canEdit: event.target.checked }
-                                      : entry,
-                                  ),
-                                }))
-                              }
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="admin-form">
-                <button
-                  type="button"
-                  data-profile-field-save
-                  disabled={mutate.isPending}
-                  onClick={save}
-                >
-                  {t("staff.profileFields.save")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(false);
-                    setDraft(emptyDraft());
-                  }}
-                >
-                  {t("staff.profileFields.cancel")}
-                </button>
-              </div>
-            </section>
-          ) : null}
-        </>
-      ) : null}
-    </div>
+          if (id !== null) {
+            mutate.mutate({ action: "delete", id });
+          }
+        }}
+      />
+    </Page>
   );
 }

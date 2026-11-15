@@ -54,6 +54,8 @@ integrationDescribe("staff ranks and badges", () => {
       }
 
       await clickSelector(view, `[data-rank-delete="${rankId}"]`);
+      await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+      await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
       await waitForExpression(view, `!document.querySelector('[data-rank="${rankId}"]')`, 20_000);
     });
   }, 180_000);
@@ -129,6 +131,8 @@ integrationDescribe("staff ranks and badges", () => {
       await view.navigate(new URL("/badges", STAFF_URL).toString());
       await waitForSelector(view, `[data-badge="${badgeId}"]`, 20_000);
       await clickSelector(view, `[data-badge-delete="${badgeId}"]`);
+      await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+      await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
       await waitForExpression(view, `!document.querySelector('[data-badge="${badgeId}"]')`, 20_000);
     });
   }, 240_000);

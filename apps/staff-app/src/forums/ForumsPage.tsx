@@ -1,8 +1,35 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  EmptyState,
+  Field,
+  FormActions,
+  IconArrowDown,
+  IconArrowUp,
+  IconButton,
+  IconClose,
+  IconEdit,
+  IconGrip,
+  IconPlus,
+  IconTrash,
+  MenuItem,
+  MenuSeparator,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Select,
+  Swatch,
+  Switch,
+  Textarea,
+  TextInput,
+} from "../ui/index.ts";
 
 type ForumType = "category" | "forum" | "redirect";
 
@@ -111,6 +138,7 @@ export function ForumsPage() {
   const [deleteChoice, setDeleteChoice] = useState<"move" | "delete">("move");
   const [deleteTarget, setDeleteTarget] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["staff", "forums"],
     queryFn: () => apiGet<{ forums: ForumRecord[] }>("/api/staff/forums"),
@@ -188,502 +216,561 @@ export function ForumsPage() {
       return;
     }
 
-    mutate.mutate({ action: "delete", id: forum.id });
-
-    if (selectedId === forum.id) {
-      refreshSelection(null);
-    }
+    setConfirmDeleteId(forum.id);
   };
 
-  return (
-    <div className="page" data-page="forums">
-      <header className="page-header">
-        <h1>{t("staff.forums.title")}</h1>
-        <p>{t("staff.forums.intro")}</p>
-      </header>
+  const patch = (update: Partial<SettingsDraft>): void =>
+    setSettings((current) => (current === null ? current : { ...current, ...update }));
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.forums.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-
-      {query.isSuccess ? (
-        <>
-          <section className="admin-panel" aria-labelledby="forum-tree-title">
-            <h2 id="forum-tree-title">{t("staff.forums.tree.title")}</h2>
-            <p className="widget-muted">{t("staff.forums.tree.help")}</p>
-            <div
-              className="forum-tree"
-              role="tree"
-              data-forum-root-drop
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => {
-                if (dragging !== null) {
-                  move(dragging, null, forums.filter((forum) => forum.parentId === null).length);
-                  setDragging(null);
+  const createForm = (
+    <Panel title={t("staff.forums.create.title")} data-forum-create>
+      <div className="stack">
+        <Field label={t("staff.forums.field.title")}>
+          {({ id }) => (
+            <TextInput
+              id={id}
+              data-forum-create-field="title"
+              value={createDraft.title}
+              onChange={(event) =>
+                setCreateDraft((current) => ({ ...current, title: event.target.value }))
+              }
+            />
+          )}
+        </Field>
+        <div className="form-grid">
+          <Field label={t("staff.forums.field.type")}>
+            {({ id }) => (
+              <Select
+                id={id}
+                data-forum-create-type
+                value={createDraft.type}
+                onChange={(event) =>
+                  setCreateDraft((current) => ({
+                    ...current,
+                    type: event.target.value as ForumType,
+                  }))
                 }
-              }}
-            >
-              {rows.map(({ forum, depth }) => (
-                <div
-                  className="forum-tree__row"
-                  role="treeitem"
-                  aria-level={depth + 1}
-                  tabIndex={-1}
-                  key={forum.id}
-                  data-forum-row={forum.id}
-                  data-forum-title={forum.title}
-                  draggable
-                  style={{ paddingInlineStart: `${depth * 16 + 8}px` }}
-                  onDragStart={() => setDragging(forum.id)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => {
-                    event.stopPropagation();
-                    dropOn(forum);
-                  }}
-                >
-                  <span className="forum-tree__handle" aria-hidden="true">
-                    ⋮⋮
-                  </span>
-                  <span className="forum-tree__title">{forum.title}</span>
-                  <span className="forum-tag">{t(`staff.forums.type.${forum.type}`)}</span>
-                  {forum.passwordProtected ? (
-                    <span className="forum-tag">{t("staff.forums.password")}</span>
-                  ) : null}
-                  <div className="forum-tree__actions">
-                    <button
-                      type="button"
-                      className="button-quiet"
-                      data-forum-move-up={forum.id}
-                      onClick={() => reorder(forum, -1)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="button-quiet"
-                      data-forum-move-down={forum.id}
-                      onClick={() => reorder(forum, 1)}
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      data-forum-settings={forum.id}
-                      onClick={() => refreshSelection(forum)}
-                    >
-                      {t("staff.forums.settings")}
-                    </button>
-                    <button
-                      type="button"
-                      className="button-danger"
-                      data-forum-delete={forum.id}
-                      onClick={() => deleteForum(forum)}
-                    >
-                      {t("staff.forums.delete")}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {rows.length === 0 ? <p className="widget-muted">{t("staff.forums.empty")}</p> : null}
-          </section>
+              >
+                <option value="category">{t("staff.forums.type.category")}</option>
+                <option value="forum">{t("staff.forums.type.forum")}</option>
+                <option value="redirect">{t("staff.forums.type.redirect")}</option>
+              </Select>
+            )}
+          </Field>
+          <Field label={t("staff.forums.field.parent")}>
+            {({ id }) => (
+              <Select
+                id={id}
+                data-forum-create-parent
+                value={createDraft.parentId}
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, parentId: event.target.value }))
+                }
+              >
+                <option value="">{t("staff.forums.parent.none")}</option>
+                {rows.map(({ forum, depth }) => (
+                  <option key={forum.id} value={forum.id}>
+                    {`${"— ".repeat(depth)}${forum.title}`}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </div>
+        {createDraft.type === "redirect" ? (
+          <Field label={t("staff.forums.field.redirectUrl")}>
+            {({ id }) => (
+              <TextInput
+                id={id}
+                type="url"
+                data-forum-create-field="redirect-url"
+                value={createDraft.redirectUrl}
+                onChange={(event) =>
+                  setCreateDraft((current) => ({ ...current, redirectUrl: event.target.value }))
+                }
+              />
+            )}
+          </Field>
+        ) : null}
+        <FormActions>
+          <Button
+            variant="primary"
+            data-forum-create-submit
+            disabled={mutate.isPending}
+            onClick={() =>
+              mutate.mutate(
+                {
+                  action: "create",
+                  title: createDraft.title,
+                  type: createDraft.type,
+                  parentId: createDraft.parentId === "" ? null : createDraft.parentId,
+                  ...(createDraft.type === "redirect"
+                    ? { redirectUrl: createDraft.redirectUrl }
+                    : {}),
+                },
+                { onSuccess: () => setCreateDraft(EMPTY_CREATE) },
+              )
+            }
+          >
+            {t("staff.forums.create.submit")}
+          </Button>
+        </FormActions>
+      </div>
+    </Panel>
+  );
 
-          <section className="admin-panel" aria-labelledby="forum-create-title">
-            <h2 id="forum-create-title">{t("staff.forums.create.title")}</h2>
-            <div className="admin-form" data-forum-create>
-              <label>
-                <span>{t("staff.forums.field.title")}</span>
-                <input
-                  data-forum-create-field="title"
-                  value={createDraft.title}
-                  onChange={(event) =>
-                    setCreateDraft((current) => ({ ...current, title: event.target.value }))
-                  }
+  const editor =
+    selected === null || settings === null ? null : (
+      <div className="stack" data-forum-editor={selected.id}>
+        <Panel
+          title={selected.title}
+          description={t("staff.forums.settings.title")}
+          actions={
+            <IconButton
+              size="sm"
+              label={t("staff.forums.cancel")}
+              data-forum-settings-cancel
+              onClick={() => refreshSelection(null)}
+            >
+              <IconClose size={16} />
+            </IconButton>
+          }
+        >
+          <div className="stack">
+            <Field label={t("staff.forums.field.title")}>
+              {({ id }) => (
+                <TextInput
+                  id={id}
+                  data-forum-setting="title"
+                  value={settings.title}
+                  onChange={(event) => patch({ title: event.target.value })}
                 />
-              </label>
-              <label>
-                <span>{t("staff.forums.field.type")}</span>
-                <select
-                  data-forum-create-type
-                  value={createDraft.type}
-                  onChange={(event) =>
-                    setCreateDraft((current) => ({
-                      ...current,
-                      type: event.target.value as ForumType,
-                    }))
-                  }
-                >
-                  <option value="category">{t("staff.forums.type.category")}</option>
-                  <option value="forum">{t("staff.forums.type.forum")}</option>
-                  <option value="redirect">{t("staff.forums.type.redirect")}</option>
-                </select>
-              </label>
-              <label>
-                <span>{t("staff.forums.field.parent")}</span>
-                <select
-                  data-forum-create-parent
-                  value={createDraft.parentId}
-                  onChange={(event) =>
-                    setCreateDraft((current) => ({ ...current, parentId: event.target.value }))
-                  }
-                >
-                  <option value="">{t("staff.forums.parent.none")}</option>
-                  {rows.map(({ forum, depth }) => (
-                    <option key={forum.id} value={forum.id}>
-                      {`${"— ".repeat(depth)}${forum.title}`}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {createDraft.type === "redirect" ? (
-                <label>
-                  <span>{t("staff.forums.field.redirectUrl")}</span>
-                  <input
-                    data-forum-create-field="redirect-url"
-                    value={createDraft.redirectUrl}
-                    onChange={(event) =>
-                      setCreateDraft((current) => ({ ...current, redirectUrl: event.target.value }))
-                    }
-                  />
-                </label>
-              ) : null}
-              <div className="admin-form__actions">
-                <button
-                  type="button"
-                  data-forum-create-submit
-                  disabled={mutate.isPending}
-                  onClick={() =>
-                    mutate.mutate({
-                      action: "create",
-                      title: createDraft.title,
-                      type: createDraft.type,
-                      parentId: createDraft.parentId === "" ? null : createDraft.parentId,
-                      ...(createDraft.type === "redirect"
-                        ? { redirectUrl: createDraft.redirectUrl }
-                        : {}),
-                    })
-                  }
-                >
-                  {t("staff.forums.create.submit")}
-                </button>
-              </div>
-            </div>
-          </section>
-
-          {selected !== null && settings !== null ? (
-            <section
-              className="admin-panel"
-              data-forum-editor={selected.id}
-              aria-labelledby="forum-settings-title"
-            >
-              <h2 id="forum-settings-title">{t("staff.forums.settings.title")}</h2>
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.forums.field.title")}</span>
-                  <input
-                    data-forum-setting="title"
-                    value={settings.title}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null ? current : { ...current, title: event.target.value },
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.forums.field.description")}</span>
-                  <textarea
-                    rows={3}
-                    data-forum-setting="description"
-                    value={settings.description}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null
-                          ? current
-                          : { ...current, description: event.target.value },
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.forums.field.rules")}</span>
-                  <textarea
-                    rows={5}
-                    data-forum-setting="rules"
-                    value={settings.rules}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null ? current : { ...current, rules: event.target.value },
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.forums.field.password")}</span>
-                  <input
-                    type="password"
-                    data-forum-setting="password"
-                    value={settings.password}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null ? current : { ...current, password: event.target.value },
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    data-forum-setting="clear-password"
-                    checked={settings.clearPassword}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null
-                          ? current
-                          : { ...current, clearPassword: event.target.checked },
-                      )
-                    }
-                  />
-                  <span>{t("staff.forums.field.clearPassword")}</span>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    data-forum-setting="show-moderators"
-                    checked={settings.showModerators}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null
-                          ? current
-                          : { ...current, showModerators: event.target.checked },
-                      )
-                    }
-                  />
-                  <span>{t("staff.forums.field.showModerators")}</span>
-                </label>
-                <label>
-                  <span>{t("staff.forums.field.language")}</span>
-                  <select
+              )}
+            </Field>
+            <Field label={t("staff.forums.field.description")}>
+              {({ id }) => (
+                <Textarea
+                  id={id}
+                  rows={3}
+                  data-forum-setting="description"
+                  value={settings.description}
+                  onChange={(event) => patch({ description: event.target.value })}
+                />
+              )}
+            </Field>
+            <Field label={t("staff.forums.field.rules")}>
+              {({ id }) => (
+                <Textarea
+                  id={id}
+                  rows={4}
+                  data-forum-setting="rules"
+                  value={settings.rules}
+                  onChange={(event) => patch({ rules: event.target.value })}
+                />
+              )}
+            </Field>
+            <Field label={t("staff.forums.field.password")}>
+              {({ id }) => (
+                <TextInput
+                  id={id}
+                  type="password"
+                  autoComplete="new-password"
+                  data-forum-setting="password"
+                  value={settings.password}
+                  onChange={(event) => patch({ password: event.target.value })}
+                />
+              )}
+            </Field>
+            {selected.passwordProtected ? (
+              <Checkbox
+                data-forum-setting="clear-password"
+                label={t("staff.forums.field.clearPassword")}
+                checked={settings.clearPassword}
+                onChange={(event) => patch({ clearPassword: event.target.checked })}
+              />
+            ) : null}
+            <div className="form-grid">
+              <Field label={t("staff.forums.field.language")}>
+                {({ id }) => (
+                  <Select
+                    id={id}
                     data-forum-setting="language"
                     value={settings.language}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null ? current : { ...current, language: event.target.value },
-                      )
-                    }
+                    onChange={(event) => patch({ language: event.target.value })}
                   >
                     <option value="">{t("staff.forums.language.default")}</option>
                     <option value="en">{t("staff.locale.en")}</option>
                     <option value="es">{t("staff.locale.es")}</option>
                     <option value="fr">{t("staff.locale.fr")}</option>
-                  </select>
-                </label>
-                <label>
-                  <span>{t("staff.forums.field.defaultSort")}</span>
-                  <select
+                  </Select>
+                )}
+              </Field>
+              <Field label={t("staff.forums.field.defaultSort")}>
+                {({ id }) => (
+                  <Select
+                    id={id}
                     data-forum-setting="default-sort"
                     value={settings.defaultSort}
                     onChange={(event) =>
-                      setSettings((current) =>
-                        current === null
-                          ? current
-                          : {
-                              ...current,
-                              defaultSort: event.target.value as ForumRecord["defaultSort"],
-                            },
-                      )
+                      patch({ defaultSort: event.target.value as ForumRecord["defaultSort"] })
                     }
                   >
                     <option value="last_post">{t("staff.forums.sort.lastPost")}</option>
                     <option value="start_date">{t("staff.forums.sort.startDate")}</option>
                     <option value="title">{t("staff.forums.sort.title")}</option>
-                  </select>
-                </label>
-                <label>
-                  <span>{t("staff.forums.field.prefixMode")}</span>
-                  <select
+                  </Select>
+                )}
+              </Field>
+              <Field label={t("staff.forums.field.prefixMode")}>
+                {({ id }) => (
+                  <Select
+                    id={id}
                     data-forum-setting="prefix-mode"
                     value={settings.prefixMode}
                     onChange={(event) =>
-                      setSettings((current) =>
-                        current === null
-                          ? current
-                          : {
-                              ...current,
-                              prefixMode: event.target.value as ForumRecord["prefixMode"],
-                            },
-                      )
+                      patch({ prefixMode: event.target.value as ForumRecord["prefixMode"] })
                     }
                   >
                     <option value="none">{t("staff.forums.prefixMode.none")}</option>
                     <option value="optional">{t("staff.forums.prefixMode.optional")}</option>
                     <option value="required">{t("staff.forums.prefixMode.required")}</option>
-                  </select>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    data-forum-setting="require-approval-topics"
-                    checked={settings.requireApprovalTopics}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null
-                          ? current
-                          : { ...current, requireApprovalTopics: event.target.checked },
-                      )
-                    }
-                  />
-                  <span>{t("staff.forums.field.requireApprovalTopics")}</span>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    data-forum-setting="require-approval-posts"
-                    checked={settings.requireApprovalPosts}
-                    onChange={(event) =>
-                      setSettings((current) =>
-                        current === null
-                          ? current
-                          : { ...current, requireApprovalPosts: event.target.checked },
-                      )
-                    }
-                  />
-                  <span>{t("staff.forums.field.requireApprovalPosts")}</span>
-                </label>
-                <fieldset>
-                  <legend>{t("staff.forums.field.prefixes")}</legend>
-                  <ul className="check-list">
-                    {(prefixes.data?.prefixes ?? []).map((prefix) => (
-                      <li key={prefix.id}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            data-forum-prefix={prefix.id}
-                            checked={settings.prefixIds.includes(prefix.id)}
-                            onChange={(event) =>
-                              setSettings((current) =>
-                                current === null
-                                  ? current
-                                  : {
-                                      ...current,
-                                      prefixIds: event.target.checked
-                                        ? [...current.prefixIds, prefix.id]
-                                        : current.prefixIds.filter((id) => id !== prefix.id),
-                                    },
-                              )
-                            }
-                          />
-                          <span>{prefix.labels.en ?? prefix.key}</span>
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                </fieldset>
-                <div className="admin-form__actions">
-                  <button
-                    type="button"
-                    data-forum-settings-save
-                    disabled={mutate.isPending}
-                    onClick={() =>
-                      mutate.mutate({
-                        action: "settings",
-                        id: selected.id,
-                        title: settings.title,
-                        description: settings.description,
-                        rules: settings.rules,
-                        password: settings.password,
-                        clearPassword: settings.clearPassword,
-                        showModerators: settings.showModerators,
-                        language: settings.language === "" ? null : settings.language,
-                        defaultSort: settings.defaultSort,
-                        prefixMode: settings.prefixMode,
-                        requireApprovalTopics: settings.requireApprovalTopics,
-                        requireApprovalPosts: settings.requireApprovalPosts,
-                        prefixIds: settings.prefixIds,
-                        ...(selected.type === "redirect"
-                          ? { redirectUrl: selected.redirectUrl ?? "" }
-                          : {}),
-                      })
-                    }
-                  >
-                    {t("staff.forums.settings.save")}
-                  </button>
-                  <button
-                    type="button"
-                    className="button-quiet"
-                    data-forum-settings-cancel
-                    onClick={() => refreshSelection(null)}
-                  >
-                    {t("staff.forums.cancel")}
-                  </button>
-                </div>
-                {selected.topicCount > 0 ? (
-                  <div className="forum-delete-choice" data-forum-delete-choice>
-                    <p>{t("staff.forums.delete.choice")}</p>
-                    <label>
-                      <input
-                        type="radio"
-                        name="topicAction"
-                        value="move"
-                        checked={deleteChoice === "move"}
-                        onChange={() => setDeleteChoice("move")}
-                      />
-                      <span>{t("staff.forums.delete.move")}</span>
-                    </label>
-                    {deleteChoice === "move" ? (
-                      <select
-                        data-forum-delete-target
-                        value={deleteTarget}
-                        onChange={(event) => setDeleteTarget(event.target.value)}
-                      >
-                        <option value="">{t("staff.forums.delete.target")}</option>
-                        {forums
-                          .filter((forum) => forum.id !== selected.id)
-                          .map((forum) => (
-                            <option key={forum.id} value={forum.id}>
-                              {forum.title}
-                            </option>
-                          ))}
-                      </select>
-                    ) : null}
-                    <label>
-                      <input
-                        type="radio"
-                        name="topicAction"
-                        value="delete"
-                        checked={deleteChoice === "delete"}
-                        onChange={() => setDeleteChoice("delete")}
-                      />
-                      <span>{t("staff.forums.delete.topics")}</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="button-danger"
-                      data-forum-delete-confirm
-                      onClick={() =>
-                        mutate.mutate({
-                          action: "delete",
-                          id: selected.id,
-                          topicAction: deleteChoice,
-                          ...(deleteChoice === "move" ? { moveToForumId: deleteTarget } : {}),
+                  </Select>
+                )}
+              </Field>
+            </div>
+            <div className="stack stack-sm">
+              <Switch
+                data-forum-setting="show-moderators"
+                label={t("staff.forums.field.showModerators")}
+                checked={settings.showModerators}
+                onChange={(event) => patch({ showModerators: event.target.checked })}
+              />
+              <Switch
+                data-forum-setting="require-approval-topics"
+                label={t("staff.forums.field.requireApprovalTopics")}
+                checked={settings.requireApprovalTopics}
+                onChange={(event) => patch({ requireApprovalTopics: event.target.checked })}
+              />
+              <Switch
+                data-forum-setting="require-approval-posts"
+                label={t("staff.forums.field.requireApprovalPosts")}
+                checked={settings.requireApprovalPosts}
+                onChange={(event) => patch({ requireApprovalPosts: event.target.checked })}
+              />
+            </div>
+            {(prefixes.data?.prefixes ?? []).length === 0 ? null : (
+              <fieldset className="field field-group">
+                <legend className="field-label">{t("staff.forums.field.prefixes")}</legend>
+                <div className="check-grid">
+                  {(prefixes.data?.prefixes ?? []).map((prefix) => (
+                    <Checkbox
+                      key={prefix.id}
+                      data-forum-prefix={prefix.id}
+                      label={
+                        <span className="with-swatch">
+                          <Swatch color={prefix.colour} />
+                          {prefix.labels.en ?? prefix.key}
+                        </span>
+                      }
+                      checked={settings.prefixIds.includes(prefix.id)}
+                      onChange={(event) =>
+                        patch({
+                          prefixIds: event.target.checked
+                            ? [...settings.prefixIds, prefix.id]
+                            : settings.prefixIds.filter((id) => id !== prefix.id),
                         })
                       }
-                    >
-                      {t("staff.forums.delete")}
-                    </button>
-                  </div>
+                    />
+                  ))}
+                </div>
+              </fieldset>
+            )}
+            <FormActions>
+              <Button variant="ghost" onClick={() => refreshSelection(null)}>
+                {t("staff.forums.cancel")}
+              </Button>
+              <Button
+                variant="primary"
+                data-forum-settings-save
+                disabled={mutate.isPending}
+                onClick={() =>
+                  mutate.mutate({
+                    action: "settings",
+                    id: selected.id,
+                    title: settings.title,
+                    description: settings.description,
+                    rules: settings.rules,
+                    password: settings.password,
+                    clearPassword: settings.clearPassword,
+                    showModerators: settings.showModerators,
+                    language: settings.language === "" ? null : settings.language,
+                    defaultSort: settings.defaultSort,
+                    prefixMode: settings.prefixMode,
+                    requireApprovalTopics: settings.requireApprovalTopics,
+                    requireApprovalPosts: settings.requireApprovalPosts,
+                    prefixIds: settings.prefixIds,
+                    ...(selected.type === "redirect"
+                      ? { redirectUrl: selected.redirectUrl ?? "" }
+                      : {}),
+                  })
+                }
+              >
+                {t("staff.forums.settings.save")}
+              </Button>
+            </FormActions>
+          </div>
+        </Panel>
+
+        {selected.topicCount > 0 ? (
+          <Panel title={t("staff.forums.delete.title")} data-forum-delete-choice>
+            <div className="stack">
+              <p className="muted">{t("staff.forums.delete.choice")}</p>
+              <div
+                className="stack stack-sm"
+                role="radiogroup"
+                aria-label={t("staff.forums.delete.title")}
+              >
+                <label className="checkbox">
+                  <input
+                    type="radio"
+                    name="topicAction"
+                    value="move"
+                    checked={deleteChoice === "move"}
+                    onChange={() => setDeleteChoice("move")}
+                  />
+                  <span className="checkbox-text">
+                    <span className="checkbox-label">{t("staff.forums.delete.move")}</span>
+                  </span>
+                </label>
+                {deleteChoice === "move" ? (
+                  <Select
+                    aria-label={t("staff.forums.delete.target")}
+                    data-forum-delete-target
+                    value={deleteTarget}
+                    onChange={(event) => setDeleteTarget(event.target.value)}
+                  >
+                    <option value="">{t("staff.forums.delete.target")}</option>
+                    {forums
+                      .filter((forum) => forum.id !== selected.id)
+                      .map((forum) => (
+                        <option key={forum.id} value={forum.id}>
+                          {forum.title}
+                        </option>
+                      ))}
+                  </Select>
                 ) : null}
+                <label className="checkbox">
+                  <input
+                    type="radio"
+                    name="topicAction"
+                    value="delete"
+                    checked={deleteChoice === "delete"}
+                    onChange={() => setDeleteChoice("delete")}
+                  />
+                  <span className="checkbox-text">
+                    <span className="checkbox-label">{t("staff.forums.delete.topics")}</span>
+                  </span>
+                </label>
               </div>
-            </section>
-          ) : null}
-        </>
-      ) : null}
-    </div>
+              <div>
+                <Button
+                  variant="danger"
+                  icon={<IconTrash size={16} />}
+                  data-forum-delete-confirm
+                  disabled={mutate.isPending || (deleteChoice === "move" && deleteTarget === "")}
+                  onClick={() => setConfirmDeleteId(selected.id)}
+                >
+                  {t("staff.forums.delete")}
+                </Button>
+              </div>
+            </div>
+          </Panel>
+        ) : null}
+      </div>
+    );
+
+  const pendingDelete = forums.find((forum) => forum.id === confirmDeleteId) ?? null;
+
+  return (
+    <Page
+      id="forums"
+      title={t("staff.forums.title")}
+      description={t("staff.forums.intro")}
+      actions={
+        selected === null ? undefined : (
+          <Button
+            variant="primary"
+            icon={<IconPlus size={16} />}
+            data-forum-new
+            onClick={() => refreshSelection(null)}
+          >
+            {t("staff.forums.create.title")}
+          </Button>
+        )
+      }
+    >
+      <QueryState query={query} errorLabel={t("staff.forums.loadError")}>
+        {() => (
+          <div className="page-split">
+            <Panel
+              flush
+              title={t("staff.forums.tree.title")}
+              description={t("staff.forums.tree.help")}
+            >
+              {rows.length === 0 ? (
+                <EmptyState title={t("staff.forums.empty")} />
+              ) : (
+                <div
+                  className="tree"
+                  role="tree"
+                  aria-label={t("staff.forums.tree.title")}
+                  data-forum-root-drop
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (dragging !== null) {
+                      move(
+                        dragging,
+                        null,
+                        forums.filter((forum) => forum.parentId === null).length,
+                      );
+                      setDragging(null);
+                    }
+                  }}
+                >
+                  {rows.map(({ forum, depth }) => (
+                    <div
+                      className={[
+                        "tree-row",
+                        forum.type === "category" ? "tree-row-category" : null,
+                        forum.id === selectedId ? "is-selected" : null,
+                        forum.id === dragging ? "is-dragging" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      role="treeitem"
+                      aria-level={depth + 1}
+                      aria-selected={forum.id === selectedId}
+                      tabIndex={-1}
+                      key={forum.id}
+                      data-forum-row={forum.id}
+                      data-forum-title={forum.title}
+                      draggable
+                      style={{
+                        paddingInlineStart: `calc(${depth} * var(--tree-indent) + var(--space-2))`,
+                      }}
+                      onDragStart={() => setDragging(forum.id)}
+                      onDragEnd={() => setDragging(null)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.stopPropagation();
+                        dropOn(forum);
+                      }}
+                    >
+                      <span className="tree-handle" aria-hidden="true">
+                        <IconGrip size={16} />
+                      </span>
+                      <span className="tree-main">
+                        <span className="tree-title">{forum.title}</span>
+                        <span className="tree-meta">
+                          {forum.type === "forum" ? null : (
+                            <Badge>{t(`staff.forums.type.${forum.type}`)}</Badge>
+                          )}
+                          {forum.passwordProtected ? (
+                            <Badge tone="warning">{t("staff.forums.password")}</Badge>
+                          ) : null}
+                          {forum.type === "forum" ? (
+                            <span className="subtle">
+                              {t("staff.forums.counts", {
+                                topics: forum.topicCount,
+                                posts: forum.postCount,
+                              })}
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
+                      <span className="tree-actions">
+                        <IconButton
+                          size="sm"
+                          label={t("staff.forums.settings")}
+                          data-forum-settings={forum.id}
+                          onClick={() => refreshSelection(forum)}
+                        >
+                          <IconEdit size={16} />
+                        </IconButton>
+                        <RowActions label={t("staff.rowActions")}>
+                          <MenuItem
+                            icon={<IconArrowUp size={16} />}
+                            data-forum-move-up={forum.id}
+                            onClick={() => reorder(forum, -1)}
+                          >
+                            {t("staff.forums.moveUp")}
+                          </MenuItem>
+                          <MenuItem
+                            icon={<IconArrowDown size={16} />}
+                            data-forum-move-down={forum.id}
+                            onClick={() => reorder(forum, 1)}
+                          >
+                            {t("staff.forums.moveDown")}
+                          </MenuItem>
+                          <MenuSeparator />
+                          <MenuItem
+                            tone="danger"
+                            icon={<IconTrash size={16} />}
+                            data-forum-delete={forum.id}
+                            onClick={() => deleteForum(forum)}
+                          >
+                            {t("staff.forums.delete")}
+                          </MenuItem>
+                        </RowActions>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+
+            {editor ?? createForm}
+          </div>
+        )}
+      </QueryState>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        titleKey="staff.forums.confirmDelete.title"
+        bodyKey={
+          pendingDelete !== null && pendingDelete.topicCount > 0
+            ? deleteChoice === "move"
+              ? "staff.forums.confirmDelete.moveBody"
+              : "staff.forums.confirmDelete.topicsBody"
+            : "staff.forums.confirmDelete.body"
+        }
+        confirmLabelKey="staff.forums.delete"
+        tone="danger"
+        busy={mutate.isPending}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={() => {
+          const forum = pendingDelete;
+          setConfirmDeleteId(null);
+
+          if (forum === null) {
+            return;
+          }
+
+          mutate.mutate(
+            forum.topicCount > 0
+              ? {
+                  action: "delete",
+                  id: forum.id,
+                  topicAction: deleteChoice,
+                  ...(deleteChoice === "move" ? { moveToForumId: deleteTarget } : {}),
+                }
+              : { action: "delete", id: forum.id },
+          );
+
+          if (selectedId === forum.id) {
+            refreshSelection(null);
+          }
+        }}
+      />
+    </Page>
   );
 }

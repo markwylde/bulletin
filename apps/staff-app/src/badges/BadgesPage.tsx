@@ -1,8 +1,27 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  FormActions,
+  IconButton,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  MenuItem,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Select,
+  Table,
+  TextInput,
+} from "../ui/index.ts";
 
 interface BadgeRuleView {
   readonly type: string;
@@ -88,6 +107,7 @@ export function BadgesPage() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<BadgeDraft>(EMPTY);
   const [editing, setEditing] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const query = useQuery({
     queryKey: ["staff", "badges"],
     queryFn: () => apiGet<{ badges: readonly BadgeView[] }>("/api/staff/badges"),
@@ -141,260 +161,268 @@ export function BadgesPage() {
     });
   };
 
+  type TextKey =
+    | "key"
+    | "en"
+    | "es"
+    | "fr"
+    | "descEn"
+    | "descEs"
+    | "descFr"
+    | "imageKey"
+    | "forumId";
+  const textField = (field: TextKey, labelKey: string, hook: string) => (
+    <Field label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          {...{ [hook]: true }}
+          value={draft[field]}
+          onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))}
+        />
+      )}
+    </Field>
+  );
+  const startNew = (): void => {
+    setDraft(EMPTY);
+    setEditing(true);
+  };
+
   return (
-    <div className="page" data-page="badges">
-      <header className="page-header">
-        <h1>{t("staff.badges.title")}</h1>
-        <p>{t("staff.badges.intro")}</p>
-      </header>
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.badges.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess ? (
-        <>
-          <section className="admin-panel">
-            <div className="admin-form">
-              <button
-                type="button"
-                data-badge-new
-                onClick={() => {
-                  setDraft(EMPTY);
-                  setEditing(true);
-                }}
-              >
-                {t("staff.badges.add")}
-              </button>
-            </div>
-            {query.data.badges.length === 0 ? (
-              <p className="widget-muted">{t("staff.badges.empty")}</p>
-            ) : (
-              <ul className="badge-list" data-badge-list>
-                {query.data.badges.map((badge) => (
-                  <li className="badge-row" key={badge.id} data-badge={badge.id}>
-                    <strong>{badge.labels.en ?? ""}</strong>{" "}
-                    <span className="widget-muted">
-                      {badge.rule === null ? (
-                        t("staff.badges.manual")
+    <Page
+      id="badges"
+      title={t("staff.badges.title")}
+      description={t("staff.badges.intro")}
+      actions={
+        <Button
+          variant="primary"
+          icon={<IconPlus size={16} />}
+          data-badge-new
+          disabled={!query.isSuccess}
+          onClick={startNew}
+        >
+          {t("staff.badges.add")}
+        </Button>
+      }
+    >
+      <QueryState query={query} errorLabel={t("staff.badges.loadError")}>
+        {(data) => (
+          <div className={editing ? "page-split" : undefined}>
+            <Panel flush title={t("staff.badges.title")} data-badge-list>
+              <Table
+                caption={t("staff.badges.title")}
+                rows={data.badges}
+                rowKey={(badge) => badge.id}
+                rowProps={(badge) => ({
+                  "data-badge": badge.id,
+                  className: editing && badge.id === draft.id ? "is-selected" : undefined,
+                })}
+                empty={
+                  <EmptyState
+                    title={t("staff.badges.empty")}
+                    action={
+                      <Button size="sm" onClick={startNew}>
+                        {t("staff.badges.add")}
+                      </Button>
+                    }
+                  />
+                }
+                columns={[
+                  {
+                    id: "label",
+                    header: t("staff.badges.labelEn"),
+                    primary: true,
+                    cell: (badge) => (
+                      <div className="stack stack-sm">
+                        <span className="list-row-title">{badge.labels.en ?? ""}</span>
+                        <span className="subtle">{badge.descriptionLabels.en ?? ""}</span>
+                      </div>
+                    ),
+                  },
+                  {
+                    id: "key",
+                    header: t("staff.badges.key"),
+                    cell: (badge) => <code>{badge.key}</code>,
+                  },
+                  {
+                    id: "rule",
+                    header: t("staff.badges.rule"),
+                    cell: (badge) =>
+                      badge.rule === null ? (
+                        <Badge>{t("staff.badges.manual")}</Badge>
                       ) : (
-                        <>
-                          <RuleLabel type={badge.rule.type} /> · {badge.rule.threshold}
-                        </>
-                      )}
-                    </span>
-                    <div className="admin-form">
-                      <button
-                        type="button"
-                        data-badge-edit={badge.id}
-                        onClick={() => {
-                          setDraft({
-                            id: badge.id,
-                            key: badge.key,
-                            en: badge.labels.en ?? "",
-                            es: badge.labels.es ?? "",
-                            fr: badge.labels.fr ?? "",
-                            descEn: badge.descriptionLabels.en ?? "",
-                            descEs: badge.descriptionLabels.es ?? "",
-                            descFr: badge.descriptionLabels.fr ?? "",
-                            imageKey: badge.imageKey ?? "",
-                            position: badge.position,
-                            ruleType: badge.rule?.type ?? "",
-                            threshold: badge.rule?.threshold ?? 0,
-                            forumId: badge.rule?.forumId ?? "",
-                          });
-                          setEditing(true);
-                        }}
-                      >
-                        {t("staff.badges.edit")}
-                      </button>
-                      <button
-                        type="button"
-                        data-badge-delete={badge.id}
-                        onClick={() => mutate.mutate({ action: "delete", id: badge.id })}
-                      >
-                        {t("staff.badges.delete")}
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          {editing ? (
-            <section className="admin-panel">
-              <h2>{draft.id === null ? t("staff.badges.create") : t("staff.badges.editTitle")}</h2>
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.badges.key")}</span>
-                  <input
-                    data-badge-key
-                    value={draft.key}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, key: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.badges.imageKey")}</span>
-                  <input
-                    data-badge-image
-                    value={draft.imageKey}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, imageKey: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.badges.position")}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    data-badge-position
-                    value={draft.position}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, position: Number(event.target.value) }))
-                    }
-                  />
-                </label>
-              </div>
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.badges.labelEn")}</span>
-                  <input
-                    data-badge-label-en
-                    value={draft.en}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, en: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.badges.labelEs")}</span>
-                  <input
-                    data-badge-label-es
-                    value={draft.es}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, es: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.badges.labelFr")}</span>
-                  <input
-                    data-badge-label-fr
-                    value={draft.fr}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, fr: event.target.value }))
-                    }
-                  />
-                </label>
-              </div>
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.badges.descriptionEn")}</span>
-                  <input
-                    data-badge-desc-en
-                    value={draft.descEn}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, descEn: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.badges.descriptionEs")}</span>
-                  <input
-                    data-badge-desc-es
-                    value={draft.descEs}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, descEs: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.badges.descriptionFr")}</span>
-                  <input
-                    data-badge-desc-fr
-                    value={draft.descFr}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, descFr: event.target.value }))
-                    }
-                  />
-                </label>
-              </div>
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.badges.rule")}</span>
-                  <select
-                    data-badge-rule
-                    value={draft.ruleType}
-                    onChange={(event) =>
-                      setDraft((current) => ({ ...current, ruleType: event.target.value }))
-                    }
-                  >
-                    <option value="">{t("staff.badges.manual")}</option>
-                    {RULE_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        <RuleLabel type={type} />
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {draft.ruleType !== "" ? (
-                  <>
-                    <label>
-                      <span>{t("staff.badges.threshold")}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        data-badge-threshold
-                        value={draft.threshold}
-                        onChange={(event) =>
-                          setDraft((current) => ({
-                            ...current,
-                            threshold: Number(event.target.value),
-                          }))
-                        }
-                      />
-                    </label>
-                    {draft.ruleType === "posts_in_forum" ? (
-                      <label>
-                        <span>{t("staff.badges.forumId")}</span>
-                        <input
-                          inputMode="numeric"
-                          data-badge-forum
-                          value={draft.forumId}
+                        <span>
+                          <RuleLabel type={badge.rule.type} /> ≥ {badge.rule.threshold}
+                        </span>
+                      ),
+                  },
+                  {
+                    id: "actions",
+                    header: t("staff.rowActions"),
+                    align: "end",
+                    width: "5.5rem",
+                    cell: (badge) => (
+                      <span className="cluster cluster-end">
+                        <IconButton
+                          size="sm"
+                          label={t("staff.badges.edit")}
+                          data-badge-edit={badge.id}
+                          onClick={() => {
+                            setDraft({
+                              id: badge.id,
+                              key: badge.key,
+                              en: badge.labels.en ?? "",
+                              es: badge.labels.es ?? "",
+                              fr: badge.labels.fr ?? "",
+                              descEn: badge.descriptionLabels.en ?? "",
+                              descEs: badge.descriptionLabels.es ?? "",
+                              descFr: badge.descriptionLabels.fr ?? "",
+                              imageKey: badge.imageKey ?? "",
+                              position: badge.position,
+                              ruleType: badge.rule?.type ?? "",
+                              threshold: badge.rule?.threshold ?? 0,
+                              forumId: badge.rule?.forumId ?? "",
+                            });
+                            setEditing(true);
+                          }}
+                        >
+                          <IconEdit size={16} />
+                        </IconButton>
+                        <RowActions label={t("staff.rowActions")}>
+                          <MenuItem
+                            tone="danger"
+                            icon={<IconTrash size={16} />}
+                            data-badge-delete={badge.id}
+                            onClick={() => setDeleteId(badge.id)}
+                          >
+                            {t("staff.badges.delete")}
+                          </MenuItem>
+                        </RowActions>
+                      </span>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
+
+            {editing ? (
+              <Panel
+                data-badge-editor
+                title={draft.id === null ? t("staff.badges.create") : t("staff.badges.editTitle")}
+              >
+                <div className="stack">
+                  <div className="form-grid">
+                    {textField("key", "staff.badges.key", "data-badge-key")}
+                    <Field label={t("staff.badges.position")}>
+                      {({ id }) => (
+                        <TextInput
+                          id={id}
+                          type="number"
+                          min={0}
+                          data-badge-position
+                          value={draft.position}
                           onChange={(event) =>
-                            setDraft((current) => ({ ...current, forumId: event.target.value }))
+                            setDraft((current) => ({
+                              ...current,
+                              position: Number(event.target.value),
+                            }))
                           }
                         />
-                      </label>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-              <div className="admin-form">
-                <button type="button" data-badge-save disabled={mutate.isPending} onClick={save}>
-                  {t("staff.badges.save")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(false);
-                    setDraft(EMPTY);
-                  }}
-                >
-                  {t("staff.badges.cancel")}
-                </button>
-              </div>
-            </section>
-          ) : null}
-        </>
-      ) : null}
-    </div>
+                      )}
+                    </Field>
+                  </div>
+                  {textField("imageKey", "staff.badges.imageKey", "data-badge-image")}
+                  {textField("en", "staff.badges.labelEn", "data-badge-label-en")}
+                  {textField("descEn", "staff.badges.descriptionEn", "data-badge-desc-en")}
+                  {textField("es", "staff.badges.labelEs", "data-badge-label-es")}
+                  {textField("descEs", "staff.badges.descriptionEs", "data-badge-desc-es")}
+                  {textField("fr", "staff.badges.labelFr", "data-badge-label-fr")}
+                  {textField("descFr", "staff.badges.descriptionFr", "data-badge-desc-fr")}
+                  <div className="form-grid">
+                    <Field label={t("staff.badges.rule")}>
+                      {({ id }) => (
+                        <Select
+                          id={id}
+                          data-badge-rule
+                          value={draft.ruleType}
+                          onChange={(event) =>
+                            setDraft((current) => ({ ...current, ruleType: event.target.value }))
+                          }
+                        >
+                          <option value="">{t("staff.badges.manual")}</option>
+                          {RULE_TYPES.map((type) => (
+                            <option key={type} value={type}>
+                              <RuleLabel type={type} />
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+                    {draft.ruleType === "" ? null : (
+                      <Field label={t("staff.badges.threshold")}>
+                        {({ id }) => (
+                          <TextInput
+                            id={id}
+                            type="number"
+                            min={0}
+                            data-badge-threshold
+                            value={draft.threshold}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                threshold: Number(event.target.value),
+                              }))
+                            }
+                          />
+                        )}
+                      </Field>
+                    )}
+                    {draft.ruleType === "posts_in_forum"
+                      ? textField("forumId", "staff.badges.forumId", "data-badge-forum")
+                      : null}
+                  </div>
+                  <FormActions>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        setEditing(false);
+                        setDraft(EMPTY);
+                      }}
+                    >
+                      {t("staff.badges.cancel")}
+                    </Button>
+                    <Button
+                      variant="primary"
+                      data-badge-save
+                      disabled={mutate.isPending}
+                      onClick={save}
+                    >
+                      {t("staff.badges.save")}
+                    </Button>
+                  </FormActions>
+                </div>
+              </Panel>
+            ) : null}
+          </div>
+        )}
+      </QueryState>
+      <ConfirmDialog
+        open={deleteId !== null}
+        titleKey="staff.badges.confirmDelete.title"
+        bodyKey="staff.badges.confirmDelete.body"
+        confirmLabelKey="staff.badges.delete"
+        tone="danger"
+        busy={mutate.isPending}
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          const id = deleteId;
+          setDeleteId(null);
+
+          if (id !== null) {
+            mutate.mutate({ action: "delete", id });
+          }
+        }}
+      />
+    </Page>
   );
 }

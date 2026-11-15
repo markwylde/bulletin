@@ -1,9 +1,30 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { ApiError, apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Field,
+  FormActions,
+  IconArrowDown,
+  IconArrowUp,
+  IconButton,
+  IconClose,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  MenuItem,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Select,
+  Swatch,
+  TextInput,
+} from "../ui/index.ts";
 
 interface GroupView {
   readonly id: string;
@@ -113,20 +134,17 @@ export function GroupsPage() {
     save.mutate({ action: "reorder", ids });
   };
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   const columns: readonly DataTableColumn<GroupView>[] = [
     {
       id: "title",
       headerKey: "staff.groups.title",
       cell: (group) => (
-        <span className="group-title-cell">
-          {group.nameColour === null ? null : (
-            <span
-              className="group-swatch"
-              style={{ backgroundColor: group.nameColour }}
-              aria-hidden="true"
-            />
-          )}
-          {group.title}
+        <span className="with-swatch">
+          {group.nameColour === null ? null : <Swatch color={group.nameColour} />}
+          <span className="truncate">{group.title}</span>
+          {group.isSystem ? <Badge>{t("staff.groups.system")}</Badge> : null}
         </span>
       ),
       sortValue: (group) => group.title,
@@ -134,7 +152,7 @@ export function GroupsPage() {
     {
       id: "key",
       headerKey: "staff.groups.key",
-      cell: (group) => <span className="log-action">{group.key}</span>,
+      cell: (group) => <code>{group.key}</code>,
       sortValue: (group) => group.key,
     },
     {
@@ -160,222 +178,270 @@ export function GroupsPage() {
     },
   ];
 
-  return (
-    <div className="page" data-page="groups">
-      <header className="page-header">
-        <h1>{t("staff.groups.titlePage")}</h1>
-        <p>{t("staff.groups.intro")}</p>
-      </header>
-
-      {groupsQuery.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {groupsQuery.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.groups.loadError")}</p>
-          <button type="button" onClick={() => void groupsQuery.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
+  const draftFields = (
+    draft: Draft,
+    setDraft: (update: (current: Draft) => Draft) => void,
+    hook: "data-group-field" | "data-group-edit-field",
+    withKey: boolean,
+  ) => (
+    <div className="form-grid">
+      {withKey ? (
+        <Field label={t("staff.groups.key")}>
+          {({ id }) => (
+            <TextInput
+              id={id}
+              {...{ [hook]: "key" }}
+              value={draft.key}
+              onChange={(event) => setDraft((current) => ({ ...current, key: event.target.value }))}
+            />
+          )}
+        </Field>
       ) : null}
-
-      {groupsQuery.isSuccess ? (
-        <section className="admin-panel" aria-labelledby="groups-list-title">
-          <h2 id="groups-list-title">{t("staff.groups.list.title")}</h2>
-          <DataTable
-            rows={groups}
-            columns={columns}
-            getRowId={(group) => group.key}
-            getRowLabel={(group) => group.title}
-            pageSize={20}
-            captionKey="staff.groups.caption"
-            emptyKey="staff.groups.empty"
-            rowActions={(group) => (
-              <>
-                <button
-                  type="button"
-                  data-group-edit={group.key}
-                  onClick={() => selectGroup(group)}
-                >
-                  {t("staff.groups.edit")}
-                </button>
-                <button
-                  type="button"
-                  data-group-up={group.key}
-                  disabled={groups[0]?.id === group.id}
-                  onClick={() => move(group, -1)}
-                >
-                  {t("staff.groups.moveUp")}
-                </button>
-                <button
-                  type="button"
-                  data-group-down={group.key}
-                  disabled={groups[groups.length - 1]?.id === group.id}
-                  onClick={() => move(group, 1)}
-                >
-                  {t("staff.groups.moveDown")}
-                </button>
-              </>
-            )}
+      <Field label={t("staff.groups.title")}>
+        {({ id }) => (
+          <TextInput
+            id={id}
+            {...{ [hook]: "title" }}
+            value={draft.title}
+            onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
           />
-        </section>
-      ) : null}
-
-      <section className="admin-panel" aria-labelledby="group-create-title">
-        <h2 id="group-create-title">{t("staff.groups.create.title")}</h2>
-        <div className="admin-form" data-group-create>
-          <label>
-            <span>{t("staff.groups.key")}</span>
-            <input
-              data-group-field="key"
-              value={createDraft.key}
+        )}
+      </Field>
+      <Field label={t("staff.groups.colour")}>
+        {({ id }) => (
+          <div className="with-swatch">
+            {draft.nameColour.trim() === "" ? null : <Swatch color={draft.nameColour} />}
+            <TextInput
+              id={id}
+              {...{ [hook]: "colour" }}
+              value={draft.nameColour}
               onChange={(event) =>
-                setCreateDraft((current) => ({ ...current, key: event.target.value }))
+                setDraft((current) => ({ ...current, nameColour: event.target.value }))
               }
             />
-          </label>
-          <label>
-            <span>{t("staff.groups.title")}</span>
-            <input
-              data-group-field="title"
-              value={createDraft.title}
-              onChange={(event) =>
-                setCreateDraft((current) => ({ ...current, title: event.target.value }))
-              }
-            />
-          </label>
-          <label>
-            <span>{t("staff.groups.colour")}</span>
-            <input
-              data-group-field="colour"
-              value={createDraft.nameColour}
-              onChange={(event) =>
-                setCreateDraft((current) => ({ ...current, nameColour: event.target.value }))
-              }
-            />
-          </label>
-          <label>
-            <span>{t("staff.groups.order")}</span>
-            <input
-              data-group-field="order"
-              type="number"
-              value={createDraft.displayOrder}
-              onChange={(event) =>
-                setCreateDraft((current) => ({ ...current, displayOrder: event.target.value }))
-              }
-            />
-          </label>
-          <button
-            type="button"
-            data-group-create-submit
-            disabled={save.isPending}
-            onClick={() => save.mutate({ action: "create", ...payloadFrom(createDraft) })}
-          >
-            {t("staff.groups.create.submit")}
-          </button>
-        </div>
-      </section>
-
-      {selected === null ? (
-        <section className="admin-panel" data-group-editor="none">
-          <p className="widget-muted">{t("staff.groups.choose")}</p>
-        </section>
-      ) : (
-        <section className="admin-panel" data-group-editor={selected.key}>
-          <h2>{t("staff.groups.editor.title", { group: selected.title })}</h2>
-          <div className="admin-form">
-            <label>
-              <span>{t("staff.groups.title")}</span>
-              <input
-                data-group-edit-field="title"
-                value={editDraft.title}
-                onChange={(event) =>
-                  setEditDraft((current) => ({ ...current, title: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              <span>{t("staff.groups.colour")}</span>
-              <input
-                data-group-edit-field="colour"
-                value={editDraft.nameColour}
-                onChange={(event) =>
-                  setEditDraft((current) => ({ ...current, nameColour: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              <span>{t("staff.groups.icon")}</span>
-              <input
-                data-group-edit-field="icon"
-                value={editDraft.icon}
-                onChange={(event) =>
-                  setEditDraft((current) => ({ ...current, icon: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              <span>{t("staff.groups.order")}</span>
-              <input
-                data-group-edit-field="order"
-                type="number"
-                value={editDraft.displayOrder}
-                onChange={(event) =>
-                  setEditDraft((current) => ({ ...current, displayOrder: event.target.value }))
-                }
-              />
-            </label>
-            <button
-              type="button"
-              data-group-save
-              disabled={save.isPending}
-              onClick={() =>
-                save.mutate({ action: "update", id: selected.id, ...payloadFrom(editDraft) })
-              }
-            >
-              {t("staff.groups.save")}
-            </button>
           </div>
-
-          <div className="admin-form">
-            <label>
-              <span>{t("staff.groups.replacement")}</span>
-              <select
-                data-group-replacement
-                value={replacementId}
-                onChange={(event) => setReplacementId(event.target.value)}
-              >
-                <option value="">{t("staff.groups.replacement.none")}</option>
-                {groups
-                  .filter((group) => group.id !== selected.id)
-                  .map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.title}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <button
-              type="button"
-              data-group-delete
-              disabled={save.isPending || selected.isSystem}
-              onClick={() =>
-                save.mutate({
-                  action: "delete",
-                  id: selected.id,
-                  replacementGroupId: replacementId === "" ? null : replacementId,
-                })
+        )}
+      </Field>
+      {withKey ? null : (
+        <Field label={t("staff.groups.icon")}>
+          {({ id }) => (
+            <TextInput
+              id={id}
+              {...{ [hook]: "icon" }}
+              value={draft.icon}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, icon: event.target.value }))
               }
-            >
-              {t("staff.groups.delete")}
-            </button>
-            {selected.isSystem ? (
-              <p className="widget-muted">{t("staff.groups.systemHint")}</p>
-            ) : null}
-            {selected.primaryMemberCount > 0 ? (
-              <p className="widget-muted">{t("staff.groups.replacementHint")}</p>
-            ) : null}
-          </div>
-        </section>
+            />
+          )}
+        </Field>
       )}
+      <Field label={t("staff.groups.order")}>
+        {({ id }) => (
+          <TextInput
+            id={id}
+            type="number"
+            {...{ [hook]: "order" }}
+            value={draft.displayOrder}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, displayOrder: event.target.value }))
+            }
+          />
+        )}
+      </Field>
     </div>
+  );
+
+  return (
+    <Page
+      id="groups"
+      title={t("staff.groups.titlePage")}
+      description={t("staff.groups.intro")}
+      actions={
+        <Button
+          variant="primary"
+          icon={<IconPlus size={16} />}
+          data-group-new
+          onClick={() => {
+            setSelectedId(null);
+            setCreateDraft(EMPTY_DRAFT);
+            document.querySelector<HTMLInputElement>('[data-group-field="key"]')?.focus();
+          }}
+        >
+          {t("staff.groups.create.title")}
+        </Button>
+      }
+    >
+      <QueryState query={groupsQuery} errorLabel={t("staff.groups.loadError")}>
+        {() => (
+          <div className="page-split">
+            <Panel title={t("staff.groups.list.title")} flush>
+              <DataTable
+                rows={groups}
+                columns={columns}
+                getRowId={(group) => group.key}
+                getRowLabel={(group) => group.title}
+                pageSize={20}
+                captionKey="staff.groups.caption"
+                emptyKey="staff.groups.empty"
+                rowClassName={(group) => (group.id === selectedId ? "is-selected" : undefined)}
+                rowActions={(group) => (
+                  <>
+                    <IconButton
+                      size="sm"
+                      label={t("staff.groups.edit")}
+                      data-group-edit={group.key}
+                      onClick={() => selectGroup(group)}
+                    >
+                      <IconEdit size={16} />
+                    </IconButton>
+                    <RowActions label={t("staff.rowActions")}>
+                      <MenuItem
+                        icon={<IconArrowUp size={16} />}
+                        data-group-up={group.key}
+                        disabled={groups[0]?.id === group.id}
+                        onClick={() => move(group, -1)}
+                      >
+                        {t("staff.groups.moveUp")}
+                      </MenuItem>
+                      <MenuItem
+                        icon={<IconArrowDown size={16} />}
+                        data-group-down={group.key}
+                        disabled={groups[groups.length - 1]?.id === group.id}
+                        onClick={() => move(group, 1)}
+                      >
+                        {t("staff.groups.moveDown")}
+                      </MenuItem>
+                    </RowActions>
+                  </>
+                )}
+              />
+            </Panel>
+
+            {selected === null ? (
+              <Panel title={t("staff.groups.create.title")} data-group-create>
+                <div className="stack">
+                  {draftFields(createDraft, setCreateDraft, "data-group-field", true)}
+                  <FormActions>
+                    <Button
+                      variant="primary"
+                      data-group-create-submit
+                      disabled={save.isPending}
+                      onClick={() => save.mutate({ action: "create", ...payloadFrom(createDraft) })}
+                    >
+                      {t("staff.groups.create.submit")}
+                    </Button>
+                  </FormActions>
+                </div>
+              </Panel>
+            ) : (
+              <div className="stack" data-group-editor={selected.key}>
+                <Panel
+                  title={t("staff.groups.editor.title", { group: selected.title })}
+                  description={<code>{selected.key}</code>}
+                  actions={
+                    <IconButton
+                      size="sm"
+                      label={t("staff.nav.close")}
+                      onClick={() => setSelectedId(null)}
+                    >
+                      <IconClose size={16} />
+                    </IconButton>
+                  }
+                >
+                  <div className="stack">
+                    {draftFields(editDraft, setEditDraft, "data-group-edit-field", false)}
+                    <FormActions>
+                      <Button
+                        variant="primary"
+                        data-group-save
+                        disabled={save.isPending}
+                        onClick={() =>
+                          save.mutate({
+                            action: "update",
+                            id: selected.id,
+                            ...payloadFrom(editDraft),
+                          })
+                        }
+                      >
+                        {t("staff.groups.save")}
+                      </Button>
+                    </FormActions>
+                  </div>
+                </Panel>
+                <Panel title={t("staff.groups.delete")}>
+                  <div className="stack">
+                    {selected.isSystem ? (
+                      <p className="muted">{t("staff.groups.systemHint")}</p>
+                    ) : (
+                      <>
+                        <Field
+                          label={t("staff.groups.replacement")}
+                          description={
+                            selected.primaryMemberCount > 0
+                              ? t("staff.groups.replacementHint")
+                              : undefined
+                          }
+                        >
+                          {({ id, describedBy }) => (
+                            <Select
+                              id={id}
+                              aria-describedby={describedBy}
+                              data-group-replacement
+                              value={replacementId}
+                              onChange={(event) => setReplacementId(event.target.value)}
+                            >
+                              <option value="">{t("staff.groups.replacement.none")}</option>
+                              {groups
+                                .filter((group) => group.id !== selected.id)
+                                .map((group) => (
+                                  <option key={group.id} value={group.id}>
+                                    {group.title}
+                                  </option>
+                                ))}
+                            </Select>
+                          )}
+                        </Field>
+                        <div>
+                          <Button
+                            variant="danger"
+                            icon={<IconTrash size={16} />}
+                            data-group-delete
+                            disabled={save.isPending}
+                            onClick={() => setConfirmDelete(true)}
+                          >
+                            {t("staff.groups.delete")}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </Panel>
+                <ConfirmDialog
+                  open={confirmDelete}
+                  titleKey="staff.groups.confirmDelete.title"
+                  bodyKey="staff.groups.confirmDelete.body"
+                  confirmLabelKey="staff.groups.delete"
+                  tone="danger"
+                  busy={save.isPending}
+                  onCancel={() => setConfirmDelete(false)}
+                  onConfirm={() => {
+                    setConfirmDelete(false);
+                    save.mutate(
+                      {
+                        action: "delete",
+                        id: selected.id,
+                        replacementGroupId: replacementId === "" ? null : replacementId,
+                      },
+                      { onSuccess: () => setSelectedId(null) },
+                    );
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </QueryState>
+    </Page>
   );
 }

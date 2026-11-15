@@ -1,6 +1,7 @@
 import {
   type InputHTMLAttributes,
   type ReactNode,
+  type Ref,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
   useId,
@@ -109,6 +110,7 @@ export function Checkbox({
 }: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
   readonly label: ReactNode;
   readonly description?: ReactNode;
+  readonly ref?: Ref<HTMLInputElement>;
 }) {
   return (
     <label className="checkbox">

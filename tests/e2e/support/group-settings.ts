@@ -16,14 +16,22 @@ import { staffBaseUrl } from "@bulletin/test-utils/urls";
  */
 export async function setMembersGroupSetting(key: string, value: number): Promise<void> {
   const cell = `[data-setting-cell="members:${key}"]`;
-  const save = `[data-setting-save="members:${key}"]`;
+  const save = "[data-settings-save]";
 
   await withPage(
-    { url: `${staffBaseUrl()}/groups/settings`, viewport: "mobile360" },
+    { url: `${staffBaseUrl()}/groups/settings?group=members`, viewport: "mobile360" },
     async (view) => {
       await loginAs(view, "admin");
       await waitForSelector(view, '[data-page="group-settings"]', 20_000);
       await waitForSelector(view, cell, 20_000);
+
+      if (
+        (await view.evaluate<string>(`document.querySelector(${JSON.stringify(cell)}).value`)) ===
+        String(value)
+      ) {
+        return;
+      }
+
       await setInputValue(view, cell, String(value));
       await waitForSelector(view, `${save}:not([disabled])`, 20_000);
       await clickSelector(view, save);

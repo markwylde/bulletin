@@ -98,6 +98,8 @@ integrationDescribe("staff forum manager", () => {
         ).toBe(true);
 
         await clickSelector(view, `[data-forum-delete="${sourceId}"]`);
+        await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+        await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
         await waitForExpression(
           view,
           `!document.querySelector('[data-forum-row="${sourceId}"]')`,

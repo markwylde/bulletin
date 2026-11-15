@@ -49,6 +49,8 @@ async function groupFlow(view: Bun.WebView): Promise<void> {
   );
 
   await clickSelector(view, "[data-group-delete]");
+  await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+  await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
   await waitForExpression(
     view,
     `!document.querySelector('${cardRow(key)}, [data-table-row="${key}"]')`,

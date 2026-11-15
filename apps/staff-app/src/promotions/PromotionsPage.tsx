@@ -1,8 +1,26 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  IconArrowRight,
+  IconButton,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  Page,
+  Panel,
+  QueryState,
+  Select,
+  Switch,
+  Table,
+  TextInput,
+} from "../ui/index.ts";
 
 interface PromotionView {
   readonly rules: ReadonlyArray<{
@@ -42,6 +60,7 @@ export function PromotionsPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const query = useQuery({
     queryKey: ["staff", "promotions"],
     queryFn: () => apiGet<PromotionView>("/api/staff/promotions"),
@@ -98,207 +117,263 @@ export function PromotionsPage() {
     });
   };
 
+  const criteriaText = (view: PromotionView, rule: PromotionView["rules"][number]): string =>
+    Object.entries(rule.criteria)
+      .map(([key, value]) => {
+        const labelKey = view.criteria.find((criterion) => criterion.key === key)?.labelKey;
+        return `${labelKey === undefined ? key : t(labelKey)} ≥ ${value}`;
+      })
+      .join(", ");
+
   return (
-    <div className="page" data-page="promotions">
-      <header className="page-header">
-        <h1>{t("staff.promotions.title")}</h1>
-        <p>{t("staff.promotions.intro")}</p>
-      </header>
+    <Page
+      id="promotions"
+      title={t("staff.promotions.title")}
+      description={t("staff.promotions.intro")}
+      actions={
+        query.isSuccess ? (
+          <Button
+            variant="primary"
+            icon={<IconPlus size={16} />}
+            data-promotion-new
+            onClick={() =>
+              setDraft({
+                ...EMPTY,
+                fromGroupId: query.data.groups[0]?.id ?? "",
+                toGroupId: query.data.groups[1]?.id ?? "",
+              })
+            }
+          >
+            {t("staff.promotions.new")}
+          </Button>
+        ) : undefined
+      }
+    >
+      <QueryState query={query} errorLabel={t("staff.promotions.loadError")}>
+        {(view) => (
+          <div className="page-split">
+            <Panel title={t("staff.promotions.list.title")} flush>
+              <Table
+                caption={t("staff.promotions.list.title")}
+                rows={view.rules}
+                rowKey={(rule) => rule.id}
+                rowProps={(rule) => ({
+                  "data-promotion-row": rule.id,
+                  className: rule.id === draft.id ? "is-selected" : undefined,
+                })}
+                empty={<EmptyState title={t("staff.promotions.empty")} />}
+                columns={[
+                  {
+                    id: "order",
+                    header: t("staff.promotions.order"),
+                    width: "4rem",
+                    cell: (rule) => rule.position,
+                  },
+                  {
+                    id: "path",
+                    header: `${t("staff.promotions.from")} → ${t("staff.promotions.to")}`,
+                    primary: true,
+                    cell: (rule) => (
+                      <span className="cluster">
+                        <code>{rule.fromGroupKey}</code>
+                        <IconArrowRight size={14} className="muted" />
+                        <code>{rule.toGroupKey}</code>
+                      </span>
+                    ),
+                  },
+                  {
+                    id: "criteria",
+                    header: t("staff.promotions.criteria"),
+                    cell: (rule) => criteriaText(view, rule),
+                  },
+                  {
+                    id: "enabled",
+                    header: t("staff.promotions.enabled"),
+                    cell: (rule) =>
+                      rule.enabled ? (
+                        <Badge tone="success" dot>
+                          {t("staff.promotions.enabled.yes")}
+                        </Badge>
+                      ) : (
+                        <Badge>{t("staff.promotions.enabled.no")}</Badge>
+                      ),
+                  },
+                  {
+                    id: "actions",
+                    header: t("staff.promotions.actions"),
+                    align: "end",
+                    width: "3rem",
+                    cell: (rule) => (
+                      <IconButton
+                        size="sm"
+                        label={t("staff.promotions.edit")}
+                        data-promotion-edit={rule.id}
+                        onClick={() => selectRule(rule)}
+                      >
+                        <IconEdit size={16} />
+                      </IconButton>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.promotions.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-
-      {query.isSuccess ? (
-        <>
-          <section className="admin-panel" aria-labelledby="promotions-list-title">
-            <h2 id="promotions-list-title">{t("staff.promotions.list.title")}</h2>
-            <div className="matrix-scroll" data-matrix-scroll>
-              <table className="matrix-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{t("staff.promotions.order")}</th>
-                    <th scope="col">{t("staff.promotions.from")}</th>
-                    <th scope="col">{t("staff.promotions.to")}</th>
-                    <th scope="col">{t("staff.promotions.criteria")}</th>
-                    <th scope="col">{t("staff.promotions.enabled")}</th>
-                    <th scope="col">{t("staff.promotions.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {query.data.rules.map((rule) => (
-                    <tr key={rule.id} data-promotion-row={rule.id}>
-                      <td data-label={t("staff.promotions.order")}>{rule.position}</td>
-                      <td data-label={t("staff.promotions.from")}>{rule.fromGroupKey}</td>
-                      <td data-label={t("staff.promotions.to")}>{rule.toGroupKey}</td>
-                      <td data-label={t("staff.promotions.criteria")}>
-                        {Object.entries(rule.criteria)
-                          .map(([key, value]) => {
-                            const labelKey = query.data.criteria.find(
-                              (criterion) => criterion.key === key,
-                            )?.labelKey;
-                            return `${labelKey === undefined ? key : t(labelKey)} ≥ ${value}`;
-                          })
-                          .join(", ")}
-                      </td>
-                      <td data-label={t("staff.promotions.enabled")}>
-                        {rule.enabled
-                          ? t("staff.promotions.enabled.yes")
-                          : t("staff.promotions.enabled.no")}
-                      </td>
-                      <td data-label={t("staff.promotions.actions")}>
-                        <button
-                          type="button"
-                          data-promotion-edit={rule.id}
-                          onClick={() => selectRule(rule)}
-                        >
-                          {t("staff.promotions.edit")}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button
-              type="button"
-              data-promotion-new
-              onClick={() =>
-                setDraft({
-                  ...EMPTY,
-                  fromGroupId: query.data.groups[0]?.id ?? "",
-                  toGroupId: query.data.groups[1]?.id ?? "",
-                })
+            <Panel
+              data-promotion-editor
+              title={
+                draft.id === null ? t("staff.promotions.new") : t("staff.promotions.editor.title")
               }
             >
-              {t("staff.promotions.new")}
-            </button>
-          </section>
-
-          <section className="admin-panel" data-promotion-editor>
-            <h2>{t("staff.promotions.editor.title")}</h2>
-            <div className="admin-form">
-              <label>
-                <span>{t("staff.promotions.from")}</span>
-                <select
-                  data-promotion-from
-                  value={draft.fromGroupId}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, fromGroupId: event.target.value }))
-                  }
-                >
-                  {query.data.groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>{t("staff.promotions.to")}</span>
-                <select
-                  data-promotion-to
-                  value={draft.toGroupId}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, toGroupId: event.target.value }))
-                  }
-                >
-                  {query.data.groups
-                    .filter((group) => group.id !== draft.fromGroupId)
-                    .map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.title}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                <span>{t("staff.promotions.position")}</span>
-                <input
-                  type="number"
-                  data-promotion-position
-                  value={draft.position}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, position: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <input
-                  type="checkbox"
+              <div className="stack">
+                <div className="form-grid">
+                  <Field label={t("staff.promotions.from")}>
+                    {({ id }) => (
+                      <Select
+                        id={id}
+                        data-promotion-from
+                        value={draft.fromGroupId}
+                        onChange={(event) =>
+                          setDraft((current) => ({ ...current, fromGroupId: event.target.value }))
+                        }
+                      >
+                        {view.groups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.title}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                  <Field label={t("staff.promotions.to")}>
+                    {({ id }) => (
+                      <Select
+                        id={id}
+                        data-promotion-to
+                        value={draft.toGroupId}
+                        onChange={(event) =>
+                          setDraft((current) => ({ ...current, toGroupId: event.target.value }))
+                        }
+                      >
+                        {view.groups
+                          .filter((group) => group.id !== draft.fromGroupId)
+                          .map((group) => (
+                            <option key={group.id} value={group.id}>
+                              {group.title}
+                            </option>
+                          ))}
+                      </Select>
+                    )}
+                  </Field>
+                  <Field label={t("staff.promotions.position")}>
+                    {({ id }) => (
+                      <TextInput
+                        id={id}
+                        type="number"
+                        data-promotion-position
+                        value={draft.position}
+                        onChange={(event) =>
+                          setDraft((current) => ({ ...current, position: event.target.value }))
+                        }
+                      />
+                    )}
+                  </Field>
+                </div>
+                <Switch
                   data-promotion-enabled
+                  label={t("staff.promotions.enabled")}
                   checked={draft.enabled}
                   onChange={(event) =>
                     setDraft((current) => ({ ...current, enabled: event.target.checked }))
                   }
                 />
-                <span>{t("staff.promotions.enabled")}</span>
-              </label>
-            </div>
-
-            <fieldset>
-              <legend>{t("staff.promotions.criteria")}</legend>
-              <div className="admin-form">
-                {query.data.criteria.map((criterion) => (
-                  <label key={criterion.key}>
-                    <span>{t(criterion.labelKey)}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      data-promotion-criterion={criterion.key}
-                      value={draft.criteria[criterion.key] ?? ""}
-                      onChange={(event) =>
-                        setDraft((current) => ({
-                          ...current,
-                          criteria: {
-                            ...current.criteria,
-                            [criterion.key]: event.target.value,
-                          },
-                        }))
-                      }
-                    />
-                  </label>
-                ))}
+                <fieldset className="field field-group">
+                  <legend className="field-label">{t("staff.promotions.criteria")}</legend>
+                  <div className="form-grid">
+                    {view.criteria.map((criterion) => (
+                      <Field key={criterion.key} label={t(criterion.labelKey)}>
+                        {({ id }) => (
+                          <TextInput
+                            id={id}
+                            type="number"
+                            min={0}
+                            data-promotion-criterion={criterion.key}
+                            value={draft.criteria[criterion.key] ?? ""}
+                            onChange={(event) =>
+                              setDraft((current) => ({
+                                ...current,
+                                criteria: {
+                                  ...current.criteria,
+                                  [criterion.key]: event.target.value,
+                                },
+                              }))
+                            }
+                          />
+                        )}
+                      </Field>
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="form-actions-bar form-actions-split">
+                  {draft.id === null ? (
+                    <span />
+                  ) : (
+                    <Button
+                      variant="danger"
+                      icon={<IconTrash size={16} />}
+                      data-promotion-delete
+                      disabled={save.isPending}
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      {t("staff.promotions.delete")}
+                    </Button>
+                  )}
+                  <Button
+                    variant="primary"
+                    data-promotion-save
+                    disabled={save.isPending || draft.fromGroupId === "" || draft.toGroupId === ""}
+                    onClick={() =>
+                      save.mutate({
+                        action: "save",
+                        id: draft.id,
+                        fromGroupId: draft.fromGroupId,
+                        toGroupId: draft.toGroupId,
+                        criteria: criteriaPayload(),
+                        position: Number(draft.position),
+                        enabled: draft.enabled,
+                      })
+                    }
+                  >
+                    {t("staff.promotions.save")}
+                  </Button>
+                </div>
               </div>
-            </fieldset>
-
-            <div className="admin-form">
-              <button
-                type="button"
-                data-promotion-save
-                disabled={save.isPending || draft.fromGroupId === "" || draft.toGroupId === ""}
-                onClick={() =>
-                  save.mutate({
-                    action: "save",
-                    id: draft.id,
-                    fromGroupId: draft.fromGroupId,
-                    toGroupId: draft.toGroupId,
-                    criteria: criteriaPayload(),
-                    position: Number(draft.position),
-                    enabled: draft.enabled,
-                  })
-                }
-              >
-                {t("staff.promotions.save")}
-              </button>
-              <button
-                type="button"
-                data-promotion-delete
-                disabled={save.isPending || draft.id === null}
-                onClick={() => save.mutate({ action: "delete", id: draft.id })}
-              >
-                {t("staff.promotions.delete")}
-              </button>
-            </div>
-          </section>
-        </>
-      ) : null}
-    </div>
+            </Panel>
+            <ConfirmDialog
+              open={confirmDelete}
+              titleKey="staff.promotions.confirmDelete.title"
+              bodyKey="staff.promotions.confirmDelete.body"
+              confirmLabelKey="staff.promotions.delete"
+              tone="danger"
+              busy={save.isPending}
+              onCancel={() => setConfirmDelete(false)}
+              onConfirm={() => {
+                setConfirmDelete(false);
+                save.mutate(
+                  { action: "delete", id: draft.id },
+                  {
+                    onSuccess: () =>
+                      setDraft({
+                        ...EMPTY,
+                        fromGroupId: view.groups[0]?.id ?? "",
+                        toGroupId: view.groups[1]?.id ?? "",
+                      }),
+                  },
+                );
+              }}
+            />
+          </div>
+        )}
+      </QueryState>
+    </Page>
   );
 }

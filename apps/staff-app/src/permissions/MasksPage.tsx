@@ -1,8 +1,28 @@
+import type { Translator } from "@bulletin/i18n";
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  Checkbox,
+  Field,
+  FormActions,
+  IconButton,
+  IconClose,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  Notice,
+  Page,
+  Panel,
+  QueryState,
+  Select,
+  Table,
+  TextInput,
+} from "../ui/index.ts";
 
 interface MaskView {
   readonly id: string;
@@ -49,9 +69,32 @@ const ACTION_LABELS = {
   vote: { labelKey: "staff.masks.action.vote" },
 } as const;
 
-function actionLabelKey(action: string): string {
+/**
+ * Core actions have catalog labels. Plugin actions (`plugin.<id>.<name>`) are labelled from
+ * the plugin's own catalog key when the staff catalog has it, otherwise from the action name,
+ * so a raw key never reaches the page.
+ */
+export function actionLabel(t: Translator, action: string): string {
   const core = ACTION_LABELS[action as keyof typeof ACTION_LABELS];
-  return core?.labelKey ?? `staff.pluginForumAction.${action.replace(/^plugin\./, "")}`;
+
+  if (core !== undefined) {
+    return t(core.labelKey);
+  }
+
+  const key = `staff.pluginForumAction.${action.replace(/^plugin\./, "")}`;
+  const translated = t(key);
+
+  if (translated !== key) {
+    return translated;
+  }
+
+  const [, plugin = "", name = action] = /^plugin\.([^.]+)\.(.+)$/.exec(action) ?? [];
+  const words = name.replace(/[_-]+/g, " ").trim();
+
+  return t("staff.masks.pluginAction", {
+    action: words.charAt(0).toUpperCase() + words.slice(1),
+    plugin,
+  });
 }
 
 function maskDraft(mask: MaskView): MaskDraft {
@@ -80,15 +123,25 @@ export function MasksPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState<MaskDraft>(EMPTY_DRAFT);
   const [editDraft, setEditDraft] = useState<MaskDraft>(EMPTY_DRAFT);
   const [gridAction, setGridAction] = useState<string>("read");
   const [gridAllowed, setGridAllowed] = useState(true);
   const [gridScope, setGridScope] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const query = useQuery({
     queryKey: ["staff", "masks"],
     queryFn: () => apiGet<MatrixView>("/api/staff/masks"),
   });
+  // Forum titles make the matrix readable; without access to the forum list it shows IDs.
+  const forumsQuery = useQuery({
+    queryKey: ["staff", "forums"],
+    queryFn: () => apiGet<{ forums: { id: string; title: string }[] }>("/api/staff/forums"),
+    retry: false,
+  });
+  const forumTitle = (forumId: string): string =>
+    forumsQuery.data?.forums.find((forum) => forum.id === forumId)?.title ?? `#${forumId}`;
   const masks = query.data?.masks ?? [];
   const selected = masks.find((mask) => mask.id === selectedId) ?? masks[0] ?? null;
   const save = useMutation({
@@ -122,247 +175,443 @@ export function MasksPage() {
     query.data === undefined || selected === null
       ? []
       : query.data.rows.filter((row) => row.maskId === selected.id);
+  const bulkLabel = gridAllowed ? t("staff.masks.grid.allowAll") : t("staff.masks.grid.denyAll");
+
+  const forumHeader = (view: MatrixView, forumId: string, extra?: ReactNode) => (
+    <th scope="row" className="matrix-forum">
+      <span
+        className="matrix-forum-name"
+        style={{ paddingInlineStart: `${depthOf(view, forumId) * 1}rem` }}
+      >
+        {forumTitle(forumId)}
+      </span>
+      {extra}
+    </th>
+  );
 
   return (
-    <div className="page" data-page="masks">
-      <header className="page-header">
-        <h1>{t("staff.masks.title")}</h1>
-        <p>{t("staff.masks.intro")}</p>
-      </header>
+    <Page
+      id="masks"
+      title={t("staff.masks.title")}
+      description={t("staff.masks.intro")}
+      actions={
+        <Button
+          variant="primary"
+          icon={<IconPlus size={16} />}
+          data-mask-new
+          onClick={() => {
+            setCreating(true);
+            setCreateDraft(EMPTY_DRAFT);
+          }}
+        >
+          {t("staff.masks.create.title")}
+        </Button>
+      }
+    >
+      <QueryState query={query} errorLabel={t("staff.masks.loadError")}>
+        {(view) => (
+          <>
+            {view.enabled ? null : (
+              <Notice tone="warning" data-matrix-disabled title={t("staff.masks.disabled")} />
+            )}
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.masks.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-
-      {query.isSuccess && !query.data.enabled ? (
-        <p className="widget-muted" data-matrix-disabled>
-          {t("staff.masks.disabled")}
-        </p>
-      ) : null}
-
-      {query.isSuccess ? (
-        <>
-          <section className="admin-panel" data-mask-list aria-labelledby="mask-list-title">
-            <h2 id="mask-list-title">{t("staff.masks.list.title")}</h2>
-            <div className="matrix-scroll" data-matrix-scroll>
-              <table className="matrix-table">
-                <thead>
-                  <tr>
-                    <th scope="col">{t("staff.masks.key")}</th>
-                    <th scope="col">{t("staff.masks.name")}</th>
-                    <th scope="col">{t("staff.masks.description")}</th>
-                    <th scope="col">{t("staff.masks.actions")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {masks.map((mask) => (
-                    <tr key={mask.id} data-mask-row={mask.key}>
-                      <th scope="row">
-                        <span className="log-action">{mask.key}</span>
-                      </th>
-                      <td data-label={t("staff.masks.name")}>{mask.title}</td>
-                      <td data-label={t("staff.masks.description")}>{mask.description}</td>
-                      <td data-label={t("staff.masks.actions")}>
-                        <button
-                          type="button"
+            <div className="page-split">
+              <Panel title={t("staff.masks.list.title")} flush data-mask-list>
+                <Table
+                  caption={t("staff.masks.list.title")}
+                  rows={masks}
+                  rowKey={(mask) => mask.id}
+                  rowProps={(mask) => ({
+                    "data-mask-row": mask.key,
+                    className: mask.id === selected?.id ? "is-selected" : undefined,
+                  })}
+                  columns={[
+                    {
+                      id: "name",
+                      header: t("staff.masks.name"),
+                      primary: true,
+                      cell: (mask) => (
+                        <div className="stack stack-sm">
+                          <span className="list-row-title">
+                            {mask.title}{" "}
+                            {mask.isSystem ? <Badge>{t("staff.groups.system")}</Badge> : null}
+                          </span>
+                          {mask.description === "" ? null : (
+                            <span className="subtle">{mask.description}</span>
+                          )}
+                        </div>
+                      ),
+                    },
+                    {
+                      id: "key",
+                      header: t("staff.masks.key"),
+                      cell: (mask) => <code>{mask.key}</code>,
+                    },
+                    {
+                      id: "groups",
+                      header: t("staff.masks.groups.count"),
+                      align: "end",
+                      cell: (mask) => mask.groupIds.length,
+                    },
+                    {
+                      id: "actions",
+                      header: t("staff.masks.actions"),
+                      align: "end",
+                      width: "3rem",
+                      cell: (mask) => (
+                        <IconButton
+                          size="sm"
+                          label={t("staff.masks.edit")}
                           data-mask-edit={mask.key}
-                          onClick={() => setSelectedId(mask.id)}
+                          onClick={() => {
+                            setSelectedId(mask.id);
+                            setCreating(false);
+                          }}
                         >
-                          {t("staff.masks.edit")}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+                          <IconEdit size={16} />
+                        </IconButton>
+                      ),
+                    },
+                  ]}
+                />
+              </Panel>
 
-          <section className="admin-panel" aria-labelledby="mask-create-title">
-            <h2 id="mask-create-title">{t("staff.masks.create.title")}</h2>
-            <div className="admin-form" data-mask-create>
-              <label>
-                <span>{t("staff.masks.key")}</span>
-                <input
-                  data-mask-create-field="key"
-                  value={createDraft.key}
-                  onChange={(event) =>
-                    setCreateDraft((current) => ({ ...current, key: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>{t("staff.masks.name")}</span>
-                <input
-                  data-mask-create-field="title"
-                  value={createDraft.title}
-                  onChange={(event) =>
-                    setCreateDraft((current) => ({ ...current, title: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>{t("staff.masks.description")}</span>
-                <input
-                  data-mask-create-field="description"
-                  value={createDraft.description}
-                  onChange={(event) =>
-                    setCreateDraft((current) => ({ ...current, description: event.target.value }))
-                  }
-                />
-              </label>
-              <button
-                type="button"
-                data-mask-create-submit
-                disabled={save.isPending}
-                onClick={() =>
-                  save.mutate({
-                    action: "save",
-                    key: createDraft.key,
-                    title: createDraft.title,
-                    description: createDraft.description,
-                    displayOrder: Number(createDraft.displayOrder),
-                  })
-                }
-              >
-                {t("staff.masks.create.submit")}
-              </button>
-            </div>
-          </section>
-
-          {selected === null ? null : (
-            <section className="admin-panel" data-mask-editor={selected.key}>
-              <h2>{t("staff.masks.editor.title", { mask: selected.title })}</h2>
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.masks.name")}</span>
-                  <input
-                    data-mask-edit-field="title"
-                    value={editDraft.title}
-                    onChange={(event) =>
-                      setEditDraft((current) => ({ ...current, title: event.target.value }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>{t("staff.masks.description")}</span>
-                  <input
-                    data-mask-edit-field="description"
-                    value={editDraft.description}
-                    onChange={(event) =>
-                      setEditDraft((current) => ({ ...current, description: event.target.value }))
-                    }
-                  />
-                </label>
-                <button
-                  type="button"
-                  data-mask-save
-                  disabled={save.isPending}
-                  onClick={() =>
-                    save.mutate({
-                      action: "save",
-                      id: selected.id,
-                      key: selected.key,
-                      title: editDraft.title,
-                      description: editDraft.description,
-                      displayOrder: selected.displayOrder,
-                    })
+              {creating || selected === null ? (
+                <Panel
+                  title={t("staff.masks.create.title")}
+                  data-mask-create
+                  actions={
+                    selected === null ? undefined : (
+                      <IconButton
+                        size="sm"
+                        label={t("staff.nav.close")}
+                        onClick={() => setCreating(false)}
+                      >
+                        <IconClose size={16} />
+                      </IconButton>
+                    )
                   }
                 >
-                  {t("staff.masks.save")}
-                </button>
-                <button
-                  type="button"
-                  data-mask-delete
-                  disabled={save.isPending || selected.isSystem}
-                  onClick={() => save.mutate({ action: "delete", id: selected.id })}
+                  <div className="stack">
+                    <Field label={t("staff.masks.key")}>
+                      {({ id }) => (
+                        <TextInput
+                          id={id}
+                          data-mask-create-field="key"
+                          value={createDraft.key}
+                          onChange={(event) =>
+                            setCreateDraft((current) => ({ ...current, key: event.target.value }))
+                          }
+                        />
+                      )}
+                    </Field>
+                    <Field label={t("staff.masks.name")}>
+                      {({ id }) => (
+                        <TextInput
+                          id={id}
+                          data-mask-create-field="title"
+                          value={createDraft.title}
+                          onChange={(event) =>
+                            setCreateDraft((current) => ({ ...current, title: event.target.value }))
+                          }
+                        />
+                      )}
+                    </Field>
+                    <Field label={t("staff.masks.description")}>
+                      {({ id }) => (
+                        <TextInput
+                          id={id}
+                          data-mask-create-field="description"
+                          value={createDraft.description}
+                          onChange={(event) =>
+                            setCreateDraft((current) => ({
+                              ...current,
+                              description: event.target.value,
+                            }))
+                          }
+                        />
+                      )}
+                    </Field>
+                    <FormActions>
+                      <Button
+                        variant="primary"
+                        data-mask-create-submit
+                        disabled={save.isPending}
+                        onClick={() =>
+                          save.mutate(
+                            {
+                              action: "save",
+                              key: createDraft.key,
+                              title: createDraft.title,
+                              description: createDraft.description,
+                              displayOrder: Number(createDraft.displayOrder),
+                            },
+                            { onSuccess: () => setCreating(false) },
+                          )
+                        }
+                      >
+                        {t("staff.masks.create.submit")}
+                      </Button>
+                    </FormActions>
+                  </div>
+                </Panel>
+              ) : (
+                <Panel
+                  data-mask-editor={selected.key}
+                  title={t("staff.masks.editor.title", { mask: selected.title })}
+                  description={<code>{selected.key}</code>}
                 >
-                  {t("staff.masks.delete")}
-                </button>
-              </div>
-
-              <h3>{t("staff.masks.groups.title")}</h3>
-              <ul className="check-list">
-                {query.data.groups.map((group) => (
-                  <li key={group.id}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        data-mask-link={`${group.id}:${selected.key}`}
-                        checked={selected.groupIds.includes(group.id)}
-                        onChange={(event) =>
+                  <div className="stack">
+                    <Field label={t("staff.masks.name")}>
+                      {({ id }) => (
+                        <TextInput
+                          id={id}
+                          data-mask-edit-field="title"
+                          value={editDraft.title}
+                          onChange={(event) =>
+                            setEditDraft((current) => ({ ...current, title: event.target.value }))
+                          }
+                        />
+                      )}
+                    </Field>
+                    <Field label={t("staff.masks.description")}>
+                      {({ id }) => (
+                        <TextInput
+                          id={id}
+                          data-mask-edit-field="description"
+                          value={editDraft.description}
+                          onChange={(event) =>
+                            setEditDraft((current) => ({
+                              ...current,
+                              description: event.target.value,
+                            }))
+                          }
+                        />
+                      )}
+                    </Field>
+                    <fieldset className="field field-group">
+                      <legend className="field-label">{t("staff.masks.groups.title")}</legend>
+                      <div className="check-grid">
+                        {view.groups.map((group) => (
+                          <Checkbox
+                            key={group.id}
+                            label={group.title}
+                            data-mask-link={`${group.id}:${selected.key}`}
+                            checked={selected.groupIds.includes(group.id)}
+                            onChange={(event) =>
+                              save.mutate({
+                                action: "link",
+                                groupId: group.id,
+                                maskId: selected.id,
+                                linked: event.target.checked,
+                              })
+                            }
+                          />
+                        ))}
+                      </div>
+                    </fieldset>
+                    <div className="form-actions-bar form-actions-split">
+                      <Button
+                        variant="danger"
+                        icon={<IconTrash size={16} />}
+                        data-mask-delete
+                        disabled={save.isPending || selected.isSystem}
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        {t("staff.masks.delete")}
+                      </Button>
+                      <Button
+                        variant="primary"
+                        data-mask-save
+                        disabled={save.isPending}
+                        onClick={() =>
                           save.mutate({
-                            action: "link",
-                            groupId: group.id,
-                            maskId: selected.id,
-                            linked: event.target.checked,
+                            action: "save",
+                            id: selected.id,
+                            key: selected.key,
+                            title: editDraft.title,
+                            description: editDraft.description,
+                            displayOrder: selected.displayOrder,
                           })
                         }
-                      />
-                      <span>{group.title}</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-
-              <h3>{t("staff.masks.grid.title")}</h3>
-              <div className="admin-form">
-                <label>
-                  <span>{t("staff.masks.bulk.action")}</span>
-                  <select
-                    data-grid-action
-                    value={gridAction}
-                    onChange={(event) => setGridAction(event.target.value)}
-                  >
-                    {query.data.actions.map((action) => (
-                      <option key={action} value={action}>
-                        {t(actionLabelKey(action))}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>{t("staff.masks.grid.scope")}</span>
-                  <select
-                    data-grid-scope
-                    value={gridScope}
-                    onChange={(event) => setGridScope(event.target.value)}
-                  >
-                    {query.data.forums.map((forum) => (
-                      <option key={forum.id} value={forum.id}>
-                        {`#${forum.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    data-grid-allowed
-                    checked={gridAllowed}
-                    onChange={(event) => setGridAllowed(event.target.checked)}
+                      >
+                        {t("staff.masks.save")}
+                      </Button>
+                    </div>
+                  </div>
+                  <ConfirmDialog
+                    open={confirmDelete}
+                    titleKey="staff.masks.confirmDelete.title"
+                    bodyKey="staff.masks.confirmDelete.body"
+                    confirmLabelKey="staff.masks.delete"
+                    tone="danger"
+                    busy={save.isPending}
+                    onCancel={() => setConfirmDelete(false)}
+                    onConfirm={() => {
+                      setConfirmDelete(false);
+                      save.mutate(
+                        { action: "delete", id: selected.id },
+                        { onSuccess: () => setSelectedId(null) },
+                      );
+                    }}
                   />
-                  <span>{t("staff.masks.bulk.allow")}</span>
-                </label>
+                </Panel>
+              )}
+            </div>
+
+            {selected === null ? null : (
+              <Panel
+                flush
+                title={t("staff.masks.matrix.titleFor", { mask: selected.title })}
+                description={
+                  <>
+                    <span data-masks-member-note>{t("staff.masks.memberRevocationNote")}</span>{" "}
+                    <span data-masks-guest-note>{t("staff.masks.guestRevocationNote")}</span>
+                  </>
+                }
+              >
+                <div className="matrix-scroll" data-matrix-scroll>
+                  <table className="matrix" data-mask-matrix={selected.key}>
+                    <thead>
+                      <tr>
+                        <th scope="col">{t("staff.masks.forum")}</th>
+                        {view.actions.map((action) => (
+                          <th key={action} scope="col" className="matrix-col">
+                            {actionLabel(t, action)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {view.forums.map((forum) => {
+                        const row = selectedRows.find(
+                          (candidate) => candidate.forumId === forum.id,
+                        );
+                        return (
+                          <tr key={forum.id} data-matrix-row={forum.id}>
+                            {forumHeader(
+                              view,
+                              forum.id,
+                              row?.inherits === true ? (
+                                <Badge data-matrix-inherits={`${forum.id}:${selected.key}`}>
+                                  {t("staff.masks.inherits")}
+                                </Badge>
+                              ) : null,
+                            )}
+                            {view.actions.map((action) => {
+                              const allowed =
+                                row !== undefined &&
+                                (row.effectiveActions & (view.actionBits[action] ?? 0)) !== 0;
+                              const label = `${forumTitle(forum.id)}: ${actionLabel(t, action)}`;
+                              return (
+                                <td
+                                  key={action}
+                                  data-label={actionLabel(t, action)}
+                                  className="matrix-cell"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    aria-label={label}
+                                    title={
+                                      allowed ? t("staff.masks.allowed") : t("staff.masks.denied")
+                                    }
+                                    data-matrix-cell={`${forum.id}:${selected.key}:${action}`}
+                                    data-allowed={allowed}
+                                    data-inherited={row?.inherits === true}
+                                    checked={allowed}
+                                    disabled={!view.enabled}
+                                    onChange={() =>
+                                      save.mutate({
+                                        action: "cell",
+                                        forumId: forum.id,
+                                        maskId: selected.id,
+                                        permissionAction: action,
+                                        allowed: !allowed,
+                                      })
+                                    }
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+            )}
+
+            <Panel
+              flush
+              title={t("staff.masks.grid.title")}
+              description={t("staff.masks.grid.intro")}
+            >
+              <div className="toolbar">
+                <div className="toolbar-filters">
+                  <Field label={t("staff.masks.bulk.action")}>
+                    {({ id }) => (
+                      <Select
+                        id={id}
+                        data-grid-action
+                        value={gridAction}
+                        onChange={(event) => setGridAction(event.target.value)}
+                      >
+                        {view.actions.map((action) => (
+                          <option key={action} value={action}>
+                            {actionLabel(t, action)}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                  <Field label={t("staff.masks.grid.scope")}>
+                    {({ id }) => (
+                      <Select
+                        id={id}
+                        data-grid-scope
+                        value={gridScope}
+                        onChange={(event) => setGridScope(event.target.value)}
+                      >
+                        {view.forums.map((forum) => (
+                          <option key={forum.id} value={forum.id}>
+                            {forumTitle(forum.id)}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                  <Field label={t("staff.masks.grid.bulkValue")}>
+                    {({ id }) => (
+                      <Select
+                        id={id}
+                        data-grid-bulk-value
+                        value={gridAllowed ? "allow" : "deny"}
+                        onChange={(event) => setGridAllowed(event.target.value === "allow")}
+                      >
+                        <option value="allow">{t("staff.masks.allowed")}</option>
+                        <option value="deny">{t("staff.masks.denied")}</option>
+                      </Select>
+                    )}
+                  </Field>
+                </div>
               </div>
               <div className="matrix-scroll" data-matrix-scroll>
-                <table className="matrix-table" data-mask-grid>
+                <table className="matrix" data-mask-grid>
                   <thead>
                     <tr>
                       <th scope="col">{t("staff.masks.forum")}</th>
-                      {query.data.masks.map((mask) => (
-                        <th key={mask.id} scope="col">
-                          <span>{mask.title}</span>
+                      {view.masks.map((mask) => (
+                        <th key={mask.id} scope="col" className="matrix-col">
+                          <span className="matrix-col-label">{mask.title}</span>
                           <button
                             type="button"
+                            className="matrix-bulk"
+                            title={t("staff.masks.grid.bulkColumnHint", {
+                              forum: forumTitle(gridScope),
+                            })}
                             data-grid-column-bulk={mask.key}
-                            disabled={gridScope === ""}
+                            disabled={gridScope === "" || !view.enabled}
                             onClick={() =>
                               save.mutate({
                                 action: "bulk",
@@ -373,20 +622,23 @@ export function MasksPage() {
                               })
                             }
                           >
-                            {t("staff.masks.grid.bulkColumn")}
+                            {bulkLabel}
                           </button>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {query.data.forums.map((forum) => (
+                    {view.forums.map((forum) => (
                       <tr key={forum.id} data-grid-row={forum.id}>
-                        <th scope="row">
-                          <span>{`#${forum.id}`}</span>
+                        {forumHeader(
+                          view,
+                          forum.id,
                           <button
                             type="button"
+                            className="matrix-bulk"
                             data-grid-row-bulk={forum.id}
+                            disabled={!view.enabled}
                             onClick={() =>
                               save.mutate({
                                 action: "bulk",
@@ -396,25 +648,27 @@ export function MasksPage() {
                               })
                             }
                           >
-                            {t("staff.masks.grid.bulkRow")}
-                          </button>
-                        </th>
-                        {query.data.masks.map((mask) => {
-                          const row = query.data.rows.find(
+                            {bulkLabel}
+                          </button>,
+                        )}
+                        {view.masks.map((mask) => {
+                          const row = view.rows.find(
                             (candidate) =>
                               candidate.forumId === forum.id && candidate.maskId === mask.id,
                           );
                           const allowed =
                             row !== undefined &&
-                            (row.effectiveActions & (query.data.actionBits[gridAction] ?? 0)) !== 0;
+                            (row.effectiveActions & (view.actionBits[gridAction] ?? 0)) !== 0;
                           return (
-                            <td key={mask.id} data-label={mask.title}>
-                              <button
-                                type="button"
-                                className={allowed ? "matrix-toggle is-on" : "matrix-toggle"}
+                            <td key={mask.id} data-label={mask.title} className="matrix-cell">
+                              <input
+                                type="checkbox"
+                                aria-label={`${forumTitle(forum.id)}: ${mask.title}`}
                                 data-grid-cell={`${forum.id}:${mask.key}:${gridAction}`}
                                 data-grid-allowed={allowed}
-                                onClick={() =>
+                                checked={allowed}
+                                disabled={!view.enabled}
+                                onChange={() =>
                                   save.mutate({
                                     action: "cell",
                                     forumId: forum.id,
@@ -423,9 +677,7 @@ export function MasksPage() {
                                     allowed: !allowed,
                                   })
                                 }
-                              >
-                                {allowed ? t("staff.masks.allowed") : t("staff.masks.denied")}
-                              </button>
+                              />
                             </td>
                           );
                         })}
@@ -434,83 +686,10 @@ export function MasksPage() {
                   </tbody>
                 </table>
               </div>
-
-              <h3>{t("staff.masks.matrix.title")}</h3>
-              <p className="lede" data-masks-guest-note>
-                {t("staff.masks.guestRevocationNote")}
-              </p>
-              <p className="lede" data-masks-member-note>
-                {t("staff.masks.memberRevocationNote")}
-              </p>
-              <div className="matrix-scroll" data-matrix-scroll>
-                <table className="matrix-table" data-mask-matrix={selected.key}>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t("staff.masks.forum")}</th>
-                      {query.data.actions.map((action) => (
-                        <th key={action} scope="col">
-                          {t(actionLabelKey(action))}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {query.data.forums.map((forum) => {
-                      const row = selectedRows.find((candidate) => candidate.forumId === forum.id);
-                      return (
-                        <tr key={forum.id} data-matrix-row={forum.id}>
-                          <th
-                            scope="row"
-                            style={{
-                              paddingInlineStart: `${depthOf(query.data, forum.id) * 12 + 8}px`,
-                            }}
-                          >
-                            {`#${forum.id}`}
-                            {row?.inherits === true ? (
-                              <span
-                                className="section-detail"
-                                data-matrix-inherits={`${forum.id}:${selected.key}`}
-                              >
-                                {t("staff.masks.inherits")}
-                              </span>
-                            ) : null}
-                          </th>
-                          {query.data.actions.map((action) => {
-                            const allowed =
-                              row !== undefined &&
-                              (row.effectiveActions & (query.data.actionBits[action] ?? 0)) !== 0;
-                            return (
-                              <td key={action} data-label={t(actionLabelKey(action))}>
-                                <button
-                                  type="button"
-                                  className={allowed ? "matrix-toggle is-on" : "matrix-toggle"}
-                                  data-matrix-cell={`${forum.id}:${selected.key}:${action}`}
-                                  data-allowed={allowed}
-                                  onClick={() =>
-                                    save.mutate({
-                                      action: "cell",
-                                      forumId: forum.id,
-                                      maskId: selected.id,
-                                      permissionAction: action,
-                                      allowed: !allowed,
-                                    })
-                                  }
-                                >
-                                  {allowed ? t("staff.masks.allowed") : t("staff.masks.denied")}
-                                </button>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-        </>
-      ) : null}
-    </div>
+            </Panel>
+          </>
+        )}
+      </QueryState>
+    </Page>
   );
 }

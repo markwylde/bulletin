@@ -96,6 +96,8 @@ integrationDescribe("staff custom profile fields", () => {
         }
 
         await clickSelector(view, `[data-profile-field-delete="${rowId}"]`);
+        await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+        await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
         await waitForExpression(
           view,
           `!document.querySelector('[data-profile-field="${rowId}"]')`,

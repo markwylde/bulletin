@@ -101,6 +101,8 @@ async function integrationKeyFlow(view: Bun.WebView): Promise<void> {
     );
     row?.querySelector("[data-api-key-revoke]")?.click();
   })()`);
+  await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+  await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
   await waitForExpression(
     view,
     `[...document.querySelectorAll("[data-api-key-row]")].some((row) =>

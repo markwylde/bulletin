@@ -49,7 +49,7 @@ integrationDescribe("staff bans at mobile360", () => {
             throw new Error("Missing the new IP ban");
           }
 
-          await clickSelector(view, `[data-ip-ban-row="${id}"] .button-danger`);
+          await clickSelector(view, `[data-ip-ban-row="${id}"] [data-ip-ban-remove]`);
           await waitForExpression(
             view,
             `document.querySelector('[data-ip-ban-row="${id}"]') === null`,

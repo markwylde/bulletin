@@ -1,8 +1,23 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Button,
+  Checkbox,
+  EmptyState,
+  Field,
+  IconButton,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  Page,
+  Panel,
+  QueryState,
+  Table,
+  TextInput,
+} from "../ui/index.ts";
 
 interface PrefixRecord {
   readonly id: string;
@@ -54,6 +69,7 @@ export function PrefixesPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(EMPTY);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const query = useQuery({
     queryKey: ["staff", "prefixes"],
     queryFn: () => apiGet<PrefixView>("/api/staff/prefixes"),
@@ -87,181 +103,203 @@ export function PrefixesPage() {
     }));
   };
 
+  const textField = (field: "key" | "en" | "es" | "fr", labelKey: string, hook: string) => (
+    <Field label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          data-prefix-field={hook}
+          value={draft[field]}
+          onChange={(event) => setDraft((current) => ({ ...current, [field]: event.target.value }))}
+        />
+      )}
+    </Field>
+  );
+
   return (
-    <div className="page" data-page="prefixes">
-      <header className="page-header">
-        <h1>{t("staff.prefixes.title")}</h1>
-        <p>{t("staff.prefixes.intro")}</p>
-      </header>
-
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.prefixes.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-
-      {query.isSuccess ? (
-        <>
-          <section className="admin-panel" aria-labelledby="prefix-list-title">
-            <h2 id="prefix-list-title">{t("staff.prefixes.list.title")}</h2>
-            <ul className="prefix-list" data-prefix-list>
-              {query.data.prefixes.map((prefix) => (
-                <li className="prefix-row" key={prefix.id} data-prefix-row={prefix.key}>
-                  <span
-                    className="prefix-swatch"
-                    style={{ backgroundColor: prefix.colour }}
-                    aria-hidden="true"
-                  />
-                  <span className="prefix-row__label">{prefix.labels.en ?? prefix.key}</span>
-                  <span className="log-action">{prefix.key}</span>
-                  <span className="widget-muted">
-                    {prefix.groupIds.length === 0
-                      ? t("staff.prefixes.groups.all")
-                      : prefix.groupIds
+    <Page
+      id="prefixes"
+      title={t("staff.prefixes.title")}
+      description={t("staff.prefixes.intro")}
+      actions={
+        draft.id === null ? undefined : (
+          <Button
+            variant="primary"
+            icon={<IconPlus size={16} />}
+            data-prefix-new
+            onClick={() => setDraft(EMPTY)}
+          >
+            {t("staff.prefixes.create.title")}
+          </Button>
+        )
+      }
+    >
+      <QueryState query={query} errorLabel={t("staff.prefixes.loadError")}>
+        {(data) => (
+          <div className="page-split">
+            <Panel flush title={t("staff.prefixes.list.title")} data-prefix-list>
+              <Table
+                caption={t("staff.prefixes.list.title")}
+                rows={data.prefixes}
+                rowKey={(prefix) => prefix.id}
+                rowProps={(prefix) => ({
+                  "data-prefix-row": prefix.key,
+                  className: prefix.id === draft.id ? "is-selected" : undefined,
+                })}
+                empty={<EmptyState title={t("staff.prefixes.empty")} />}
+                columns={[
+                  {
+                    id: "label",
+                    header: t("staff.prefixes.label.en"),
+                    primary: true,
+                    cell: (prefix) => (
+                      <span
+                        className="prefix-chip"
+                        style={{ "--chip": prefix.colour } as CSSProperties}
+                      >
+                        {prefix.labels.en ?? prefix.key}
+                      </span>
+                    ),
+                  },
+                  {
+                    id: "key",
+                    header: t("staff.prefixes.key"),
+                    cell: (prefix) => <code>{prefix.key}</code>,
+                  },
+                  {
+                    id: "groups",
+                    header: t("staff.prefixes.groups.title"),
+                    cell: (prefix) =>
+                      prefix.groupIds.length === 0 ? (
+                        <span className="muted">{t("staff.prefixes.groups.all")}</span>
+                      ) : (
+                        prefix.groupIds
                           .map(
                             (groupId) =>
-                              query.data.groups.find((group) => group.id === groupId)?.title ??
-                              groupId,
+                              data.groups.find((group) => group.id === groupId)?.title ?? groupId,
                           )
-                          .join(", ")}
-                  </span>
-                  <button
-                    type="button"
-                    data-prefix-edit={prefix.key}
-                    onClick={() => setDraft(draftFrom(prefix))}
-                  >
-                    {t("staff.prefixes.edit")}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {query.data.prefixes.length === 0 ? (
-              <p className="widget-muted">{t("staff.prefixes.empty")}</p>
-            ) : null}
-          </section>
+                          .join(", ")
+                      ),
+                  },
+                  {
+                    id: "actions",
+                    header: t("staff.rowActions"),
+                    align: "end",
+                    width: "3rem",
+                    cell: (prefix) => (
+                      <IconButton
+                        size="sm"
+                        label={t("staff.prefixes.edit")}
+                        data-prefix-edit={prefix.key}
+                        onClick={() => setDraft(draftFrom(prefix))}
+                      >
+                        <IconEdit size={16} />
+                      </IconButton>
+                    ),
+                  },
+                ]}
+              />
+            </Panel>
 
-          <section className="admin-panel" aria-labelledby="prefix-editor-title">
-            <h2 id="prefix-editor-title">
-              {draft.id === null
-                ? t("staff.prefixes.create.title")
-                : t("staff.prefixes.edit.title")}
-            </h2>
-            <div className="admin-form" data-prefix-editor>
-              <label>
-                <span>{t("staff.prefixes.key")}</span>
-                <input
-                  data-prefix-field="key"
-                  value={draft.key}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, key: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>{t("staff.prefixes.colour")}</span>
-                <input
-                  type="color"
-                  data-prefix-field="colour"
-                  value={draft.colour}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, colour: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>{t("staff.prefixes.label.en")}</span>
-                <input
-                  data-prefix-field="label-en"
-                  value={draft.en}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, en: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>{t("staff.prefixes.label.es")}</span>
-                <input
-                  data-prefix-field="label-es"
-                  value={draft.es}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, es: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                <span>{t("staff.prefixes.label.fr")}</span>
-                <input
-                  data-prefix-field="label-fr"
-                  value={draft.fr}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, fr: event.target.value }))
-                  }
-                />
-              </label>
-              <fieldset>
-                <legend>{t("staff.prefixes.groups.title")}</legend>
-                <ul className="check-list">
-                  {query.data.groups.map((group) => (
-                    <li key={group.id}>
-                      <label>
+            <Panel
+              title={
+                draft.id === null
+                  ? t("staff.prefixes.create.title")
+                  : t("staff.prefixes.edit.title")
+              }
+            >
+              <div className="stack" data-prefix-editor>
+                <div className="form-grid">
+                  {textField("key", "staff.prefixes.key", "key")}
+                  <Field label={t("staff.prefixes.colour")}>
+                    {({ id }) => (
+                      <div className="with-swatch">
                         <input
-                          type="checkbox"
-                          data-prefix-group={group.id}
-                          checked={draft.groupIds.includes(group.id)}
-                          onChange={(event) => toggleGroup(group.id, event.target.checked)}
+                          id={id}
+                          type="color"
+                          data-prefix-field="colour"
+                          value={draft.colour}
+                          onChange={(event) =>
+                            setDraft((current) => ({ ...current, colour: event.target.value }))
+                          }
                         />
-                        <span>{group.title}</span>
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              </fieldset>
-              <div className="admin-form__actions">
-                <button
-                  type="button"
-                  data-prefix-save
-                  disabled={save.isPending}
-                  onClick={() =>
-                    save.mutate({
-                      action: "save",
-                      ...(draft.id === null ? {} : { id: draft.id }),
-                      key: draft.key,
-                      colour: draft.colour,
-                      labels: { en: draft.en, es: draft.es, fr: draft.fr },
-                      groupIds: draft.groupIds,
-                    })
-                  }
-                >
-                  {t("staff.prefixes.save")}
-                </button>
-                {draft.id !== null ? (
-                  <button
-                    type="button"
-                    className="button-danger"
-                    data-prefix-delete
-                    disabled={save.isPending}
-                    onClick={() => save.mutate({ action: "delete", id: draft.id })}
-                  >
-                    {t("staff.prefixes.delete")}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="button-quiet"
-                  data-prefix-cancel
-                  onClick={() => setDraft(EMPTY)}
-                >
-                  {t("staff.prefixes.cancel")}
-                </button>
+                        <code>{draft.colour}</code>
+                      </div>
+                    )}
+                  </Field>
+                </div>
+                {textField("en", "staff.prefixes.label.en", "label-en")}
+                {textField("es", "staff.prefixes.label.es", "label-es")}
+                {textField("fr", "staff.prefixes.label.fr", "label-fr")}
+                <fieldset className="field field-group">
+                  <legend className="field-label">{t("staff.prefixes.groups.title")}</legend>
+                  <div className="check-grid">
+                    {data.groups.map((group) => (
+                      <Checkbox
+                        key={group.id}
+                        label={group.title}
+                        data-prefix-group={group.id}
+                        checked={draft.groupIds.includes(group.id)}
+                        onChange={(event) => toggleGroup(group.id, event.target.checked)}
+                      />
+                    ))}
+                  </div>
+                </fieldset>
+                <div className="form-actions-bar form-actions-split">
+                  {draft.id === null ? (
+                    <span />
+                  ) : (
+                    <Button
+                      variant="danger"
+                      icon={<IconTrash size={16} />}
+                      data-prefix-delete
+                      disabled={save.isPending}
+                      onClick={() => setConfirmDelete(true)}
+                    >
+                      {t("staff.prefixes.delete")}
+                    </Button>
+                  )}
+                  <span className="cluster">
+                    <Button variant="ghost" data-prefix-cancel onClick={() => setDraft(EMPTY)}>
+                      {t("staff.prefixes.cancel")}
+                    </Button>
+                    <Button
+                      variant="primary"
+                      data-prefix-save
+                      disabled={save.isPending}
+                      onClick={() =>
+                        save.mutate({
+                          action: "save",
+                          ...(draft.id === null ? {} : { id: draft.id }),
+                          key: draft.key,
+                          colour: draft.colour,
+                          labels: { en: draft.en, es: draft.es, fr: draft.fr },
+                          groupIds: draft.groupIds,
+                        })
+                      }
+                    >
+                      {t("staff.prefixes.save")}
+                    </Button>
+                  </span>
+                </div>
               </div>
-            </div>
-          </section>
-        </>
-      ) : null}
-    </div>
+            </Panel>
+          </div>
+        )}
+      </QueryState>
+      <ConfirmDialog
+        open={confirmDelete}
+        titleKey="staff.prefixes.confirmDelete.title"
+        bodyKey="staff.prefixes.confirmDelete.body"
+        confirmLabelKey="staff.prefixes.delete"
+        tone="danger"
+        busy={save.isPending}
+        onCancel={() => setConfirmDelete(false)}
+        onConfirm={() => {
+          setConfirmDelete(false);
+          save.mutate({ action: "delete", id: draft.id });
+        }}
+      />
+    </Page>
   );
 }

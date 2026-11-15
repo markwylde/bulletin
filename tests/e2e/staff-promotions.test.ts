@@ -82,6 +82,8 @@ integrationDescribe("staff auto-promotion", () => {
         20_000,
       );
       await clickSelector(view, "[data-promotion-delete]");
+      await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+      await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
       await waitForExpression(
         view,
         `![...document.querySelectorAll('[data-promotion-row]')].some((row) =>

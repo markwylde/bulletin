@@ -3,6 +3,24 @@ import { useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  IconButton,
+  IconPlus,
+  IconTrash,
+  Page,
+  Panel,
+  QueryState,
+  SaveBar,
+  Select,
+  SettingsRow,
+  SettingsSection,
+  Switch,
+  TextInput,
+} from "../ui/index.ts";
 
 interface WordRecord {
   readonly id: string;
@@ -82,224 +100,283 @@ export function FiltersPage() {
     }
   };
 
-  return (
-    <div className="page" data-page="filters">
-      <header className="page-header">
-        <h1>{t("staff.filters.title")}</h1>
-        <p>{t("staff.filters.intro")}</p>
-      </header>
+  const words = query.data?.words ?? [];
+  const domains = query.data?.domains ?? [];
+  const spamDirty =
+    spam !== null &&
+    query.data !== undefined &&
+    JSON.stringify(spam) !== JSON.stringify(query.data.settings);
+  const numberRow = (
+    labelKey: string,
+    hook: string,
+    field: "duplicateCount" | "duplicateWindowMinutes" | "rateCount" | "rateMinutes",
+    min: number,
+    max: number,
+    current: SpamSettings,
+  ) => (
+    <SettingsRow label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          {...{ [hook]: true }}
+          type="number"
+          min={min}
+          max={max}
+          className="input-narrow"
+          value={current[field]}
+          onChange={(event) => setSpam({ ...current, [field]: Number(event.target.value) })}
+        />
+      )}
+    </SettingsRow>
+  );
 
-      <section className="admin-panel">
-        <h2>{t("staff.filters.words.title")}</h2>
-        <div className="admin-form" data-filter-word-form>
-          <label>
-            <span>{t("staff.filters.word")}</span>
-            <input
-              data-filter-word
-              value={word}
-              maxLength={120}
-              onChange={(event) => setWord(event.target.value)}
-            />
-          </label>
-          <label>
-            <span>{t("staff.filters.mode")}</span>
-            <select
-              data-filter-mode
-              value={mode}
-              onChange={(event) => setMode(event.target.value as WordRecord["mode"])}
-            >
-              <option value="block">{t("staff.filters.mode.block")}</option>
-              <option value="replace">{t("staff.filters.mode.replace")}</option>
-            </select>
-          </label>
-          {mode === "replace" ? (
-            <label>
-              <span>{t("staff.filters.replacement")}</span>
-              <input
-                data-filter-replacement
-                value={replacement}
-                maxLength={120}
-                onChange={(event) => setReplacement(event.target.value)}
-              />
-            </label>
-          ) : null}
-          <label>
-            <span>{t("staff.filters.match")}</span>
-            <select
-              data-filter-match
-              value={matchMode}
-              onChange={(event) => setMatchMode(event.target.value as WordRecord["matchMode"])}
-            >
-              <option value="whole">{t("staff.filters.match.whole")}</option>
-              <option value="any">{t("staff.filters.match.any")}</option>
-            </select>
-          </label>
-          <div className="admin-form__actions">
-            <button
-              type="button"
+  return (
+    <Page id="filters" title={t("staff.filters.title")} description={t("staff.filters.intro")}>
+      <Panel flush title={t("staff.filters.words.title")}>
+        <form
+          className="toolbar"
+          data-filter-word-form
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveWord();
+          }}
+        >
+          <div className="toolbar-filters">
+            <Field label={t("staff.filters.word")}>
+              {({ id }) => (
+                <TextInput
+                  id={id}
+                  data-filter-word
+                  value={word}
+                  maxLength={120}
+                  onChange={(event) => setWord(event.target.value)}
+                />
+              )}
+            </Field>
+            <Field label={t("staff.filters.mode")}>
+              {({ id }) => (
+                <Select
+                  id={id}
+                  data-filter-mode
+                  value={mode}
+                  onChange={(event) => setMode(event.target.value as WordRecord["mode"])}
+                >
+                  <option value="block">{t("staff.filters.mode.block")}</option>
+                  <option value="replace">{t("staff.filters.mode.replace")}</option>
+                </Select>
+              )}
+            </Field>
+            {mode === "replace" ? (
+              <Field label={t("staff.filters.replacement")}>
+                {({ id }) => (
+                  <TextInput
+                    id={id}
+                    data-filter-replacement
+                    value={replacement}
+                    maxLength={120}
+                    onChange={(event) => setReplacement(event.target.value)}
+                  />
+                )}
+              </Field>
+            ) : null}
+            <Field label={t("staff.filters.match")}>
+              {({ id }) => (
+                <Select
+                  id={id}
+                  data-filter-match
+                  value={matchMode}
+                  onChange={(event) => setMatchMode(event.target.value as WordRecord["matchMode"])}
+                >
+                  <option value="whole">{t("staff.filters.match.whole")}</option>
+                  <option value="any">{t("staff.filters.match.any")}</option>
+                </Select>
+              )}
+            </Field>
+            <Button
+              type="submit"
+              variant="primary"
+              icon={<IconPlus size={16} />}
               data-filter-word-save
               disabled={mutate.isPending}
-              onClick={saveWord}
             >
-              {t("staff.filters.save")}
-            </button>
+              {t("staff.filters.add")}
+            </Button>
           </div>
-        </div>
-        <ul className="admin-list" data-filter-word-list>
-          {(query.data?.words ?? []).map((record) => (
-            <li key={record.id} data-filter-word-row={record.id}>
-              <strong>{record.word}</strong>
-              <span className="widget-muted">
+        </form>
+        {words.length === 0 ? <EmptyState title={t("staff.filters.words.empty")} /> : null}
+        <ul className="list" data-filter-word-list>
+          {words.map((record) => (
+            <li key={record.id} className="list-row" data-filter-word-row={record.id}>
+              <div className="list-row-main">
+                <span className="list-row-title">
+                  <code>{record.word}</code>
+                  {record.mode === "replace" ? (
+                    <>
+                      {" → "}
+                      <code>{record.replacement}</code>
+                    </>
+                  ) : null}
+                </span>
+                <span className="list-row-meta">
+                  {record.matchMode === "whole"
+                    ? t("staff.filters.match.whole")
+                    : t("staff.filters.match.any")}
+                </span>
+              </div>
+              <Badge tone={record.mode === "block" ? "danger" : "neutral"}>
                 {record.mode === "block"
                   ? t("staff.filters.mode.block")
                   : t("staff.filters.mode.replace")}
-                {record.mode === "replace" ? ` → ${record.replacement}` : ""} ·{" "}
-                {record.matchMode === "whole"
-                  ? t("staff.filters.match.whole")
-                  : t("staff.filters.match.any")}
-              </span>
-              <button
-                type="button"
-                className="button-quiet"
-                onClick={() => mutate.mutate({ kind: "word", action: "delete", id: record.id })}
-              >
-                {t("staff.filters.delete")}
-              </button>
+              </Badge>
+              <div className="list-row-actions">
+                <IconButton
+                  size="sm"
+                  label={t("staff.filters.delete")}
+                  data-filter-word-delete={record.id}
+                  onClick={() => mutate.mutate({ kind: "word", action: "delete", id: record.id })}
+                >
+                  <IconTrash size={16} />
+                </IconButton>
+              </div>
             </li>
           ))}
         </ul>
-      </section>
+      </Panel>
 
-      <section className="admin-panel">
-        <h2>{t("staff.filters.domains.title")}</h2>
-        <div className="admin-form" data-filter-domain-form>
-          <label>
-            <span>{t("staff.filters.domain")}</span>
-            <input
-              data-filter-domain
-              value={domain}
-              maxLength={200}
-              onChange={(event) => setDomain(event.target.value)}
-            />
-          </label>
-          <div className="admin-form__actions">
-            <button
-              type="button"
+      <Panel flush title={t("staff.filters.domains.title")}>
+        <form
+          className="toolbar"
+          data-filter-domain-form
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveDomain();
+          }}
+        >
+          <div className="toolbar-filters">
+            <Field label={t("staff.filters.domain")}>
+              {({ id }) => (
+                <TextInput
+                  id={id}
+                  data-filter-domain
+                  value={domain}
+                  maxLength={200}
+                  placeholder="example.com"
+                  onChange={(event) => setDomain(event.target.value)}
+                />
+              )}
+            </Field>
+            <Button
+              type="submit"
+              variant="primary"
+              icon={<IconPlus size={16} />}
               data-filter-domain-save
               disabled={mutate.isPending}
-              onClick={saveDomain}
             >
-              {t("staff.filters.save")}
-            </button>
+              {t("staff.filters.add")}
+            </Button>
           </div>
-        </div>
-        <ul className="admin-list" data-filter-domain-list>
-          {(query.data?.domains ?? []).map((record) => (
-            <li key={record.id} data-filter-domain-row={record.id}>
-              <strong>{record.domain}</strong>
-              <button
-                type="button"
-                className="button-quiet"
-                onClick={() => mutate.mutate({ kind: "domain", action: "delete", id: record.id })}
-              >
-                {t("staff.filters.delete")}
-              </button>
+        </form>
+        {domains.length === 0 ? <EmptyState title={t("staff.filters.domains.empty")} /> : null}
+        <ul className="list" data-filter-domain-list>
+          {domains.map((record) => (
+            <li key={record.id} className="list-row" data-filter-domain-row={record.id}>
+              <div className="list-row-main">
+                <code className="list-row-title break">{record.domain}</code>
+              </div>
+              <div className="list-row-actions">
+                <IconButton
+                  size="sm"
+                  label={t("staff.filters.delete")}
+                  data-filter-domain-delete={record.id}
+                  onClick={() => mutate.mutate({ kind: "domain", action: "delete", id: record.id })}
+                >
+                  <IconTrash size={16} />
+                </IconButton>
+              </div>
             </li>
           ))}
         </ul>
-      </section>
+      </Panel>
 
-      <section className="admin-panel">
-        <h2>{t("staff.filters.spam.title")}</h2>
-        {settings === null ? (
-          <p className="widget-muted">{t("staff.widget.loading")}</p>
-        ) : (
-          <div className="admin-form" data-filter-spam-form>
-            <label>
-              <input
-                type="checkbox"
-                data-filter-duplicate-enabled
-                checked={settings.duplicateEnabled}
-                onChange={(event) =>
-                  setSpam({ ...settings, duplicateEnabled: event.target.checked })
-                }
-              />
-              <span>{t("staff.filters.spam.duplicate")}</span>
-            </label>
-            <label>
-              <span>{t("staff.filters.spam.duplicateCount")}</span>
-              <input
-                data-filter-duplicate-count
-                type="number"
-                min={2}
-                max={100}
-                value={settings.duplicateCount}
-                onChange={(event) =>
-                  setSpam({ ...settings, duplicateCount: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              <span>{t("staff.filters.spam.duplicateWindow")}</span>
-              <input
-                data-filter-duplicate-window
-                type="number"
-                min={1}
-                max={1440}
-                value={settings.duplicateWindowMinutes}
-                onChange={(event) =>
-                  setSpam({ ...settings, duplicateWindowMinutes: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                data-filter-rate-enabled
-                checked={settings.rateEnabled}
-                onChange={(event) => setSpam({ ...settings, rateEnabled: event.target.checked })}
-              />
-              <span>{t("staff.filters.spam.rate")}</span>
-            </label>
-            <label>
-              <span>{t("staff.filters.spam.rateCount")}</span>
-              <input
-                data-filter-rate-count
-                type="number"
-                min={2}
-                max={1000}
-                value={settings.rateCount}
-                onChange={(event) =>
-                  setSpam({ ...settings, rateCount: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              <span>{t("staff.filters.spam.rateMinutes")}</span>
-              <input
-                data-filter-rate-minutes
-                type="number"
-                min={1}
-                max={1440}
-                value={settings.rateMinutes}
-                onChange={(event) =>
-                  setSpam({ ...settings, rateMinutes: Number(event.target.value) })
-                }
-              />
-            </label>
-            <div className="admin-form__actions">
-              <button
-                type="button"
-                data-filter-spam-save
-                disabled={mutate.isPending}
-                onClick={saveSettings}
-              >
-                {t("staff.filters.save")}
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
-    </div>
+      {settings === null ? (
+        <QueryState query={query} errorLabel={t("staff.filters.loadError")}>
+          {() => null}
+        </QueryState>
+      ) : (
+        <>
+          <SettingsSection title={t("staff.filters.spam.title")} data-filter-spam-form>
+            <SettingsRow label={t("staff.filters.spam.duplicate")}>
+              {({ id }) => (
+                <Switch
+                  id={id}
+                  data-filter-duplicate-enabled
+                  checked={settings.duplicateEnabled}
+                  onChange={(event) =>
+                    setSpam({ ...settings, duplicateEnabled: event.target.checked })
+                  }
+                />
+              )}
+            </SettingsRow>
+            {numberRow(
+              "staff.filters.spam.duplicateCount",
+              "data-filter-duplicate-count",
+              "duplicateCount",
+              2,
+              100,
+              settings,
+            )}
+            {numberRow(
+              "staff.filters.spam.duplicateWindow",
+              "data-filter-duplicate-window",
+              "duplicateWindowMinutes",
+              1,
+              1440,
+              settings,
+            )}
+            <SettingsRow label={t("staff.filters.spam.rate")}>
+              {({ id }) => (
+                <Switch
+                  id={id}
+                  data-filter-rate-enabled
+                  checked={settings.rateEnabled}
+                  onChange={(event) => setSpam({ ...settings, rateEnabled: event.target.checked })}
+                />
+              )}
+            </SettingsRow>
+            {numberRow(
+              "staff.filters.spam.rateCount",
+              "data-filter-rate-count",
+              "rateCount",
+              2,
+              1000,
+              settings,
+            )}
+            {numberRow(
+              "staff.filters.spam.rateMinutes",
+              "data-filter-rate-minutes",
+              "rateMinutes",
+              1,
+              1440,
+              settings,
+            )}
+          </SettingsSection>
+          <SaveBar dirty={spamDirty} message={t("staff.unsavedChanges")}>
+            {spamDirty ? (
+              <Button variant="ghost" onClick={() => setSpam(null)}>
+                {t("staff.discard")}
+              </Button>
+            ) : null}
+            <Button
+              variant="primary"
+              data-filter-spam-save
+              disabled={mutate.isPending}
+              onClick={saveSettings}
+            >
+              {t("staff.filters.save")}
+            </Button>
+          </SaveBar>
+        </>
+      )}
+    </Page>
   );
 }

@@ -1,8 +1,27 @@
 import { useT } from "@bulletin/ui";
-import { useToast } from "@bulletin/ui/feedback";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  FormActions,
+  IconButton,
+  IconEdit,
+  IconPlus,
+  IconTrash,
+  MenuItem,
+  Page,
+  Panel,
+  RowActions,
+  Select,
+  Switch,
+  Table,
+  TextInput,
+} from "../ui/index.ts";
 
 interface ReasonRecord {
   readonly id: string;
@@ -69,6 +88,7 @@ export function WarningsPage() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [reason, setReason] = useState<ReasonDraft>(EMPTY_REASON);
+  const [confirm, setConfirm] = useState<{ kind: "reason" | "threshold"; id: string } | null>(null);
   const [thresholdPoints, setThresholdPoints] = useState(10);
   const [thresholdAction, setThresholdAction] = useState<ThresholdRecord["action"]>("suspend");
   const [thresholdHours, setThresholdHours] = useState(168);
@@ -125,227 +145,307 @@ export function WarningsPage() {
     });
   };
 
+  const reasonText = (
+    field: "key" | "en" | "es" | "fr",
+    labelKey: string,
+    hook: string,
+    maxLength: number,
+  ) => (
+    <Field label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          {...{ [hook]: true }}
+          maxLength={maxLength}
+          value={reason[field]}
+          onChange={(event) =>
+            setReason((current) => ({ ...current, [field]: event.target.value }))
+          }
+        />
+      )}
+    </Field>
+  );
+  const reasonNumber = (
+    field: "points" | "expiryDays",
+    labelKey: string,
+    hook: string,
+    max: number,
+  ) => (
+    <Field label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          {...{ [hook]: true }}
+          type="number"
+          min={0}
+          max={max}
+          value={reason[field]}
+          onChange={(event) =>
+            setReason((current) => ({ ...current, [field]: Number(event.target.value) }))
+          }
+        />
+      )}
+    </Field>
+  );
+
   return (
-    <div className="page" data-page="warnings">
-      <header className="page-header">
-        <h1>{t("staff.warnings.title")}</h1>
-        <p>{t("staff.warnings.intro")}</p>
-      </header>
-
-      <section className="admin-panel">
-        <h2>{t("staff.warnings.reasons.title")}</h2>
-        <div className="admin-form" data-warning-reason-form>
-          <label>
-            <span>{t("staff.warnings.reason.key")}</span>
-            <input
-              data-warning-reason-key
-              value={reason.key}
-              maxLength={64}
-              onChange={(event) =>
-                setReason((current) => ({ ...current, key: event.target.value }))
-              }
+    <Page id="warnings" title={t("staff.warnings.title")} description={t("staff.warnings.intro")}>
+      <div className="page-split">
+        <Panel flush title={t("staff.warnings.reasons.title")}>
+          <div data-warning-reason-list>
+            <Table
+              caption={t("staff.warnings.reasons.title")}
+              rows={query.data?.reasons ?? []}
+              rowKey={(record) => record.id}
+              rowProps={(record) => ({ "data-warning-reason": record.id })}
+              empty={<EmptyState title={t("staff.warnings.reasons.empty")} />}
+              columns={[
+                {
+                  id: "label",
+                  header: t("staff.warnings.reason.en"),
+                  primary: true,
+                  cell: (record) => (
+                    <span className="cluster">
+                      <span className="list-row-title">{record.labels.en ?? record.key}</span>
+                      {record.enabled ? null : <Badge>{t("staff.warnings.reason.disabled")}</Badge>}
+                    </span>
+                  ),
+                },
+                {
+                  id: "points",
+                  header: t("staff.warnings.reason.points"),
+                  align: "end",
+                  cell: (record) => record.points,
+                },
+                {
+                  id: "expiry",
+                  header: t("staff.warnings.reason.expiry"),
+                  align: "end",
+                  cell: (record) => record.expiryDays,
+                },
+                {
+                  id: "actions",
+                  header: t("staff.rowActions"),
+                  align: "end",
+                  width: "5.5rem",
+                  cell: (record) => (
+                    <span className="cluster cluster-end">
+                      <IconButton
+                        size="sm"
+                        label={t("staff.warnings.edit")}
+                        data-warning-reason-edit={record.id}
+                        onClick={() => editReason(record)}
+                      >
+                        <IconEdit size={16} />
+                      </IconButton>
+                      <RowActions label={t("staff.rowActions")}>
+                        <MenuItem
+                          tone="danger"
+                          icon={<IconTrash size={16} />}
+                          data-warning-reason-delete={record.id}
+                          disabled={mutate.isPending}
+                          onClick={() => setConfirm({ kind: "reason", id: record.id })}
+                        >
+                          {t("staff.warnings.delete")}
+                        </MenuItem>
+                      </RowActions>
+                    </span>
+                  ),
+                },
+              ]}
             />
-          </label>
-          <label>
-            <span>{t("staff.warnings.reason.en")}</span>
-            <input
-              data-warning-reason-en
-              value={reason.en}
-              maxLength={120}
-              onChange={(event) => setReason((current) => ({ ...current, en: event.target.value }))}
-            />
-          </label>
-          <label>
-            <span>{t("staff.warnings.reason.es")}</span>
-            <input
-              data-warning-reason-es
-              value={reason.es}
-              maxLength={120}
-              onChange={(event) => setReason((current) => ({ ...current, es: event.target.value }))}
-            />
-          </label>
-          <label>
-            <span>{t("staff.warnings.reason.fr")}</span>
-            <input
-              data-warning-reason-fr
-              value={reason.fr}
-              maxLength={120}
-              onChange={(event) => setReason((current) => ({ ...current, fr: event.target.value }))}
-            />
-          </label>
-          <label>
-            <span>{t("staff.warnings.reason.points")}</span>
-            <input
-              data-warning-reason-points
-              type="number"
-              min={0}
-              max={1000}
-              value={reason.points}
-              onChange={(event) =>
-                setReason((current) => ({ ...current, points: Number(event.target.value) }))
-              }
-            />
-          </label>
-          <label>
-            <span>{t("staff.warnings.reason.expiry")}</span>
-            <input
-              data-warning-reason-expiry
-              type="number"
-              min={0}
-              max={3650}
-              value={reason.expiryDays}
-              onChange={(event) =>
-                setReason((current) => ({ ...current, expiryDays: Number(event.target.value) }))
-              }
-            />
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              data-warning-reason-override
-              checked={reason.allowPointsOverride}
-              onChange={(event) =>
-                setReason((current) => ({
-                  ...current,
-                  allowPointsOverride: event.target.checked,
-                }))
-              }
-            />
-            <span>{t("staff.warnings.reason.allowOverride")}</span>
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              data-warning-reason-enabled
-              checked={reason.enabled}
-              onChange={(event) =>
-                setReason((current) => ({ ...current, enabled: event.target.checked }))
-              }
-            />
-            <span>{t("staff.warnings.reason.enabled")}</span>
-          </label>
-          <div className="admin-form__actions">
-            <button
-              type="button"
-              data-warning-reason-save
-              disabled={mutate.isPending}
-              onClick={saveReason}
-            >
-              {t("staff.warnings.save")}
-            </button>
-            <button type="button" className="button-quiet" onClick={() => setReason(EMPTY_REASON)}>
-              {t("staff.warnings.cancel")}
-            </button>
           </div>
-        </div>
+        </Panel>
 
-        <ul className="admin-list" data-warning-reason-list>
-          {(query.data?.reasons ?? []).map((record) => (
-            <li key={record.id} data-warning-reason={record.id}>
-              <strong>{record.labels.en ?? record.key}</strong>
-              <span className="widget-muted">
-                {t("staff.warnings.reason.summary", {
-                  points: record.points,
-                  days: record.expiryDays,
-                })}
-              </span>
-              <button type="button" className="button-quiet" onClick={() => editReason(record)}>
-                {t("staff.warnings.edit")}
-              </button>
-              <button
-                type="button"
-                className="button-danger"
-                disabled={mutate.isPending}
-                onClick={() => mutate.mutate({ kind: "reason", action: "delete", id: record.id })}
-              >
-                {t("staff.warnings.delete")}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section className="admin-panel">
-        <h2>{t("staff.warnings.thresholds.title")}</h2>
-        <div className="admin-form" data-warning-threshold-form>
-          <label>
-            <span>{t("staff.warnings.threshold.points")}</span>
-            <input
-              data-warning-threshold-points
-              type="number"
-              min={1}
-              max={1000}
-              value={thresholdPoints}
-              onChange={(event) => setThresholdPoints(Number(event.target.value))}
-            />
-          </label>
-          <label>
-            <span>{t("staff.warnings.threshold.action")}</span>
-            <select
-              data-warning-threshold-action
-              value={thresholdAction}
-              onChange={(event) =>
-                setThresholdAction(event.target.value as ThresholdRecord["action"])
-              }
-            >
-              <option value="mod_queue">{t("staff.warnings.action.modQueue")}</option>
-              <option value="suspend">{t("staff.warnings.action.suspend")}</option>
-              <option value="ban">{t("staff.warnings.action.ban")}</option>
-            </select>
-          </label>
-          {thresholdAction === "ban" ? null : (
-            <label>
-              <span>{t("staff.warnings.threshold.duration")}</span>
-              <input
-                data-warning-threshold-duration
-                type="number"
-                min={1}
-                max={87600}
-                value={thresholdHours}
-                onChange={(event) => setThresholdHours(Number(event.target.value))}
+        <Panel
+          title={
+            reason.id === null
+              ? t("staff.warnings.reason.new")
+              : t("staff.warnings.reason.editTitle")
+          }
+        >
+          <div className="stack" data-warning-reason-form>
+            {reasonText("key", "staff.warnings.reason.key", "data-warning-reason-key", 64)}
+            {reasonText("en", "staff.warnings.reason.en", "data-warning-reason-en", 120)}
+            {reasonText("es", "staff.warnings.reason.es", "data-warning-reason-es", 120)}
+            {reasonText("fr", "staff.warnings.reason.fr", "data-warning-reason-fr", 120)}
+            <div className="form-grid">
+              {reasonNumber(
+                "points",
+                "staff.warnings.reason.points",
+                "data-warning-reason-points",
+                1000,
+              )}
+              {reasonNumber(
+                "expiryDays",
+                "staff.warnings.reason.expiry",
+                "data-warning-reason-expiry",
+                3650,
+              )}
+            </div>
+            <div className="stack stack-sm">
+              <Switch
+                data-warning-reason-override
+                label={t("staff.warnings.reason.allowOverride")}
+                checked={reason.allowPointsOverride}
+                onChange={(event) =>
+                  setReason((current) => ({
+                    ...current,
+                    allowPointsOverride: event.target.checked,
+                  }))
+                }
               />
-            </label>
-          )}
-          <div className="admin-form__actions">
-            <button
-              type="button"
+              <Switch
+                data-warning-reason-enabled
+                label={t("staff.warnings.reason.enabled")}
+                checked={reason.enabled}
+                onChange={(event) =>
+                  setReason((current) => ({ ...current, enabled: event.target.checked }))
+                }
+              />
+            </div>
+            <FormActions>
+              <Button variant="ghost" onClick={() => setReason(EMPTY_REASON)}>
+                {t("staff.warnings.cancel")}
+              </Button>
+              <Button
+                variant="primary"
+                data-warning-reason-save
+                disabled={mutate.isPending}
+                onClick={saveReason}
+              >
+                {t("staff.warnings.save")}
+              </Button>
+            </FormActions>
+          </div>
+        </Panel>
+      </div>
+
+      <Panel flush title={t("staff.warnings.thresholds.title")}>
+        <form
+          className="toolbar"
+          data-warning-threshold-form
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveThreshold();
+          }}
+        >
+          <div className="toolbar-filters">
+            <Field label={t("staff.warnings.threshold.points")}>
+              {({ id }) => (
+                <TextInput
+                  id={id}
+                  data-warning-threshold-points
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={thresholdPoints}
+                  onChange={(event) => setThresholdPoints(Number(event.target.value))}
+                />
+              )}
+            </Field>
+            <Field label={t("staff.warnings.threshold.action")}>
+              {({ id }) => (
+                <Select
+                  id={id}
+                  data-warning-threshold-action
+                  value={thresholdAction}
+                  onChange={(event) =>
+                    setThresholdAction(event.target.value as ThresholdRecord["action"])
+                  }
+                >
+                  <option value="mod_queue">{t("staff.warnings.action.modQueue")}</option>
+                  <option value="suspend">{t("staff.warnings.action.suspend")}</option>
+                  <option value="ban">{t("staff.warnings.action.ban")}</option>
+                </Select>
+              )}
+            </Field>
+            {thresholdAction === "ban" ? null : (
+              <Field label={t("staff.warnings.threshold.duration")}>
+                {({ id }) => (
+                  <TextInput
+                    id={id}
+                    data-warning-threshold-duration
+                    type="number"
+                    min={1}
+                    max={87600}
+                    value={thresholdHours}
+                    onChange={(event) => setThresholdHours(Number(event.target.value))}
+                  />
+                )}
+              </Field>
+            )}
+            <Button
+              type="submit"
+              variant="primary"
+              icon={<IconPlus size={16} />}
               data-warning-threshold-save
               disabled={mutate.isPending}
-              onClick={saveThreshold}
             >
-              {t("staff.warnings.save")}
-            </button>
+              {t("staff.warnings.threshold.add")}
+            </Button>
           </div>
-        </div>
-
-        <ul className="admin-list" data-warning-threshold-list>
+        </form>
+        {(query.data?.thresholds ?? []).length === 0 ? (
+          <EmptyState title={t("staff.warnings.thresholds.empty")} />
+        ) : null}
+        <ul className="list" data-warning-threshold-list>
           {(query.data?.thresholds ?? []).map((threshold) => (
-            <li key={threshold.id} data-warning-threshold={threshold.id}>
-              <strong>
-                {t("staff.warnings.threshold.summary", {
-                  points: threshold.points,
-                  action: actionLabel(t, threshold.action),
-                })}
-              </strong>
-              {threshold.durationHours === null ? null : (
-                <span className="widget-muted">
-                  {t("staff.warnings.threshold.hours", { hours: threshold.durationHours })}
+            <li key={threshold.id} className="list-row" data-warning-threshold={threshold.id}>
+              <div className="list-row-main">
+                <span className="list-row-title">
+                  {t("staff.warnings.threshold.summary", {
+                    points: threshold.points,
+                    action: actionLabel(t, threshold.action),
+                  })}
                 </span>
-              )}
-              <button
-                type="button"
-                className="button-danger"
-                disabled={mutate.isPending}
-                onClick={() =>
-                  mutate.mutate({ kind: "threshold", action: "delete", id: threshold.id })
-                }
-              >
-                {t("staff.warnings.delete")}
-              </button>
+                {threshold.durationHours === null ? null : (
+                  <span className="list-row-meta">
+                    {t("staff.warnings.threshold.hours", { hours: threshold.durationHours })}
+                  </span>
+                )}
+              </div>
+              <div className="list-row-actions">
+                <IconButton
+                  size="sm"
+                  label={t("staff.warnings.delete")}
+                  data-warning-threshold-delete={threshold.id}
+                  disabled={mutate.isPending}
+                  onClick={() => setConfirm({ kind: "threshold", id: threshold.id })}
+                >
+                  <IconTrash size={16} />
+                </IconButton>
+              </div>
             </li>
           ))}
         </ul>
-      </section>
-    </div>
+      </Panel>
+
+      <ConfirmDialog
+        open={confirm !== null}
+        titleKey={
+          confirm?.kind === "threshold"
+            ? "staff.warnings.confirmThreshold.title"
+            : "staff.warnings.confirmReason.title"
+        }
+        bodyKey={
+          confirm?.kind === "threshold"
+            ? "staff.warnings.confirmThreshold.body"
+            : "staff.warnings.confirmReason.body"
+        }
+        confirmLabelKey="staff.warnings.delete"
+        tone="danger"
+        busy={mutate.isPending}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          const target = confirm;
+          setConfirm(null);
+
+          if (target !== null) {
+            mutate.mutate({ kind: target.kind, action: "delete", id: target.id });
+          }
+        }}
+      />
+    </Page>
   );
 }
