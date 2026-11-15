@@ -87,6 +87,7 @@ await runBaseSeed({
   databaseUrl: migrationUrl,
   seed: config.seed,
   size: config.seedSize,
+  demo: config.seedDemo,
   storage,
 });
 

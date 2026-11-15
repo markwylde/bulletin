@@ -52,6 +52,51 @@ export interface BaseSeedOptions {
   readonly databaseUrl: string;
   readonly seed?: number;
   readonly size?: SeedSize;
+  /**
+   * Run the demo modules too (members, forums, topics, sample plugins…). Callers pass
+   * `config.seedDemo`, which is never true in production. Defaults to true for tests.
+   */
+  readonly demo?: boolean;
+}
+
+/**
+ * Board defaults every install needs: board settings, the default reaction and emoticon sets
+ * and the default theme. System groups come from migrations.
+ */
+const ESSENTIAL_MODULES: readonly SeedModule[] = [
+  baseSeedModule,
+  emoticonSeedModule,
+  reactionsSeedModule,
+  themesSeedModule,
+];
+
+/** Demo content for local development and tests only (ADR 0002 rich seed data). */
+const DEMO_MODULES: readonly SeedModule[] = [
+  forumSeedModule,
+  groupsSeedModule,
+  forumExtrasSeedModule,
+  membersSeedModule,
+  moderatorAssignmentsSeedModule,
+  topicsSeedModule,
+  apiSeedModule,
+  reputationSeedModule,
+  profilesSeedModule,
+  notificationsSeedModule,
+  pushSeedModule,
+  attachmentSeedModule,
+  conversationSeedModule,
+  moderationSeedModule,
+  privacySeedModule,
+  adminLogSeedModule,
+  flagsSeedModule,
+  demoThemesSeedModule,
+  pluginSeedModule,
+  capacitySeedModule,
+];
+
+/** The modules a seed run registers; production never gets the demo set. */
+export function seedModules(demo: boolean): readonly SeedModule[] {
+  return demo ? [...ESSENTIAL_MODULES, ...DEMO_MODULES] : ESSENTIAL_MODULES;
 }
 
 /** Runs the foundation's base seed modules against a database after migrations. */
@@ -61,32 +106,7 @@ export async function runBaseSeed(options: BaseSeedOptions): Promise<SeedResult>
   try {
     const result = await runSeeds({
       sql,
-      registry: new SeedRegistry([
-        baseSeedModule,
-        forumSeedModule,
-        emoticonSeedModule,
-        reactionsSeedModule,
-        groupsSeedModule,
-        forumExtrasSeedModule,
-        membersSeedModule,
-        moderatorAssignmentsSeedModule,
-        topicsSeedModule,
-        apiSeedModule,
-        reputationSeedModule,
-        profilesSeedModule,
-        notificationsSeedModule,
-        pushSeedModule,
-        attachmentSeedModule,
-        conversationSeedModule,
-        moderationSeedModule,
-        privacySeedModule,
-        adminLogSeedModule,
-        flagsSeedModule,
-        themesSeedModule,
-        demoThemesSeedModule,
-        pluginSeedModule,
-        capacitySeedModule,
-      ]),
+      registry: new SeedRegistry([...seedModules(options.demo ?? true)]),
       seed: options.seed ?? 42,
       size: options.size ?? "default",
       ...(options.storage === undefined ? {} : { storage: options.storage }),
@@ -108,5 +128,6 @@ export async function runBaseSeedFromEnv(databaseUrl: string): Promise<SeedResul
     databaseUrl,
     seed: Number(Bun.env.SEED ?? 42),
     size: seedSize(),
+    demo: Bun.env.NODE_ENV !== "production" && Bun.env.BULLETIN_SEED_DEMO !== "false",
   });
 }

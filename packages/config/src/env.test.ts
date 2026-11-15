@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigError, DEVELOPMENT_DEFAULTS, type Env, loadConfig } from "./env.ts";
+import { ConfigError, DEVELOPMENT_DEFAULTS, type Env, loadConfig, parseSeedDemo } from "./env.ts";
 
 function configError(env: Env): ConfigError {
   try {
@@ -232,5 +232,45 @@ describe("loadConfig", () => {
     expect(config.port).toBe(DEVELOPMENT_DEFAULTS.PORT);
     expect(config.logLevel).toBe(DEVELOPMENT_DEFAULTS.LOG_LEVEL);
     expect(config.seed).toBe(DEVELOPMENT_DEFAULTS.SEED);
+  });
+});
+
+describe("parseSeedDemo", () => {
+  const run = (env: Env, nodeEnv: "development" | "test" | "production") => {
+    const issues: string[] = [];
+    const value = parseSeedDemo(env, nodeEnv, issues);
+    return { value, issues };
+  };
+
+  test("defaults on in development and test, off in production", () => {
+    expect(run({}, "development")).toEqual({ value: true, issues: [] });
+    expect(run({}, "test")).toEqual({ value: true, issues: [] });
+    expect(run({}, "production")).toEqual({ value: false, issues: [] });
+    expect(loadConfig({}).seedDemo).toBe(true);
+  });
+
+  test("honours an explicit opt-out in development", () => {
+    expect(run({ BULLETIN_SEED_DEMO: "false" }, "development")).toEqual({
+      value: false,
+      issues: [],
+    });
+    expect(run({ BULLETIN_SEED_DEMO: "0" }, "test").value).toBe(false);
+  });
+
+  test("refuses to seed demo data in production even when asked", () => {
+    expect(run({ BULLETIN_SEED_DEMO: "true" }, "production")).toEqual({
+      value: false,
+      issues: ["BULLETIN_SEED_DEMO cannot be enabled in production"],
+    });
+    expect(run({ BULLETIN_SEED_DEMO: "false" }, "production")).toEqual({
+      value: false,
+      issues: [],
+    });
+  });
+
+  test("rejects values that are not booleans", () => {
+    expect(run({ BULLETIN_SEED_DEMO: "yes please" }, "development").issues).toEqual([
+      "BULLETIN_SEED_DEMO must be true or false",
+    ]);
   });
 });

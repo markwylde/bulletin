@@ -30,6 +30,9 @@ x-app-environment: &app-environment
   SESSION_SECRET: bulletin-development-only-session-secret
   SEED: "42"
   SEED_SIZE: "${SEED_SIZE:-default}"
+  # Demo members, forums, topics and sample plugins. Off by default when NODE_ENV=production,
+  # and refused there (docs/dev.md).
+  BULLETIN_SEED_DEMO: "${BULLETIN_SEED_DEMO:-true}"
   # The seeded demo webhook points at the local webhooks mock (task 5.2).
   BULLETIN_SEED_WEBHOOK_URL: "http://webhooks:4004/hook"
   # The seeded device's push subscription points at the local push mock (task 4.2).

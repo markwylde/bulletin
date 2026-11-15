@@ -272,6 +272,19 @@ On an empty database the API services run migrations and then the deterministic 
 (`SEED=42`, `SEED_SIZE=default`). Completion is recorded in `core.seed_runs`; a restart does not
 reseed. Later changes grow the seed into the full forum dataset.
 
+The seed has two parts. Board defaults (board settings, the default reactions, emoticons and
+theme) always run. The demo board (members, forums, topics, conversations, sample plugins and
+the rest) runs only when `BULLETIN_SEED_DEMO` is on:
+
+| `NODE_ENV`         | `BULLETIN_SEED_DEMO` unset | `true`                   | `false` |
+| ------------------ | -------------------------- | ------------------------ | ------- |
+| development / test | demo seeded                | demo seeded              | skipped |
+| production         | skipped                    | refused at startup       | skipped |
+
+`compose.yaml` sets `BULLETIN_SEED_DEMO=true` for the local stack. A production deployment never
+gets demo members or sessions, even if someone copies that value across: the service fails
+config validation instead.
+
 A full reset removes the Postgres and darkauth-mock volumes:
 
 ```bash

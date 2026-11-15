@@ -22,6 +22,12 @@ export interface AppConfig {
   readonly sessionSecret: string;
   readonly seed: number;
   readonly seedSize: SeedSize;
+  /**
+   * Whether the demo seed (members, topics, conversations, sample plugins…) runs on an
+   * empty database. On by default in development and test so `docker compose up --watch`
+   * shows a rich board (ADR 0002); never in production.
+   */
+  readonly seedDemo: boolean;
   readonly authIssuer: string;
   readonly authJwksUrl: string;
   readonly authTokenUrl: string;
@@ -299,6 +305,8 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     issues,
   );
 
+  const seedDemo = parseSeedDemo(env, nodeEnv, issues);
+
   const databaseUrl = parseDatabaseUrl(env, nodeEnv, issues);
   const sessionSecret = parseProductionValue(
     env,
@@ -369,6 +377,7 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     sessionSecret,
     seed,
     seedSize,
+    seedDemo,
     authIssuer,
     authJwksUrl,
     authTokenUrl,
@@ -380,4 +389,31 @@ export function loadConfig(env: Env = Bun.env): AppConfig {
     mailFrom,
     bootstrapAdmins,
   };
+}
+
+/**
+ * `BULLETIN_SEED_DEMO` opts in to the demo seed. Unset, it follows NODE_ENV: on in development
+ * and test, off in production. Production refuses an explicit opt-in, so a misconfigured
+ * deploy can never fill a live board with demo members and posts.
+ */
+export function parseSeedDemo(env: Env, nodeEnv: NodeEnv, issues: string[]): boolean {
+  const raw = env.BULLETIN_SEED_DEMO?.trim().toLowerCase();
+
+  if (raw === undefined || raw === "") {
+    return nodeEnv !== "production";
+  }
+
+  if (raw !== "true" && raw !== "false" && raw !== "1" && raw !== "0") {
+    issues.push("BULLETIN_SEED_DEMO must be true or false");
+    return false;
+  }
+
+  const value = raw === "true" || raw === "1";
+
+  if (value && nodeEnv === "production") {
+    issues.push("BULLETIN_SEED_DEMO cannot be enabled in production");
+    return false;
+  }
+
+  return value;
 }
