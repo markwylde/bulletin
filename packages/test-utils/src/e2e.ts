@@ -14,6 +14,7 @@ const BROWSER_NOISE: readonly RegExp[] = [
 export const VIEWPORTS = {
   mobile360: { width: 360, height: 780 },
   mobile390: { width: 390, height: 844 },
+  tablet: { width: 768, height: 1024 },
   desktop: { width: 1440, height: 900 },
 } as const;
 
