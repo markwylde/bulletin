@@ -356,3 +356,38 @@ describe("write filters and vetoes", () => {
     });
   });
 });
+
+describe("per-plugin transports", () => {
+  test("each plugin's hooks go to its own sandbox, and a plugin without one is a failure", async () => {
+    const hooks = registry(
+      plugin("alpha", {
+        capabilities: ["enricher"],
+        enrichers: [{ hook: "home.view", fields: ["alpha"] }],
+      }),
+      plugin("beta", {
+        capabilities: ["enricher"],
+        enrichers: [{ hook: "home.view", fields: ["beta"] }],
+      }),
+      plugin("gamma", {
+        capabilities: ["enricher"],
+        enrichers: [{ hook: "home.view", fields: ["gamma"] }],
+      }),
+    );
+    const alpha = transport(() => ({ fields: { alpha: "from alpha", beta: "spoofed" } }));
+    const beta = transport(() => ({ fields: { beta: "from beta" } }));
+    const sandboxes = new Map<string, HookTransport>([
+      ["alpha", alpha],
+      ["beta", beta],
+    ]);
+    const result = await new PluginHookRunner({
+      transportFor: (pluginId) => sandboxes.get(pluginId),
+      registry: hooks,
+      logger,
+    }).enrich({ hook: "home.view", route: "/", view: {}, viewer: { memberId: null } });
+
+    expect(result.fields).toEqual({ alpha: "from alpha", beta: "from beta" });
+    expect(result.failures).toEqual(["gamma"]);
+    expect(alpha.calls).toHaveLength(1);
+    expect(beta.calls).toHaveLength(1);
+  });
+});

@@ -14,8 +14,9 @@ import type { HookTransport, PluginHookRunner } from "./runner.ts";
 export interface HookHttpOptions {
   readonly runner: PluginHookRunner;
   readonly registry: PluginHookRegistry;
-  readonly transport: HookTransport;
-  /** Per-plugin authenticated transport; the single transport is a test-only fallback. */
+  /** A single transport for every plugin; a test-only fallback when `transports` is unset. */
+  readonly transport?: HookTransport;
+  /** Per-plugin authenticated transport, kept live by the plugin manager. */
   readonly transports?: ReadonlyMap<string, HookTransport>;
   readonly canReadContent?: (pluginId: string, forumId: string) => Promise<boolean>;
   readonly isPluginActive?: (pluginId: string) => Promise<boolean>;
@@ -265,7 +266,13 @@ async function readInternal(
           }
 
           try {
-            const result = await options.transport.request<{ html?: unknown }>(
+            const transport = transportFor(pluginId);
+
+            if (transport === undefined) {
+              continue;
+            }
+
+            const result = await transport.request<{ html?: unknown }>(
               "content.extend",
               { syntax, source: input.source, viewer: viewer(input.viewer) },
               200,

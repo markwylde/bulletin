@@ -205,6 +205,14 @@ export function reviewCapabilities(
   ];
 }
 
+/** A downloaded bundle that passed the catalog checksum and the detached signature. */
+export interface VerifiedBundle {
+  readonly bundle: Uint8Array;
+  /** Lowercase hex sha256, equal to the catalog entry's. */
+  readonly checksum: string;
+  readonly signature: string;
+}
+
 /** Downloads a bundle and verifies the catalog checksum and detached signature. */
 export async function downloadVerifiedBundle(options: {
   readonly entry: PluginCatalogPackage;
@@ -212,6 +220,16 @@ export async function downloadVerifiedBundle(options: {
   readonly keys: readonly JWK[];
   readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
 }): Promise<Uint8Array> {
+  return (await downloadVerifiedPluginBundle(options)).bundle;
+}
+
+/** {@link downloadVerifiedBundle}, keeping the checksum and signature for the install record. */
+export async function downloadVerifiedPluginBundle(options: {
+  readonly entry: PluginCatalogPackage;
+  readonly baseUrl?: string;
+  readonly keys: readonly JWK[];
+  readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+}): Promise<VerifiedBundle> {
   const request = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
   const base = options.baseUrl?.replace(/\/+$/, "") ?? "";
   const resolve = (url: string): string => (/^https?:/.test(url) ? url : `${base}${url}`);
@@ -238,5 +256,26 @@ export async function downloadVerifiedBundle(options: {
     throw new CatalogError("bundle_signature", "Bundle signature is not valid");
   }
 
-  return bundle;
+  return { bundle, checksum, signature };
+}
+
+/** The marketplace's published signing keys. */
+export async function fetchMarketplaceKeys(options: {
+  readonly baseUrl: string;
+  readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+}): Promise<readonly JWK[]> {
+  const request = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
+  const response = await request(`${options.baseUrl.replace(/\/+$/, "")}/keys.json`);
+
+  if (!response.ok) {
+    throw new CatalogError("signature", "Marketplace keys are unavailable");
+  }
+
+  const body = (await response.json()) as { keys?: unknown };
+
+  if (!Array.isArray(body.keys)) {
+    throw new CatalogError("signature", "Marketplace keys are malformed");
+  }
+
+  return body.keys as JWK[];
 }

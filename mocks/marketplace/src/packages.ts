@@ -141,8 +141,29 @@ export async function buildPluginPackages(): Promise<readonly MarketplacePackage
       });
     }
 
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    const bundle = encodeThemeTar(entries);
+    // A published bundle is self-contained: the jail has no node_modules, so the SDK is
+    // compiled into the entry the way a plugin author's build step would (ADR 0009).
+    const manifest = (await Bun.file(new URL("plugin.json", directory)).json()) as {
+      entry: string;
+    };
+    const built = await Bun.build({
+      entrypoints: [Bun.fileURLToPath(new URL(manifest.entry, directory))],
+      target: "bun",
+      format: "esm",
+    });
+    const output = built.outputs[0];
+
+    if (!built.success || output === undefined) {
+      throw new Error(`Could not build the ${plugin.id} sample plugin`);
+    }
+
+    const compiled = new Uint8Array(await output.arrayBuffer());
+    const bundleEntries = entries.map((entry) =>
+      entry.name === manifest.entry ? { name: entry.name, data: compiled } : entry,
+    );
+
+    bundleEntries.sort((left, right) => left.name.localeCompare(right.name));
+    const bundle = encodeThemeTar(bundleEntries);
     const signature = signThemeBundle(bundle, DEV_PRIVATE_KEY);
     const sha256 = createHash("sha256").update(bundle).digest("hex");
 

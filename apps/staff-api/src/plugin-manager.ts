@@ -2,10 +2,17 @@ import { queueSystemAudit } from "@bulletin/domain/audit";
 import {
   advancePluginsGeneration,
   advancePluginsGenerationInTransaction,
+  approvalMatches,
+  type CapabilityReview,
+  CatalogError,
   dropPluginNamespace,
+  fetchMarketplacePlugin,
   grantElevatedAccess,
+  notifyPluginHost,
+  type PluginApproval,
   reviewCapabilities,
 } from "@bulletin/domain/plugins";
+import { opaqueKey, type StorageClient } from "@bulletin/storage";
 import type { FormDefinition, FormValues } from "@bulletin/ui/forms/types";
 import { validateForm } from "@bulletin/ui/forms/validate";
 import type { SQL } from "bun";
@@ -418,6 +425,8 @@ export async function disablePlugin(sql: SQL, pluginId: string, actorId: string)
     UPDATE core.plugins SET state = 'disabled', enabled = false, updated_at = now()
     WHERE plugin_id = ${pluginId}
   `;
+  // plugin-host stops the sandbox when it reconciles; the row above is the durable state.
+  await notifyPluginHost(sql, pluginId);
   await sql`
     DELETE FROM core.hook_fragments
     WHERE plugin_id = ${pluginId}
@@ -468,6 +477,7 @@ export async function uninstallPlugin(
     SET state = 'uninstalled', enabled = false, updated_at = now()
     WHERE plugin_id = ${pluginId}
   `;
+  await notifyPluginHost(sql, pluginId);
   await queueSystemAudit(sql, {
     action: "plugin.uninstalled",
     targetType: "plugin",
@@ -482,4 +492,243 @@ export async function grantPluginAccess(
   actorId: string,
 ): Promise<void> {
   await grantElevatedAccess(sql, { pluginId, forumIds, actorId });
+}
+
+export type InstallFailure =
+  | "not_found"
+  | "incompatible"
+  | "already_installed"
+  | "approval_mismatch"
+  | "marketplace_unavailable"
+  | "invalid_bundle";
+
+export interface PluginReview {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly description: string;
+  readonly author: string;
+  readonly capabilities: readonly string[];
+  readonly egressHosts: readonly string[];
+  /** Plain-language list for the review screen, elevated access flagged. */
+  readonly review: readonly CapabilityReview[];
+}
+
+function installFailure(error: unknown): InstallFailure {
+  if (error instanceof CatalogError) {
+    switch (error.code) {
+      case "not_found":
+        return "not_found";
+      case "incompatible":
+        return "incompatible";
+      case "catalog":
+        return "invalid_bundle";
+      default:
+        return error.code === "checksum" || error.code === "bundle_signature"
+          ? "invalid_bundle"
+          : "marketplace_unavailable";
+    }
+  }
+
+  // A manifest that fails to parse is a bad bundle; network errors are an unavailable market.
+  return error instanceof TypeError ? "marketplace_unavailable" : "invalid_bundle";
+}
+
+async function installable(sql: SQL, pluginId: string): Promise<boolean> {
+  const rows = (await sql`
+    SELECT state FROM core.plugins WHERE plugin_id = ${pluginId}
+  `) as Array<{ state: string }>;
+  const state = rows[0]?.state;
+  return state === undefined || state === "uninstalled" || state === "failed";
+}
+
+/** Downloads and verifies a catalog bundle, and returns what it will ask the admin to approve. */
+export async function reviewMarketplacePlugin(
+  sql: SQL,
+  options: {
+    readonly baseUrl: string;
+    readonly pluginId: string;
+    readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+  },
+): Promise<{ ok: true; review: PluginReview } | { ok: false; code: InstallFailure }> {
+  if (!(await installable(sql, options.pluginId))) {
+    return { ok: false, code: "already_installed" };
+  }
+
+  try {
+    const plugin = await fetchMarketplacePlugin(options);
+    return {
+      ok: true,
+      review: {
+        id: plugin.manifest.id,
+        name: plugin.manifest.name,
+        version: plugin.manifest.version,
+        description: plugin.entry.description,
+        author: plugin.entry.author,
+        capabilities: plugin.manifest.capabilities,
+        egressHosts: plugin.manifest.egressHosts,
+        review: reviewCapabilities(plugin.manifest.capabilities, plugin.manifest.egressHosts),
+      },
+    };
+  } catch (error) {
+    return { ok: false, code: installFailure(error) };
+  }
+}
+
+/**
+ * Stores a verified, approved bundle and asks plugin-host to run it (ADR 0009). The row is
+ * left `installing`; plugin-host provisions the schema, runs migrations, starts the sandbox,
+ * publishes fragments and moves it to `active` or `failed`.
+ */
+export async function requestPluginInstall(
+  sql: SQL,
+  options: {
+    readonly storage: StorageClient;
+    readonly baseUrl: string;
+    readonly pluginId: string;
+    readonly approval: PluginApproval;
+    readonly actorId: string;
+    readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
+  },
+): Promise<{ ok: true } | { ok: false; code: InstallFailure }> {
+  if (!(await installable(sql, options.pluginId))) {
+    return { ok: false, code: "already_installed" };
+  }
+
+  let plugin: Awaited<ReturnType<typeof fetchMarketplacePlugin>>;
+
+  try {
+    plugin = await fetchMarketplacePlugin(options);
+  } catch (error) {
+    return { ok: false, code: installFailure(error) };
+  }
+
+  if (!approvalMatches(plugin.manifest, options.approval)) {
+    return { ok: false, code: "approval_mismatch" };
+  }
+
+  const { manifest, verified } = plugin;
+  // The verified bytes go to object storage under an opaque key; the row holds the key and the
+  // checksum plugin-host re-checks before it unpacks anything (ADR 0009, 0019).
+  const bundleKey = opaqueKey("plugin");
+  await options.storage.put(bundleKey, verified.bundle, { contentType: "application/x-tar" });
+  const personalData = manifest.personalData.map((entry) => ({
+    table: entry.table,
+    memberColumn: entry.memberColumn,
+  }));
+
+  const stored = await sql.begin(async (tx) => {
+    // Re-check under the row lock: two admins installing at once must not both win.
+    const current = (await tx`
+      SELECT state FROM core.plugins WHERE plugin_id = ${manifest.id} FOR UPDATE
+    `) as Array<{ state: string }>;
+    const state = current[0]?.state;
+
+    if (state !== undefined && state !== "uninstalled" && state !== "failed") {
+      return false;
+    }
+
+    await tx`
+      INSERT INTO core.plugins (
+        plugin_id, name, version, sdk_version, state, enabled, capabilities,
+        approved_capabilities, approved_egress_hosts, personal_data,
+        bundle, bundle_key, signature, checksum, error, last_error
+      ) VALUES (
+        ${manifest.id}, ${manifest.name}, ${manifest.version}, ${manifest.sdkVersion},
+        'installing', true, (${JSON.stringify(manifest.capabilities)}::text)::jsonb,
+        (${JSON.stringify(manifest.capabilities)}::text)::jsonb,
+        (${JSON.stringify(manifest.egressHosts)}::text)::jsonb,
+        (${JSON.stringify(personalData)}::text)::jsonb,
+        NULL, ${bundleKey}, ${verified.signature}, ${verified.checksum}, NULL, NULL
+      )
+      ON CONFLICT (plugin_id) DO UPDATE SET
+        name = EXCLUDED.name,
+        version = EXCLUDED.version,
+        sdk_version = EXCLUDED.sdk_version,
+        state = 'installing',
+        enabled = true,
+        capabilities = EXCLUDED.capabilities,
+        approved_capabilities = EXCLUDED.approved_capabilities,
+        approved_egress_hosts = EXCLUDED.approved_egress_hosts,
+        personal_data = EXCLUDED.personal_data,
+        bundle = NULL,
+        bundle_key = EXCLUDED.bundle_key,
+        signature = EXCLUDED.signature,
+        checksum = EXCLUDED.checksum,
+        error = NULL,
+        last_error = NULL,
+        installed_at = now(),
+        updated_at = now()
+    `;
+
+    for (const declaration of personalData) {
+      await tx`
+        INSERT INTO core.plugin_personal_data (plugin_id, table_name, member_column)
+        VALUES (${manifest.id}, ${declaration.table}, ${declaration.memberColumn})
+        ON CONFLICT DO NOTHING
+      `;
+    }
+
+    await tx`
+      INSERT INTO core.plugin_operations (plugin_id, kind, step, state)
+      VALUES (${manifest.id}, 'install', 'requested', 'completed')
+    `;
+    await queueSystemAudit(tx, {
+      action: "plugin.install_requested",
+      targetType: "plugin",
+      summary: {
+        pluginId: manifest.id,
+        actorId: options.actorId,
+        version: manifest.version,
+        capabilities: manifest.capabilities,
+        egressHosts: manifest.egressHosts,
+      },
+    });
+    await notifyPluginHost(tx, manifest.id);
+    return true;
+  });
+
+  if (!stored) {
+    await options.storage.delete(bundleKey).catch(() => undefined);
+    return { ok: false, code: "already_installed" };
+  }
+
+  return { ok: true };
+}
+
+/** Re-enables a disabled or failed plugin; plugin-host restarts it and marks it active. */
+export async function enablePlugin(
+  sql: SQL,
+  pluginId: string,
+  actorId: string,
+): Promise<{ ok: true } | { ok: false; code: "not_found" | "state" }> {
+  return sql.begin(async (tx) => {
+    const rows = (await tx`
+      SELECT state FROM core.plugins WHERE plugin_id = ${pluginId} FOR UPDATE
+    `) as Array<{ state: string }>;
+    const state = rows[0]?.state;
+
+    if (state === undefined) {
+      return { ok: false as const, code: "not_found" as const };
+    }
+
+    if (state !== "disabled" && state !== "failed") {
+      return { ok: false as const, code: "state" as const };
+    }
+
+    await tx`
+      UPDATE core.plugins
+      SET state = 'installing', enabled = true, error = NULL, updated_at = now()
+      WHERE plugin_id = ${pluginId}
+    `;
+    // A plugin the circuit breaker turned off starts with a clean failure count.
+    await tx`DELETE FROM core.plugin_breaker WHERE plugin_id = ${pluginId}`;
+    await queueSystemAudit(tx, {
+      action: "plugin.enabled",
+      targetType: "plugin",
+      summary: { pluginId, actorId },
+    });
+    await notifyPluginHost(tx, pluginId);
+    return { ok: true as const };
+  });
 }

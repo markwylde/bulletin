@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parsePluginManifest } from "@bulletin/plugin-sdk/manifest";
 
 const DOCS = ["README.md", "sdk.md", "hooks.md", "capabilities.md", "sandbox-limits.md"];
-const SAMPLES = ["hide-post-count", "welcome-bot", "tip-jar"];
+const SAMPLES = ["hide-post-count", "welcome-bot", "tip-jar", "topic-notice"];
 
 describe("plugin documentation and samples", () => {
   test("every plugin guide exists", async () => {

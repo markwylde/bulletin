@@ -186,6 +186,26 @@ describe("plugin-host internal hook API", () => {
     expect(calls).toEqual(["tips:export:7", "tips:erase:7"]);
   });
 
+  test("content extensions are rendered by the extending plugin's own sandbox", async () => {
+    const opts = options();
+    (opts as { transports?: Map<string, HookTransport> }).transports = new Map([
+      ["tips", transport(() => ({ html: "<b>own sandbox</b>" }))],
+    ]);
+    const own = await readInternal(
+      request("/internal/content-extend", { syntax: "tip", source: "5", viewer: {} }),
+      opts,
+    );
+    expect(await own?.json()).toEqual({ html: "<b>own sandbox</b>" });
+
+    // A plugin with no running sandbox contributes nothing, not another plugin's answer.
+    (opts as { transports?: Map<string, HookTransport> }).transports = new Map();
+    const none = await readInternal(
+      request("/internal/content-extend", { syntax: "tip", source: "5", viewer: {} }),
+      opts,
+    );
+    expect(await none?.json()).toEqual({ html: "" });
+  });
+
   test("refuses route dispatch for unknown or disabled plugins", async () => {
     const noTransport = options();
     (noTransport as { transports?: Map<string, HookTransport> }).transports = new Map();

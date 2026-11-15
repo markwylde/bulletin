@@ -1,9 +1,10 @@
 /**
- * The three sample plugins the seed installs and the marketplace publishes (ADR 0009).
+ * The sample plugins the marketplace publishes (ADR 0009). The demo seed installs every sample
+ * except the `available` ones, which are left for staff to install from the marketplace.
  * One shared metadata source keeps the seeded rows, catalog entries and docs in sync.
  */
 
-export type SamplePluginId = "hide-post-count" | "welcome-bot" | "tip-jar";
+export type SamplePluginId = "hide-post-count" | "welcome-bot" | "tip-jar" | "topic-notice";
 
 export interface SamplePlugin {
   readonly id: SamplePluginId;
@@ -12,7 +13,8 @@ export interface SamplePlugin {
   readonly sdkVersion: string;
   readonly description: string;
   readonly author: string;
-  readonly state: "disabled" | "active";
+  /** The seeded state; `available` samples are published but not seeded. */
+  readonly state: "disabled" | "active" | "available";
   readonly capabilities: readonly string[];
   readonly events: readonly string[];
   readonly jobs: readonly { readonly name: string; readonly schedule?: string }[];
@@ -146,6 +148,31 @@ export const SAMPLE_PLUGINS: readonly SamplePlugin[] = [
         ],
       },
     ]),
+  },
+  {
+    id: "topic-notice",
+    name: "Topic list notice",
+    version: "1.0.0",
+    sdkVersion: "^2.0.0",
+    description:
+      "Replaces the demo topic list's stand-in hook fragment. Not seeded: install it from the marketplace.",
+    author: "Bulletin samples",
+    state: "available",
+    capabilities: ["template"],
+    events: [],
+    jobs: [],
+    forumActions: [],
+    flags: [],
+    templateFragments: [
+      {
+        name: "demo.after.topics",
+        kind: "hook",
+        body: '<p class="bl-hook" data-demo-hook data-plugin-notice="topic-notice">{% t "demo.hook" %}</p>',
+        deps: [],
+      },
+    ],
+    personalData: [],
+    settings: null,
   },
 ];
 

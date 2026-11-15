@@ -1,17 +1,14 @@
-import { randomUUID } from "node:crypto";
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { bumpCacheTags } from "@bulletin/cache";
 import {
   connectionPoolSize,
   createLogger,
   loadConfig,
+  loadStorageEnvironment,
   metrics,
   metricsPortFromEnv,
   standardMetrics,
 } from "@bulletin/config";
-import { startService } from "@bulletin/config/server";
+import { listenSqlFromEnv, startService } from "@bulletin/config/server";
 import { initTracing } from "@bulletin/config/tracing";
 import {
   can,
@@ -19,22 +16,25 @@ import {
   loadForumTree,
   loadPermissionSnapshot,
 } from "@bulletin/domain/permissions";
-import { advancePluginsGeneration, PluginCircuitBreaker } from "@bulletin/domain/plugins";
+import {
+  advancePluginsGeneration,
+  PLUGINS_NOTIFY_CHANNEL,
+  PluginCircuitBreaker,
+} from "@bulletin/domain/plugins";
+import type { PluginManifest } from "@bulletin/plugin-sdk/manifest";
+import { createStorage } from "@bulletin/storage";
 import { SQL } from "bun";
-import { Broker, type PluginGrants } from "./broker/broker.ts";
+import type { PluginGrants } from "./broker/broker.ts";
 import { CacheInvalidator } from "./broker/cache.ts";
-import { BrokerChannel } from "./broker/channel.ts";
+import type { BrokerChannel } from "./broker/channel.ts";
 import { PluginConnectionManager } from "./broker/connections.ts";
 import { CoreApiClient } from "./broker/core.ts";
-import { PluginDatabase } from "./broker/database.ts";
-import { EgressProxy } from "./broker/egress.ts";
-import { loadPluginManifest, loadPluginMigrations } from "./broker/manifest.ts";
 import { loadPluginHostConfig } from "./config.ts";
 import { readInternal, serveClientApp } from "./hooks/http.ts";
-import { publishPluginFragments, publishPluginRegistry } from "./hooks/publish.ts";
 import { PluginHookRegistry } from "./hooks/registry.ts";
 import { PluginHookRunner } from "./hooks/runner.ts";
-import { PluginQuotaMonitor, usesSharedPluginCluster } from "./quota/monitor.ts";
+import { usesSharedPluginCluster } from "./quota/monitor.ts";
+import { PluginManager, type RunningPlugin } from "./runtime/manager.ts";
 import { runSandboxPreflight } from "./sandbox/preflight.ts";
 import { buildSeccompPolicy, sandboxArch } from "./sandbox/seccomp.ts";
 import { SandboxSupervisor } from "./sandbox/supervisor.ts";
@@ -62,8 +62,6 @@ try {
   throw error;
 }
 
-const manifest = await loadPluginManifest(sandboxConfig.bundlePath);
-const migrations = await loadPluginMigrations(sandboxConfig.bundlePath, manifest);
 const pluginDatabaseUrl = sandboxConfig.pluginDatabaseUrl ?? config.databaseUrl;
 const connections = new PluginConnectionManager({
   adminUrl: pluginDatabaseUrl,
@@ -78,23 +76,14 @@ metrics.addCollector(() => {
   ]);
   standardMetrics.dbPoolMax.set({}, stats.maxConnections);
 });
-const database = await PluginDatabase.open({
-  adminUrl: pluginDatabaseUrl,
-  pluginId: manifest.id,
-  migrations,
-  logger,
-  connections,
-});
-const egress = new EgressProxy({
-  allowedHosts: manifest.egressHosts,
-  logger: logger.child({ component: "egress" }),
-  nodeEnv: config.nodeEnv,
-});
 const core = new CoreApiClient({
   baseUrl: sandboxConfig.coreApiUrl,
   token: sandboxConfig.coreBrokerToken,
 });
 const cacheSql = new SQL(config.databaseUrl, { max: 1, connectionTimeout: 5 });
+// The plugin manager's control connection: fragment publishing holds a transaction, so it
+// must not share the single cache/permission connection.
+const controlSql = new SQL(config.databaseUrl, { max: 2, connectionTimeout: 5 });
 const cache = new CacheInvalidator({
   bump: async (tags) => {
     await bumpCacheTags(cacheSql, tags);
@@ -132,37 +121,49 @@ const pluginGrants = async (pluginId: string): Promise<PluginGrants | null> => {
   };
 };
 
-const broker = new Broker({
-  database,
-  egress,
+const hooks = new PluginHookRegistry();
+const transports = new Map<string, BrokerChannel>();
+const bundles = new Map<string, { manifest: PluginManifest; path: string }>();
+const seccompPolicy = buildSeccompPolicy(sandboxArch(process.arch));
+const marketplaceUrl = Bun.env.BULLETIN_MARKETPLACE_URL?.trim();
+
+const plugins = new PluginManager({
+  sql: controlSql,
+  logger,
+  stateDir: sandboxConfig.stateDir,
+  pluginDatabaseUrl,
+  connections,
   core,
   cache,
-  logger,
+  nodeEnv: config.nodeEnv,
   isActive: pluginActive,
   grants: pluginGrants,
+  hooks,
+  transports,
+  bundles,
+  quota: {
+    quotaBytes: sandboxConfig.storageQuotaBytes,
+    intervalMs: sandboxConfig.quotaIntervalMs,
+  },
+  localBundlePath: sandboxConfig.bundlePath,
+  storage: createStorage(loadStorageEnvironment(Bun.env, config.nodeEnv)),
+  ...(marketplaceUrl === undefined || marketplaceUrl === "" ? {} : { marketplaceUrl }),
+  createSupervisor: ({ pluginId, bundlePath, channel, maintenance }) =>
+    new SandboxSupervisor({
+      pluginId,
+      bundlePath,
+      socketPath: channel.socketPath,
+      nsjailPath: sandboxConfig.nsjailPath,
+      rootfsPath: sandboxConfig.rootfsPath,
+      cgroupV2Mount: cgroupRoot,
+      seccompPolicy,
+      limits: sandboxConfig.limits,
+      channel,
+      logger,
+      readyTimeoutMs: sandboxConfig.readyTimeoutMs,
+      ...(maintenance ? { maxLifetimeMs: 60_000 } : { restart: sandboxConfig.restart }),
+    }),
 });
-const hooks = new PluginHookRegistry();
-hooks.install(manifest, { generation: 1 });
-const bundles = new Map([[manifest.id, { manifest, path: sandboxConfig.bundlePath }]]);
-const sampleRoot = fileURLToPath(new URL("../../../mocks/marketplace/plugins", import.meta.url));
-
-// Sample plugin client apps are served from their source bundles; only the demo bundle has a
-// running sandbox in local development.
-for (const id of await readdir(sampleRoot).catch(() => [] as string[])) {
-  try {
-    const path = join(sampleRoot, id);
-    bundles.set(id, { manifest: await loadPluginManifest(path), path });
-  } catch {
-    // A non-plugin directory in the samples folder is not served.
-  }
-}
-const channel = new BrokerChannel({
-  socketPath: join(sandboxConfig.stateDir, "broker.sock"),
-  logger,
-  handler: broker,
-  expectedPluginId: manifest.id,
-});
-await channel.start();
 
 const canReadContent = async (pluginId: string, forumId: string): Promise<boolean> => {
   const rows = (await cacheSql`
@@ -214,10 +215,11 @@ const breaker = new PluginCircuitBreaker({
     await advancePluginsGeneration(cacheSql);
     standardMetrics.pluginBreakerTrips.inc({ plugin: pluginId });
     logger.error("plugin.auto_disabled", { pluginId, reason });
+    void plugins.reconcile();
   },
 });
 const hookRunner = new PluginHookRunner({
-  transport: channel,
+  transportFor: (pluginId) => transports.get(pluginId),
   registry: hooks,
   logger: logger.child({ component: "hooks" }),
   isActive: pluginActive,
@@ -229,66 +231,15 @@ const hookRunner = new PluginHookRunner({
   },
   canReadContent,
 });
-/** Runs a plugin's GDPR hook in a one-shot sandbox when its normal transport is gone. */
-async function maintenanceGdpr(
-  pluginId: string,
-  operation: "export" | "erase",
-  memberId: string,
-): Promise<{ readonly ok: boolean; readonly data?: unknown; readonly error?: string }> {
-  const bundle = bundles.get(pluginId);
-
-  if (bundle === undefined) {
-    return { ok: false, error: "plugin bundle is not available" };
-  }
-
-  const socketPath = join(sandboxConfig.stateDir, `maintenance-${pluginId}-${randomUUID()}.sock`);
-  const maintenanceChannel = new BrokerChannel({
-    socketPath,
-    logger: logger.child({ component: "maintenance-gdpr" }),
-    handler: broker,
-    expectedPluginId: pluginId,
-  });
-  await maintenanceChannel.start();
-  const maintenanceSupervisor = new SandboxSupervisor({
-    pluginId,
-    bundlePath: bundle.path,
-    socketPath,
-    nsjailPath: sandboxConfig.nsjailPath,
-    rootfsPath: sandboxConfig.rootfsPath,
-    cgroupV2Mount: cgroupRoot,
-    seccompPolicy: buildSeccompPolicy(sandboxArch(process.arch)),
-    limits: sandboxConfig.limits,
-    channel: maintenanceChannel,
-    logger,
-    readyTimeoutMs: sandboxConfig.readyTimeoutMs,
-    maxLifetimeMs: 60_000,
-  });
-
-  try {
-    await maintenanceSupervisor.start();
-    const data = await maintenanceChannel.request(
-      operation === "export" ? "gdpr.export" : "gdpr.erase",
-      { memberId },
-      30_000,
-    );
-    return { ok: true, data };
-  } catch (error) {
-    logger.warn("plugin.maintenance_gdpr_failed", { pluginId, operation, error });
-    return { ok: false, error: "maintenance handler failed" };
-  } finally {
-    await maintenanceSupervisor.stop();
-    await maintenanceChannel.close();
-  }
-}
 
 const hookHttp = {
   runner: hookRunner,
   registry: hooks,
-  transport: channel,
-  transports: new Map([[manifest.id, channel]]),
+  transports,
   canReadContent,
   isPluginActive: pluginActive,
-  maintenanceGdpr,
+  maintenanceGdpr: (pluginId: string, operation: "export" | "erase", memberId: string) =>
+    plugins.maintenanceGdpr(pluginId, operation, memberId),
   token: sandboxConfig.internalToken,
   frameAncestors: [config.userOrigin, config.staffOrigin],
   logger: logger.child({ component: "hooks" }),
@@ -310,51 +261,45 @@ if (sharedCluster) {
   });
 }
 
-const quota = new PluginQuotaMonitor({
-  adminUrl: pluginDatabaseUrl,
-  pluginId: manifest.id,
-  logger: logger.child({ component: "quota" }),
-  quotaBytes: sandboxConfig.storageQuotaBytes,
-  intervalMs: sandboxConfig.quotaIntervalMs,
-});
-quota.start();
-
-async function publishFragments(attempt = 0): Promise<void> {
-  const sql = new SQL(config.databaseUrl, { max: 1, connectionTimeout: 5 });
-
+async function initPlugins(attempt = 0): Promise<void> {
   try {
-    await publishPluginFragments(sql, manifest, logger);
-    await publishPluginRegistry(sql, manifest, logger);
+    await plugins.init();
   } catch (error) {
-    if (attempt < 30) {
-      setTimeout(() => {
-        void publishFragments(attempt + 1);
-      }, 2_000).unref?.();
-      return;
+    // Postgres may still be migrating on a fresh stack; keep trying, the health check stays red.
+    if (attempt % 15 === 14) {
+      logger.error("plugin.init_retrying", { attempt: attempt + 1, error });
     }
 
-    logger.error("plugin.fragments_publish_failed", { error });
-  } finally {
-    await sql.close().catch(() => undefined);
+    setTimeout(() => {
+      void initPlugins(attempt + 1);
+    }, 2_000).unref?.();
+    return;
   }
+
+  await plugins.reconcile();
 }
 
-void publishFragments();
+// Installs, enables, disables and uninstalls arrive as a NOTIFY wake-up; the durable request is
+// the `core.plugins` row, re-read on every pass and on the periodic sweep (ADR 0003).
+const listenSql = listenSqlFromEnv(new SQL(config.databaseUrl, { max: 1, connectionTimeout: 5 }));
+const pluginSubscription = await listenSql.listen(
+  PLUGINS_NOTIFY_CHANNEL,
+  () => {
+    void plugins.reconcile();
+  },
+  () => {
+    void plugins.reconcile();
+  },
+);
+const sweep = setInterval(() => {
+  void plugins.reconcile();
+}, sandboxConfig.reconcileIntervalMs);
+sweep.unref?.();
 
-const supervisor = new SandboxSupervisor({
-  pluginId: manifest.id,
-  bundlePath: sandboxConfig.bundlePath,
-  socketPath: channel.socketPath,
-  nsjailPath: sandboxConfig.nsjailPath,
-  rootfsPath: sandboxConfig.rootfsPath,
-  cgroupV2Mount: cgroupRoot,
-  seccompPolicy: buildSeccompPolicy(sandboxArch(process.arch)),
-  limits: sandboxConfig.limits,
-  channel,
-  logger,
-  readyTimeoutMs: sandboxConfig.readyTimeoutMs,
-  restart: sandboxConfig.restart,
-});
+function localPlugin(): RunningPlugin | undefined {
+  const id = plugins.localPluginId;
+  return id === undefined ? undefined : plugins.get(id);
+}
 
 await startService({
   service: "plugin-host",
@@ -375,41 +320,61 @@ await startService({
       return app;
     }
 
-    if (url.pathname === "/sandbox") {
-      return Response.json(supervisor.status());
-    }
+    // Status for one plugin (`?plugin=<id>`, default the local demo plugin) or all of them.
+    const selected = url.searchParams.get("plugin");
+    const plugin = selected === null ? localPlugin() : plugins.get(selected);
 
-    if (url.pathname === "/broker") {
+    if (url.pathname === "/plugins") {
       return Response.json({
-        schema: database.schema,
-        stats: broker.stats(),
-        connections: connections.stats(),
+        plugins: [...plugins.running()].map(([id, running]) => ({
+          id,
+          version: running.manifest.version,
+          sandbox: running.supervisor.status(),
+        })),
       });
     }
 
+    if (url.pathname === "/sandbox") {
+      return plugin === undefined
+        ? Response.json({ code: "not_running" }, { status: 404 })
+        : Response.json(plugin.supervisor.status());
+    }
+
+    if (url.pathname === "/broker") {
+      return plugin === undefined
+        ? Response.json({ code: "not_running" }, { status: 404 })
+        : Response.json({
+            schema: plugin.database.schema,
+            stats: plugin.broker.stats(),
+            connections: connections.stats(),
+          });
+    }
+
     if (url.pathname === "/quota") {
-      return Response.json({ ...quota.status(), sharedCluster });
+      return plugin === undefined
+        ? Response.json({ code: "not_running" }, { status: 404 })
+        : Response.json({ ...plugin.quota.status(), sharedCluster });
     }
 
     return Response.json({ service: "plugin-host", status: "ok" });
   },
+  // The local demo plugin is the readiness probe for the jail itself; installed plugins
+  // report their own state in `core.plugins` and must not take the host down.
   checks: [
-    { name: "sandbox", check: () => supervisor.ready },
-    { name: "broker", check: () => broker.ready },
+    { name: "sandbox", check: () => localPlugin()?.supervisor.ready ?? false },
+    { name: "broker", check: () => localPlugin()?.broker.ready ?? false },
   ],
   async onShutdown() {
-    quota.stop();
-    await supervisor.stop();
-    await channel.close();
-    await broker.close();
+    clearInterval(sweep);
+    await pluginSubscription.unlisten().catch(() => undefined);
+    await plugins.close();
     await cache.flush();
     await cacheSql.close().catch(() => undefined);
+    await controlSql.close().catch(() => undefined);
     await connections.close();
   },
 });
 
 logger.info("service listening", { port: config.port });
 
-void supervisor.start().catch((error: unknown) => {
-  logger.error("sandbox.start_failed", { error });
-});
+void initPlugins();

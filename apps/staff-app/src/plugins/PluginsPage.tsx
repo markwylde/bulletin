@@ -1,13 +1,15 @@
+import { beginStepUp } from "@bulletin/domain/auth/browser";
 import { useT } from "@bulletin/ui";
 import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui/forms";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { apiGet, apiPost } from "../api.ts";
+import { ApiError, apiGet, apiPost } from "../api.ts";
 import {
   Badge,
   Button,
+  Dialog,
   EmptyState,
   IconTrash,
   MenuItem,
@@ -151,6 +153,28 @@ interface PluginSettings {
 
 type PluginTab = "settings" | "health" | "errors" | `page:${string}`;
 
+interface MarketplacePackage {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly description: string;
+  readonly author: string;
+  readonly installable: boolean;
+}
+
+interface PluginReview {
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly capabilities: readonly string[];
+  readonly egressHosts: readonly string[];
+  readonly review: readonly Capability[];
+}
+
+/** Plugins with no row, or an uninstalled or failed one, can be installed from the catalog. */
+const REINSTALLABLE = new Set(["uninstalled", "failed"]);
+const BUSY_STATES = new Set(["installing", "upgrading"]);
+
 function DeclaredPluginPageView({ page }: { readonly page: DeclaredPage }) {
   const definition = page.definition;
   const columns = Array.isArray(definition.columns)
@@ -208,11 +232,32 @@ export function PluginsPage() {
   const [tab, setTab] = useState<PluginTab>("settings");
   const [values, setValues] = useState<FormValues>({});
   const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<string | null>(null);
   const toast = useToast();
 
   const plugins = useQuery({
     queryKey: ["staff", "plugins"],
     queryFn: () => apiGet<{ plugins: readonly StaffPlugin[] }>("/api/staff/plugins"),
+    // plugin-host moves an installing plugin to active or failed; follow it until it settles.
+    refetchInterval: (query) =>
+      query.state.data?.plugins.some((plugin) => BUSY_STATES.has(plugin.state)) === true
+        ? 1_500
+        : false,
+  });
+  const catalog = useQuery({
+    queryKey: ["staff", "plugins", "catalog"],
+    queryFn: () =>
+      apiGet<{ packages: readonly MarketplacePackage[] }>("/api/staff/plugins/catalog"),
+  });
+  const review = useQuery({
+    // Outside the ["staff", "plugins"] prefix: an install must not refetch its own review.
+    queryKey: ["staff", "plugin-review", reviewing],
+    queryFn: () =>
+      apiGet<{ plugin: PluginReview }>(
+        `/api/staff/plugins/review?pluginId=${encodeURIComponent(reviewing ?? "")}`,
+      ),
+    enabled: reviewing !== null,
+    retry: false,
   });
   const settings = useQuery({
     queryKey: ["staff", "plugins", selected, "settings"],
@@ -244,6 +289,37 @@ export function PluginsPage() {
       void queryClient.invalidateQueries({ queryKey: ["staff", "plugins"] });
     },
     onError: () => toast.pushToast({ messageKey: "staff.plugins.uninstallFailed", tone: "error" }),
+  });
+  const install = useMutation({
+    mutationFn: (plugin: PluginReview) =>
+      apiPost("/api/staff/plugins/install", {
+        pluginId: plugin.id,
+        approved: true,
+        capabilities: plugin.capabilities,
+        egressHosts: plugin.egressHosts,
+      }),
+    onSuccess: () => {
+      toast.pushToast({ messageKey: "staff.plugins.installing", tone: "success" });
+      setReviewing(null);
+      void queryClient.invalidateQueries({ queryKey: ["staff", "plugins"] });
+    },
+    onError: (error) => {
+      // Installing grants access to the board, so it needs a fresh sign-in (ADR 0009).
+      if (error instanceof ApiError && error.code === "step_up_required") {
+        void beginStepUp({ returnTo: "/plugins" });
+        return;
+      }
+
+      toast.pushToast({ messageKey: "staff.plugins.installFailed", tone: "error" });
+    },
+  });
+  const enable = useMutation({
+    mutationFn: (pluginId: string) => apiPost("/api/staff/plugins/enable", { pluginId }),
+    onSuccess: () => {
+      toast.pushToast({ messageKey: "staff.plugins.enabling", tone: "success" });
+      void queryClient.invalidateQueries({ queryKey: ["staff", "plugins"] });
+    },
+    onError: () => toast.pushToast({ messageKey: "staff.plugins.enableFailed", tone: "error" }),
   });
   const disable = useMutation({
     mutationFn: (pluginId: string) => apiPost("/api/staff/plugins/disable", { pluginId }),
@@ -287,6 +363,12 @@ export function PluginsPage() {
           ...active.declaredPages.map((page) => `page:${page.id}` as const),
         ];
   const confirmPlugin = plugins.data?.plugins.find((plugin) => plugin.id === confirmUninstall);
+  const installed = new Map((plugins.data?.plugins ?? []).map((plugin) => [plugin.id, plugin]));
+  const available = (catalog.data?.packages ?? []).filter((entry) => {
+    const plugin = installed.get(entry.id);
+    return plugin === undefined || REINSTALLABLE.has(plugin.state);
+  });
+  const closeReview = () => setReviewing(null);
 
   return (
     <Page id="plugins" title={t("staff.plugins.title")} description={t("staff.plugins.intro")}>
@@ -318,6 +400,16 @@ export function PluginsPage() {
                         {t("staff.plugins.configure")}
                       </Button>
                       <RowActions label={t("staff.rowActions")}>
+                        <MenuItem
+                          data-plugin-enable={plugin.id}
+                          disabled={
+                            (plugin.state !== "disabled" && plugin.state !== "failed") ||
+                            enable.isPending
+                          }
+                          onClick={() => enable.mutate(plugin.id)}
+                        >
+                          {t("staff.plugins.enable")}
+                        </MenuItem>
                         <MenuItem
                           data-plugin-disable={plugin.id}
                           disabled={!plugin.enabled || disable.isPending}
@@ -383,6 +475,94 @@ export function PluginsPage() {
           )
         }
       </QueryState>
+
+      <Panel
+        title={t("staff.plugins.marketplace.title")}
+        description={t("staff.plugins.marketplace.intro")}
+        data-plugin-marketplace
+      >
+        <QueryState query={catalog} errorLabel={t("staff.plugins.marketplace.loadError")}>
+          {() =>
+            available.length === 0 ? (
+              <EmptyState title={t("staff.plugins.marketplace.empty")} />
+            ) : (
+              <ul className="list">
+                {available.map((entry) => (
+                  <li key={entry.id} className="list-row" data-marketplace-package={entry.id}>
+                    <div className="list-row-main">
+                      <span className="list-row-title">{entry.name}</span>
+                      <span className="list-row-meta">
+                        <span className="mono">{entry.version}</span> · {entry.author}
+                      </span>
+                      <span className="subtle">{entry.description}</span>
+                    </div>
+                    <Button
+                      size="sm"
+                      data-plugin-review={entry.id}
+                      disabled={!entry.installable}
+                      onClick={() => setReviewing(entry.id)}
+                    >
+                      {t("staff.plugins.review")}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+        </QueryState>
+      </Panel>
+
+      <Dialog
+        open={reviewing !== null}
+        title={t("staff.plugins.review.title", {
+          name: review.data?.plugin.name ?? reviewing ?? "",
+        })}
+        closeLabel={t("staff.nav.close")}
+        onClose={closeReview}
+        footer={
+          <>
+            <Button variant="ghost" onClick={closeReview}>
+              {t("staff.plugins.cancel")}
+            </Button>
+            <Button
+              variant="primary"
+              data-plugin-install={reviewing ?? ""}
+              disabled={review.data === undefined || install.isPending}
+              onClick={() => {
+                if (review.data !== undefined) {
+                  install.mutate(review.data.plugin);
+                }
+              }}
+            >
+              {t("staff.plugins.install")}
+            </Button>
+          </>
+        }
+      >
+        <QueryState query={review} errorLabel={t("staff.plugins.review.loadError")}>
+          {(data) => (
+            <div className="stack stack-sm" data-plugin-review-capabilities={data.plugin.id}>
+              <p>{t("staff.plugins.review.body")}</p>
+              <ul className="plain-list">
+                {data.plugin.review.map((capability) => (
+                  <li key={capability.capability} data-capability={capability.capability}>
+                    {capabilityLabel(t, capability)}
+                    {capability.capability.startsWith("egress:")
+                      ? ` (${capability.capability.slice("egress:".length)})`
+                      : null}
+                    {capability.elevated ? (
+                      <>
+                        {" "}
+                        <Badge tone="warning">{t("staff.plugins.review.elevated")}</Badge>
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </QueryState>
+      </Dialog>
 
       {active === null ? null : (
         <Panel title={active.name} data-plugin-detail={active.id}>

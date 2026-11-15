@@ -799,6 +799,12 @@ services:
       <<: *app-environment
       PORT: "3004"
       DATABASE_URL: postgres://bulletin:bulletin@postgres:5432/bulletin
+      # Installed plugin bundles are read from object storage (ADR 0009).
+      S3_ENDPOINT: http://s3:4001/_mocks/s3
+      S3_BUCKET: bulletin
+      S3_ACCESS_KEY_ID: bulletin
+      S3_SECRET_ACCESS_KEY: bulletin-secret
+      S3_REGION: us-east-1
     # The only privileged container: nsjail needs SYS_ADMIN for namespaces, mounts and the
     # cgroup hierarchy. It drops to the per-plugin UID and installs its own seccomp filter.
     # The plugin-host preflight verifies this exact contract (capabilities, unconfined outer
@@ -816,7 +822,14 @@ services:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     healthcheck: *service-healthcheck
     restart: unless-stopped
-    depends_on: *depends-on-postgres
+    # Installed bundles are read from s3; seeded samples are fetched from the marketplace.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+      marketplace:
+        condition: service_healthy
     develop:
       watch:
         - action: sync

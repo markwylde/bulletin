@@ -1,0 +1,17 @@
+{
+  "id": "topic-notice",
+  "name": "Topic list notice",
+  "version": "1.0.0",
+  "sdkVersion": "^2.0.0",
+  "entry": "server.ts",
+  "capabilities": ["template"],
+  "egressHosts": [],
+  "migrations": [],
+  "templateFragments": [
+    {
+      "name": "demo.after.topics",
+      "kind": "hook",
+      "body": "<p class=\"bl-hook\" data-demo-hook data-plugin-notice=\"topic-notice\">{% t \"demo.hook\" %}</p>"
+    }
+  ]
+}

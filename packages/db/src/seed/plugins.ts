@@ -1,4 +1,4 @@
-import { SAMPLE_PLUGINS } from "@bulletin/domain/plugins";
+import { notifyPluginHost, SAMPLE_PLUGINS } from "@bulletin/domain/plugins";
 import type { SeedModule } from "./framework.ts";
 
 const SETTING_LABEL = (pluginId: string) => `plugin.${pluginId}.settings.title`;
@@ -22,6 +22,10 @@ export const pluginSeedModule: SeedModule = {
     );
 
     for (const plugin of SAMPLE_PLUGINS) {
+      if (plugin.state === "available") {
+        continue;
+      }
+
       await sql`
         INSERT INTO core.plugins (
           plugin_id, name, version, sdk_version, state, enabled, generation,
@@ -148,5 +152,8 @@ export const pluginSeedModule: SeedModule = {
         `;
       }
     }
+
+    // The seed runs in one transaction, so plugin-host is woken on commit to start the samples.
+    await notifyPluginHost(sql, "seed");
   },
 };

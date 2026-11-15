@@ -86,11 +86,14 @@ import {
 } from "./multimod.ts";
 import {
   disablePlugin,
+  enablePlugin,
   extensionSections,
   grantPluginAccess,
   listPlugins,
   pluginSettings,
   pluginsEnabled,
+  requestPluginInstall,
+  reviewMarketplacePlugin,
   savePluginSettings,
   uninstallPlugin,
 } from "./plugin-manager.ts";
@@ -508,21 +511,132 @@ async function pluginsList(context: StaffRouteContext): Promise<Response> {
   return json({ plugins: await listPlugins(context.sql) });
 }
 
-async function pluginsCatalog(): Promise<Response> {
-  // The caller checks the flag through pluginApiDisabled before reaching the catalog.
+function marketplaceUrl(): string | null {
+  const url = Bun.env.BULLETIN_MARKETPLACE_URL;
+  return url === undefined || url === "" ? null : url;
+}
+
+async function pluginsCatalog(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
 
   try {
-    const marketplaceUrl = Bun.env.BULLETIN_MARKETPLACE_URL;
+    const baseUrl = marketplaceUrl();
 
-    if (marketplaceUrl === undefined || marketplaceUrl === "") {
+    if (baseUrl === null) {
       return json({ code: "marketplace_unavailable" }, 503);
     }
 
-    const entries = await fetchCatalog({ baseUrl: marketplaceUrl });
+    const entries = await fetchCatalog({ baseUrl });
     return json({ packages: entries });
   } catch {
     return json({ code: "marketplace_unavailable" }, 503);
   }
+}
+
+const INSTALL_FAILURE_STATUS = {
+  not_found: 404,
+  incompatible: 422,
+  already_installed: 409,
+  approval_mismatch: 422,
+  marketplace_unavailable: 503,
+  invalid_bundle: 422,
+} as const;
+
+async function pluginsReview(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
+  const baseUrl = marketplaceUrl();
+  const pluginId = context.url.searchParams.get("pluginId") ?? "";
+
+  if (baseUrl === null) {
+    return json({ code: "marketplace_unavailable" }, 503);
+  }
+
+  if (pluginId === "") {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const result = await reviewMarketplacePlugin(context.sql, { baseUrl, pluginId });
+  return result.ok
+    ? json({ plugin: result.review })
+    : json({ code: result.code }, INSTALL_FAILURE_STATUS[result.code]);
+}
+
+function stringList(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string")
+    ? (value as string[])
+    : null;
+}
+
+async function pluginsInstall(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
+  const baseUrl = marketplaceUrl();
+
+  if (baseUrl === null) {
+    return json({ code: "marketplace_unavailable" }, 503);
+  }
+
+  const body: unknown = await context.request.json().catch(() => null);
+  const capabilities = isRecord(body) ? stringList(body.capabilities) : null;
+  const egressHosts = isRecord(body) ? stringList(body.egressHosts ?? []) : null;
+
+  if (
+    !isRecord(body) ||
+    typeof body.pluginId !== "string" ||
+    body.approved !== true ||
+    capabilities === null ||
+    egressHosts === null
+  ) {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  if (context.storage === undefined) {
+    return json({ code: "storage_unavailable" }, 503);
+  }
+
+  const result = await requestPluginInstall(context.sql, {
+    storage: context.storage,
+    baseUrl,
+    pluginId: body.pluginId,
+    approval: { capabilities, egressHosts },
+    actorId: context.session.memberId,
+  });
+
+  return result.ok
+    ? json({ ok: true, state: "installing" }, 202)
+    : json({ code: result.code }, INSTALL_FAILURE_STATUS[result.code]);
+}
+
+async function pluginsEnable(context: StaffRouteContext): Promise<Response> {
+  const disabled = await pluginApiDisabled(context);
+
+  if (disabled !== null) {
+    return disabled;
+  }
+
+  const body: unknown = await context.request.json().catch(() => null);
+
+  if (!isRecord(body) || typeof body.pluginId !== "string") {
+    return json({ code: "invalid_request" }, 400);
+  }
+
+  const result = await enablePlugin(context.sql, body.pluginId, context.session.memberId);
+  return result.ok
+    ? json({ ok: true, state: "installing" }, 202)
+    : json({ code: result.code }, result.code === "not_found" ? 404 : 409);
 }
 
 async function pluginsSettingsGet(context: StaffRouteContext): Promise<Response> {
@@ -1576,6 +1690,28 @@ export const STAFF_ROUTES: readonly StaffRoute[] = [
     path: "/api/staff/plugins/catalog",
     permission: "acp.plugins",
     handler: pluginsCatalog,
+  },
+  {
+    id: "plugins.review",
+    method: "GET",
+    path: "/api/staff/plugins/review",
+    permission: "acp.plugins",
+    handler: pluginsReview,
+  },
+  {
+    id: "plugins.install",
+    method: "POST",
+    path: "/api/staff/plugins/install",
+    permission: "acp.plugins",
+    requiresStepUp: true,
+    handler: pluginsInstall,
+  },
+  {
+    id: "plugins.enable",
+    method: "POST",
+    path: "/api/staff/plugins/enable",
+    permission: "acp.plugins",
+    handler: pluginsEnable,
   },
   {
     id: "plugins.settings.get",

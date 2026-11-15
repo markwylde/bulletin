@@ -78,14 +78,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * fail-closed veto that cannot answer rejects the write with a translated reason.
  */
 export class PluginHookRunner {
-  readonly #transport: HookTransport;
+  readonly #transportFor: (pluginId: string) => HookTransport | undefined;
   readonly #registry: PluginHookRegistry;
   readonly #logger: Logger;
 
   readonly #isActive: (pluginId: string) => Promise<boolean>;
 
   constructor(options: {
-    readonly transport: HookTransport;
+    /** One transport for every plugin; tests use it. The host passes `transportFor`. */
+    readonly transport?: HookTransport;
+    /** The sandbox channel of one plugin; each plugin has its own (ADR 0009). */
+    readonly transportFor?: (pluginId: string) => HookTransport | undefined;
     readonly registry: PluginHookRegistry;
     readonly logger: Logger;
     /** Runtime state/flag check; disabled plugins never receive a dispatch. */
@@ -95,7 +98,8 @@ export class PluginHookRunner {
     /** Service-principal forum access for write content. */
     readonly canReadContent?: (pluginId: string, forumId: string) => Promise<boolean>;
   }) {
-    this.#transport = options.transport;
+    const single = options.transport;
+    this.#transportFor = options.transportFor ?? (() => single);
     this.#registry = options.registry;
     this.#logger = options.logger;
     this.#isActive = options.isActive ?? (async () => true);
@@ -121,9 +125,15 @@ export class PluginHookRunner {
     const timer = standardMetrics.pluginHookDuration.startTimer({ plugin: pluginId, hook });
 
     try {
-      const result = await (this.#transport.requestWithContext === undefined
-        ? this.#transport.request<T>(method, params, timeoutMs)
-        : this.#transport.requestWithContext<T>(method, params, viewer, timeoutMs));
+      const transport = this.#transportFor(pluginId);
+
+      if (transport === undefined) {
+        throw new Error(`No sandbox is running for plugin ${pluginId}`);
+      }
+
+      const result = await (transport.requestWithContext === undefined
+        ? transport.request<T>(method, params, timeoutMs)
+        : transport.requestWithContext<T>(method, params, viewer, timeoutMs));
       timer({ outcome: "ok" });
       return result;
     } catch (error) {

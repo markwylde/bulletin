@@ -36,6 +36,7 @@
         "@bulletin/config": "workspace:*",
         "@bulletin/domain": "workspace:*",
         "@bulletin/plugin-sdk": "workspace:*",
+        "@bulletin/storage": "workspace:*",
         "libpg-query": "^18.2.2",
       },
       "devDependencies": {

@@ -118,6 +118,20 @@ describe("marketplace plugin package", () => {
       capabilities: ["events", "jobs", "core.read", "db", "settings"],
     });
     expect(files.has("server.ts")).toBe(true);
+    // The jail has no node_modules: the published entry must not import workspace packages.
+    const entrySource = new TextDecoder().decode(files.get("server.ts"));
+    expect(entrySource).not.toMatch(/from\s+["']@bulletin\//);
+    expect(entrySource).toContain("welcome-bot");
+  });
+
+  test("publishes the marketplace-only topic-notice sample", async () => {
+    const packages = await buildPluginPackages();
+    expect(packages.map((entry) => entry.package.id).sort()).toEqual([
+      "hide-post-count",
+      "tip-jar",
+      "topic-notice",
+      "welcome-bot",
+    ]);
   });
 });
 

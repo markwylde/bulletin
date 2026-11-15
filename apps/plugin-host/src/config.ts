@@ -20,6 +20,8 @@ export interface PluginHostConfig {
   /** Per-plugin schema quota and how often it is measured. */
   readonly storageQuotaBytes: number;
   readonly quotaIntervalMs: number;
+  /** Fallback sweep of `core.plugins` when a NOTIFY wake-up was missed (ADR 0003). */
+  readonly reconcileIntervalMs: number;
   /** Shared token for core→plugin-host hook calls. */
   readonly internalToken: string;
   /** Core API base URL the broker forwards SDK data calls to. */
@@ -153,6 +155,13 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     { min: 100, max: 120_000 },
     issues,
   );
+  const reconcileIntervalMs = readInteger(
+    env,
+    "PLUGIN_HOST_RECONCILE_INTERVAL_MS",
+    30_000,
+    { min: 1_000, max: 3_600_000 },
+    issues,
+  );
   const restart = {
     initialDelayMs: readInteger(
       env,
@@ -206,6 +215,7 @@ export function loadPluginHostConfig(env: Env = Bun.env): PluginHostConfig {
     pluginDatabaseUrl: read(env, "PLUGIN_DATABASE_URL"),
     storageQuotaBytes: storageQuotaMb * MB,
     quotaIntervalMs,
+    reconcileIntervalMs,
     internalToken: read(env, "PLUGIN_INTERNAL_TOKEN") ?? "bulletin-development-only-internal-token",
     coreApiUrl: read(env, "PLUGIN_CORE_API_URL") ?? "http://user-api:3001",
     coreBrokerToken:

@@ -67,10 +67,13 @@ export async function publishPluginFragments(
 
       if (anyRows.length === 0) {
         for (const fragment of wanted) {
+          // Same rule as a new generation below: the plugin's fragment replaces whatever holds
+          // the hook point, including the seed's stand-in demo fragment.
           await transaction`
             INSERT INTO core.hook_fragments (generation, name, body, plugin_id, kind)
             VALUES (${generation}, ${fragment.name}, ${fragment.body}, ${manifest.id}, ${fragment.kind})
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (generation, name) DO UPDATE
+              SET body = EXCLUDED.body, plugin_id = EXCLUDED.plugin_id, kind = EXCLUDED.kind
           `;
         }
 
