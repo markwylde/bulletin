@@ -290,6 +290,7 @@
   "index.column.lastPost": "Dernier message",
   "index.column.stats": "Activité",
   "index.lastPost.by": "par {member}",
+  "index.lastPost.hidden": "Masqué pour vous",
   "index.lastPost.none": "Aucun message pour l’instant",
   "index.online.fullList": "Voir la liste complète",
   "index.online.guests": "{count, plural, =0 {Aucun invité} =1 {1 invité} other {# invités}}",

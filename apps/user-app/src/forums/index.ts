@@ -45,6 +45,8 @@ export interface BoardIndexForum extends BoardIndexLink {
   readonly postCount: string;
   readonly subforums: readonly BoardIndexLink[];
   readonly lastPost: BoardIndexLastPost | null;
+  /** The forum has posts the viewer cannot see the latest of (e.g. password protected). */
+  readonly lastPostHidden: boolean;
   readonly redirect: BoardIndexRedirect | null;
 }
 
@@ -213,6 +215,7 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
         .filter((candidate) => candidate.parentId === forum.id && candidate.type !== "category")
         .map(link),
       lastPost,
+      lastPostHidden: lastPost === null && forum.postCount > 0,
       redirect,
     };
   };

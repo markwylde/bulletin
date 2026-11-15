@@ -253,6 +253,7 @@
   "index.column.stats": "Activity",
   "index.lastPost.by": "by {member}",
   "index.lastPost.none": "No posts yet",
+  "index.lastPost.hidden": "Hidden from you",
   "index.online.fullList": "See the full list",
   "index.online.guests": "{count, plural, =0 {No guests} =1 {1 guest} other {# guests}}",
   "index.online.members": "{count, plural, =0 {No members} =1 {1 member} other {# members}}",
