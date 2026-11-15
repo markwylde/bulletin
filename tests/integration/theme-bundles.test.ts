@@ -38,6 +38,10 @@ import {
 } from "../../mocks/marketplace/src/app.ts";
 import { buildThemePackages } from "../../mocks/marketplace/src/packages.ts";
 
+/** ADR 0021: every theme footer places the language switcher, so fixtures must too. */
+const LANGUAGE_ISLAND = '{% island "LanguageSwitcher" language %}';
+const ROUND_TRIP_FOOTER = `<footer>round trip${LANGUAGE_ISLAND}</footer>`;
+
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
 
@@ -142,7 +146,7 @@ integrationDescribe("theme bundles and distribution", () => {
         await saveThemeTemplate(database.sql, {
           themeId: child,
           name: "footer",
-          body: "<footer>round trip</footer>",
+          body: ROUND_TRIP_FOOTER,
           actorId: admin,
         }),
       );
@@ -190,7 +194,7 @@ integrationDescribe("theme bundles and distribution", () => {
 
       const detail = await readThemeDetail(database.sql, imported.id);
       expect(detail?.templates.find((entry) => entry.name === "footer")?.body).toBe(
-        "<footer>round trip</footer>",
+        ROUND_TRIP_FOOTER,
       );
       expect(detail?.css).toContain(".rt");
       expect(detail?.strings).toEqual([
@@ -422,7 +426,7 @@ integrationDescribe("theme bundles and distribution", () => {
         parent: "default",
         description: "",
         version: 1,
-        templates: { footer: "<footer>board signed</footer>" },
+        templates: { footer: `<footer>board signed${LANGUAGE_ISLAND}</footer>` },
         tokens: { light: {}, dark: {} },
         css: "",
         strings: [],

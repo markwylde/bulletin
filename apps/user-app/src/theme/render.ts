@@ -152,7 +152,6 @@ export interface PageRegionsInput {
 /** The header, breadcrumb, empty-state and footer regions every themed page renders. */
 export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
   const flags = (input.viewModel as { readonly flags?: unknown } | undefined)?.flags ?? {};
-  const feeds = (flags as { readonly feeds?: unknown }).feeds === true;
 
   const accountActive =
     input.template === undefined ? undefined : ACCOUNT_NAV_ACTIVE[input.template];
@@ -187,26 +186,36 @@ export function pageRegions(input: PageRegionsInput): readonly ThemeRegion[] {
         body: input.translate("theme.empty.body"),
       },
     },
-    {
-      name: "footer",
-      viewModel: {
-        boardName: input.boardName,
-        year: input.year ?? new Date().getFullYear(),
-        flags,
-        // The language and appearance choices live in the footer, not the header (ADR 0021).
-        language: languageSwitcherView(input.locale, input.translate),
-        themeChooser: themeChooserView(input.translate),
-        feedLinks: {
-          flags: { feeds },
-          labels: {
-            label: input.translate("seo.feed.links"),
-            rss: input.translate("seo.feed.link.rss"),
-            atom: input.translate("seo.feed.link.atom"),
-          },
-        },
+    { name: "footer", viewModel: { ...shellViewModel(input), flags } },
+  ];
+}
+
+/**
+ * The board-wide values the header and footer print. Page templates get them too, so a theme
+ * that renders shell markup inside a page template (or a route rendering the footer itself)
+ * never meets an undefined variable.
+ */
+export function shellViewModel(
+  input: Pick<PageRegionsInput, "boardName" | "locale" | "translate" | "year" | "viewModel">,
+): Record<string, unknown> {
+  const flags = (input.viewModel as { readonly flags?: unknown } | undefined)?.flags ?? {};
+  const feeds = (flags as { readonly feeds?: unknown }).feeds === true;
+
+  return {
+    boardName: input.boardName,
+    year: input.year ?? new Date().getFullYear(),
+    // The language and appearance choices live in the footer, not the header (ADR 0021).
+    language: languageSwitcherView(input.locale, input.translate),
+    themeChooser: themeChooserView(input.translate),
+    feedLinks: {
+      flags: { feeds },
+      labels: {
+        label: input.translate("seo.feed.links"),
+        rss: input.translate("seo.feed.link.rss"),
+        atom: input.translate("seo.feed.link.atom"),
       },
     },
-  ];
+  };
 }
 
 export interface ThemedPageInput {
@@ -388,7 +397,12 @@ export async function renderThemedPage(input: ThemedPageInput): Promise<ThemedPa
     await listEmbedProviders(input.sql).catch(() => []),
   );
   let page: RenderedThemePage;
-  const viewModel = withFlagDefaults(input.viewModel);
+  // Shell values every page may print (the footer and header name the board), so a page
+  // template that includes shell markup renders even when its route's view model omits them.
+  const viewModel = withFlagDefaults({
+    ...shellViewModel({ ...input, translate }),
+    ...input.viewModel,
+  });
 
   try {
     page = await renderThemePage({

@@ -66,6 +66,33 @@ async function csrfToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Resolves once the shell knows who is viewing. While a session is loading or being renewed
+ * (silent re-auth), a background read would only fail with 401, so the chooser waits. Pages
+ * without the shell's auth area (tests, embeds) resolve at once.
+ */
+function whenSessionSettled(): Promise<void> {
+  const area = typeof document === "undefined" ? null : document.querySelector("[data-auth]");
+  const settled = (): boolean => {
+    const state = area?.getAttribute("data-auth-state");
+    return state === "guest" || state === "authenticated";
+  };
+
+  if (area === null || settled()) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    const observer = new MutationObserver(() => {
+      if (settled()) {
+        observer.disconnect();
+        resolve();
+      }
+    });
+    observer.observe(area, { attributes: true, attributeFilter: ["data-auth-state"] });
+  });
+}
+
 /** The footer and account appearance chooser, gated by `theme_chooser` (ADR 0008, 0010). */
 export function ThemeChooser({ labels }: ThemeChooserProps) {
   const enabled = useFlag("theme_chooser");
@@ -82,9 +109,16 @@ export function ThemeChooser({ labels }: ThemeChooserProps) {
 
     let cancelled = false;
 
-    void fetch("/api/theme-options", { headers: { accept: "application/json" } })
+    void whenSessionSettled()
+      .then(() =>
+        cancelled ? null : fetch("/api/theme-options", { headers: { accept: "application/json" } }),
+      )
       .then(async (response) =>
-        response.ok ? ((await response.json()) as AppearanceOptions) : null,
+        response === null
+          ? null
+          : response.ok
+            ? ((await response.json()) as AppearanceOptions)
+            : null,
       )
       .then((next) => {
         if (cancelled || next === null) {

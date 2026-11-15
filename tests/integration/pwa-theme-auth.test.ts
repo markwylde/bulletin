@@ -11,6 +11,10 @@ import {
 } from "@bulletin/db/seed";
 import { type TestDatabase, withTestDatabase } from "@bulletin/test-utils/database";
 import { resolvePwaTheme } from "../../apps/user-app/src/pwa/theme.ts";
+import defaultTokens from "../../packages/templates/themes/default/tokens.json";
+
+/** The fallback is the default theme, so its accent comes from that theme's own tokens. */
+const DEFAULT_ACCENT = defaultTokens.light.accent;
 
 const adminUrl = Bun.env.TEST_DATABASE_URL;
 const integrationDescribe = adminUrl === undefined ? describe.skip : describe;
@@ -80,7 +84,7 @@ integrationDescribe("PWA explicit theme authorization", () => {
 
       const denied = await resolvePwaTheme(database.sql, null, { id: vip, version: 1 });
       expect(denied.manifest.id).toBe(fallback);
-      expect(denied.manifest.tokens.accent).toBe("#3157c7");
+      expect(denied.manifest.tokens.accent).toBe(DEFAULT_ACCENT);
     });
   }, 60_000);
 
@@ -96,7 +100,7 @@ integrationDescribe("PWA explicit theme authorization", () => {
 
       const denied = await resolvePwaTheme(database.sql, cookie, { id: vip, version: 1 });
       expect(denied.manifest.id).toBe(fallback);
-      expect(denied.manifest.tokens.accent).toBe("#3157c7");
+      expect(denied.manifest.tokens.accent).toBe(DEFAULT_ACCENT);
     });
   }, 60_000);
 });

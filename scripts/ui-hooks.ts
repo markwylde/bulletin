@@ -5,8 +5,11 @@
  *
  *   bun scripts/ui-hooks.ts [--base main]
  *
- * Exits 1 when a removed hook is still referenced by tests/e2e or by client code (non-markup
- * `.ts` files), because that reference would now find nothing.
+ * Exits 1 when a removed hook is still referenced by tests (E2E or integration) or by client code
+ * (non-markup `.ts` files), because that reference would now find nothing. Theme templates are
+ * also compared file by file and warned about: a hook that leaves one template but survives in
+ * another (say the header's `data-board-name`) can still break whatever read it there, and a
+ * set-wide diff cannot see that. Review each warning; moves between partials are fine.
  */
 import { parseArgs } from "node:util";
 import { $, Glob } from "bun";
@@ -39,6 +42,7 @@ const AREAS: readonly Area[] = [
 /** Code that looks hooks up rather than (only) rendering them. */
 const CONSUMERS = [
   "tests/e2e/**/*.ts",
+  "tests/integration/**/*.ts",
   "apps/user-app/src/**/*.ts",
   "packages/ui/src/**/*.ts",
   "packages/ui/src/**/*.tsx",
@@ -160,6 +164,8 @@ async function referencesTo(hook: string, consumers: readonly string[]): Promise
       text.includes(`[${name}`) ||
       text.includes(`"${name}"`) ||
       text.includes(`'${name}'`) ||
+      text.includes(`${name}>`) ||
+      text.includes(`${name}=`) ||
       new RegExp(`dataset\\.${camel}\\b`).test(text);
     if (literal === null ? byName : byName && text.includes(literal)) hits.push(file);
   }
@@ -202,6 +208,28 @@ for (const area of AREAS) {
     }
   }
 }
+
+/** Hooks each theme template rendered at the base and renders now, file by file. */
+const TEMPLATES = "packages/templates/themes/**/*.liquid";
+console.log("\ntemplates (per file):");
+let templateRemovals = 0;
+for (const file of await baseFiles([TEMPLATES])) {
+  if (!(await Bun.file(file).exists())) continue;
+  const before = new Set<string>();
+  const after = new Set<string>();
+  hooksIn(await $`git show ${`${BASE}:${file}`}`.quiet().text(), before);
+  hooksIn(await Bun.file(file).text(), after);
+  for (const hook of [...before].filter((name) => !after.has(name)).sort()) {
+    if (hook.includes("=")) continue;
+    const refs = await referencesTo(hook, consumers);
+    if (refs.length === 0) continue;
+    templateRemovals += 1;
+    console.log(
+      `  ! ${hook} left ${file}; check it still renders where these read it: ${refs.slice(0, 4).join(", ")}${refs.length > 4 ? ` +${refs.length - 4}` : ""}`,
+    );
+  }
+}
+if (templateRemovals === 0) console.log("  no referenced hook left a template");
 
 if (failed) {
   console.error("\nRemoved hooks are still referenced. Restore them or update their consumers.");
