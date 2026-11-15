@@ -196,13 +196,25 @@ body {
 }
 
 :where(.button-danger, .btn-danger) {
+  border-color: var(--border-strong);
+  background: var(--bg);
+  color: var(--danger);
+}
+
+:where(.button-danger, .btn-danger):hover,
+:where(.button-danger, .btn-danger):disabled:hover {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border-strong));
+  background: var(--danger-subtle);
+}
+
+/* The irreversible step itself (a confirm dialog's action) is solid. */
+:where(.confirm-dialog .button-danger, .dialog .btn-danger, .btn-danger-solid) {
   border-color: var(--danger);
   background: var(--danger);
   color: #ffffff;
 }
 
-:where(.button-danger, .btn-danger):hover,
-:where(.button-danger, .btn-danger):disabled:hover {
+:where(.confirm-dialog .button-danger, .dialog .btn-danger, .btn-danger-solid):hover {
   border-color: var(--danger-hover);
   background: var(--danger-hover);
 }

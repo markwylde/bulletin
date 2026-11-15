@@ -1102,6 +1102,7 @@
   "staff.scheme.light": "Claro",
   "staff.scheme.system": "Sistema",
   "staff.search.empty": "Ninguna sección coincide con tu búsqueda.",
+  "staff.search.escape": "Esc",
   "staff.search.label": "Buscar secciones",
   "staff.search.placeholder": "Buscar ajustes…",
   "staff.sectionDenied.body": "Tu cuenta no tiene permiso para abrir esta sección.",

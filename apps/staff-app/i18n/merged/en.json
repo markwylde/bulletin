@@ -1102,6 +1102,7 @@
   "staff.scheme.light": "Light",
   "staff.scheme.system": "System",
   "staff.search.empty": "No sections match your search.",
+  "staff.search.escape": "Esc",
   "staff.search.label": "Search sections",
   "staff.search.placeholder": "Search settings…",
   "staff.sectionDenied.body": "Your account does not have permission to open this section.",

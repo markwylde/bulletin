@@ -121,7 +121,7 @@ integrationDescribe("staff navigation", () => {
         await setInputValue(view, "[data-command-input]", "board settings");
         await waitForExpression(
           view,
-          '!document.querySelector(\'[data-command-option="boardSettings"]\')',
+          "!document.querySelector('[data-command-option=\"boardSettings\"]')",
         );
         await view.evaluate(
           'document.querySelector("[data-command-input]").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))',
@@ -131,7 +131,9 @@ integrationDescribe("staff navigation", () => {
         await waitForSelector(view, "[data-not-found]");
         expect(await path(view)).toBe("/settings/board");
         expect(
-          await view.evaluate<boolean>("Boolean(document.querySelector('[data-page=\"board-settings\"]'))"),
+          await view.evaluate<boolean>(
+            "Boolean(document.querySelector('[data-page=\"board-settings\"]'))",
+          ),
         ).toBe(false);
       },
     );
@@ -152,7 +154,10 @@ integrationDescribe("staff navigation", () => {
 
       await clickSelector(view, '[data-section="forums"]');
       await waitForExpression(view, 'location.pathname === "/forums"');
-      await waitForExpression(view, 'document.querySelector("[data-nav]").dataset.open === "false"');
+      await waitForExpression(
+        view,
+        'document.querySelector("[data-nav]").dataset.open === "false"',
+      );
       expect(
         await view.evaluate<boolean>(
           "document.documentElement.scrollWidth <= document.documentElement.clientWidth",

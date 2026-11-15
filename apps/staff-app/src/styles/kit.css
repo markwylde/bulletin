@@ -75,6 +75,8 @@ a.btn:hover {
 /* ---------- Panel ---------- */
 
 .panel {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -109,6 +111,7 @@ a.btn:hover {
 }
 
 .panel-body {
+  flex: 1;
   padding: var(--space-4);
 }
 
@@ -228,13 +231,21 @@ a.btn:hover {
 /* ---------- Stats ---------- */
 
 .stat-group {
+  height: 100%;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
 }
 
 .stat {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   padding: var(--space-4);
+}
+
+/* Values sit on one line even when a label wraps. */
+.stat-value {
+  margin-top: auto;
 }
 
 .stat + .stat {
@@ -247,7 +258,7 @@ a.btn:hover {
 }
 
 .stat-value {
-  margin-top: var(--space-1);
+  padding-top: var(--space-1);
   font-size: var(--text-2xl);
   font-weight: 600;
   letter-spacing: -0.02em;
@@ -1027,7 +1038,12 @@ a.btn:hover {
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 767px) {
+.data-table {
+  container-type: inline-size;
+}
+
+/* Cards whenever the table's own column is narrow: phones, tablets, side panels. */
+@container (max-width: 44rem) {
   .data-table-wrap {
     display: none;
   }
@@ -1142,6 +1158,7 @@ a.btn:hover {
 @media (min-width: 768px) {
   .form-field:not([data-field-type="toggle"]) {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-rows: auto 1fr;
     column-gap: var(--space-8);
     align-items: start;
   }

@@ -194,7 +194,7 @@ export function CommandPalette({
             }
           }}
         />
-        <kbd className="command-esc">Esc</kbd>
+        <kbd className="command-esc">{t("staff.search.escape")}</kbd>
       </div>
       {results.length === 0 ? (
         <p className="command-empty" data-command-empty>

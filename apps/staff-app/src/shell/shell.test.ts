@@ -39,7 +39,9 @@ describe("section search", () => {
 
 describe("shell helpers", () => {
   test("links to the user origin from the staff origin", () => {
-    expect(userSiteUrl("http://staff.bulletin.localhost:8080")).toBe("http://bulletin.localhost:8080/");
+    expect(userSiteUrl("http://staff.bulletin.localhost:8080")).toBe(
+      "http://bulletin.localhost:8080/",
+    );
     expect(userSiteUrl("https://staff.forum.example")).toBe("https://forum.example/");
     expect(userSiteUrl("https://admin.example")).toBe("https://admin.example/");
   });
