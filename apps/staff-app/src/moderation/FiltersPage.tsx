@@ -260,7 +260,7 @@ export function FiltersPage() {
                   data-filter-domain
                   value={domain}
                   maxLength={200}
-                  placeholder="example.com"
+                  placeholder={t("staff.filters.domains.placeholder")}
                   onChange={(event) => setDomain(event.target.value)}
                 />
               )}

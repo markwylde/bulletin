@@ -255,6 +255,7 @@
   "staff.filters.delete": "Eliminar",
   "staff.filters.domain": "Dominio",
   "staff.filters.domains.empty": "Aún no hay dominios bloqueados.",
+  "staff.filters.domains.placeholder": "ejemplo.com",
   "staff.filters.domains.title": "Dominios de enlaces bloqueados",
   "staff.filters.intro": "Palabras bloqueadas, límites de enlaces y reglas antispam para publicaciones y perfiles.",
   "staff.filters.loadError": "No se pudieron cargar los filtros.",
@@ -1481,6 +1482,7 @@
   "staff.webhooks.status.skipped": "Omitido",
   "staff.webhooks.title": "Webhooks",
   "staff.webhooks.url": "URL de destino",
+  "staff.webhooks.urlPlaceholder": "https://",
   "staff.widget.error": "Este panel no se pudo cargar.",
   "staff.widget.loading": "Cargando…",
   "staff.widget.retry": "Recargar"

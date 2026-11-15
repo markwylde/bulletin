@@ -365,7 +365,7 @@ export function WebhooksPage() {
                         id={id}
                         data-webhook-url
                         type="url"
-                        placeholder="https://"
+                        placeholder={t("staff.webhooks.urlPlaceholder")}
                         value={draft.url}
                         onChange={(event) =>
                           setDraft((current) => ({ ...current, url: event.target.value }))
