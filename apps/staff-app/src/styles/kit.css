@@ -865,6 +865,7 @@ a.btn:hover {
 
 .data-sort-bar .control {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: var(--space-2);
   color: var(--text-muted);
