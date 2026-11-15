@@ -691,6 +691,7 @@ function privatePostControls(post: EditablePost): void {
     if (existing === null) {
       const details = document.createElement("details");
       details.className = "bl-post__edit";
+      details.id = `post-edit-${post.postId}`;
       details.dataset.postEdit = post.postId;
       const summary = document.createElement("summary");
       summary.textContent = labels.labelEdit ?? "";
@@ -736,6 +737,16 @@ function privatePostControls(post: EditablePost): void {
       details.append(summary, form);
       // The editor opens under the post's action row, as the server-rendered one does.
       article.querySelector(".bl-post__main")?.append(details);
+      article
+        .querySelector("[data-post-actions]")
+        ?.prepend(
+          actionButton(
+            { postEditToggle: post.postId },
+            "M12.5 4.5l3 3L7 16H4v-3z",
+            labels.labelEdit ?? "",
+            `post-edit-${post.postId}`,
+          ),
+        );
     }
   }
 
@@ -759,27 +770,75 @@ function privatePostControls(post: EditablePost): void {
     const actions = article.querySelector("[data-post-actions]");
 
     if (actions !== null) {
-      const button = document.createElement("button");
-      button.className = "bl-post__action";
-      button.type = "button";
-      button.dataset.postAction = "soft";
-      button.dataset.postId = post.postId;
-      button.dataset.confirm = labels.labelConfirmDelete ?? "";
       // The same trash icon the server-rendered delete action carries.
-      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      icon.setAttribute("class", "bl-icon");
-      icon.setAttribute("viewBox", "0 0 20 20");
-      icon.setAttribute("aria-hidden", "true");
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", "M4 6h12M8 6V4h4v2M5.5 6l.75 10h7.5L14.5 6");
-      icon.append(path);
-      const label = document.createElement("span");
-      label.textContent = labels.labelDelete ?? "";
-      button.append(icon, label);
-      actions.append(button);
+      actions.append(
+        actionButton(
+          {
+            postAction: "soft",
+            postId: post.postId,
+            confirm: labels.labelConfirmDelete ?? "",
+          },
+          "M4 6h12M8 6V4h4v2M5.5 6l.75 10h7.5L14.5 6",
+          labels.labelDelete ?? "",
+        ),
+      );
     }
   }
 }
+
+/** An icon+label post action, matching the server-rendered ones in `post.liquid`. */
+function actionButton(
+  data: Readonly<Record<string, string>>,
+  iconPath: string,
+  label: string,
+  controls?: string,
+): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.className = "bl-post__action";
+  button.type = "button";
+  Object.assign(button.dataset, data);
+  button.setAttribute("aria-label", label);
+
+  if (controls !== undefined) {
+    button.setAttribute("aria-controls", controls);
+    button.setAttribute("aria-expanded", "false");
+  }
+
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("class", "bl-icon");
+  icon.setAttribute("viewBox", "0 0 20 20");
+  icon.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", iconPath);
+  icon.append(path);
+  const text = document.createElement("span");
+  text.textContent = label;
+  button.append(icon, text);
+  return button;
+}
+
+/** The row's Edit action opens the post's editor below the row. */
+document.addEventListener("click", (event) => {
+  const toggle =
+    event.target instanceof Element
+      ? event.target.closest<HTMLButtonElement>("[data-post-edit-toggle]")
+      : null;
+
+  if (toggle === null) {
+    return;
+  }
+
+  const details = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
+
+  if (details instanceof HTMLDetailsElement) {
+    details.open = !details.open;
+    toggle.setAttribute("aria-expanded", String(details.open));
+
+    if (details.open) {
+      details.querySelector<HTMLTextAreaElement>("textarea")?.focus();
+    }
+  }
+});
 
 window.addEventListener("bulletin:editable-posts", (event) => {
   const posts = (event as CustomEvent<readonly EditablePost[]>).detail;

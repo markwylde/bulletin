@@ -757,7 +757,9 @@
 .bl-moderator-list {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--bl-s1) var(--bl-s2);
+  gap: var(--bl-s1);
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 
@@ -766,10 +768,8 @@
   font-weight: 550;
 }
 
-.bl-moderator-list > li + li::before {
-  content: "·";
-  margin-right: var(--bl-s2);
-  color: var(--bl-border-strong);
+.bl-moderator-list a {
+  color: inherit;
 }
 
 .bl-bulk-bar__move {
@@ -1101,8 +1101,13 @@ html[data-hide-signatures] [data-signature] {
   font-size: var(--bl-text-sm);
 }
 
-/* Very narrow phones keep the icons; labels stay for assistive tech. */
-@media (max-width: 26rem) {
+/* The row's Edit button opens the editor; the details summary is only a no-JS fallback. */
+.bl-post:has([data-post-edit-toggle]) .bl-post__edit > summary {
+  display: none;
+}
+
+/* Phones keep the icons with 44px targets; labels stay for assistive tech. */
+@media (max-width: 30rem) {
   .bl-post__action .bl-icon + span {
     position: absolute;
     width: 1px;
@@ -1112,8 +1117,10 @@ html[data-hide-signatures] [data-signature] {
     white-space: nowrap;
   }
 
-  .bl-post__action {
-    min-width: 2.25rem;
+  .bl-post__action,
+  .bl-post__actions .bl-post__reputation .bl-button {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
     justify-content: center;
   }
 }
@@ -3031,8 +3038,7 @@ img.bl-author-card__badge {
   display: none;
 }
 
-/* Plugin iframes live in a bordered frame. */
-.bl-plugin iframe,
+/* A full plugin page frames its app; slot frames stay borderless and collapse when empty. */
 [data-plugin-page] iframe {
   display: block;
   width: 100%;
@@ -3383,4 +3389,8 @@ img.bl-author-card__badge {
 .bl-api-docs {
   display: grid;
   gap: var(--bl-s3);
+}
+
+iframe[data-plugin-frame] {
+  background: transparent;
 }

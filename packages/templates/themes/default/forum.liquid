@@ -294,9 +294,9 @@
         <section class="bl-forum-moderators" data-moderators aria-label="{% t "forum.moderators" %}">
           <h2 class="bl-forum-moderators__title">{% t "forum.moderatedBy" %}</h2>
           <ul class="bl-moderator-list">
-            {% for moderator in moderators %}
-              <li data-moderator-kind="{{ moderator.kind }}" data-moderator="{{ moderator.id }}">{{ moderator.name }}</li>
-            {% endfor %}
+            {%- for moderator in moderators -%}
+              <li data-moderator-kind="{{ moderator.kind }}" data-moderator="{{ moderator.id }}"><a href="{{ moderator.href }}">{{ moderator.name }}</a>{% unless forloop.last %},{% endunless %}</li>
+            {%- endfor -%}
           </ul>
         </section>
       {% endif %}

@@ -2,6 +2,16 @@
 const button = document.getElementById("tip");
 const result = document.getElementById("result");
 
+/** Reports the content's real height so the host never reserves empty space. */
+function reportSize(port, token) {
+  const report = () => {
+    const height = Math.ceil(document.body.getBoundingClientRect().height);
+    port.postMessage({ type: "resize", token, height });
+  };
+  report();
+  new ResizeObserver(report).observe(document.body);
+}
+
 const bridgeReady = new Promise((resolve) => {
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent || event.data?.type !== "bulletin:bridge:init") {
@@ -34,7 +44,7 @@ const bridgeReady = new Promise((resolve) => {
       });
 
     resolve({ call, port, token: event.data.token });
-    port.postMessage({ type: "resize", token: event.data.token, height: 80 });
+    reportSize(port, event.data.token);
   });
 });
 
@@ -43,10 +53,6 @@ async function tip() {
   const response = await bridge.call({ type: "route", path: "tip", method: "GET" });
   const body = response?.data?.body ?? "";
   result.textContent = body || "no response";
-  // A successful viewer-aware route call reports a distinctive height, so the host E2E can
-  // observe the round trip without reading cross-origin frame DOM.
-  const height = body.startsWith("viewer:") && body !== "viewer:guest" ? 121 : 80;
-  bridge.port.postMessage({ type: "resize", token: bridge.token, height });
 }
 
 button.addEventListener("click", () => {

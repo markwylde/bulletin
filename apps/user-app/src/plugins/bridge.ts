@@ -102,6 +102,9 @@ async function mount(element: AppElement): Promise<void> {
     frame.style.width = "100%";
     frame.style.border = "0";
     frame.style.display = "block";
+    // No reserved space: a slot stays collapsed until the guest reports its size.
+    frame.style.height = "0px";
+    frame.style.background = "transparent";
 
     const channel = new MessageChannel();
 

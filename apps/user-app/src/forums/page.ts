@@ -99,6 +99,8 @@ export interface ForumPageView {
     readonly id: string;
     readonly name: string;
     readonly kind: string;
+    /** A member's profile, or the members list filtered to the group. */
+    readonly href: string;
   }[];
   readonly showModerators: boolean;
   readonly isModerator: boolean;
@@ -566,6 +568,10 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         id: moderator.id,
         name: moderator.name,
         kind: moderator.kind,
+        href:
+          moderator.kind === "member"
+            ? canonicalUrl("profile", moderator.targetId, moderator.name)
+            : `/members?group=${encodeURIComponent(moderator.targetId)}`,
       })),
       showModerators: input.forum.showModerators,
       isModerator,

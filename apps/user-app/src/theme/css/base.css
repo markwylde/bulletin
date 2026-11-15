@@ -157,6 +157,19 @@ iframe {
   max-width: 100%;
 }
 
+/* Native controls and embedded frames follow the chosen scheme, not only the OS one. */
+:root {
+  color-scheme: light dark;
+}
+
+:root[data-scheme="light"] {
+  color-scheme: light;
+}
+
+:root[data-scheme="dark"] {
+  color-scheme: dark;
+}
+
 img,
 video {
   height: auto;

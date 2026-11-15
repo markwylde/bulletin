@@ -50,11 +50,15 @@ integrationDescribe("plugin client app bridge", () => {
         ),
       ).toStartWith(`${PLUGIN_ORIGIN}/apps/sandbox-demo/`);
 
-      // The app calls its own route on load; the host records the viewer-aware response.
-      // The height changes only after the guest receives the bridge result over its port.
+      // The app calls its own route on load; the host records the viewer-aware response, and
+      // the guest reports its measured content size over the same port.
       await waitForExpression(
         view,
-        'document.querySelector(\'iframe[data-plugin-frame="sandbox-demo"]\').dataset.bridgeHeight === "121"',
+        `(() => {
+          const frame = document.querySelector('iframe[data-plugin-frame="sandbox-demo"]');
+          return (frame?.dataset.bridgeBody ?? "").startsWith("viewer:")
+            && Number(frame?.dataset.bridgeHeight ?? "0") > 0;
+        })()`,
         30_000,
       );
       expect(

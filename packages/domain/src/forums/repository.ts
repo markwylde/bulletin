@@ -165,6 +165,8 @@ export interface ForumPrefix {
 
 export interface ForumModerator {
   readonly id: string;
+  /** The moderating member's or group's ID, for linking to them. */
+  readonly targetId: string;
   readonly name: string;
   readonly kind: "member" | "group";
   readonly powers: readonly string[];
@@ -225,6 +227,7 @@ interface ModeratorRow {
   readonly forum_id: string;
   readonly member_name: string | null;
   readonly group_title: string | null;
+  readonly target_id: string;
 }
 
 /** Moderators whose assignment covers this forum, including inherited parent assignments. */
@@ -241,7 +244,8 @@ export async function listForumModerators(
 
   const rows = (await sql`
     SELECT m.id, m.member_id, m.group_id, m.powers, m.forum_id,
-           member.display_name AS member_name, g.title AS group_title
+           member.display_name AS member_name, g.title AS group_title,
+           COALESCE(m.member_id, m.group_id)::text AS target_id
     FROM core.moderators m
     LEFT JOIN core.members member ON member.id = m.member_id
     LEFT JOIN core.groups g ON g.id = m.group_id
@@ -263,7 +267,7 @@ export async function listForumModerators(
 
     seen.add(key);
 
-    return [{ id: row.id, name, kind, powers: row.powers }];
+    return [{ id: row.id, targetId: row.target_id, name, kind, powers: row.powers }];
   });
 }
 
