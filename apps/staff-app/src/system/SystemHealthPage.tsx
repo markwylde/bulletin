@@ -1,7 +1,9 @@
 import { formatDate, formatNumber } from "@bulletin/i18n";
 import { useLocale, useT } from "@bulletin/ui";
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { apiGet } from "../api.ts";
+import { Badge, DescriptionList, EmptyState, Page, Panel, QueryState } from "../ui/index.ts";
 
 interface ServiceHealth {
   readonly name: string;
@@ -83,210 +85,216 @@ export function SystemHealthPage() {
     t("staff.systemHealth.seconds", { value: number(value, { maximumFractionDigits: 1 }) });
   const percent = (value: number) => number(value, { style: "percent", maximumFractionDigits: 1 });
 
-  return (
-    <div className="page" data-page="system-health">
-      <header className="page-header">
-        <h1>{t("staff.systemHealth.title")}</h1>
-        <p>{t("staff.systemHealth.intro")}</p>
-      </header>
+  const stat = (id: string, label: string, value: ReactNode) => ({ id, label, value });
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.systemHealth.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess ? (
-        <>
-          <p
-            className={`health-status health-status-${query.data.status}`}
-            data-health-status={query.data.status}
-          >
-            {query.data.status === "ok"
-              ? t("staff.systemHealth.ok")
-              : t("staff.systemHealth.degraded")}{" "}
-            <span className="widget-muted">
+  return (
+    <Page
+      id="system-health"
+      title={t("staff.systemHealth.title")}
+      description={t("staff.systemHealth.intro")}
+      meta={
+        query.data === undefined ? undefined : (
+          <span className="cluster">
+            <Badge
+              tone={query.data.status === "ok" ? "success" : "danger"}
+              dot
+              data-health-status={query.data.status}
+            >
+              {query.data.status === "ok"
+                ? t("staff.systemHealth.ok")
+                : t("staff.systemHealth.degraded")}
+            </Badge>
+            <span className="subtle">
               {t("staff.systemHealth.updated", {
                 time: formatDate(new Date(query.data.generatedAt), locale, {
                   timeStyle: "medium",
                 }),
               })}
             </span>
-          </p>
-          <div className="widget-grid system-grid">
-            <section className="widget" data-health-section="services">
-              <h2>{t("staff.systemHealth.services")}</h2>
-              <ul className="health-list">
-                {query.data.services.map((service) => (
+          </span>
+        )
+      }
+    >
+      <QueryState query={query} errorLabel={t("staff.systemHealth.loadError")}>
+        {(data) => (
+          <div className="card-grid card-grid-wide">
+            <Panel flush title={t("staff.systemHealth.services")} data-health-section="services">
+              <ul className="list">
+                {data.services.map((service) => (
                   <li
                     key={service.name}
+                    className="list-row"
                     data-health-service={service.name}
                     data-health-ok={service.ready}
                   >
-                    <span className="system-name">{service.name}</span>
-                    <span className={service.ready ? "system-ok" : "system-bad"}>
+                    <span className="list-row-main mono">{service.name}</span>
+                    <Badge tone={service.ready ? "success" : "danger"} dot>
                       {service.ready
                         ? t("staff.systemHealth.ready")
                         : service.reachable
                           ? t("staff.systemHealth.notReady")
                           : t("staff.systemHealth.unreachable")}
-                    </span>
+                    </Badge>
                   </li>
                 ))}
               </ul>
-            </section>
+            </Panel>
 
-            <section className="widget" data-health-section="queues">
-              <h2>{t("staff.systemHealth.queues")}</h2>
-              <p className="widget-muted">
-                {t("staff.systemHealth.queuesHint", {
-                  seconds: query.data.queueLagWarningSeconds,
-                })}
-              </p>
-              {query.data.queues.length === 0 ? (
-                <p className="widget-muted">{t("staff.systemHealth.noQueues")}</p>
+            <Panel
+              flush
+              title={t("staff.systemHealth.queues")}
+              description={t("staff.systemHealth.queuesHint", {
+                seconds: data.queueLagWarningSeconds,
+              })}
+              data-health-section="queues"
+            >
+              <div className="panel-pad">
+                <DescriptionList
+                  items={[
+                    stat(
+                      "dead",
+                      t("staff.systemHealth.deadLetters"),
+                      <span data-health-dead-letters={data.deadLetters}>
+                        {number(data.deadLetters)}
+                      </span>,
+                    ),
+                    stat(
+                      "outbox",
+                      t("staff.systemHealth.outboxLag"),
+                      seconds(data.outbox.lagSeconds),
+                    ),
+                  ]}
+                />
+              </div>
+              {data.queues.length === 0 ? (
+                <EmptyState title={t("staff.systemHealth.noQueues")} />
               ) : (
-                <ul className="system-list">
-                  {query.data.queues.map((queue) => (
+                <ul className="list">
+                  {data.queues.map((queue) => (
                     <li
                       key={queue.queue}
-                      className={queue.lagging ? "system-row is-warning" : "system-row"}
+                      className={queue.lagging ? "list-row is-warning" : "list-row"}
                       data-queue={queue.queue}
                       data-queue-lagging={queue.lagging}
                     >
-                      <span className="system-name">{queue.queue}</span>
-                      <dl className="system-stats">
-                        <div>
-                          <dt>{t("staff.systemHealth.depth")}</dt>
-                          <dd>{number(queue.depth)}</dd>
-                        </div>
-                        <div>
-                          <dt>{t("staff.systemHealth.lag")}</dt>
-                          <dd>{seconds(queue.lagSeconds)}</dd>
-                        </div>
-                        <div>
-                          <dt>{t("staff.systemHealth.deadLetters")}</dt>
-                          <dd>{number(queue.deadLetters)}</dd>
-                        </div>
-                      </dl>
-                      {queue.lagging ? (
-                        <span className="system-bad" role="status">
-                          {t("staff.systemHealth.lagging")}
+                      <div className="list-row-main">
+                        <span className="list-row-title mono">{queue.queue}</span>
+                        <span className="list-row-meta">
+                          {t("staff.systemHealth.depth")} {number(queue.depth)} ·{" "}
+                          {t("staff.systemHealth.lag")} {seconds(queue.lagSeconds)} ·{" "}
+                          {t("staff.systemHealth.deadLetters")} {number(queue.deadLetters)}
                         </span>
+                      </div>
+                      {queue.lagging ? (
+                        <Badge tone="warning" role="status">
+                          {t("staff.systemHealth.lagging")}
+                        </Badge>
                       ) : null}
                     </li>
                   ))}
                 </ul>
               )}
-              <dl className="stat-grid system-summary">
-                <div>
-                  <dt>{t("staff.systemHealth.deadLetters")}</dt>
-                  <dd data-health-dead-letters={query.data.deadLetters}>
-                    {number(query.data.deadLetters)}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("staff.systemHealth.outboxLag")}</dt>
-                  <dd>{seconds(query.data.outbox.lagSeconds)}</dd>
-                </div>
-              </dl>
-            </section>
+            </Panel>
 
-            <section className="widget" data-health-section="cache">
-              <h2>{t("staff.systemHealth.cache")}</h2>
-              <dl className="stat-grid">
-                <div>
-                  <dt>{t("staff.systemHealth.hitRate")}</dt>
-                  <dd data-health-hit-rate>
-                    {query.data.cache.hitRate === null
-                      ? t("staff.systemHealth.noData")
-                      : percent(query.data.cache.hitRate)}
-                  </dd>
+            <Panel flush title={t("staff.systemHealth.cache")} data-health-section="cache">
+              <div className="panel-pad stack">
+                <DescriptionList
+                  items={[
+                    stat(
+                      "hit",
+                      t("staff.systemHealth.hitRate"),
+                      <span data-health-hit-rate>
+                        {data.cache.hitRate === null
+                          ? t("staff.systemHealth.noData")
+                          : percent(data.cache.hitRate)}
+                      </span>,
+                    ),
+                    stat(
+                      "bypass",
+                      t("staff.systemHealth.bypassTime"),
+                      seconds(data.cache.bypassSeconds),
+                    ),
+                    stat(
+                      "untrusted",
+                      t("staff.systemHealth.untrustedTime"),
+                      seconds(data.cache.untrustedSeconds),
+                    ),
+                    stat("sse", t("staff.systemHealth.sse"), number(data.sseConnections)),
+                  ]}
+                />
+                <div className="stack stack-xs">
+                  <h3 className="subhead">{t("staff.systemHealth.variants")}</h3>
+                  <p className="subtle">
+                    {t("staff.systemHealth.variantsHint", { budget: data.variantBudget })}
+                  </p>
                 </div>
-                <div>
-                  <dt>{t("staff.systemHealth.bypassTime")}</dt>
-                  <dd>{seconds(query.data.cache.bypassSeconds)}</dd>
-                </div>
-                <div>
-                  <dt>{t("staff.systemHealth.untrustedTime")}</dt>
-                  <dd>{seconds(query.data.cache.untrustedSeconds)}</dd>
-                </div>
-                <div>
-                  <dt>{t("staff.systemHealth.sse")}</dt>
-                  <dd>{number(query.data.sseConnections)}</dd>
-                </div>
-              </dl>
-              <h3 className="system-subhead">{t("staff.systemHealth.variants")}</h3>
-              <p className="widget-muted">
-                {t("staff.systemHealth.variantsHint", { budget: query.data.variantBudget })}
-              </p>
-              {query.data.variants.length === 0 ? (
-                <p className="widget-muted">{t("staff.systemHealth.noData")}</p>
+              </div>
+              {data.variants.length === 0 ? (
+                <EmptyState title={t("staff.systemHealth.noData")} />
               ) : (
-                <ul className="system-list">
-                  {query.data.variants.slice(0, 20).map((variant) => (
+                <ul className="list">
+                  {data.variants.slice(0, 20).map((variant) => (
                     <li
                       key={variant.route}
-                      className={variant.overBudget ? "system-row is-warning" : "system-row"}
+                      className={variant.overBudget ? "list-row is-warning" : "list-row"}
                       data-variant-route={variant.route}
                       data-variant-over-budget={variant.overBudget}
                     >
-                      <span className="system-name">{variant.route}</span>
+                      <span className="list-row-main mono truncate">{variant.route}</span>
                       <span>{number(variant.variants)}</span>
                       {variant.overBudget ? (
-                        <span className="system-bad">{t("staff.systemHealth.overBudget")}</span>
+                        <Badge tone="warning">{t("staff.systemHealth.overBudget")}</Badge>
                       ) : null}
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </Panel>
 
-            <section className="widget" data-health-section="pools">
-              <h2>{t("staff.systemHealth.pools")}</h2>
-              {query.data.pools.length === 0 ? (
-                <p className="widget-muted">{t("staff.systemHealth.noData")}</p>
+            <Panel flush title={t("staff.systemHealth.pools")} data-health-section="pools">
+              {data.pools.length === 0 ? (
+                <EmptyState title={t("staff.systemHealth.noData")} />
               ) : (
-                <ul className="system-list">
-                  {query.data.pools.map((pool) => (
+                <ul className="list">
+                  {data.pools.map((pool) => (
                     <li
                       key={pool.service}
                       className={
-                        pool.saturation >= POOL_WARNING ? "system-row is-warning" : "system-row"
+                        pool.saturation >= POOL_WARNING ? "list-row is-warning" : "list-row"
                       }
                       data-pool={pool.service}
                     >
-                      <span className="system-name">{pool.service}</span>
-                      <span>
-                        {t("staff.systemHealth.poolUse", {
-                          inUse: pool.inUse,
-                          max: pool.max,
-                          percent: percent(pool.saturation),
-                        })}
-                      </span>
+                      <div className="list-row-main">
+                        <span className="list-row-title mono">{pool.service}</span>
+                        <span className="list-row-meta">
+                          {t("staff.systemHealth.poolUse", {
+                            inUse: pool.inUse,
+                            max: pool.max,
+                            percent: percent(pool.saturation),
+                          })}
+                        </span>
+                      </div>
+                      <Meter value={pool.saturation} warn={pool.saturation >= POOL_WARNING} />
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </Panel>
 
-            <section className="widget" data-health-section="plugins">
-              <h2>{t("staff.systemHealth.plugins")}</h2>
-              {query.data.plugins.length === 0 ? (
-                <p className="widget-muted">{t("staff.systemHealth.noPlugins")}</p>
+            <Panel flush title={t("staff.systemHealth.plugins")} data-health-section="plugins">
+              {data.plugins.length === 0 ? (
+                <EmptyState title={t("staff.systemHealth.noPlugins")} />
               ) : (
-                <ul className="health-list">
-                  {query.data.plugins.map((plugin) => (
+                <ul className="list">
+                  {data.plugins.map((plugin) => (
                     <li
                       key={plugin.pluginId}
+                      className="list-row"
                       data-health-plugin={plugin.pluginId}
                       data-health-ok={plugin.healthy}
                     >
-                      <span className="system-name">{plugin.pluginId}</span>
-                      <span className={plugin.healthy ? "system-ok" : "system-bad"}>
+                      <span className="list-row-main mono">{plugin.pluginId}</span>
+                      <Badge tone={plugin.healthy ? "success" : "danger"} dot>
                         {plugin.breakerTripped
                           ? t("staff.systemHealth.breakerTripped")
                           : !plugin.enabled
@@ -296,15 +304,24 @@ export function SystemHealthPage() {
                               : t("staff.systemHealth.pluginFailing", {
                                   count: plugin.failingHooks,
                                 })}
-                      </span>
+                      </Badge>
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </Panel>
           </div>
-        </>
-      ) : null}
-    </div>
+        )}
+      </QueryState>
+    </Page>
+  );
+}
+
+/** A decorative bar; the text beside it carries the value. */
+function Meter({ value, warn }: { readonly value: number; readonly warn: boolean }) {
+  return (
+    <span className={warn ? "meter meter-warn" : "meter"} aria-hidden="true">
+      <span style={{ width: `${Math.min(100, Math.round(value * 100))}%` }} />
+    </span>
   );
 }

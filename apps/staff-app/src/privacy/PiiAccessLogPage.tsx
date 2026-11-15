@@ -4,6 +4,7 @@ import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiGet } from "../api.ts";
+import { Button, Field, Page, Panel, QueryState, TextInput } from "../ui/index.ts";
 
 interface AccessLogEntry {
   readonly id: string;
@@ -97,100 +98,77 @@ export function PiiAccessLogPage() {
     },
   ];
 
-  return (
-    <div className="page" data-page="privacy-access-log">
-      <header className="page-header">
-        <h1>{t("staff.privacy.audit.title")}</h1>
-        <p>{t("staff.privacy.audit.intro")}</p>
-      </header>
-
-      <form
-        className="admin-form"
-        data-access-log-filters
-        onSubmit={(event) => {
-          event.preventDefault();
-          setApplied(draft);
-        }}
-      >
-        <label>
-          <span>{t("staff.privacy.audit.actor")}</span>
-          <input
-            data-access-log-actor
-            value={draft.actorId}
-            onChange={(event) => setDraft({ ...draft, actorId: event.target.value })}
-          />
-        </label>
-        <label>
-          <span>{t("staff.privacy.audit.subject")}</span>
-          <input
-            data-access-log-subject
-            value={draft.subjectId}
-            onChange={(event) => setDraft({ ...draft, subjectId: event.target.value })}
-          />
-        </label>
-        <label>
-          <span>{t("staff.privacy.audit.purpose")}</span>
-          <input
-            data-access-log-purpose
-            value={draft.purpose}
-            onChange={(event) => setDraft({ ...draft, purpose: event.target.value })}
-          />
-        </label>
-        <label>
-          <span>{t("staff.privacy.audit.from")}</span>
-          <input
-            type="date"
-            data-access-log-from
-            value={draft.from}
-            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-          />
-        </label>
-        <label>
-          <span>{t("staff.privacy.audit.to")}</span>
-          <input
-            type="date"
-            data-access-log-to
-            value={draft.to}
-            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
-          />
-        </label>
-        <div className="log-filter-actions">
-          <button type="submit">{t("staff.privacy.audit.filter")}</button>
-          <button
-            type="button"
-            className="dialog-cancel"
-            data-access-log-reset
-            onClick={() => {
-              setDraft(EMPTY_FILTERS);
-              setApplied(EMPTY_FILTERS);
-            }}
-          >
-            {t("staff.privacy.audit.reset")}
-          </button>
-        </div>
-      </form>
-
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.privacy.audit.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess ? (
-        <DataTable
-          rows={query.data.entries}
-          columns={columns}
-          getRowId={(entry) => entry.id}
-          getRowLabel={(entry) =>
-            `${entry.purpose} ${entry.actorName ?? entry.actorMemberId ?? ""}`
-          }
-          pageSize={20}
-          emptyKey="staff.privacy.audit.empty"
+  const textFilter = (
+    labelKey: string,
+    hook: string,
+    field: "actorId" | "subjectId" | "purpose" | "from" | "to",
+    type: "text" | "date" = "text",
+  ) => (
+    <Field label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          type={type}
+          {...{ [hook]: true }}
+          inputMode={field === "actorId" || field === "subjectId" ? "numeric" : undefined}
+          value={draft[field]}
+          onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
         />
-      ) : null}
-    </div>
+      )}
+    </Field>
+  );
+
+  return (
+    <Page
+      id="privacy-access-log"
+      title={t("staff.privacy.audit.title")}
+      description={t("staff.privacy.audit.intro")}
+    >
+      <Panel flush>
+        <form
+          className="toolbar"
+          data-access-log-filters
+          onSubmit={(event) => {
+            event.preventDefault();
+            setApplied(draft);
+          }}
+        >
+          <div className="toolbar-filters">
+            {textFilter("staff.privacy.audit.actor", "data-access-log-actor", "actorId")}
+            {textFilter("staff.privacy.audit.subject", "data-access-log-subject", "subjectId")}
+            {textFilter("staff.privacy.audit.purpose", "data-access-log-purpose", "purpose")}
+            {textFilter("staff.privacy.audit.from", "data-access-log-from", "from", "date")}
+            {textFilter("staff.privacy.audit.to", "data-access-log-to", "to", "date")}
+          </div>
+          <div className="toolbar-actions">
+            <Button
+              variant="ghost"
+              data-access-log-reset
+              onClick={() => {
+                setDraft(EMPTY_FILTERS);
+                setApplied(EMPTY_FILTERS);
+              }}
+            >
+              {t("staff.privacy.audit.reset")}
+            </Button>
+            <Button type="submit">{t("staff.privacy.audit.filter")}</Button>
+          </div>
+        </form>
+        <QueryState query={query} errorLabel={t("staff.privacy.audit.loadError")}>
+          {(data) => (
+            <DataTable
+              rows={data.entries}
+              columns={columns}
+              getRowId={(entry) => entry.id}
+              getRowLabel={(entry) =>
+                `${entry.purpose} ${entry.actorName ?? entry.actorMemberId ?? ""}`
+              }
+              pageSize={20}
+              emptyKey="staff.privacy.audit.empty"
+            />
+          )}
+        </QueryState>
+      </Panel>
+    </Page>
   );
 }

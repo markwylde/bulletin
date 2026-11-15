@@ -5,6 +5,7 @@ import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import { Page, QueryState } from "../ui/index.ts";
 
 interface BoardSettings {
   readonly boardName: string;
@@ -335,31 +336,29 @@ export function BoardSettingsPage() {
     }
   }, [query.data]);
 
-  return (
-    <div className="page" data-page="board-settings">
-      <header className="page-header">
-        <h1>{t("staff.settings.board.title")}</h1>
-        <p>{t("staff.settings.board.intro")}</p>
-      </header>
+  const dirty =
+    query.data !== undefined && JSON.stringify(values) !== JSON.stringify(toValues(query.data));
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.settings.board.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess ? (
-        <FormRenderer
-          definition={BOARD_FORM}
-          values={values}
-          onChange={setValues}
-          onSubmit={(next) => mutation.mutate(toPayload(next))}
-          submitting={mutation.isPending}
-        />
-      ) : null}
-    </div>
+  return (
+    <Page
+      id="board-settings"
+      width="narrow"
+      title={t("staff.settings.board.title")}
+      description={t("staff.settings.board.intro")}
+    >
+      <QueryState query={query} errorLabel={t("staff.settings.board.loadError")}>
+        {() => (
+          <div className="settings-form" data-dirty={dirty}>
+            <FormRenderer
+              definition={BOARD_FORM}
+              values={values}
+              onChange={setValues}
+              onSubmit={(next) => mutation.mutate(toPayload(next))}
+              submitting={mutation.isPending}
+            />
+          </div>
+        )}
+      </QueryState>
+    </Page>
   );
 }

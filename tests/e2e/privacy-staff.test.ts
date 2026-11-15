@@ -70,6 +70,8 @@ integrationDescribe("staff privacy tools", () => {
           view,
           `[data-card-row="${requestId}"] [data-request-reject="${requestId}"]`,
         );
+        await waitForSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
+        await clickSelector(view, "[data-confirm-dialog][open] [data-confirm-action]");
         await waitForSelector(view, '[data-toast-tone="success"]');
         await waitForSelector(
           view,

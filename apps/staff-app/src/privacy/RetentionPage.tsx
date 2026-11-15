@@ -1,9 +1,17 @@
 import { useT } from "@bulletin/ui";
 import { useToast } from "@bulletin/ui/feedback";
-import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui/forms";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Button,
+  Page,
+  QueryState,
+  SaveBar,
+  SettingsRow,
+  SettingsSection,
+  TextInput,
+} from "../ui/index.ts";
 
 interface PrivacyRetention {
   readonly ipLogDays: number;
@@ -14,114 +22,86 @@ interface PrivacyRetention {
   readonly ipBanDays: number;
 }
 
-const EMPTY_VALUES: FormValues = {
-  ipLogDays: 90,
-  sessionMetaDays: 30,
-  revokedSessionDays: 7,
-  accessLogDays: 730,
-  exportDays: 7,
-  ipBanDays: 365,
-};
+type RetentionKey = keyof PrivacyRetention;
 
-const RETENTION_FORM: FormDefinition = {
-  id: "privacy-retention",
-  submitLabelKey: "staff.privacy.retention.save",
-  sections: [
-    {
-      id: "restricted",
-      titleKey: "staff.privacy.retention.section.restricted",
-      descriptionKey: "staff.privacy.retention.section.restrictedHelp",
-      fields: [
-        {
-          id: "ipLogDays",
-          type: "number",
-          labelKey: "staff.privacy.retention.ipLogs",
-          helpKey: "staff.privacy.retention.ipLogsHelp",
-          min: 1,
-          max: 3_650,
-        },
-        {
-          id: "sessionMetaDays",
-          type: "number",
-          labelKey: "staff.privacy.retention.sessionMeta",
-          helpKey: "staff.privacy.retention.sessionMetaHelp",
-          min: 1,
-          max: 3_650,
-        },
-        {
-          id: "accessLogDays",
-          type: "number",
-          labelKey: "staff.privacy.retention.accessLog",
-          helpKey: "staff.privacy.retention.accessLogHelp",
-          min: 1,
-          max: 3_650,
-        },
-        {
-          id: "exportDays",
-          type: "number",
-          labelKey: "staff.privacy.retention.exports",
-          helpKey: "staff.privacy.retention.exportsHelp",
-          min: 1,
-          max: 3_650,
-        },
-      ],
-    },
-    {
-      id: "core",
-      titleKey: "staff.privacy.retention.section.core",
-      descriptionKey: "staff.privacy.retention.section.coreHelp",
-      fields: [
-        {
-          id: "revokedSessionDays",
-          type: "number",
-          labelKey: "staff.privacy.retention.revokedSessions",
-          helpKey: "staff.privacy.retention.revokedSessionsHelp",
-          min: 1,
-          max: 3_650,
-        },
-        {
-          id: "ipBanDays",
-          type: "number",
-          labelKey: "staff.privacy.retention.ipBans",
-          helpKey: "staff.privacy.retention.ipBansHelp",
-          min: 1,
-          max: 3_650,
-        },
-      ],
-    },
-  ],
-};
-
-function toValues(settings: PrivacyRetention): FormValues {
-  return {
-    ipLogDays: settings.ipLogDays,
-    sessionMetaDays: settings.sessionMetaDays,
-    revokedSessionDays: settings.revokedSessionDays,
-    accessLogDays: settings.accessLogDays,
-    exportDays: settings.exportDays,
-    ipBanDays: settings.ipBanDays,
-  };
+interface RetentionField {
+  readonly id: RetentionKey;
+  readonly labelKey: string;
+  readonly helpKey: string;
 }
 
-function toPayload(values: FormValues): PrivacyRetention {
-  const days = (field: keyof PrivacyRetention, fallback: number): number =>
-    typeof values[field] === "number" ? values[field] : Number(values[field] ?? fallback);
+const SECTIONS: ReadonlyArray<{
+  readonly id: string;
+  readonly titleKey: string;
+  readonly descriptionKey: string;
+  readonly fields: readonly RetentionField[];
+}> = [
+  {
+    id: "restricted",
+    titleKey: "staff.privacy.retention.section.restricted",
+    descriptionKey: "staff.privacy.retention.section.restrictedHelp",
+    fields: [
+      {
+        id: "ipLogDays",
+        labelKey: "staff.privacy.retention.ipLogs",
+        helpKey: "staff.privacy.retention.ipLogsHelp",
+      },
+      {
+        id: "sessionMetaDays",
+        labelKey: "staff.privacy.retention.sessionMeta",
+        helpKey: "staff.privacy.retention.sessionMetaHelp",
+      },
+      {
+        id: "accessLogDays",
+        labelKey: "staff.privacy.retention.accessLog",
+        helpKey: "staff.privacy.retention.accessLogHelp",
+      },
+      {
+        id: "exportDays",
+        labelKey: "staff.privacy.retention.exports",
+        helpKey: "staff.privacy.retention.exportsHelp",
+      },
+    ],
+  },
+  {
+    id: "core",
+    titleKey: "staff.privacy.retention.section.core",
+    descriptionKey: "staff.privacy.retention.section.coreHelp",
+    fields: [
+      {
+        id: "revokedSessionDays",
+        labelKey: "staff.privacy.retention.revokedSessions",
+        helpKey: "staff.privacy.retention.revokedSessionsHelp",
+      },
+      {
+        id: "ipBanDays",
+        labelKey: "staff.privacy.retention.ipBans",
+        helpKey: "staff.privacy.retention.ipBansHelp",
+      },
+    ],
+  },
+];
 
-  return {
-    ipLogDays: days("ipLogDays", 90),
-    sessionMetaDays: days("sessionMetaDays", 30),
-    revokedSessionDays: days("revokedSessionDays", 7),
-    accessLogDays: days("accessLogDays", 730),
-    exportDays: days("exportDays", 7),
-    ipBanDays: days("ipBanDays", 365),
-  };
+const KEYS: readonly RetentionKey[] = SECTIONS.flatMap((section) =>
+  section.fields.map((field) => field.id),
+);
+
+type Drafts = Record<RetentionKey, string>;
+
+function toDrafts(settings: PrivacyRetention): Drafts {
+  return Object.fromEntries(KEYS.map((key) => [key, String(settings[key])])) as Drafts;
+}
+
+function isValid(value: string): boolean {
+  const days = Number(value);
+  return Number.isInteger(days) && days >= 1 && days <= 3_650;
 }
 
 export function RetentionPage() {
   const t = useT();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [values, setValues] = useState<FormValues>(EMPTY_VALUES);
+  const [drafts, setDrafts] = useState<Drafts | null>(null);
   const query = useQuery({
     queryKey: ["staff", "privacy", "retention"],
     queryFn: () => apiGet<PrivacyRetention>("/api/staff/privacy/retention"),
@@ -130,7 +110,7 @@ export function RetentionPage() {
     mutationFn: (payload: PrivacyRetention) =>
       apiPost<PrivacyRetention>("/api/staff/privacy/retention", payload),
     onSuccess: (data) => {
-      setValues(toValues(data));
+      setDrafts(toDrafts(data));
       queryClient.setQueryData(["staff", "privacy", "retention"], data);
       toast.pushToast({ messageKey: "staff.privacy.retention.saved", tone: "success" });
     },
@@ -141,35 +121,101 @@ export function RetentionPage() {
 
   useEffect(() => {
     if (query.data !== undefined) {
-      setValues(toValues(query.data));
+      setDrafts(toDrafts(query.data));
     }
   }, [query.data]);
 
-  return (
-    <div className="page" data-page="privacy-retention">
-      <header className="page-header">
-        <h1>{t("staff.privacy.retention.title")}</h1>
-        <p>{t("staff.privacy.retention.intro")}</p>
-      </header>
+  const initial = query.data === undefined ? null : toDrafts(query.data);
+  const dirty =
+    drafts !== null && initial !== null && KEYS.some((key) => drafts[key] !== initial[key]);
+  const valid = drafts !== null && KEYS.every((key) => isValid(drafts[key]));
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.privacy.retention.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess ? (
-        <FormRenderer
-          definition={RETENTION_FORM}
-          values={values}
-          onChange={setValues}
-          onSubmit={(next) => mutation.mutate(toPayload(next))}
-          submitting={mutation.isPending}
-        />
-      ) : null}
-    </div>
+  return (
+    <Page
+      id="privacy-retention"
+      width="narrow"
+      title={t("staff.privacy.retention.title")}
+      description={t("staff.privacy.retention.intro")}
+    >
+      <QueryState query={query} errorLabel={t("staff.privacy.retention.loadError")}>
+        {() =>
+          drafts === null ? null : (
+            <form
+              className="stack"
+              data-retention-form
+              onSubmit={(event) => {
+                event.preventDefault();
+
+                if (valid) {
+                  mutation.mutate(
+                    Object.fromEntries(
+                      KEYS.map((key) => [key, Number(drafts[key])]),
+                    ) as unknown as PrivacyRetention,
+                  );
+                }
+              }}
+            >
+              {SECTIONS.map((section) => (
+                <SettingsSection
+                  key={section.id}
+                  title={t(section.titleKey)}
+                  description={t(section.descriptionKey)}
+                >
+                  {section.fields.map((field) => (
+                    <SettingsRow
+                      key={field.id}
+                      label={t(field.labelKey)}
+                      description={t(field.helpKey)}
+                      error={
+                        isValid(drafts[field.id]) ? undefined : t("staff.privacy.retention.range")
+                      }
+                    >
+                      {({ id, describedBy }) => (
+                        <span className="input-suffix">
+                          <TextInput
+                            id={id}
+                            aria-describedby={describedBy}
+                            className="input-narrow"
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={3_650}
+                            data-retention-field={field.id}
+                            value={drafts[field.id]}
+                            onChange={(event) =>
+                              setDrafts((current) =>
+                                current === null
+                                  ? current
+                                  : { ...current, [field.id]: event.target.value },
+                              )
+                            }
+                          />
+                          <span className="subtle">{t("staff.privacy.retention.days")}</span>
+                        </span>
+                      )}
+                    </SettingsRow>
+                  ))}
+                </SettingsSection>
+              ))}
+              <SaveBar dirty={dirty} message={t("staff.unsavedChanges")}>
+                {dirty && initial !== null ? (
+                  <Button variant="ghost" onClick={() => setDrafts(initial)}>
+                    {t("staff.discard")}
+                  </Button>
+                ) : null}
+                <Button
+                  type="submit"
+                  variant="primary"
+                  data-retention-save
+                  disabled={mutation.isPending || !dirty || !valid}
+                >
+                  {t("staff.privacy.retention.save")}
+                </Button>
+              </SaveBar>
+            </form>
+          )
+        }
+      </QueryState>
+    </Page>
   );
 }

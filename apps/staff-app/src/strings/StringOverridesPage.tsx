@@ -6,6 +6,18 @@ import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost } from "../api.ts";
+import {
+  Button,
+  DescriptionList,
+  EmptyState,
+  IconRefresh,
+  Notice,
+  Page,
+  Panel,
+  QueryState,
+  SearchInput,
+  Skeleton,
+} from "../ui/index.ts";
 
 interface OverrideKeyView {
   readonly key: string;
@@ -153,7 +165,7 @@ export function StringOverridesPage() {
     {
       id: "key",
       headerKey: "staff.strings.key",
-      cell: (entry) => <span className="log-action">{entry.key}</span>,
+      cell: (entry) => <code className="mono">{entry.key}</code>,
       sortValue: (entry) => entry.key,
     },
     {
@@ -165,7 +177,7 @@ export function StringOverridesPage() {
     {
       id: "value",
       headerKey: "staff.strings.value",
-      cell: (entry) => <span className="override-value">{entry.value}</span>,
+      cell: (entry) => <span className="break">{entry.value}</span>,
     },
     {
       id: "updatedBy",
@@ -191,70 +203,84 @@ export function StringOverridesPage() {
   };
 
   return (
-    <div className="page" data-page="string-overrides">
-      <header className="page-header">
-        <h1>{t("staff.strings.title")}</h1>
-        <p>{t("staff.strings.intro")}</p>
-      </header>
-
-      <form className="strings-search" onSubmit={submitSearch} data-strings-search-form>
-        <label className="control">
-          <span>{t("staff.strings.searchLabel")}</span>
-          <input
-            type="search"
-            data-strings-search
-            value={search}
-            placeholder={t("staff.strings.searchPlaceholder")}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <button type="submit" data-strings-search-button>
-          {t("staff.strings.search")}
-        </button>
-      </form>
-
-      <div className="strings-layout">
-        <aside className="strings-results" aria-label={t("staff.strings.results")}>
-          {keysQuery.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
+    <Page
+      id="string-overrides"
+      title={t("staff.strings.title")}
+      description={t("staff.strings.intro")}
+    >
+      <div className="page-split">
+        <Panel flush title={t("staff.strings.results")}>
+          <form className="toolbar" onSubmit={submitSearch} data-strings-search-form>
+            <div className="toolbar-filters">
+              <SearchInput
+                label={t("staff.strings.searchLabel")}
+                placeholder={t("staff.strings.searchPlaceholder")}
+                data-strings-search
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <Button type="submit" data-strings-search-button>
+                {t("staff.strings.search")}
+              </Button>
+            </div>
+          </form>
+          {keysQuery.isPending ? (
+            <div className="panel-pad">
+              <Skeleton lines={4} label={t("staff.widget.loading")} />
+            </div>
+          ) : null}
           {keysQuery.isError ? (
-            <p className="widget-error">{t("staff.strings.searchError")}</p>
+            <Notice tone="danger" role="alert" title={t("staff.strings.searchError")} />
           ) : null}
           {keysQuery.isSuccess && keysQuery.data.keys.length === 0 ? (
-            <p className="widget-muted">{t("staff.strings.noKeys")}</p>
+            <EmptyState title={t("staff.strings.noKeys")} />
           ) : null}
-          <ul data-key-results>
+          <ul className="list" data-key-results>
             {keysQuery.data?.keys.map((entry) => (
               <li key={entry.key}>
                 <button
                   type="button"
                   className={
-                    entry.key === selectedKey ? "key-result key-result-active" : "key-result"
+                    entry.key === selectedKey
+                      ? "list-row list-row-button is-selected"
+                      : "list-row list-row-button"
                   }
+                  aria-current={entry.key === selectedKey ? "true" : undefined}
                   data-key-result={entry.key}
                   onClick={() => setSelectedKey(entry.key)}
                 >
-                  <span className="key-name">{entry.key}</span>
-                  <span className="key-base">{entry.base}</span>
+                  <span className="list-row-main">
+                    <span className="list-row-title mono truncate">{entry.key}</span>
+                    <span className="list-row-meta truncate">{entry.base}</span>
+                  </span>
                 </button>
               </li>
             ))}
           </ul>
-        </aside>
+        </Panel>
 
-        <section className="strings-editor" data-selected-key={selected?.key ?? "none"}>
+        <Panel
+          title={
+            selected === null ? (
+              t("staff.strings.editorTitle")
+            ) : (
+              <code className="mono break">{selected.key}</code>
+            )
+          }
+          data-selected-key={selected?.key ?? "none"}
+        >
           {selected === null ? (
-            <p className="widget-muted">{t("staff.strings.chooseKey")}</p>
+            <EmptyState title={t("staff.strings.chooseKey")} />
           ) : (
-            <>
-              <h2>{selected.key}</h2>
-              <dl className="shipped-values" data-shipped-values>
-                {LOCALES.map((entryLocale) => (
-                  <div key={entryLocale}>
-                    <dt>{localeLabel(t, entryLocale)}</dt>
-                    <dd>{selected.values[entryLocale]}</dd>
-                  </div>
-                ))}
-              </dl>
+            <div className="stack">
+              <DescriptionList
+                data-shipped-values
+                items={LOCALES.map((entryLocale) => ({
+                  id: entryLocale,
+                  label: localeLabel(t, entryLocale),
+                  value: selected.values[entryLocale],
+                }))}
+              />
               <FormRenderer
                 definition={STRING_FORM}
                 values={values}
@@ -262,44 +288,36 @@ export function StringOverridesPage() {
                 onSubmit={(next) => save.mutate(next)}
                 submitting={save.isPending}
               />
-            </>
+            </div>
           )}
-        </section>
+        </Panel>
       </div>
 
-      <section className="strings-active" aria-labelledby="active-overrides-title">
-        <h2 id="active-overrides-title">{t("staff.strings.activeTitle")}</h2>
-        {overridesQuery.isPending ? (
-          <p className="widget-muted">{t("staff.widget.loading")}</p>
-        ) : null}
-        {overridesQuery.isError ? (
-          <div className="widget-error" role="alert">
-            <p>{t("staff.strings.activeError")}</p>
-            <button type="button" onClick={() => void overridesQuery.refetch()}>
-              {t("staff.widget.retry")}
-            </button>
-          </div>
-        ) : null}
-        {overridesQuery.isSuccess ? (
-          <DataTable
-            rows={overridesQuery.data.overrides}
-            columns={columns}
-            getRowId={(entry) => `${entry.locale}::${entry.key}`}
-            getRowLabel={(entry) => `${entry.key} (${entry.locale})`}
-            pageSize={20}
-            emptyKey="staff.strings.noOverrides"
-            rowActions={(entry) => (
-              <button
-                type="button"
-                data-revert={`${entry.locale}::${entry.key}`}
-                onClick={() => setRevertTarget(entry)}
-              >
-                {t("staff.strings.revert")}
-              </button>
-            )}
-          />
-        ) : null}
-      </section>
+      <Panel flush title={t("staff.strings.activeTitle")}>
+        <QueryState query={overridesQuery} errorLabel={t("staff.strings.activeError")}>
+          {(data) => (
+            <DataTable
+              rows={data.overrides}
+              columns={columns}
+              getRowId={(entry) => `${entry.locale}::${entry.key}`}
+              getRowLabel={(entry) => `${entry.key} (${entry.locale})`}
+              pageSize={20}
+              emptyKey="staff.strings.noOverrides"
+              rowActions={(entry) => (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<IconRefresh size={16} />}
+                  data-revert={`${entry.locale}::${entry.key}`}
+                  onClick={() => setRevertTarget(entry)}
+                >
+                  {t("staff.strings.revert")}
+                </Button>
+              )}
+            />
+          )}
+        </QueryState>
+      </Panel>
 
       <ConfirmDialog
         open={revertTarget !== null}
@@ -316,6 +334,6 @@ export function StringOverridesPage() {
           }
         }}
       />
-    </div>
+    </Page>
   );
 }

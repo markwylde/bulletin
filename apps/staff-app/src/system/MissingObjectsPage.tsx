@@ -3,6 +3,7 @@ import { useLocale, useT } from "@bulletin/ui";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { apiGet } from "../api.ts";
+import { Badge, Button, DescriptionList, Page, Panel, QueryState } from "../ui/index.ts";
 
 export interface MissingObjectItem {
   readonly id: string;
@@ -84,82 +85,98 @@ export function MissingObjectsPage() {
   ];
 
   return (
-    <div className="page" data-page="missing-objects">
-      <header className="page-header">
-        <h1>{t("staff.missingObjects.title")}</h1>
-        <p>{t("staff.missingObjects.intro")}</p>
-      </header>
-
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.missingObjects.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess && first !== undefined ? (
-        <>
-          <section className="widget" data-missing-last-run>
-            <h2>{t("staff.missingObjects.lastRun")}</h2>
-            {first.lastRun === null ? (
-              <p className="widget-muted">{t("staff.missingObjects.noRuns")}</p>
-            ) : (
-              <dl className="stat-grid">
-                <div>
-                  <dt>{t("staff.missingObjects.runStarted")}</dt>
-                  <dd>{date(first.lastRun.startedAt)}</dd>
-                </div>
-                <div>
-                  <dt>{t("staff.missingObjects.runStatus")}</dt>
-                  <dd data-run-status={first.lastRun.status}>
-                    {first.lastRun.status === "completed"
-                      ? t("staff.missingObjects.statusCompleted")
-                      : first.lastRun.status === "failed"
-                        ? t("staff.missingObjects.statusFailed")
-                        : t("staff.missingObjects.statusRunning")}
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("staff.missingObjects.replayed")}</dt>
-                  <dd>{formatNumber(first.lastRun.replayed, locale)}</dd>
-                </div>
-                <div>
-                  <dt>{t("staff.missingObjects.removed")}</dt>
-                  <dd>{formatNumber(first.lastRun.removedObjects, locale)}</dd>
-                </div>
-              </dl>
-            )}
-          </section>
-          <p className="widget-muted" data-missing-total={first.total}>
-            {t("staff.missingObjects.total", { count: first.total })}
-          </p>
-          <DataTable
-            rows={items}
-            columns={columns}
-            getRowId={(item) => item.id}
-            getRowLabel={(item) => item.storageKey}
-            captionKey="staff.missingObjects.caption"
-            emptyKey="staff.missingObjects.empty"
-            pageSize={25}
-          />
-          {query.hasNextPage ? (
-            <div className="log-load-more">
-              <button
-                type="button"
-                data-missing-load-more
-                disabled={query.isFetchingNextPage}
-                onClick={() => void query.fetchNextPage()}
+    <Page
+      id="missing-objects"
+      title={t("staff.missingObjects.title")}
+      description={t("staff.missingObjects.intro")}
+    >
+      <QueryState query={query} errorLabel={t("staff.missingObjects.loadError")}>
+        {() =>
+          first === undefined ? null : (
+            <>
+              <Panel title={t("staff.missingObjects.lastRun")} data-missing-last-run>
+                {first.lastRun === null ? (
+                  <p className="subtle">{t("staff.missingObjects.noRuns")}</p>
+                ) : (
+                  <DescriptionList
+                    items={[
+                      {
+                        id: "started",
+                        label: t("staff.missingObjects.runStarted"),
+                        value: date(first.lastRun.startedAt),
+                      },
+                      {
+                        id: "status",
+                        label: t("staff.missingObjects.runStatus"),
+                        value: (
+                          <Badge
+                            tone={
+                              first.lastRun.status === "completed"
+                                ? "success"
+                                : first.lastRun.status === "failed"
+                                  ? "danger"
+                                  : "accent"
+                            }
+                            data-run-status={first.lastRun.status}
+                          >
+                            {first.lastRun.status === "completed"
+                              ? t("staff.missingObjects.statusCompleted")
+                              : first.lastRun.status === "failed"
+                                ? t("staff.missingObjects.statusFailed")
+                                : t("staff.missingObjects.statusRunning")}
+                          </Badge>
+                        ),
+                      },
+                      {
+                        id: "replayed",
+                        label: t("staff.missingObjects.replayed"),
+                        value: formatNumber(first.lastRun.replayed, locale),
+                      },
+                      {
+                        id: "removed",
+                        label: t("staff.missingObjects.removed"),
+                        value: formatNumber(first.lastRun.removedObjects, locale),
+                      },
+                    ]}
+                  />
+                )}
+              </Panel>
+              <Panel
+                flush
+                title={t("staff.missingObjects.caption")}
+                description={
+                  <span data-missing-total={first.total}>
+                    {t("staff.missingObjects.total", { count: first.total })}
+                  </span>
+                }
               >
-                {query.isFetchingNextPage
-                  ? t("staff.widget.loading")
-                  : t("staff.missingObjects.loadMore", { loaded: items.length })}
-              </button>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-    </div>
+                <DataTable
+                  rows={items}
+                  columns={columns}
+                  getRowId={(item) => item.id}
+                  getRowLabel={(item) => item.storageKey}
+                  captionKey="staff.missingObjects.caption"
+                  emptyKey="staff.missingObjects.empty"
+                  pageSize={25}
+                />
+                {query.hasNextPage ? (
+                  <div className="panel-pad cluster cluster-center">
+                    <Button
+                      data-missing-load-more
+                      disabled={query.isFetchingNextPage}
+                      onClick={() => void query.fetchNextPage()}
+                    >
+                      {query.isFetchingNextPage
+                        ? t("staff.widget.loading")
+                        : t("staff.missingObjects.loadMore", { loaded: items.length })}
+                    </Button>
+                  </div>
+                ) : null}
+              </Panel>
+            </>
+          )
+        }
+      </QueryState>
+    </Page>
   );
 }

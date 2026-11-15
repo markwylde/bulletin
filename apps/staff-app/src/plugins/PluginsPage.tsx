@@ -1,9 +1,24 @@
 import { useT } from "@bulletin/ui";
+import { ConfirmDialog, useToast } from "@bulletin/ui/feedback";
 import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui/forms";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  IconTrash,
+  MenuItem,
+  Notice,
+  Page,
+  Panel,
+  QueryState,
+  RowActions,
+  Skeleton,
+  type Tone,
+} from "../ui/index.ts";
 
 function capabilityLabel(t: ReturnType<typeof useT>, capability: Capability): string {
   switch (capability.capability) {
@@ -145,12 +160,16 @@ function DeclaredPluginPageView({ page }: { readonly page: DeclaredPage }) {
 
   return (
     <div data-plugin-declared-page={page.id} data-plugin-page-type={page.kind}>
-      <ol className="admin-list">
+      <ul className="list">
         {rows.map((row) => {
           const text = Object.values(row).join(" · ");
-          return <li key={text}>{text}</li>;
+          return (
+            <li key={text} className="list-row">
+              {text}
+            </li>
+          );
         })}
-      </ol>
+      </ul>
     </div>
   );
 }
@@ -161,7 +180,8 @@ export function PluginsPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<PluginTab>("settings");
   const [values, setValues] = useState<FormValues>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null);
+  const toast = useToast();
 
   const plugins = useQuery({
     queryKey: ["staff", "plugins"],
@@ -183,28 +203,28 @@ export function PluginsPage() {
     mutationFn: (next: FormValues) =>
       apiPost("/api/staff/plugins/settings", { pluginId: selected, values: next }),
     onSuccess: () => {
-      setMessage(t("staff.plugins.saved"));
+      toast.pushToast({ messageKey: "staff.plugins.saved", tone: "success" });
       void queryClient.invalidateQueries({ queryKey: ["staff", "plugins"] });
     },
-    onError: () => setMessage(t("staff.plugins.saveFailed")),
+    onError: () => toast.pushToast({ messageKey: "staff.plugins.saveFailed", tone: "error" }),
   });
   const uninstall = useMutation({
     mutationFn: (pluginId: string) =>
       apiPost("/api/staff/plugins/uninstall", { pluginId, dataAction: "keep" }),
     onSuccess: () => {
-      setMessage(t("staff.plugins.uninstalled"));
+      toast.pushToast({ messageKey: "staff.plugins.uninstalled", tone: "success" });
       setSelected(null);
       void queryClient.invalidateQueries({ queryKey: ["staff", "plugins"] });
     },
-    onError: () => setMessage(t("staff.plugins.uninstallFailed")),
+    onError: () => toast.pushToast({ messageKey: "staff.plugins.uninstallFailed", tone: "error" }),
   });
   const disable = useMutation({
     mutationFn: (pluginId: string) => apiPost("/api/staff/plugins/disable", { pluginId }),
     onSuccess: () => {
-      setMessage(t("staff.plugins.disabled"));
+      toast.pushToast({ messageKey: "staff.plugins.disabled", tone: "success" });
       void queryClient.invalidateQueries({ queryKey: ["staff", "plugins"] });
     },
-    onError: () => setMessage(t("staff.plugins.disableFailed")),
+    onError: () => toast.pushToast({ messageKey: "staff.plugins.disableFailed", tone: "error" }),
   });
 
   const active = plugins.data?.plugins.find((plugin) => plugin.id === selected) ?? null;
@@ -228,171 +248,214 @@ export function PluginsPage() {
     },
   ];
 
-  return (
-    <section className="admin-page" data-page="plugins">
-      <header className="admin-page__header">
-        <h1>{t("staff.plugins.title")}</h1>
-        <p className="bl-muted">{t("staff.plugins.intro")}</p>
-      </header>
-      {message === null ? null : (
-        <p className="admin-note" data-toast-tone="success">
-          {message}
-        </p>
-      )}
+  const stateTone = (plugin: StaffPlugin): Tone =>
+    plugin.state === "active" ? "success" : plugin.enabled ? "warning" : "neutral";
+  const tabs: readonly PluginTab[] =
+    active === null
+      ? []
+      : [
+          "settings",
+          "health",
+          "errors",
+          ...active.declaredPages.map((page) => `page:${page.id}` as const),
+        ];
+  const confirmPlugin = plugins.data?.plugins.find((plugin) => plugin.id === confirmUninstall);
 
-      <div className="admin-grid" data-plugin-list>
-        {(plugins.data?.plugins ?? []).map((plugin) => (
-          <article key={plugin.id} className="admin-card" data-plugin-card={plugin.id}>
-            <header>
-              <h2>{plugin.name}</h2>
-              <p className="bl-muted">
-                {plugin.version} · <span data-plugin-state>{plugin.state}</span>
-              </p>
-            </header>
-            <p className="bl-muted">
-              {t("staff.plugins.generation", { generation: plugin.generation })}
-            </p>
-            {Object.entries(plugin.timings).length === 0 ? null : (
-              <p className="bl-muted" data-plugin-timings>
-                {Object.entries(plugin.timings)
-                  .map(([key, value]) => `${key}: ${String(value)} ms`)
-                  .join(" · ")}
-              </p>
-            )}
-            <ul className="admin-list" data-plugin-capabilities>
-              {plugin.capabilities.map((capability) => (
-                <li key={capability.capability} data-capability={capability.capability}>
-                  {capabilityLabel(t, capability)}
-                </li>
+  return (
+    <Page id="plugins" title={t("staff.plugins.title")} description={t("staff.plugins.intro")}>
+      <QueryState query={plugins} errorLabel={t("staff.plugins.loadError")}>
+        {(data) =>
+          data.plugins.length === 0 ? (
+            <Panel>
+              <EmptyState title={t("staff.plugins.empty")} />
+            </Panel>
+          ) : (
+            <div className="card-grid" data-plugin-list>
+              {data.plugins.map((plugin) => (
+                <Panel
+                  key={plugin.id}
+                  title={plugin.name}
+                  className={plugin.id === selected ? "is-selected" : undefined}
+                  data-plugin-card={plugin.id}
+                  actions={
+                    <span className="cluster cluster-end">
+                      <Button
+                        size="sm"
+                        data-plugin-configure={plugin.id}
+                        onClick={() => {
+                          setSelected(plugin.id);
+                          setTab("settings");
+                          setValues({});
+                        }}
+                      >
+                        {t("staff.plugins.configure")}
+                      </Button>
+                      <RowActions label={t("staff.rowActions")}>
+                        <MenuItem
+                          data-plugin-disable={plugin.id}
+                          disabled={!plugin.enabled || disable.isPending}
+                          onClick={() => disable.mutate(plugin.id)}
+                        >
+                          {t("staff.plugins.disable")}
+                        </MenuItem>
+                        <MenuItem
+                          tone="danger"
+                          icon={<IconTrash size={16} />}
+                          data-plugin-uninstall={plugin.id}
+                          disabled={uninstall.isPending}
+                          onClick={() => setConfirmUninstall(plugin.id)}
+                        >
+                          {t("staff.plugins.uninstall")}
+                        </MenuItem>
+                      </RowActions>
+                    </span>
+                  }
+                >
+                  <div className="stack stack-sm">
+                    <span className="cluster">
+                      <Badge tone={stateTone(plugin)} dot>
+                        <span data-plugin-state>{plugin.state}</span>
+                      </Badge>
+                      <span className="subtle mono">{plugin.version}</span>
+                      <span className="subtle">
+                        {t("staff.plugins.generation", { generation: plugin.generation })}
+                      </span>
+                    </span>
+                    {Object.entries(plugin.timings).length === 0 ? null : (
+                      <p className="subtle mono" data-plugin-timings>
+                        {Object.entries(plugin.timings)
+                          .map(([key, value]) => `${key}: ${String(value)} ms`)
+                          .join(" · ")}
+                      </p>
+                    )}
+                    <ul className="plain-list" data-plugin-capabilities>
+                      {plugin.capabilities.map((capability) => (
+                        <li key={capability.capability} data-capability={capability.capability}>
+                          {capabilityLabel(t, capability)}
+                        </li>
+                      ))}
+                    </ul>
+                    {plugin.servicePrincipal.warningKey === null ? null : (
+                      <Notice
+                        tone="warning"
+                        data-plugin-grant-warning
+                        title={t("staff.plugins.grant.warning", {
+                          forums: plugin.servicePrincipal.elevatedForumIds.join(", "),
+                        })}
+                      />
+                    )}
+                  </div>
+                </Panel>
               ))}
-            </ul>
-            {plugin.servicePrincipal.warningKey === null ? null : (
-              <p className="admin-warning" data-plugin-grant-warning>
-                {t("staff.plugins.grant.warning", {
-                  forums: plugin.servicePrincipal.elevatedForumIds.join(", "),
-                })}
-              </p>
-            )}
-            <div className="admin-actions">
-              <button
-                type="button"
-                className="bl-button"
-                data-plugin-configure={plugin.id}
-                onClick={() => {
-                  setSelected(plugin.id);
-                  setTab("settings");
-                  setValues({});
-                  setMessage(null);
-                }}
-              >
-                {t("staff.plugins.configure")}
-              </button>
-              <button
-                type="button"
-                className="bl-button bl-button--quiet"
-                data-plugin-disable={plugin.id}
-                disabled={!plugin.enabled || disable.isPending}
-                onClick={() => disable.mutate(plugin.id)}
-              >
-                {t("staff.plugins.disable")}
-              </button>
-              <button
-                type="button"
-                className="bl-button bl-button--quiet"
-                data-plugin-uninstall={plugin.id}
-                disabled={uninstall.isPending}
-                onClick={() => uninstall.mutate(plugin.id)}
-              >
-                {t("staff.plugins.uninstall")}
-              </button>
             </div>
-          </article>
-        ))}
-      </div>
+          )
+        }
+      </QueryState>
 
       {active === null ? null : (
-        <section className="admin-card" data-plugin-detail={active.id}>
-          <header className="admin-page__header">
-            <h2>{active.name}</h2>
-            <div className="admin-actions" role="tablist">
-              {(
-                [
-                  "settings",
-                  "health",
-                  "errors",
-                  ...active.declaredPages.map((page) => `page:${page.id}` as const),
-                ] as const
-              ).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === value}
-                  className="bl-button bl-button--quiet"
-                  data-plugin-tab={value}
-                  onClick={() => setTab(value)}
-                >
-                  {value.startsWith("page:")
-                    ? (() => {
-                        const titleKey = active.declaredPages.find(
-                          (page) => `page:${page.id}` === value,
-                        )?.titleKey;
-                        return titleKey === undefined || titleKey === ""
-                          ? t("staff.plugins.page.declared")
-                          : t(titleKey);
-                      })()
-                    : tabLabel(t, value)}
-                </button>
-              ))}
-            </div>
-          </header>
+        <Panel title={active.name} data-plugin-detail={active.id}>
+          <div className="tabs" role="tablist" aria-label={active.name}>
+            {tabs.map((value) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                className="tab"
+                aria-selected={tab === value}
+                data-plugin-tab={value}
+                onClick={() => setTab(value)}
+              >
+                {value.startsWith("page:")
+                  ? (() => {
+                      const titleKey = active.declaredPages.find(
+                        (page) => `page:${page.id}` === value,
+                      )?.titleKey;
+                      return titleKey === undefined || titleKey === ""
+                        ? t("staff.plugins.page.declared")
+                        : t(titleKey);
+                    })()
+                  : tabLabel(t, value)}
+              </button>
+            ))}
+          </div>
 
-          {tab === "settings" ? (
-            settings.data === undefined ? (
-              <p className="bl-muted">{t("staff.plugins.loading")}</p>
-            ) : (
-              <FormRenderer
-                definition={settings.data.definition}
-                values={values}
-                onChange={setValues}
-                onSubmit={(next) => save.mutate(next)}
-                submitting={save.isPending}
-              />
-            )
-          ) : null}
-
-          {tab === "health" ? (
-            <div data-plugin-page="table">
-              <DataTable<BreakerRow>
-                rows={active.breaker}
-                columns={healthColumns}
-                getRowId={(row) => row.hook}
-                emptyKey="staff.plugins.health.empty"
-              />
-            </div>
-          ) : null}
-
-          {tab.startsWith("page:") ? (
-            <DeclaredPluginPageView
-              page={active.declaredPages.find((page) => `page:${page.id}` === tab) as DeclaredPage}
-            />
-          ) : null}
-
-          {tab === "errors" ? (
-            <ol className="admin-list" data-plugin-page="log">
-              {active.errors.length === 0 ? (
-                <li className="bl-muted">{t("staff.plugins.errors.empty")}</li>
+          <div className="tab-panel">
+            {tab === "settings" ? (
+              settings.data === undefined ? (
+                <Skeleton lines={3} label={t("staff.plugins.loading")} />
               ) : (
-                active.errors.map((error) => (
-                  <li key={`${error.createdAt}-${error.step}`} data-plugin-error>
-                    <strong>{error.step}</strong> · {error.error ?? error.state} · {error.createdAt}
-                  </li>
-                ))
-              )}
-            </ol>
-          ) : null}
-        </section>
+                <FormRenderer
+                  definition={settings.data.definition}
+                  values={values}
+                  onChange={setValues}
+                  onSubmit={(next) => save.mutate(next)}
+                  submitting={save.isPending}
+                />
+              )
+            ) : null}
+
+            {tab === "health" ? (
+              <div data-plugin-page="table">
+                <DataTable<BreakerRow>
+                  rows={active.breaker}
+                  columns={healthColumns}
+                  getRowId={(row) => row.hook}
+                  emptyKey="staff.plugins.health.empty"
+                />
+              </div>
+            ) : null}
+
+            {tab.startsWith("page:") ? (
+              <DeclaredPluginPageView
+                page={
+                  active.declaredPages.find((page) => `page:${page.id}` === tab) as DeclaredPage
+                }
+              />
+            ) : null}
+
+            {tab === "errors" ? (
+              <ol className="list" data-plugin-page="log">
+                {active.errors.length === 0 ? (
+                  <li className="list-row subtle">{t("staff.plugins.errors.empty")}</li>
+                ) : (
+                  active.errors.map((error) => (
+                    <li
+                      key={`${error.createdAt}-${error.step}`}
+                      className="list-row"
+                      data-plugin-error
+                    >
+                      <div className="list-row-main">
+                        <span className="list-row-title mono">{error.step}</span>
+                        <span className="list-row-meta">
+                          {error.error ?? error.state} · {error.createdAt}
+                        </span>
+                      </div>
+                    </li>
+                  ))
+                )}
+              </ol>
+            ) : null}
+          </div>
+        </Panel>
       )}
-    </section>
+
+      <ConfirmDialog
+        open={confirmPlugin !== undefined}
+        titleKey="staff.plugins.confirmUninstall.title"
+        bodyKey="staff.plugins.confirmUninstall.body"
+        confirmLabelKey="staff.plugins.uninstall"
+        tone="danger"
+        busy={uninstall.isPending}
+        onCancel={() => setConfirmUninstall(null)}
+        onConfirm={() => {
+          const id = confirmUninstall;
+          setConfirmUninstall(null);
+
+          if (id !== null) {
+            uninstall.mutate(id);
+          }
+        }}
+      />
+    </Page>
   );
 }

@@ -68,7 +68,7 @@ describe("system health panel", () => {
     const html = render();
 
     expect(html).toContain('data-queue="notifications" data-queue-lagging="true"');
-    expect(html).toMatch(/class="system-row is-warning" data-queue="notifications"/);
+    expect(html).toMatch(/class="list-row is-warning" data-queue="notifications"/);
     expect(html).toContain('data-queue="email" data-queue-lagging="false"');
     expect(html).toContain("Falling behind");
   });

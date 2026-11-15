@@ -3,6 +3,7 @@ import { ConfirmDialog } from "@bulletin/ui/feedback";
 import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui/forms";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useState } from "react";
+import { Button, Page, Panel } from "../ui/index.ts";
 
 interface SampleRow {
   readonly id: string;
@@ -73,62 +74,63 @@ export function BlocksPage() {
   ];
 
   return (
-    <div className="page" data-page="dev-blocks">
-      <header className="page-header">
-        <h1>{t("staff.dev.blocks.title")}</h1>
-        <p>{t("staff.dev.blocks.intro")}</p>
-      </header>
+    <Page
+      id="dev-blocks"
+      title={t("staff.dev.blocks.title")}
+      description={t("staff.dev.blocks.intro")}
+    >
+      <Panel flush>
+        <DataTable
+          rows={SAMPLE_ROWS}
+          columns={columns}
+          getRowId={(row) => row.id}
+          getRowLabel={(row) => row.name}
+          pageSize={2}
+          selectable
+          selectedIds={selected}
+          onSelectionChange={setSelected}
+          bulkActions={[
+            {
+              id: "archive",
+              labelKey: "staff.dev.blocks.archive",
+              run: (ids) => setArchivedCount(ids.length),
+            },
+          ]}
+          rowActions={(row) => (
+            <Button size="sm" data-row-action={row.id} onClick={() => setActiveRow(row)}>
+              {t("staff.dev.blocks.view")}
+            </Button>
+          )}
+        />
+      </Panel>
 
-      <DataTable
-        rows={SAMPLE_ROWS}
-        columns={columns}
-        getRowId={(row) => row.id}
-        getRowLabel={(row) => row.name}
-        pageSize={2}
-        selectable
-        selectedIds={selected}
-        onSelectionChange={setSelected}
-        bulkActions={[
-          {
-            id: "archive",
-            labelKey: "staff.dev.blocks.archive",
-            run: (ids) => setArchivedCount(ids.length),
-          },
-        ]}
-        rowActions={(row) => (
-          <button type="button" data-row-action={row.id} onClick={() => setActiveRow(row)}>
-            {t("staff.dev.blocks.view")}
-          </button>
-        )}
-      />
-
-      <p data-active-row={activeRow?.id ?? "none"}>
+      <p className="subtle" data-active-row={activeRow?.id ?? "none"}>
         {activeRow === null
           ? t("staff.dev.blocks.none")
           : t("staff.dev.blocks.selected", { name: activeRow.name })}
       </p>
       {archivedCount === null ? null : (
-        <p data-last-bulk={archivedCount}>
+        <p className="subtle" data-last-bulk={archivedCount}>
           {t("staff.dev.blocks.archived", { count: archivedCount })}
         </p>
       )}
 
-      <section className="dev-form" data-dev-form>
+      <section className="stack" data-dev-form>
         <FormRenderer
           definition={DEMO_FORM}
           values={formValues}
           onChange={setFormValues}
           onSubmit={() => setSubmitCount((count) => count + 1)}
         />
-        <p data-submit-count={submitCount}>
+        <p className="subtle" data-submit-count={submitCount}>
           {t("staff.dev.forms.submitted", { count: submitCount })}
         </p>
       </section>
 
-      <section className="dev-dialog" data-dev-dialog>
-        <button type="button" data-open-dialog onClick={() => setDialogOpen(true)}>
+      <Panel data-dev-dialog>
+        <Button data-open-dialog onClick={() => setDialogOpen(true)}>
           {t("staff.dev.dialog.open")}
-        </button>
+        </Button>
         <ConfirmDialog
           open={dialogOpen}
           titleKey="staff.dev.dialog.title"
@@ -136,7 +138,7 @@ export function BlocksPage() {
           onConfirm={() => setDialogOpen(false)}
           onCancel={() => setDialogOpen(false)}
         />
-      </section>
-    </div>
+      </Panel>
+    </Page>
   );
 }

@@ -267,6 +267,8 @@ function HealthWidget() {
         return t("staff.dashboard.health.migrations");
       case "listener":
         return t("staff.dashboard.health.listener");
+      case "journal":
+        return t("staff.dashboard.health.journal");
       default:
         return name;
     }

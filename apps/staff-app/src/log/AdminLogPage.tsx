@@ -4,6 +4,7 @@ import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { apiGet } from "../api.ts";
+import { Button, Field, Page, Panel, QueryState, TextInput } from "../ui/index.ts";
 
 interface AdminLogEntry {
   readonly id: string;
@@ -69,7 +70,7 @@ export function AdminLogPage() {
     {
       id: "action",
       headerKey: "staff.log.action",
-      cell: (entry) => <span className="log-action">{entry.action}</span>,
+      cell: (entry) => <code className="mono">{entry.action}</code>,
       sortValue: (entry) => entry.action,
     },
     {
@@ -99,107 +100,83 @@ export function AdminLogPage() {
       id: "details",
       headerKey: "staff.log.details",
       cell: (entry) => (
-        <details data-log-summary>
+        <details className="disclosure" data-log-summary>
           <summary>{t("staff.log.details")}</summary>
-          <pre>{JSON.stringify(entry.summary, null, 2)}</pre>
+          <pre className="code-block">{JSON.stringify(entry.summary, null, 2)}</pre>
         </details>
       ),
     },
   ];
 
+  const filterField = (
+    labelKey: string,
+    hook: string,
+    field: keyof LogFilters,
+    type: "text" | "date" = "text",
+  ) => (
+    <Field label={t(labelKey)}>
+      {({ id }) => (
+        <TextInput
+          id={id}
+          type={type}
+          {...{ [hook]: true }}
+          value={draft[field]}
+          onChange={(event) => setDraft({ ...draft, [field]: event.target.value })}
+        />
+      )}
+    </Field>
+  );
+
   return (
-    <div className="page" data-page="admin-log">
-      <header className="page-header">
-        <h1>{t("staff.log.title")}</h1>
-        <p>{t("staff.log.intro")}</p>
-      </header>
-
-      <form className="log-filters" onSubmit={submit} data-log-filters>
-        <label className="control">
-          <span>{t("staff.log.filterActor")}</span>
-          <input
-            type="text"
-            data-log-filter-actor
-            value={draft.actor}
-            onChange={(event) => setDraft({ ...draft, actor: event.target.value })}
-          />
-        </label>
-        <label className="control">
-          <span>{t("staff.log.filterAction")}</span>
-          <input
-            type="text"
-            data-log-filter-action
-            value={draft.action}
-            onChange={(event) => setDraft({ ...draft, action: event.target.value })}
-          />
-        </label>
-        <label className="control">
-          <span>{t("staff.log.filterFrom")}</span>
-          <input
-            type="date"
-            data-log-filter-from
-            value={draft.from}
-            onChange={(event) => setDraft({ ...draft, from: event.target.value })}
-          />
-        </label>
-        <label className="control">
-          <span>{t("staff.log.filterTo")}</span>
-          <input
-            type="date"
-            data-log-filter-to
-            value={draft.to}
-            onChange={(event) => setDraft({ ...draft, to: event.target.value })}
-          />
-        </label>
-        <div className="log-filter-actions">
-          <button type="submit">{t("staff.log.filter")}</button>
-          <button
-            type="button"
-            className="dialog-cancel"
-            data-log-filter-reset
-            onClick={() => {
-              setDraft(EMPTY_FILTERS);
-              setApplied(EMPTY_FILTERS);
-            }}
-          >
-            {t("staff.log.reset")}
-          </button>
-        </div>
-      </form>
-
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.log.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess ? (
-        <>
-          <DataTable
-            rows={entries}
-            columns={columns}
-            getRowId={(entry) => entry.id}
-            getRowLabel={(entry) => `${entry.action} ${entry.actor ?? ""}`}
-            pageSize={20}
-            emptyKey="staff.log.empty"
-          />
-          {query.hasNextPage ? (
-            <div className="log-load-more">
-              <button
-                type="button"
-                data-log-load-more
-                disabled={query.isFetchingNextPage}
-                onClick={() => void query.fetchNextPage()}
-              >
-                {query.isFetchingNextPage ? t("staff.widget.loading") : t("staff.log.loadMore")}
-              </button>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-    </div>
+    <Page id="admin-log" title={t("staff.log.title")} description={t("staff.log.intro")}>
+      <Panel flush>
+        <form className="toolbar" onSubmit={submit} data-log-filters>
+          <div className="toolbar-filters">
+            {filterField("staff.log.filterActor", "data-log-filter-actor", "actor")}
+            {filterField("staff.log.filterAction", "data-log-filter-action", "action")}
+            {filterField("staff.log.filterFrom", "data-log-filter-from", "from", "date")}
+            {filterField("staff.log.filterTo", "data-log-filter-to", "to", "date")}
+          </div>
+          <div className="toolbar-actions">
+            <Button
+              variant="ghost"
+              data-log-filter-reset
+              onClick={() => {
+                setDraft(EMPTY_FILTERS);
+                setApplied(EMPTY_FILTERS);
+              }}
+            >
+              {t("staff.log.reset")}
+            </Button>
+            <Button type="submit">{t("staff.log.filter")}</Button>
+          </div>
+        </form>
+        <QueryState query={query} errorLabel={t("staff.log.loadError")}>
+          {() => (
+            <>
+              <DataTable
+                rows={entries}
+                columns={columns}
+                getRowId={(entry) => entry.id}
+                getRowLabel={(entry) => `${entry.action} ${entry.actor ?? ""}`}
+                pageSize={20}
+                emptyKey="staff.log.empty"
+              />
+              {query.hasNextPage ? (
+                <div className="panel-pad cluster cluster-center">
+                  <Button
+                    data-log-load-more
+                    disabled={query.isFetchingNextPage}
+                    onClick={() => void query.fetchNextPage()}
+                  >
+                    {query.isFetchingNextPage ? t("staff.widget.loading") : t("staff.log.loadMore")}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          )}
+        </QueryState>
+      </Panel>
+    </Page>
   );
 }

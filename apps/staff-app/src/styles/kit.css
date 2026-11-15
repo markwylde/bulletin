@@ -2018,3 +2018,200 @@ a.btn:hover {
   gap: var(--space-2);
   min-width: 0;
 }
+
+/* A responsive grid of cards (plugins, themes) */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.panel.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.tab-panel {
+  padding-top: var(--space-4);
+}
+
+/* A whole list row that selects something */
+.list-row-button {
+  width: 100%;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.list-row-button:hover {
+  background: var(--bg-hover);
+}
+
+.list-row-button.is-selected {
+  border-left-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+li + li > .list-row-button {
+  border-top: 1px solid var(--border);
+}
+
+.panel-pad {
+  padding: var(--space-4);
+}
+
+/* Code editing and diffs (themes) */
+.code-input {
+  min-height: 16rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  tab-size: 2;
+}
+
+.code-block {
+  max-height: 24rem;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-3);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre;
+}
+
+.diff-add {
+  background: var(--success-subtle);
+}
+
+.diff-remove {
+  background: var(--danger-subtle);
+}
+
+.disclosure > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.list-framed {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.string-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+@media (min-width: 768px) {
+  .string-row {
+    grid-template-columns: 9rem minmax(0, 1fr) minmax(0, 1.5fr);
+  }
+}
+
+/* A short input followed by its unit */
+.input-suffix {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Row emphasis for shared DataTable rows and cards */
+.data-row-overdue td:first-child,
+.data-card.data-row-overdue {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.data-row-due-soon td:first-child,
+.data-card.data-row-due-soon,
+.data-row-stale td:first-child,
+.data-card.data-row-stale {
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.text-danger {
+  color: var(--danger);
+}
+
+/* Inline request handling inside a table row or card */
+.request-actions {
+  display: grid;
+  gap: var(--space-2);
+  min-width: min(100%, 16rem);
+}
+
+.cluster-center {
+  justify-content: center;
+}
+
+.card-grid-wide {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr));
+}
+
+.list-row.is-warning {
+  box-shadow: inset 3px 0 0 var(--warning);
+  background: var(--warning-subtle);
+}
+
+.subhead {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* Decorative usage bar */
+.meter {
+  display: inline-block;
+  flex: 0 0 5rem;
+  height: 0.375rem;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--bg-muted);
+}
+
+.meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.meter-warn > span {
+  background: var(--warning);
+}
+
+/* Page-level FormRenderer settings: the submit row is a sticky save bar. */
+.settings-form > .form > .form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  margin-inline: calc(var(--gutter) * -1);
+  padding: var(--space-3) var(--gutter);
+  border-top: 1px solid transparent;
+  background: var(--bg);
+}
+
+.settings-form[data-dirty="true"] > .form > .form-actions {
+  border-top-color: var(--border);
+  box-shadow: 0 -4px 12px rgb(0 0 0 / 0.06);
+}
+
+/* Development-only tools under the dashboard */
+.dev-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px dashed var(--border);
+}

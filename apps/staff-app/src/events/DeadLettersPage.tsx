@@ -4,6 +4,7 @@ import { useToast } from "@bulletin/ui/feedback";
 import { DataTable, type DataTableColumn } from "@bulletin/ui/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../api.ts";
+import { Button, IconRefresh, Page, Panel, QueryState } from "../ui/index.ts";
 
 interface DeadLetter {
   readonly id: string;
@@ -46,7 +47,7 @@ export function DeadLettersPage() {
     {
       id: "queue",
       headerKey: "staff.deadLetters.queue",
-      cell: (entry) => <span className="dead-letter-queue">{entry.queue}</span>,
+      cell: (entry) => <span className="mono">{entry.queue}</span>,
       sortValue: (entry) => entry.queue,
     },
     {
@@ -55,9 +56,9 @@ export function DeadLettersPage() {
       cell: (entry) => {
         const description = describePayload(entry.payload);
         return description === null ? (
-          <span className="widget-muted">{t("staff.deadLetters.none")}</span>
+          <span className="subtle">{t("staff.deadLetters.none")}</span>
         ) : (
-          <span className="dead-letter-payload">{description}</span>
+          <span className="break">{description}</span>
         );
       },
     },
@@ -66,9 +67,9 @@ export function DeadLettersPage() {
       headerKey: "staff.deadLetters.error",
       cell: (entry) =>
         entry.error === null ? (
-          <span className="widget-muted">{t("staff.deadLetters.none")}</span>
+          <span className="subtle">{t("staff.deadLetters.none")}</span>
         ) : (
-          <code className="dead-letter-error">{entry.error}</code>
+          <code className="mono text-danger break">{entry.error}</code>
         ),
     },
     {
@@ -93,44 +94,39 @@ export function DeadLettersPage() {
   ];
 
   return (
-    <div className="page" data-page="dead-letters">
-      <header className="page-header">
-        <h1>{t("staff.deadLetters.title")}</h1>
-        <p>{t("staff.deadLetters.intro")}</p>
-      </header>
-
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.deadLetters.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess ? (
-        <DataTable
-          rows={query.data.entries}
-          columns={columns}
-          getRowId={(entry) => entry.id}
-          getRowLabel={(entry) => `${entry.queue} ${entry.id}`}
-          initialSort={{ columnId: "failedAt", direction: "desc" }}
-          pageSize={20}
-          emptyKey="staff.deadLetters.empty"
-          rowActions={(entry) => (
-            <button
-              type="button"
-              data-dead-letter-retry={entry.id}
-              disabled={retry.isPending && retry.variables === entry.id}
-              onClick={() => retry.mutate(entry.id)}
-            >
-              {retry.isPending && retry.variables === entry.id
-                ? t("staff.widget.loading")
-                : t("staff.deadLetters.retry")}
-            </button>
+    <Page
+      id="dead-letters"
+      title={t("staff.deadLetters.title")}
+      description={t("staff.deadLetters.intro")}
+    >
+      <Panel flush>
+        <QueryState query={query} errorLabel={t("staff.deadLetters.loadError")}>
+          {(data) => (
+            <DataTable
+              rows={data.entries}
+              columns={columns}
+              getRowId={(entry) => entry.id}
+              getRowLabel={(entry) => `${entry.queue} ${entry.id}`}
+              initialSort={{ columnId: "failedAt", direction: "desc" }}
+              pageSize={20}
+              emptyKey="staff.deadLetters.empty"
+              rowActions={(entry) => (
+                <Button
+                  size="sm"
+                  icon={<IconRefresh size={16} />}
+                  data-dead-letter-retry={entry.id}
+                  disabled={retry.isPending && retry.variables === entry.id}
+                  onClick={() => retry.mutate(entry.id)}
+                >
+                  {retry.isPending && retry.variables === entry.id
+                    ? t("staff.widget.loading")
+                    : t("staff.deadLetters.retry")}
+                </Button>
+              )}
+            />
           )}
-        />
-      ) : null}
-    </div>
+        </QueryState>
+      </Panel>
+    </Page>
   );
 }

@@ -3,6 +3,7 @@ import { useToast } from "@bulletin/ui/feedback";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
+import { Button, Field, Page, Panel, QueryState, SaveBar, Textarea } from "../ui/index.ts";
 
 interface PrivacyPolicy {
   readonly markdown: string;
@@ -38,46 +39,63 @@ export function PrivacyPolicyPage() {
     }
   }, [query.data]);
 
-  return (
-    <div className="page" data-page="privacy-policy">
-      <header className="page-header">
-        <h1>{t("staff.privacy.policy.title")}</h1>
-        <p>{t("staff.privacy.policy.intro")}</p>
-      </header>
+  const dirty = query.data !== undefined && markdown !== query.data.markdown;
 
-      {query.isPending ? <p className="widget-muted">{t("staff.widget.loading")}</p> : null}
-      {query.isError ? (
-        <div className="widget-error" role="alert">
-          <p>{t("staff.privacy.policy.loadError")}</p>
-          <button type="button" onClick={() => void query.refetch()}>
-            {t("staff.widget.retry")}
-          </button>
-        </div>
-      ) : null}
-      {query.isSuccess ? (
-        <form
-          className="admin-form"
-          data-policy-form
-          onSubmit={(event) => {
-            event.preventDefault();
-            mutation.mutate(markdown);
-          }}
-        >
-          <label>
-            <span>{t("staff.privacy.policy.markdown")}</span>
-            <textarea
-              data-policy-markdown
-              rows={16}
-              value={markdown}
-              onChange={(event) => setMarkdown(event.target.value)}
-            />
-          </label>
-          <p className="widget-muted">{t("staff.privacy.policy.help")}</p>
-          <button type="submit" data-policy-save disabled={mutation.isPending}>
-            {mutation.isPending ? t("staff.privacy.policy.saving") : t("staff.privacy.policy.save")}
-          </button>
-        </form>
-      ) : null}
-    </div>
+  return (
+    <Page
+      id="privacy-policy"
+      width="narrow"
+      title={t("staff.privacy.policy.title")}
+      description={t("staff.privacy.policy.intro")}
+    >
+      <QueryState query={query} errorLabel={t("staff.privacy.policy.loadError")}>
+        {(data) => (
+          <form
+            className="stack"
+            data-policy-form
+            onSubmit={(event) => {
+              event.preventDefault();
+              mutation.mutate(markdown);
+            }}
+          >
+            <Panel>
+              <Field
+                label={t("staff.privacy.policy.markdown")}
+                description={t("staff.privacy.policy.help")}
+              >
+                {({ id, describedBy }) => (
+                  <Textarea
+                    id={id}
+                    aria-describedby={describedBy}
+                    className="code-input"
+                    data-policy-markdown
+                    rows={18}
+                    value={markdown}
+                    onChange={(event) => setMarkdown(event.target.value)}
+                  />
+                )}
+              </Field>
+            </Panel>
+            <SaveBar dirty={dirty} message={t("staff.unsavedChanges")}>
+              {dirty ? (
+                <Button variant="ghost" onClick={() => setMarkdown(data.markdown)}>
+                  {t("staff.discard")}
+                </Button>
+              ) : null}
+              <Button
+                type="submit"
+                variant="primary"
+                data-policy-save
+                disabled={mutation.isPending}
+              >
+                {mutation.isPending
+                  ? t("staff.privacy.policy.saving")
+                  : t("staff.privacy.policy.save")}
+              </Button>
+            </SaveBar>
+          </form>
+        )}
+      </QueryState>
+    </Page>
   );
 }

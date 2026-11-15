@@ -51,7 +51,12 @@ export function DevSensitiveCheck() {
 
   return (
     <section className="dev-tools" data-dev-tools>
-      <button type="button" data-sensitive onClick={() => void runSensitive(setSensitive)}>
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        data-sensitive
+        onClick={() => void runSensitive(setSensitive)}
+      >
         {t("auth.sensitiveCheck")}
       </button>
       {sensitive === "ok" ? <p data-sensitive-result="ok">{t("auth.sensitiveOk")}</p> : null}
