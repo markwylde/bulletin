@@ -1,12 +1,39 @@
 import { useT } from "@bulletin/ui";
+import type { ReactNode } from "react";
 import { useSession } from "../session.tsx";
+import { Button } from "../ui/Button.tsx";
+
+function AuthCard({
+  title,
+  body,
+  children,
+}: {
+  readonly title: string;
+  readonly body: string;
+  readonly children?: ReactNode;
+}) {
+  const t = useT();
+
+  return (
+    <div className="auth-card">
+      <span className="rail-brand" aria-hidden="true">
+        {t("staff.brand").slice(0, 1)}
+      </span>
+      <h1>{title}</h1>
+      <p>{body}</p>
+      {children === undefined ? null : <div className="auth-actions">{children}</div>}
+    </div>
+  );
+}
 
 export function LoadingPage() {
   const t = useT();
 
   return (
     <main className="staff-auth-page" data-auth-state="loading">
-      <p>{t("auth.signingIn")}</p>
+      <p className="auth-loading" role="status">
+        {t("auth.signingIn")}
+      </p>
     </main>
   );
 }
@@ -17,11 +44,11 @@ export function GuestPage() {
 
   return (
     <main className="staff-auth-page" data-auth-state="guest">
-      <h1>{t("staff.login.title")}</h1>
-      <p>{t("staff.login.body")}</p>
-      <button type="button" data-login onClick={signIn}>
-        {t("auth.login")}
-      </button>
+      <AuthCard title={t("staff.login.title")} body={t("staff.login.body")}>
+        <Button variant="primary" data-login onClick={signIn}>
+          {t("auth.login")}
+        </Button>
+      </AuthCard>
     </main>
   );
 }
@@ -32,11 +59,11 @@ export function DeniedPage() {
 
   return (
     <main className="staff-auth-page" data-auth-state="error" data-access-denied="session">
-      <h1>{t("staff.accessDenied.title")}</h1>
-      <p>{t("staff.accessDenied.body")}</p>
-      <button type="button" data-login onClick={signIn}>
-        {t("auth.login")}
-      </button>
+      <AuthCard title={t("staff.accessDenied.title")} body={t("staff.accessDenied.body")}>
+        <Button data-login onClick={signIn}>
+          {t("auth.login")}
+        </Button>
+      </AuthCard>
     </main>
   );
 }
@@ -47,16 +74,14 @@ export function ErrorPage() {
 
   return (
     <main className="staff-auth-page" data-auth-state="error">
-      <h1>{t("staff.error.title")}</h1>
-      <p>{t("staff.error.body")}</p>
-      <div className="button-row">
-        <button type="button" data-retry onClick={retry}>
+      <AuthCard title={t("staff.error.title")} body={t("staff.error.body")}>
+        <Button variant="primary" data-retry onClick={retry}>
           {t("staff.retry")}
-        </button>
-        <button type="button" data-login onClick={signIn}>
+        </Button>
+        <Button data-login onClick={signIn}>
           {t("auth.login")}
-        </button>
-      </div>
+        </Button>
+      </AuthCard>
     </main>
   );
 }

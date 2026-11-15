@@ -1,96 +1,57 @@
-import { isStaffScheme, type StaffScheme } from "@bulletin/domain/permissions";
-import { isLocale, type Locale } from "@bulletin/i18n";
 import { useLocale, useT } from "@bulletin/ui";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router";
-import { apiGet, apiPost } from "../api.ts";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { Route, Routes, useLocation } from "react-router";
+import { apiGet } from "../api.ts";
 import { BlocksPage } from "../dev/BlocksPage.tsx";
 import { sectionElement } from "../section-routes.tsx";
 import {
   canAccessSection,
-  type StaffIcon,
+  navigationAreas,
+  type StaffArea,
   type StaffSection,
+  sectionForPath,
   sectionsWithFlags,
   visibleSections,
 } from "../sections.ts";
 import { useSession } from "../session.tsx";
+import { IconExternal, IconMenu, IconSearch } from "../ui/icons.tsx";
+import { Breadcrumbs, type Crumb, EmptyState } from "../ui/layout.tsx";
+import { AccountMenu } from "./AccountMenu.tsx";
+import { CommandPalette, useCommandShortcut } from "./CommandPalette.tsx";
+import { Navigation, useNavLayout } from "./navigation.tsx";
 
-function SectionIcon({ icon }: { readonly icon: StaffIcon }) {
-  switch (icon) {
-    case "dashboard":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z" />
-        </svg>
-      );
-    case "flags":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M5 3h2v18H5zM8 4h10l-2 4 2 4H8z" />
-        </svg>
-      );
-    case "events":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M13 2 4 14h6l-1 8 9-12h-6z" />
-        </svg>
-      );
-    case "settings":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.1-.7-.6-1.4 1-2-1.8-1.8-2 1-1.4-.6L13.4 4h-2.8l-.7 2.1-1.4.6-2-1L4.7 7.5l1 2-.6 1.4L3 12v2.8l2.1.7.6 1.4-1 2 1.8 1.8 2-1 1.4.6.7 2.1h2.8l.7-2.1 1.4-.6 2 1 1.8-1.8-1-2 .6-1.4L21 14z" />
-        </svg>
-      );
-    case "strings":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M4 5h16v2H4zM4 9h10v2H4zM4 13h16v2H4zM4 17h12v2H4z" />
-        </svg>
-      );
-    case "log":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M4 5h16v2H4zM4 9h16v2H4zM4 13h16v2H4zM4 17h16v2H4z" />
-        </svg>
-      );
-    case "groups":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2 20c0-3 3-5 6-5s6 2 6 5v1H2zm12 1v-1c0-2-1-3.6-2.5-4.6 1-.3 2-.4 2.5-.4 3 0 6 2 6 5v1z" />
-        </svg>
-      );
-    case "permissions":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M12 2 4 6v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6zm0 4 1.8 3.7 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4L6.2 10l4-.6z" />
-        </svg>
-      );
-    case "members":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 22c0-4 3.6-6 8-6s8 2 8 6z" />
-        </svg>
-      );
-    case "moderators":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M4 3h10l-2 4 2 4H4zm0 0h2v18H4zm12 8 4 9h-2l-4-9z" />
-        </svg>
-      );
-    case "promotions":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M12 3 6 11h4v4h4v-4h4zM5 18h14v2H5z" />
-        </svg>
-      );
-    case "themes":
-    case "plugins":
-      return (
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path d="M4 4h7v7H4zm9 0h7v4h-7zM4 13h7v7H4zm9-3h7v10h-7z" />
-        </svg>
-      );
+const PANEL_STORAGE_KEY = "bulletin_staff_panel";
+
+/** The public board lives on the user origin: the staff host without its `staff.` label. */
+export function userSiteUrl(origin: string): string {
+  try {
+    const url = new URL(origin);
+
+    if (url.hostname.startsWith("staff.")) {
+      url.hostname = url.hostname.slice("staff.".length);
+    }
+
+    return `${url.origin}/`;
+  } catch {
+    return "/";
+  }
+}
+
+/** "⌘K" on Apple platforms, "Ctrl K" elsewhere. Key names are not translated. */
+function shortcutLabel(): string {
+  const platform =
+    (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+    navigator.platform;
+
+  return /mac|iphone|ipad/i.test(platform) ? "⌘K" : "Ctrl K";
+}
+
+function readPanelCollapsed(): boolean {
+  try {
+    return localStorage.getItem(PANEL_STORAGE_KEY) === "collapsed";
+  } catch {
+    return false;
   }
 }
 
@@ -101,8 +62,10 @@ function SectionRoute({ section }: { readonly section: StaffSection }) {
   if (!canAccessSection(permissions, section)) {
     return (
       <div className="state-page" data-access-denied="section">
-        <h1>{t("staff.sectionDenied.title")}</h1>
-        <p>{t("staff.sectionDenied.body")}</p>
+        <EmptyState
+          title={t("staff.sectionDenied.title")}
+          description={t("staff.sectionDenied.body")}
+        />
       </div>
     );
   }
@@ -121,192 +84,217 @@ function NotFoundPage() {
 
   return (
     <div className="state-page" data-not-found>
-      <h1>{t("staff.notFound.title")}</h1>
-      <p>{t("staff.notFound.body")}</p>
+      <EmptyState title={t("staff.notFound.title")} description={t("staff.notFound.body")} />
     </div>
   );
 }
 
-function Navigation({
-  sections,
-  open,
-  onNavigate,
+function ShellBreadcrumbs({
+  section,
+  home,
+  areaLabelKey,
+  exact,
 }: {
-  readonly sections: readonly StaffSection[];
-  readonly open: boolean;
-  readonly onNavigate: () => void;
+  readonly section: StaffSection;
+  readonly home: StaffSection | undefined;
+  readonly areaLabelKey: string;
+  readonly exact: boolean;
 }) {
   const t = useT();
 
-  return (
-    <nav
-      id="staff-navigation"
-      className="staff-nav"
-      data-nav
-      data-open={open}
-      aria-label={t("staff.nav.label")}
-    >
-      <ul>
-        {sections.map((section) => (
-          <li key={section.id}>
-            <NavLink
-              to={section.path}
-              end={section.path === "/"}
-              className={({ isActive }) => (isActive ? "nav-link nav-link-active" : "nav-link")}
-              data-section={section.id}
-              onClick={onNavigate}
-            >
-              <SectionIcon icon={section.icon} />
-              <span>{t(section.labelKey)}</span>
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-    </nav>
-  );
-}
+  if (section.id === "dashboard") {
+    return null;
+  }
 
-function Controls({ scheme, locale }: { readonly scheme: StaffScheme; readonly locale: Locale }) {
-  const t = useT();
-  const { signOut, updateLocale, updateScheme } = useSession();
-  const [signingOut, setSigningOut] = useState(false);
-  const [logoutFailed, setLogoutFailed] = useState(false);
-  const schemeSave = useMutation({
-    mutationFn: (next: StaffScheme) =>
-      apiPost<{ scheme: StaffScheme }>("/api/staff/preferences/scheme", { scheme: next }),
-    onSuccess: (data) => updateScheme(data.scheme),
-  });
-  const localeSave = useMutation({
-    mutationFn: (next: Locale) => apiPost<{ locale: Locale }>("/api/me/locale", { locale: next }),
-    onSuccess: (data) => updateLocale(data.locale),
-  });
+  const items: Crumb[] = [
+    home === undefined || home.id === section.id
+      ? { label: t(areaLabelKey) }
+      : { label: t(areaLabelKey), to: home.path },
+    exact ? { label: t(section.labelKey) } : { label: t(section.labelKey), to: section.path },
+  ];
 
-  return (
-    <div className="staff-controls">
-      <label className="control">
-        <span>{t("staff.scheme.label")}</span>
-        <select
-          data-scheme-switch
-          value={scheme}
-          onChange={(event) => {
-            if (isStaffScheme(event.target.value)) {
-              schemeSave.mutate(event.target.value);
-            }
-          }}
-        >
-          <option value="system">{t("staff.scheme.system")}</option>
-          <option value="light">{t("staff.scheme.light")}</option>
-          <option value="dark">{t("staff.scheme.dark")}</option>
-        </select>
-      </label>
-
-      <label className="control">
-        <span>{t("staff.locale.label")}</span>
-        <select
-          data-locale-switch
-          value={locale}
-          onChange={(event) => {
-            if (isLocale(event.target.value)) {
-              localeSave.mutate(event.target.value);
-            }
-          }}
-        >
-          <option value="en">{t("staff.locale.en")}</option>
-          <option value="es">{t("staff.locale.es")}</option>
-          <option value="fr">{t("staff.locale.fr")}</option>
-        </select>
-      </label>
-
-      <button
-        type="button"
-        data-logout
-        disabled={signingOut}
-        onClick={() => {
-          setSigningOut(true);
-          void signOut().then((ok) => {
-            if (!ok) {
-              setSigningOut(false);
-              setLogoutFailed(true);
-            }
-          });
-        }}
-      >
-        {t("auth.logout")}
-      </button>
-
-      {schemeSave.isError ? <p data-scheme-error>{t("staff.scheme.error")}</p> : null}
-      {localeSave.isError ? <p data-locale-error>{t("staff.locale.error")}</p> : null}
-      {logoutFailed ? <p data-logout-error>{t("auth.logoutError")}</p> : null}
-    </div>
-  );
+  // An area whose home is this section reads "Area" then "Section"; the area is not a link.
+  return <Breadcrumbs items={items} label={t("staff.breadcrumbs")} />;
 }
 
 export function Shell() {
   const t = useT();
   const locale = useLocale();
+  const location = useLocation();
+  const layout = useNavLayout();
   const { state } = useSession();
   const [navOpen, setNavOpen] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(readPanelCollapsed);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [selectedArea, setSelectedArea] = useState<StaffArea | null>(null);
   const scheme = state.status === "authenticated" ? (state.session.scheme ?? "system") : "system";
   const features = useQuery({
     queryKey: ["staff", "features"],
     queryFn: () => apiGet<{ flags: Record<string, boolean> }>("/api/staff/features"),
     enabled: state.status === "authenticated",
   });
+  const permissions = state.status === "authenticated" ? state.session.permissions : [];
+  const flags = features.data?.flags;
+  const sections = useMemo(
+    () => sectionsWithFlags(visibleSections(permissions), flags ?? {}),
+    [permissions, flags],
+  );
+  const areas = useMemo(() => navigationAreas(sections), [sections]);
+  const currentSection = sectionForPath(sections, location.pathname);
+  const currentArea = areas.find((view) => view.area.id === currentSection?.area);
+
+  useCommandShortcut(() => setCommandOpen(true));
 
   useEffect(() => {
     document.documentElement.dataset.scheme = scheme;
     localStorage.setItem("bulletin_staff_scheme", scheme);
   }, [scheme]);
 
+  // The panel follows the page: after navigating, it shows the current section's area.
+  useEffect(() => {
+    setSelectedArea(currentSection?.area ?? null);
+  }, [currentSection?.area]);
+
+  useEffect(() => {
+    const brand = t("staff.console");
+    document.title =
+      currentSection === undefined ? brand : `${t(currentSection.labelKey)} · ${brand}`;
+  }, [currentSection, t]);
+
+  useEffect(() => {
+    if (layout === "desktop") {
+      setNavOpen(false);
+    }
+  }, [layout]);
+
   if (state.status !== "authenticated") {
     return null;
   }
 
   const session = state.session;
-  const sections = sectionsWithFlags(
-    visibleSections(session.permissions),
-    features.data?.flags ?? {},
-  );
+  const togglePanel = () => {
+    setPanelCollapsed((collapsed) => {
+      const next = !collapsed;
+
+      try {
+        localStorage.setItem(PANEL_STORAGE_KEY, next ? "collapsed" : "open");
+      } catch {
+        // Storage can be unavailable; the panel state is a convenience only.
+      }
+
+      return next;
+    });
+  };
 
   return (
-    <div className="staff-shell" data-nav-open={navOpen} data-auth-state="authenticated">
-      <header className="staff-header">
-        <div className="staff-header-main">
+    <div
+      className="shell"
+      data-auth-state="authenticated"
+      data-nav-open={navOpen}
+      data-layout={layout}
+      data-panel-collapsed={layout === "desktop" && panelCollapsed}
+    >
+      <a className="skip-link" href="#main">
+        {t("staff.skipToContent")}
+      </a>
+
+      <Navigation
+        areas={areas}
+        selectedArea={selectedArea}
+        currentSection={currentSection}
+        open={navOpen}
+        layout={layout}
+        panelCollapsed={layout === "desktop" && panelCollapsed}
+        onSelectArea={setSelectedArea}
+        onOpenChange={(open) => {
+          setNavOpen(open);
+
+          if (!open) {
+            setSelectedArea(currentSection?.area ?? null);
+          }
+        }}
+        onTogglePanel={togglePanel}
+      />
+
+      {navOpen ? (
+        // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is a pointer convenience; Escape and the close button also dismiss
+        // biome-ignore lint/a11y/useKeyWithClickEvents: see above
+        <div className="nav-backdrop" onClick={() => setNavOpen(false)} />
+      ) : null}
+
+      <div className="shell-body">
+        <header className="topbar">
           <button
             type="button"
-            className="menu-button"
+            className="btn btn-ghost btn-icon topbar-menu"
             data-menu-toggle
             aria-controls="staff-navigation"
             aria-expanded={navOpen}
             onClick={() => setNavOpen((open) => !open)}
           >
+            <IconMenu size={20} />
             <span className="sr-only">{t("staff.nav.menu")}</span>
-            <span aria-hidden="true" className="menu-icon" />
           </button>
-          <span className="staff-brand">{t("staff.brand")}</span>
-          <span className="staff-user" data-signed-in>
-            {t("auth.signedIn")} {session.displayName ?? ""}
+
+          <span className="topbar-brand">
+            {t("staff.brand")}
+            <span className="topbar-brand-tag">{t("staff.consoleTag")}</span>
           </span>
-        </div>
 
-        <Controls scheme={scheme} locale={locale} />
-      </header>
+          <button
+            type="button"
+            className="search-trigger"
+            data-command-open
+            aria-haspopup="dialog"
+            onClick={() => setCommandOpen(true)}
+          >
+            <IconSearch size={16} />
+            <span className="search-trigger-label">{t("staff.search.placeholder")}</span>
+            <span className="search-trigger-kbd" aria-hidden="true">
+              {shortcutLabel()}
+            </span>
+            <span className="sr-only">{t("staff.search.label")}</span>
+          </button>
 
-      <Navigation sections={sections} open={navOpen} onNavigate={() => setNavOpen(false)} />
+          <div className="topbar-actions">
+            <a
+              className="btn btn-ghost topbar-site"
+              href={userSiteUrl(window.location.origin)}
+              data-view-site
+            >
+              <IconExternal size={16} />
+              <span className="topbar-site-label">{t("staff.viewSite")}</span>
+            </a>
+            <AccountMenu displayName={session.displayName} scheme={scheme} locale={locale} />
+          </div>
+        </header>
 
-      <main className="staff-main">
-        <Routes>
-          {sections.map((section) => (
-            <Route
-              key={section.id}
-              path={section.path}
-              element={<SectionRoute section={section} />}
-            />
-          ))}
-          {import.meta.env.DEV ? <Route path="/dev/blocks" element={<BlocksPage />} /> : null}
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </main>
+        <main id="main" className="content" tabIndex={-1}>
+          <div className="content-inner">
+            {currentSection === undefined || currentArea === undefined ? null : (
+              <ShellBreadcrumbs
+                section={currentSection}
+                home={currentArea.home}
+                areaLabelKey={currentArea.area.labelKey}
+                exact={currentSection.path === (location.pathname.replace(/\/+$/, "") || "/")}
+              />
+            )}
+            <Routes>
+              {sections.map((section) => (
+                <Route
+                  key={section.id}
+                  path={section.path}
+                  element={<SectionRoute section={section} />}
+                />
+              ))}
+              {import.meta.env.DEV ? <Route path="/dev/blocks" element={<BlocksPage />} /> : null}
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </div>
+        </main>
+      </div>
+
+      <CommandPalette areas={areas} open={commandOpen} onClose={() => setCommandOpen(false)} />
     </div>
   );
 }
