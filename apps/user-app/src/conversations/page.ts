@@ -331,6 +331,7 @@ export async function buildConversationPage(input: {
     participants,
     editor,
     breadcrumbs: [
+      { label: input.translate("account.title"), href: "/account" },
       { label: input.translate("conversation.title"), href: "/conversations" },
       { label: replaceWordsInText(detail.title, input.replaceWords), href: null },
     ],

@@ -7,6 +7,7 @@ import { buildPrivacyPage, privacyLabels } from "../../privacy/page.ts";
 import ThemeLayout from "../../layouts/ThemeLayout.astro";
 import { pageVariant, renderCachedPage } from "../../theme/cached-route.ts";
 import { boardNameFrom, loadPluginsGeneration, renderThemedPage } from "../../theme/render.ts";
+import { loadViewerFlags } from "../../flags.ts";
 
 const loginUrl = `/auth/login?return_to=${encodeURIComponent("/account/privacy")}`;
 const session = Astro.locals.session ?? null;
@@ -19,6 +20,7 @@ const locale = Astro.locals.locale ?? "en";
 const translate = createServerT(locale, { shipped: USER_CATALOGS });
 const sql = readSql();
 const pluginsGeneration = await loadPluginsGeneration(sql);
+const flags = await loadViewerFlags(sql, session);
 const page = await buildPrivacyPage({
   sql,
   memberId: session.memberId,
@@ -38,7 +40,7 @@ const rendered = await renderCachedPage({
       pluginsGeneration,
       locale,
       colourScheme: "system",
-      renderFlagsHash: "",
+      renderFlagsHash: flags.hash,
     }),
     data: undefined,
   }),
@@ -50,7 +52,7 @@ const rendered = await renderCachedPage({
       locale,
       translate,
       template: privacyContract.templates.page,
-      viewModel: page.viewModel,
+      viewModel: { ...page.viewModel, flags: flags.values },
       breadcrumbs: page.breadcrumbs,
       route: privacyContract,
     });

@@ -249,6 +249,11 @@ summary {
   }
 }
 
+/* Keeps a short phrase on one line. */
+.bl-nowrap {
+  white-space: nowrap;
+}
+
 /* Accessibility helpers. */
 .bl-sr-only,
 .bl-visually-hidden {

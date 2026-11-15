@@ -93,7 +93,7 @@
   <section class="bl-card" data-profile-posts>
     <div class="bl-card__header">
       <h2 class="bl-card__title">{% t "profile.posts.title" %}</h2>
-      {% if flags.search %}<a class="bl-card__link" href="/search/member/{{ profile.id }}" data-profile-content-link>{% t "search.member.profileLink" name: profile.name %}</a>{% endif %}
+      {% if flags.search %}<a class="bl-card__link" href="/search/member/{{ profile.id }}" data-profile-content-link>{% t "profile.posts.viewAll" %}</a>{% endif %}
     </div>
     {% if profile.posts.size > 0 %}
       <ol class="bl-profile__posts">

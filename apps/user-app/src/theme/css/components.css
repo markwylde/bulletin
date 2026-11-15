@@ -326,6 +326,16 @@ input[type="radio"] {
   font-weight: 600;
 }
 
+.bl-card > bl-island,
+.bl-panel > bl-island {
+  display: block;
+}
+
+.bl-card__title + .bl-muted,
+.bl-panel__title + .bl-muted {
+  margin-top: var(--bl-s1);
+}
+
 details.bl-card > summary.bl-card__title {
   list-style: none;
   display: flex;

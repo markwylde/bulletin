@@ -45,7 +45,11 @@
         {% endfor %}
       </ul>
     {% else %}
-      {{ emptyState }}
+      <section class="bl-empty" data-theme-empty data-warnings-empty>
+        <svg class="bl-empty__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3 5 6v5c0 4.4 3 8.3 7 9.5 4-1.2 7-5.1 7-9.5V6Z" /><path d="m9 12 2 2 4-4" /></svg>
+        <h2 class="bl-empty__title">{% t "warnings.empty.title" %}</h2>
+        <p class="bl-empty__body">{% t "warnings.empty.body" %}</p>
+      </section>
     {% endif %}
     </div>
   </div>

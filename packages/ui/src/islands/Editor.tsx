@@ -13,6 +13,7 @@ import {
   writeDraft,
   writeReauthDraft,
 } from "./editor/drafts.ts";
+import { EditorIcon } from "./editor/icons.tsx";
 import { clearOfflineDrafts } from "./editor/offline-drafts.ts";
 import type { EditorCommand, EditorController, EditorMode, EditorProps } from "./editor/types.ts";
 import { uploadErrorMessage } from "./editor/upload-errors.ts";
@@ -859,7 +860,7 @@ function EditorContent({
           data-editor-command="bold"
           onClick={() => runCommand("bold")}
         >
-          B
+          <EditorIcon name="bold" />
         </button>
         <button
           type="button"
@@ -867,7 +868,7 @@ function EditorContent({
           data-editor-command="italic"
           onClick={() => runCommand("italic")}
         >
-          I
+          <EditorIcon name="italic" />
         </button>
         <button
           type="button"
@@ -875,7 +876,7 @@ function EditorContent({
           data-editor-command="heading"
           onClick={() => runCommand("heading")}
         >
-          H
+          <EditorIcon name="heading" />
         </button>
         <button
           type="button"
@@ -883,7 +884,7 @@ function EditorContent({
           data-editor-command="link"
           onClick={() => insertMarkup("[link](https://)")}
         >
-          ↗
+          <EditorIcon name="link" />
         </button>
         <button
           type="button"
@@ -891,7 +892,7 @@ function EditorContent({
           data-editor-command="code"
           onClick={() => runCommand("code")}
         >
-          {"</>"}
+          <EditorIcon name="code" />
         </button>
         <button
           type="button"
@@ -899,7 +900,7 @@ function EditorContent({
           data-editor-command="quote"
           onClick={() => runCommand("quote")}
         >
-          ❝
+          <EditorIcon name="quote" />
         </button>
         <button
           type="button"
@@ -907,7 +908,7 @@ function EditorContent({
           data-editor-command="spoiler"
           onClick={() => insertMarkup("||spoiler||")}
         >
-          ◌
+          <EditorIcon name="spoiler" />
         </button>
         <button
           type="button"
@@ -915,7 +916,7 @@ function EditorContent({
           data-editor-command="list"
           onClick={() => runCommand("list")}
         >
-          ≡
+          <EditorIcon name="list" />
         </button>
         <button
           type="button"
@@ -924,7 +925,7 @@ function EditorContent({
           aria-expanded={emoticonOpen}
           onClick={() => setEmoticonOpen((open) => !open)}
         >
-          ☺
+          <EditorIcon name="emoticon" />
         </button>
         {mentionsEnabled ? (
           <button
@@ -933,7 +934,7 @@ function EditorContent({
             data-editor-mention
             onClick={() => insertPlainText("@")}
           >
-            @
+            <EditorIcon name="mention" />
           </button>
         ) : null}
         {canAttach ? (
@@ -945,7 +946,7 @@ function EditorContent({
               disabled={csrfToken === null}
               onClick={() => fileElement.current?.click()}
             >
-              📎
+              <EditorIcon name="attach" />
             </button>
             <input
               ref={fileElement}

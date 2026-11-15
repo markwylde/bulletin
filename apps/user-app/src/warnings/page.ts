@@ -49,7 +49,10 @@ export async function buildOwnWarningsPage(input: {
 
   return {
     title: input.translate("warnings.title"),
-    breadcrumbs: [{ label: input.translate("warnings.title"), href: null }],
+    breadcrumbs: [
+      { label: input.translate("account.title"), href: "/account" },
+      { label: input.translate("warnings.title"), href: null },
+    ],
     viewModel: {
       points,
       pendingAck,

@@ -97,7 +97,10 @@ export async function renderApiKeysRoute(input: ApiKeysRouteInput): Promise<{
         translate: input.translate,
         template: apiKeysContract.templates.page,
         viewModel: { flags: latest.values },
-        breadcrumbs: [{ label: title, href: null }],
+        breadcrumbs: [
+          { label: input.translate("account.title"), href: "/account" },
+          { label: title, href: null },
+        ],
         route: apiKeysContract,
       });
 

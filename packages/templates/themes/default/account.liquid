@@ -15,7 +15,7 @@
     <section class="bl-card" data-account-profile>
       <h2 class="bl-card__title">{% t "account.displayName.title" %}</h2>
       <form class="bl-form" data-account-name-form>
-        <label class="bl-label" for="account-display-name">{% t "displayName.label" %}</label>
+        <label class="bl-label bl-sr-only" for="account-display-name">{% t "displayName.label" %}</label>
         <input class="bl-input" id="account-display-name" data-account-name-input value="{{ displayName }}" autocomplete="nickname" minlength="3" maxlength="32" required />
         <button class="bl-button" type="submit" data-account-name-submit>{% t "displayName.save" %}</button>
         <p class="bl-error-text" data-account-name-error hidden></p>
