@@ -141,6 +141,7 @@
   "staff.breadcrumbs": "Breadcrumb",
   "staff.console": "Bulletin staff",
   "staff.consoleTag": "Staff",
+  "staff.dashboard.greeting": "Welcome back, {name}. Member activity and board operations at a glance.",
   "staff.dashboard.health.database": "Database",
   "staff.dashboard.health.degraded": "Some checks are failing",
   "staff.dashboard.health.details": "Details",

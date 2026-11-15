@@ -575,8 +575,30 @@
 
 /* ---------- Layouts ---------- */
 
+/* The nav is fixed to the viewport; the shell paints its column so the rail and panel
+   backgrounds run the full height of long pages (and of full-page captures). */
+@media (min-width: 768px) {
+  .shell {
+    background: linear-gradient(
+      to right,
+      var(--rail-bg) 0 var(--rail-w),
+      var(--bg) var(--rail-w)
+    );
+  }
+}
+
 /* Desktop: rail + docked panel; content beside them. */
 @media (min-width: 1024px) {
+  .shell:not([data-panel-collapsed="true"]) {
+    background: linear-gradient(
+      to right,
+      var(--rail-bg) 0 var(--rail-w),
+      var(--bg-subtle) var(--rail-w) calc(var(--rail-w) + var(--panel-w) - 1px),
+      var(--border) calc(var(--rail-w) + var(--panel-w) - 1px) calc(var(--rail-w) + var(--panel-w)),
+      var(--bg) calc(var(--rail-w) + var(--panel-w))
+    );
+  }
+
   .shell-body {
     margin-left: calc(var(--rail-w) + var(--panel-w));
   }

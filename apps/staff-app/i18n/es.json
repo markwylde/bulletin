@@ -141,6 +141,7 @@
   "staff.breadcrumbs": "Ruta de navegación",
   "staff.console": "Equipo de Bulletin",
   "staff.consoleTag": "Equipo",
+  "staff.dashboard.greeting": "Hola de nuevo, {name}. La actividad de los miembros y la operación del foro de un vistazo.",
   "staff.dashboard.health.database": "Base de datos",
   "staff.dashboard.health.degraded": "Algunas comprobaciones fallan",
   "staff.dashboard.health.details": "Detalles",

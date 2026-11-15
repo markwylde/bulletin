@@ -141,6 +141,7 @@
   "staff.breadcrumbs": "Fil d’Ariane",
   "staff.console": "Équipe Bulletin",
   "staff.consoleTag": "Équipe",
+  "staff.dashboard.greeting": "Bon retour, {name}. L'activité des membres et le fonctionnement du forum en un coup d'œil.",
   "staff.dashboard.health.database": "Base de données",
   "staff.dashboard.health.degraded": "Certaines vérifications échouent",
   "staff.dashboard.health.details": "Détails",

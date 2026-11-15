@@ -78,7 +78,8 @@ function Shortcuts() {
 
 export function DashboardPage() {
   const t = useT();
-  const { permissions } = useSession();
+  const { permissions, state } = useSession();
+  const displayName = state.status === "authenticated" ? state.session.displayName : null;
   const widgets = visibleDashboardWidgets(permissions);
   const kpis = widgets.filter((widget) => widget.slot === "kpi");
   const log = widgets.find((widget) => widget.id === "log");
@@ -86,7 +87,14 @@ export function DashboardPage() {
 
   return (
     <div className="dashboard" data-page="dashboard">
-      <PageHeader title={t("staff.dashboard.title")} description={t("staff.dashboard.intro")} />
+      <PageHeader
+        title={t("staff.dashboard.title")}
+        description={
+          displayName === null
+            ? t("staff.dashboard.intro")
+            : t("staff.dashboard.greeting", { name: displayName })
+        }
+      />
 
       {kpis.length === 0 ? null : (
         <div className="dashboard-kpis">
