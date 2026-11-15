@@ -1,6 +1,7 @@
 {
   "name": "bulletin",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "packageManager": "bun@1.4.0",
   "engines": {

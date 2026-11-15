@@ -51,3 +51,10 @@ that don't work well in practice, all on the
 [GitHub Issues tab](https://github.com/markwylde/bulletin/issues).
 
 Bulletin does not accept pull requests.
+
+## Licence
+
+Bulletin is free software: you can redistribute it and/or modify it under the
+terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See [LICENSE](LICENSE).
