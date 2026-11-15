@@ -18,7 +18,7 @@ import {
   type PermissionSnapshot,
   type ViewerPrincipal,
 } from "@bulletin/domain/permissions";
-import { readTopicList } from "@bulletin/domain/topics";
+import { readTopicList, TOPIC_LIST_SORTS, type TopicListSort } from "@bulletin/domain/topics";
 import { canonicalUrl } from "@bulletin/domain/urls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml, type SafeHtml, safeHtml } from "@bulletin/templates";
@@ -58,7 +58,20 @@ export interface ForumPageTopic {
   readonly replies: string;
   readonly views: string;
   readonly bulk: boolean;
+  /** A busy topic: the row shows the hot status icon. */
+  readonly hot: boolean;
+  /** "by {member}, {date}" (or just the date when the starter is gone). */
+  readonly started: string;
   readonly lastPost: { readonly date: string; readonly memberName: string | null } | null;
+}
+
+/** Replies at which a topic row shows the "hot" status icon. */
+const HOT_TOPIC_REPLIES = 20;
+
+export interface ForumPageSortOption {
+  readonly key: TopicListSort;
+  readonly label: string;
+  readonly active: boolean;
 }
 
 export interface ForumPagePagination {
@@ -78,6 +91,9 @@ export interface ForumPageView {
   readonly rules: SafeHtml | null;
   readonly prefixes: readonly ForumPagePrefix[];
   readonly activePrefix: string | null;
+  /** The sort shown in the toolbar; `sortParam` is empty when it is the forum default. */
+  readonly sortOptions: readonly ForumPageSortOption[];
+  readonly sortParam: string;
   readonly announcements: readonly ForumPageAnnouncement[];
   readonly moderators: readonly {
     readonly id: string;
@@ -117,6 +133,8 @@ export interface ForumPageInput {
   readonly snapshot: PermissionSnapshot;
   readonly forum: ForumRecord;
   readonly prefix: string | null;
+  /** A requested topic-list sort; anything outside TOPIC_LIST_SORTS falls back to the default. */
+  readonly sort?: string | null;
   /** The requested topic-list page (1-based). */
   readonly page?: number;
   readonly topicsPerPage?: number;
@@ -242,6 +260,8 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
         rules: null,
         prefixes: [],
         activePrefix: null,
+        sortOptions: [],
+        sortParam: "",
         announcements: [],
         moderators: [],
         showModerators: false,
@@ -285,6 +305,10 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     input.prefix !== null && prefixes.some((prefix) => prefix.key === input.prefix)
       ? input.prefix
       : null;
+  const activeSort: TopicListSort = TOPIC_LIST_SORTS.includes(input.sort as TopicListSort)
+    ? (input.sort as TopicListSort)
+    : input.forum.defaultSort;
+  const sortParam = activeSort === input.forum.defaultSort ? "" : activeSort;
   const isModerator = await can(input.sql, input.principal, "see_unapproved", {
     forumId: input.forum.id,
     tree,
@@ -386,7 +410,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
       : await readTopicList(input.sql, {
           forumId: input.forum.id,
           locale: input.locale,
-          sort: input.forum.defaultSort,
+          sort: activeSort,
           prefixId,
           page: topicPage,
           perPage,
@@ -400,7 +424,7 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     topicList = await readTopicList(input.sql, {
       forumId: input.forum.id,
       locale: input.locale,
-      sort: input.forum.defaultSort,
+      sort: activeSort,
       prefixId,
       page: topicPage,
       perPage,
@@ -415,6 +439,10 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
 
     if (activePrefix !== null) {
       params.set("prefix", activePrefix);
+    }
+
+    if (sortParam !== "") {
+      params.set("sort", sortParam);
     }
 
     if (page > 1) {
@@ -451,6 +479,14 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     views: input.translate("index.topicViews", { count: Number(topic.viewCount) }),
     bulk:
       canPin || canLockTopic || canMove || canSoftDeleteTopic || canRestoreTopic || canApproveTopic,
+    hot: topic.replyCount >= HOT_TOPIC_REPLIES,
+    started:
+      topic.starterName === null
+        ? formatDate(topic.createdAt)
+        : input.translate("forum.topic.startedBy", {
+            member: topic.starterName,
+            date: formatDate(topic.createdAt),
+          }),
     lastPost:
       topic.movedTo !== null || topic.lastPostAt === null
         ? null
@@ -505,6 +541,16 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
             ),
       prefixes,
       activePrefix,
+      sortOptions: TOPIC_LIST_SORTS.map((key) => ({
+        key,
+        label: {
+          last_post: input.translate("forum.sort.last_post"),
+          start_date: input.translate("forum.sort.start_date"),
+          title: input.translate("forum.sort.title"),
+        }[key],
+        active: key === activeSort,
+      })),
+      sortParam,
       announcements: announcementViews.map(({ announcement, rendered }) => ({
         id: announcement.id,
         title: announcement.title,

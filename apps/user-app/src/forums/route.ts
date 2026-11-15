@@ -35,6 +35,8 @@ export interface ForumRouteInput {
   /** The route segment after `/forum/`, e.g. `12-general-discussion`. */
   readonly ref: string;
   readonly prefix?: string | null;
+  /** The requested topic-list sort (`last_post`, `start_date` or `title`). */
+  readonly sort?: string | null;
   /** The requested topic-list page (1-based). */
   readonly page?: number;
   /** Test seam for announcement transitions. */
@@ -254,6 +256,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
             snapshot: freshSnapshot,
             forum: freshForum,
             prefix,
+            sort: input.sort ?? null,
             page: input.page ?? 1,
             topicsPerPage: settings.topicsPerPage,
             now,
@@ -310,6 +313,7 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
           params: {
             id: forum.id,
             prefix: page?.viewModel.activePrefix ?? "",
+            sort: page?.viewModel.sortParam ?? "",
             page: page?.viewModel.pagination.page ?? 1,
             ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
           },

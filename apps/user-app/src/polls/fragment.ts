@@ -3,6 +3,7 @@ import { type PollRecord, readPoll } from "@bulletin/domain/polls";
 import type { Locale, Translator } from "@bulletin/i18n";
 import { escapeHtml } from "@bulletin/templates";
 import type { SQL } from "bun";
+import { pollShare } from "./share.ts";
 
 function questionHtml(question: PollRecord["questions"][number], revealed: boolean): string {
   const inputType = question.multiple ? "checkbox" : "radio";
@@ -24,19 +25,23 @@ function questionHtml(question: PollRecord["questions"][number], revealed: boole
 
 function resultsHtml(poll: PollRecord, translate: Translator, revealed: boolean): string {
   const questions = poll.questions
-    .map(
-      (question) => `<li>
+    .map((question) => {
+      const total = question.choices.reduce((sum, choice) => sum + choice.votes, 0);
+
+      return `<li>
         <p class="bl-poll__result-prompt">${escapeHtml(question.prompt)}</p>
         <ul class="bl-poll__result-list">
           ${question.choices
             .map(
-              (choice) => `<li><span>${escapeHtml(choice.label)}</span>
-                <span data-poll-count="${escapeHtml(choice.id)}">${revealed ? choice.votes : ""}</span></li>`,
+              (choice) => `<li class="bl-poll__result" style="--bl-poll-share: ${
+                revealed ? pollShare(choice.votes, total) : 0
+              }%"><span class="bl-poll__result-label">${escapeHtml(choice.label)}</span>
+                <span class="bl-poll__result-count" data-poll-count="${escapeHtml(choice.id)}">${revealed ? choice.votes : ""}</span></li>`,
             )
             .join("")}
         </ul>
-      </li>`,
-    )
+      </li>`;
+    })
     .join("");
 
   return `<div class="bl-poll__results" data-poll-results ${revealed ? "" : "hidden"} aria-label="${escapeHtml(translate("poll.results"))}">

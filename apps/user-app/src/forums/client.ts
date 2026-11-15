@@ -92,3 +92,26 @@ if (unlockForm !== null) {
     void unlock(unlockForm, error, submit);
   });
 }
+
+/** The sort select applies on change; its submit button stays for keyboard and no-JS use. */
+for (const select of document.querySelectorAll<HTMLSelectElement>("[data-topic-sort-select]")) {
+  select.addEventListener("change", () => {
+    select.form?.requestSubmit();
+  });
+}
+
+/** "New topic" opens the composer in place instead of only jumping to it. */
+for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-new-topic-open]")) {
+  link.addEventListener("click", (event) => {
+    const composer = document.querySelector<HTMLDetailsElement>("[data-new-topic]");
+
+    if (composer === null) {
+      return;
+    }
+
+    event.preventDefault();
+    composer.open = true;
+    composer.scrollIntoView({ block: "start", behavior: "smooth" });
+    composer.querySelector<HTMLInputElement>("input[name=title]")?.focus({ preventScroll: true });
+  });
+}

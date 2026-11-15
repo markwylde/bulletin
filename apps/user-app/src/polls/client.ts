@@ -1,4 +1,5 @@
 import { clientCsrfToken } from "../csrf.ts";
+import { pollShare } from "./share.ts";
 
 interface PollResultsPayload {
   readonly totalVoters: number;
@@ -71,6 +72,8 @@ async function fillResults(pollId: string): Promise<void> {
     showResults(section);
 
     for (const question of payload.questions) {
+      const votes = question.choices.reduce((sum, choice) => sum + choice.votes, 0);
+
       for (const choice of question.choices) {
         const count = section.querySelector<HTMLElement>(
           `[data-poll-results] [data-poll-count="${choice.id}"]`,
@@ -78,6 +81,9 @@ async function fillResults(pollId: string): Promise<void> {
 
         if (count !== null) {
           count.textContent = String(choice.votes);
+          count
+            .closest<HTMLElement>(".bl-poll__result")
+            ?.style.setProperty("--bl-poll-share", `${pollShare(choice.votes, votes)}%`);
         }
       }
     }

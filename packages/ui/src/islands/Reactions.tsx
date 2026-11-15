@@ -240,6 +240,7 @@ function ReactionsBody({ postId, canReact, reactions, labels }: ReactionsProps) 
                 className="bl-reaction"
                 data-reaction-pick={reaction.id}
                 data-selected={selected ? "true" : "false"}
+                data-empty={count === 0 ? "true" : "false"}
                 aria-pressed={selected}
                 aria-label={`${reaction.label}: ${count}`}
                 title={selected ? labels.remove : labels.pick}
@@ -259,6 +260,7 @@ function ReactionsBody({ postId, canReact, reactions, labels }: ReactionsProps) 
                 className="bl-reaction bl-reaction--static"
                 data-reaction-total={reaction.id}
                 data-selected={selected ? "true" : "false"}
+                data-empty={count === 0 ? "true" : "false"}
               >
                 <span className="bl-visually-hidden">{reaction.label}</span>
                 <span className="bl-reaction__icon" aria-hidden="true">

@@ -149,8 +149,6 @@ describe("forum-structure strings", () => {
     const userKeys = [
       "index.topicCount",
       "index.postCount",
-      "index.lastPost",
-      "index.lastPostBy",
       "index.redirectClicks",
       "index.subforums",
       "forum.rules.title",

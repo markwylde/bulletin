@@ -46,6 +46,7 @@ export interface TopicListRow {
   readonly prefixColour: string | null;
   readonly starterId: string | null;
   readonly starterName: string | null;
+  readonly createdAt: Date;
   readonly replyCount: number;
   readonly viewCount: string;
   readonly lastPostId: string | null;
@@ -253,6 +254,7 @@ interface TopicListRowSql {
   readonly prefix_colour: string | null;
   readonly starter_id: string | null;
   readonly starter_name: string | null;
+  readonly created_at: Date;
   readonly reply_count: number;
   readonly view_count: string;
   readonly last_post_id: string | null;
@@ -274,6 +276,7 @@ function toTopicListRow(row: TopicListRowSql): TopicListRow {
     prefixColour: row.prefix_colour,
     starterId: row.starter_id,
     starterName: row.starter_name,
+    createdAt: row.created_at,
     replyCount: row.reply_count,
     viewCount: row.view_count,
     lastPostId: row.last_post_id,
@@ -307,7 +310,7 @@ export async function readTopicList(
       prefix.id AS prefix_id, prefix.key AS prefix_key,
       COALESCE(label.label, prefix.key) AS prefix_label,
       prefix.colour AS prefix_colour,
-      t.starter_id, starter.display_name AS starter_name,
+      t.starter_id, starter.display_name AS starter_name, t.created_at,
       t.reply_count, t.view_count::text AS view_count,
       t.last_post_id, t.last_post_at,
       last_member.display_name AS last_post_member_name

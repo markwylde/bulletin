@@ -18,41 +18,11 @@
                   <input type="checkbox" data-bulk-post-check="{{ post.id }}" value="{{ post.id }}" aria-label="{% t "moderation.bulk.select" %}" />
                 </label>
               {% endif %}
-              <span class="bl-muted" data-post-time>{{ post.createdAt }}</span>
+              <span class="bl-post__time" data-post-time>{{ post.createdAt }}</span>
+              {% if post.editedMarker %}<span class="bl-post__edited" data-post-edited>{{ post.editedMarker }}</span>{% endif %}
               {% if post.unapproved %}<span class="bl-badge bl-badge--danger" data-post-unapproved>{% t "post.unapproved" %}</span>{% endif %}
-              {% if post.editedMarker %}<span class="bl-muted" data-post-edited>{{ post.editedMarker }}</span>{% endif %}
-              <a class="bl-muted" href="{{ post.href }}" data-post-link="{{ post.id }}">{% t "post.permalink" %}</a>
-              <button class="bl-button bl-button--quiet bl-button--small" type="button" data-quote-post="{{ post.id }}" aria-pressed="false">{% t "post.quote" %}</button>
-              <button class="bl-button bl-button--quiet bl-button--small" type="button" data-report-post="{{ post.id }}" data-overlay-member-only hidden>{% t "report.reportPost" %}</button>
-              {% if flags.warnings and post.canWarn %}<a class="bl-button bl-button--quiet bl-button--small" href="/moderation/warnings/{{ post.authorId }}?post={{ post.id }}" data-warn-post="{{ post.id }}">{% t "warnings.warnPost" %}</a>{% endif %}
-              {% if flags.reputation %}<bl-post-reputation data-post="{{ post.id }}"></bl-post-reputation>{% endif %}
-              {% if post.canViewHistory %}
-                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-history="{{ post.id }}">{% t "post.history" %}</button>
-              {% endif %}
-              {% if post.canDelete %}
-                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-action="soft" data-post-id="{{ post.id }}" data-confirm="{% t "post.confirmDelete" %}">{% t "post.delete" %}</button>
-              {% endif %}
-              {% if post.canRestore %}
-                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-action="restore" data-post-id="{{ post.id }}">{% t "post.restore" %}</button>
-              {% endif %}
-              {% if post.canHardDelete %}
-                <button class="bl-button bl-button--quiet bl-button--small" type="button" data-post-action="hard" data-post-id="{{ post.id }}" data-confirm="{% t "post.confirmHardDelete" %}">{% t "post.hardDelete" %}</button>
-              {% endif %}
+              <a class="bl-post__permalink" href="{{ post.href }}" data-post-link="{{ post.id }}" title="{% t "post.permalink" %}" aria-label="{% t "post.permalink" %}">#{{ post.position }}</a>
             </div>
-            {% if post.canEdit %}
-              <details class="bl-post__edit" data-post-edit="{{ post.id }}">
-                <summary>{% t "post.edit" %}</summary>
-                <form class="bl-topic-form" data-edit-form data-post-id="{{ post.id }}">
-                  <label class="bl-label" for="edit-body-{{ post.id }}">{% t "post.body" %}</label>
-                  <textarea class="bl-input" id="edit-body-{{ post.id }}" name="bodyMd" rows="6" required>{{ post.editBody }}</textarea>
-                  {% if post.canRedact %}
-                    <label class="bl-check"><input type="checkbox" name="redact" checked /> {% t "post.redact" %}</label>
-                  {% endif %}
-                  <button class="bl-button" type="submit" data-edit-submit>{% t "post.save" %}</button>
-                  <p class="bl-error-text" data-form-error hidden>{% t "post.editFailed" %}</p>
-                </form>
-              </details>
-            {% endif %}
             <div class="bl-post__history" data-post-history-panel="{{ post.id }}" hidden
               data-label-from="{% t "post.historyFrom" %}" data-label-to="{% t "post.historyTo" %}"
               data-label-version="{% t "post.historyVersion" %}"></div>
@@ -70,6 +40,40 @@
               <div class="bl-post__attachments" data-post-files="{{ post.id }}">{{ post.files }}</div>
             {% endif %}
             {% if post.authorId %}<bl-post-signature data-member="{{ post.authorId }}"></bl-post-signature>{% endif %}
-            {% if flags.reactions %}<bl-post-reactions data-post="{{ post.id }}"></bl-post-reactions>{% endif %}
+            <div class="bl-post__footer">
+              {% if flags.reactions %}<bl-post-reactions data-post="{{ post.id }}"></bl-post-reactions>{% endif %}
+              <div class="bl-post__actions" data-post-actions>
+                <button class="bl-post__action" type="button" data-quote-post="{{ post.id }}" aria-pressed="false"><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M4 6.5h5v5H6.5c0 1.5.5 2.5 2 3M11 6.5h5v5h-2.5c0 1.5.5 2.5 2 3" /></svg><span>{% t "post.quote" %}</span></button>
+                <button class="bl-post__action" type="button" data-report-post="{{ post.id }}" data-overlay-member-only hidden><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M5 17V3.5m0 0h9l-2 3.5 2 3.5H5" /></svg><span>{% t "report.reportPost" %}</span></button>
+                {% if flags.warnings and post.canWarn %}<a class="bl-post__action" href="/moderation/warnings/{{ post.authorId }}?post={{ post.id }}" data-warn-post="{{ post.id }}"><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M10 3.5 17 16H3Z" /><path d="M10 8.5v3M10 13.75v.25" /></svg><span>{% t "warnings.warnPost" %}</span></a>{% endif %}
+                {% if flags.reputation %}<bl-post-reputation data-post="{{ post.id }}"></bl-post-reputation>{% endif %}
+                {% if post.canViewHistory %}
+                  <button class="bl-post__action" type="button" data-post-history="{{ post.id }}"><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="6.5" /><path d="M10 6.5V10l2.5 1.5" /></svg><span>{% t "post.history" %}</span></button>
+                {% endif %}
+                {% if post.canDelete %}
+                  <button class="bl-post__action" type="button" data-post-action="soft" data-post-id="{{ post.id }}" data-confirm="{% t "post.confirmDelete" %}"><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M4 6h12M8 6V4h4v2M5.5 6l.75 10h7.5L14.5 6" /></svg><span>{% t "post.delete" %}</span></button>
+                {% endif %}
+                {% if post.canRestore %}
+                  <button class="bl-post__action" type="button" data-post-action="restore" data-post-id="{{ post.id }}"><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M4.5 10a5.5 5.5 0 1 0 1.6-3.9M4.5 3.5v3h3" /></svg><span>{% t "post.restore" %}</span></button>
+                {% endif %}
+                {% if post.canHardDelete %}
+                  <button class="bl-post__action bl-post__action--danger" type="button" data-post-action="hard" data-post-id="{{ post.id }}" data-confirm="{% t "post.confirmHardDelete" %}"><svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M4 6h12M8 6V4h4v2M5.5 6l.75 10h7.5L14.5 6M8.5 9l3 4M11.5 9l-3 4" /></svg><span>{% t "post.hardDelete" %}</span></button>
+                {% endif %}
+              </div>
+            </div>
+            {% if post.canEdit %}
+              <details class="bl-post__edit" data-post-edit="{{ post.id }}">
+                <summary>{% t "post.edit" %}</summary>
+                <form class="bl-topic-form" data-edit-form data-post-id="{{ post.id }}">
+                  <label class="bl-label" for="edit-body-{{ post.id }}">{% t "post.body" %}</label>
+                  <textarea class="bl-input" id="edit-body-{{ post.id }}" name="bodyMd" rows="6" required>{{ post.editBody }}</textarea>
+                  {% if post.canRedact %}
+                    <label class="bl-check"><input type="checkbox" name="redact" checked /> {% t "post.redact" %}</label>
+                  {% endif %}
+                  <button class="bl-button" type="submit" data-edit-submit>{% t "post.save" %}</button>
+                  <p class="bl-error-text" data-form-error hidden>{% t "post.editFailed" %}</p>
+                </form>
+              </details>
+            {% endif %}
           </div>
         </li>

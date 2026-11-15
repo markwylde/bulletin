@@ -734,16 +734,8 @@ function privatePostControls(post: EditablePost): void {
       error.textContent = labels.labelEditFailed ?? "";
       form.append(submit, error);
       details.append(summary, form);
-      const main = article.querySelector(".bl-post__main");
-      const history = main?.querySelector("[data-post-history-panel]") ?? null;
-
-      if (main !== null) {
-        if (history !== null) {
-          main.insertBefore(details, history);
-        } else {
-          main.append(details);
-        }
-      }
+      // The editor opens under the post's action row, as the server-rendered one does.
+      article.querySelector(".bl-post__main")?.append(details);
     }
   }
 
@@ -764,16 +756,26 @@ function privatePostControls(post: EditablePost): void {
   }
 
   if (post.canDelete && article.querySelector('[data-post-action="soft"]') === null) {
-    const actions = article.querySelector(".bl-post__meta");
+    const actions = article.querySelector("[data-post-actions]");
 
     if (actions !== null) {
       const button = document.createElement("button");
-      button.className = "bl-button bl-button--quiet bl-button--small";
+      button.className = "bl-post__action";
       button.type = "button";
       button.dataset.postAction = "soft";
       button.dataset.postId = post.postId;
       button.dataset.confirm = labels.labelConfirmDelete ?? "";
-      button.textContent = labels.labelDelete ?? "";
+      // The same trash icon the server-rendered delete action carries.
+      const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      icon.setAttribute("class", "bl-icon");
+      icon.setAttribute("viewBox", "0 0 20 20");
+      icon.setAttribute("aria-hidden", "true");
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", "M4 6h12M8 6V4h4v2M5.5 6l.75 10h7.5L14.5 6");
+      icon.append(path);
+      const label = document.createElement("span");
+      label.textContent = labels.labelDelete ?? "";
+      button.append(icon, label);
       actions.append(button);
     }
   }

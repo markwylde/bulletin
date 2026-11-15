@@ -3,11 +3,23 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" href="data:," />
     <title>Tip jar</title>
     <style>
-      body { font: 14px system-ui, sans-serif; margin: 0; padding: 8px; }
-      button { padding: 8px 12px; }
+      /* Follows the host's colour scheme: the frame stays transparent in light and dark. */
+      :root { color-scheme: light dark; }
+      body { font: 14px system-ui, sans-serif; margin: 0; padding: 4px 0; background: transparent; color: CanvasText; }
+      button {
+        padding: 8px 12px;
+        border: 1px solid color-mix(in srgb, CanvasText 22%, transparent);
+        border-radius: 6px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover { background: color-mix(in srgb, CanvasText 6%, transparent); }
     </style>
   </head>
   <body>

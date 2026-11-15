@@ -1,28 +1,35 @@
 {{ header }}
 <main id="main" class="bl-main" data-forum-page data-forum-id="{{ forumId }}" data-label-unapproved="{% t "post.unapproved" %}"{% if locked %}{% else %} data-overlay-ctx="forum:{{ forumId }}" data-overlay-forum="{{ forumId }}"{% endif %}>
   {{ breadcrumbs }}
-  <header class="bl-page__header">
-    <h1 class="bl-page__title" data-forum-title>{{ title }}</h1>
-    {% if description.size > 0 %}
-      <p class="bl-muted" data-forum-description>{{ description }}</p>
-    {% endif %}
-    <p class="bl-muted">
-      <span data-topic-count="{{ forumId }}">{{ topicCount }}</span>
-      <span data-post-count="{{ forumId }}">{{ postCount }}</span>
-      <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ forumId }}">—</span>
-    </p>
-    <button class="bl-button bl-button--quiet bl-button--small" type="button" data-mark-forum-read="{{ forumId }}" data-overlay-member-only hidden>{% t "read.markForum" %}</button>
-    {% if flags.follows %}
-    <span class="bl-follow" data-overlay-member-only hidden data-follow-context="forum:{{ forumId }}">
-      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-action="follow">{% t "follow.followForum" %}</button>
-      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-action="unfollow" hidden>{% t "follow.unfollowForum" %}</button>
-      <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
-    </span>
-    {% endif %}
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page__title" data-forum-title>{{ title }}</h1>
+      {% if description.size > 0 %}
+        <p class="bl-page-header__description" data-forum-description>{{ description }}</p>
+      {% endif %}
+      <p class="bl-page-header__meta bl-forum-header__counts">
+        <span data-topic-count="{{ forumId }}">{{ topicCount }}</span>
+        <span data-post-count="{{ forumId }}">{{ postCount }}</span>
+        <span class="bl-unread-dot" data-overlay-forum-unread data-overlay-forum-id="{{ forumId }}"></span>
+      </p>
+    </div>
+    <div class="bl-page-header__actions">
+      <button class="bl-button bl-button--secondary bl-button--small" type="button" data-mark-forum-read="{{ forumId }}" data-overlay-member-only hidden>
+        <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="m4.5 10.5 3.5 3.5 7.5-8" /></svg>
+        {% t "read.markForum" %}
+      </button>
+      {% if flags.follows %}
+      <span class="bl-follow" data-overlay-member-only hidden data-follow-context="forum:{{ forumId }}">
+        <button class="bl-button bl-button--secondary bl-button--small" type="button" data-follow-action="follow">{% t "follow.followForum" %}</button>
+        <button class="bl-button bl-button--secondary bl-button--small" type="button" data-follow-action="unfollow" hidden>{% t "follow.unfollowForum" %}</button>
+        <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
+      </span>
+      {% endif %}
+    </div>
   </header>
 
   {% if isModerator %}
-    <p class="bl-note" data-forum-mod-note>{% t "forum.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a> · <a href="/moderation/reports" data-reports-link>{% t "moderation.reports.open" %}</a></p>
+    <p class="bl-notice" data-forum-mod-note>{% t "forum.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a> · <a href="/moderation/reports" data-reports-link>{% t "moderation.reports.open" %}</a></p>
   {% endif %}
 
   {% if locked %}
@@ -40,7 +47,7 @@
     <div data-forum-content>
       {% if rules %}
         <details class="bl-card bl-rules" data-rules data-forum-id="{{ forumId }}" open>
-          <summary class="bl-rules__summary">{% t "forum.rules.title" %}</summary>
+          <summary class="bl-card__title bl-rules__summary">{% t "forum.rules.title" %}</summary>
           <p class="bl-rules__body">{{ rules }}</p>
         </details>
       {% endif %}
@@ -66,28 +73,57 @@
 
       {% if isCategory %}
         {% if children.size > 0 %}
-          <ul class="bl-forum-list" data-forum-children>
-            {% for child in children %}
-              <li class="bl-forum-list__item" data-overlay-forum="{{ child.id }}">
-                <a class="bl-forum-list__link" href="{{ child.href }}" data-forum-child="{{ child.id }}">{{ child.title }}</a>
-                <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ child.id }}">—</span>
-              </li>
-            {% endfor %}
-          </ul>
+          <section class="bl-board-category">
+            <ul class="bl-forum-list" data-forum-children>
+              {% for child in children %}
+                <li class="bl-forum" data-overlay-forum="{{ child.id }}">
+                  <span class="bl-forum__icon" aria-hidden="true">
+                    <svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h9A1.5 1.5 0 0 1 16 5.5v6a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3h0A1.5 1.5 0 0 1 4 11.5Z" /></svg>
+                    <span class="bl-forum__unread" data-overlay-forum-unread data-overlay-forum-id="{{ child.id }}"></span>
+                  </span>
+                  <div class="bl-forum__main">
+                    <h2 class="bl-forum__title"><a href="{{ child.href }}" data-forum-child="{{ child.id }}">{{ child.title }}</a></h2>
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          </section>
         {% else %}
           {{ emptyState }}
         {% endif %}
       {% else %}
-        {% if prefixes.size > 0 %}
-          <nav class="bl-prefix-filter" data-prefix-filter aria-label="{% t "forum.prefixFilter" %}">
-            <a class="bl-prefix{% if activePrefix == null %} is-active{% endif %}" href="{{ href }}" data-prefix-all>{% t "forum.prefixAll" %}</a>
-            {% for prefix in prefixes %}
-              <a class="bl-prefix{% if activePrefix == prefix.key %} is-active{% endif %}" style="--bl-prefix: {{ prefix.colour }}" href="{{ href }}?prefix={{ prefix.key }}" data-prefix-key="{{ prefix.key }}">{{ prefix.label }}</a>
-            {% endfor %}
-          </nav>
-        {% endif %}
+        <div class="bl-forum-toolbar">
+          {% if prefixes.size > 0 %}
+            <nav class="bl-prefix-filter" data-prefix-filter aria-label="{% t "forum.prefixFilter" %}">
+              <a class="bl-prefix bl-prefix--all{% if activePrefix == null %} is-active{% endif %}" href="{{ href }}{% if sortParam.size > 0 %}?sort={{ sortParam }}{% endif %}" data-prefix-all{% if activePrefix == null %} aria-current="true"{% endif %}>{% t "forum.prefixAll" %}</a>
+              {% for prefix in prefixes %}
+                <a class="bl-prefix{% if activePrefix == prefix.key %} is-active{% endif %}" style="--bl-prefix: {{ prefix.colour }}" href="{{ href }}?prefix={{ prefix.key }}{% if sortParam.size > 0 %}&amp;sort={{ sortParam }}{% endif %}" data-prefix-key="{{ prefix.key }}"{% if activePrefix == prefix.key %} aria-current="true"{% endif %}>{{ prefix.label }}</a>
+              {% endfor %}
+            </nav>
+          {% endif %}
+          <div class="bl-forum-toolbar__end">
+            {% if sortOptions.size > 0 %}
+              <form class="bl-sort" method="get" action="{{ href }}" data-topic-sort>
+                {% if activePrefix %}<input type="hidden" name="prefix" value="{{ activePrefix }}" />{% endif %}
+                <label class="bl-sort__label" for="topic-sort">{% t "forum.sort.label" %}</label>
+                <select class="bl-input bl-sort__select" id="topic-sort" name="sort" data-topic-sort-select>
+                  {% for option in sortOptions %}
+                    <option value="{{ option.key }}"{% if option.active %} selected{% endif %}>{{ option.label }}</option>
+                  {% endfor %}
+                </select>
+                <button class="bl-button bl-button--secondary bl-button--small bl-sort__apply" type="submit">{% t "forum.sort.apply" %}</button>
+              </form>
+            {% endif %}
+            {% if canStart and editor %}
+              <a class="bl-button bl-button--small" href="#new-topic" data-new-topic-open>
+                <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M10 4.5v11M4.5 10h11" /></svg>
+                {% t "topic.new" %}
+              </a>
+            {% endif %}
+          </div>
+        </div>
         {% if canStart and editor %}
-          <details class="bl-card" data-new-topic>
+          <details class="bl-card bl-new-topic" id="new-topic" data-new-topic>
             <summary class="bl-card__title">{% t "topic.new" %}</summary>
             <form class="bl-topic-form" data-new-topic-form data-forum-id="{{ forumId }}"
               data-label-blocked-word="{% t "topic.blockedWord" %}"
@@ -129,11 +165,11 @@
         {% endif %}
 
         {% if bulkTopics.pin or bulkTopics.lock or bulkTopics.move or bulkTopics.softDelete or bulkTopics.restore or bulkTopics.approve %}
-          <div class="bl-card" data-bulk-topics data-forum-id="{{ forumId }}"
+          <div class="bl-card bl-bulk-bar" data-bulk-topics data-forum-id="{{ forumId }}"
             data-label-failed="{% t "moderation.bulk.failed" %}"
             data-label-saved="{% t "moderation.bulk.saved" %}"
             data-label-nothing-selected="{% t "moderation.bulk.nothingSelected" %}">
-            <h2 class="bl-card__title">{% t "moderation.bulk.topicsTitle" %}</h2>
+            <h2 class="bl-bulk-bar__title">{% t "moderation.bulk.topicsTitle" %}</h2>
             <div class="bl-actions">
               {% if bulkTopics.pin %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-topic-action="pin">{% t "topic.pin" %}</button>{% endif %}
               {% if bulkTopics.unpin %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-topic-action="unpin">{% t "topic.unpin" %}</button>{% endif %}
@@ -144,7 +180,7 @@
               {% if bulkTopics.approve %}<button class="bl-button bl-button--small" type="button" data-bulk-topic-action="approve">{% t "moderation.bulk.approve" %}</button>{% endif %}
             </div>
             {% if bulkTopics.move %}
-              <div class="bl-form">
+              <div class="bl-bulk-bar__move">
                 <label class="bl-label" for="bulk-topic-forum">{% t "moderation.bulk.moveTo" %}</label>
                 <select class="bl-input" id="bulk-topic-forum" data-bulk-topic-forum>
                   <option value="">{% t "moderation.tools.chooseForum" %}</option>
@@ -160,37 +196,61 @@
         {% endif %}
 
         {% if topics.size > 0 %}
+          <section class="bl-board-category bl-topic-table">
+            <div class="bl-board-category__header bl-topic-table__header" aria-hidden="true">
+              <span class="bl-topic-table__label">{% t "forum.column.topic" %}</span>
+              <div class="bl-forum-columns">
+                <span>{% t "index.column.stats" %}</span>
+                <span>{% t "index.column.lastPost" %}</span>
+              </div>
+            </div>
           <ol class="bl-topic-list" data-topic-list data-topic-page="{{ pagination.page }}">
             {% for topic in topics %}
-              <li class="bl-topic-list__item{% if topic.moved %} is-moved{% endif %}" data-topic-row="{{ topic.id }}">
-                <div class="bl-topic-row__main">
-                  {% if topic.bulk %}<input type="checkbox" value="{{ topic.id }}" data-bulk-topic-check="{{ topic.id }}" aria-label="{% t "moderation.bulk.select" %}" />{% endif %}
-                  {% if topic.prefix %}
-                    <span class="bl-prefix-tag" style="--bl-prefix: {{ topic.prefix.colour }}" data-topic-prefix="{{ topic.prefix.key }}">{{ topic.prefix.label }}</span>
+              <li class="bl-forum bl-topic-row{% if topic.moved %} is-moved{% endif %}{% if topic.pinned %} is-pinned{% endif %}" data-topic-row="{{ topic.id }}">
+                <span class="bl-forum__icon bl-topic-row__icon" title="{% if topic.moved %}{% t "topic.moved" %}{% elsif topic.locked %}{% t "topic.locked" %}{% elsif topic.pinned %}{% t "topic.pinned" %}{% elsif topic.hot %}{% t "forum.topic.hot" %}{% else %}{% t "forum.topic.normal" %}{% endif %}">
+                  {% if topic.moved %}
+                    <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M4 10h11m-4-4 4 4-4 4" /></svg>
+                  {% elsif topic.locked %}
+                    <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="5" y="9" width="10" height="7.5" rx="1.5" /><path d="M7 9V6.75a3 3 0 0 1 6 0V9" /></svg>
+                  {% elsif topic.pinned %}
+                    <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M8 3.5h4l-.5 4 2.5 2.5v1.5H6V10l2.5-2.5ZM10 11.5V17" /></svg>
+                  {% elsif topic.hot %}
+                    <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M10 17a5 5 0 0 0 5-5c0-3-2.5-4.5-3-8-2 1.5-3 3.5-3 5.5-1-.5-1.5-1.5-1.5-2.5C6 8 5 9.75 5 12a5 5 0 0 0 5 5Z" /></svg>
+                  {% else %}
+                    <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h9A1.5 1.5 0 0 1 16 5.5v6a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3h0A1.5 1.5 0 0 1 4 11.5Z" /></svg>
                   {% endif %}
-                  <a class="bl-topic-list__title" href="{{ topic.href }}" data-topic-link="{{ topic.id }}">{{ topic.title }}</a>
-                  {% if topic.pinned %}<span class="bl-badge" data-topic-pinned>{% t "topic.pinned" %}</span>{% endif %}
-                  {% if topic.locked %}<span class="bl-badge" data-topic-locked>{% t "topic.locked" %}</span>{% endif %}
-                  {% if topic.moved %}<span class="bl-badge" data-topic-moved>{% t "topic.moved" %}</span>{% endif %}
+                  <span class="bl-forum__unread" data-overlay-unread data-overlay-context="topic:{{ topic.id }}"></span>
+                </span>
+                <div class="bl-forum__main bl-topic-row__main">
+                  <div class="bl-topic-row__headline">
+                    {% if topic.bulk %}<input class="bl-topic-row__check" type="checkbox" value="{{ topic.id }}" data-bulk-topic-check="{{ topic.id }}" aria-label="{% t "moderation.bulk.select" %}" />{% endif %}
+                    {% if topic.prefix %}
+                      <span class="bl-prefix-tag" style="--bl-prefix: {{ topic.prefix.colour }}" data-topic-prefix="{{ topic.prefix.key }}">{{ topic.prefix.label }}</span>
+                    {% endif %}
+                    <a class="bl-forum__title bl-topic-list__title" href="{{ topic.href }}" data-topic-link="{{ topic.id }}">{{ topic.title }}</a>
+                    {% if topic.pinned %}<span class="bl-badge" data-topic-pinned>{% t "topic.pinned" %}</span>{% endif %}
+                    {% if topic.locked %}<span class="bl-badge" data-topic-locked>{% t "topic.locked" %}</span>{% endif %}
+                    {% if topic.moved %}<span class="bl-badge" data-topic-moved>{% t "topic.moved" %}</span>{% endif %}
+                  </div>
+                  <p class="bl-topic-row__meta">
+                    <span>{{ topic.started }}</span>
+                    <a class="bl-topic-row__first-unread" data-overlay-first-unread data-overlay-context="topic:{{ topic.id }}" href="{{ topic.href }}" hidden>{% t "topic.firstUnread" %}</a>
+                  </p>
                 </div>
-                <div class="bl-topic-row__stats">
+                <div class="bl-forum__stats">
                   <span data-topic-replies="{{ topic.id }}">{{ topic.replies }}</span>
                   <span data-topic-views="{{ topic.id }}">{{ topic.views }}</span>
+                </div>
+                <div class="bl-forum__last" data-topic-last-post="{{ topic.id }}">
                   {% if topic.lastPost %}
-                    <span class="bl-muted" data-topic-last-post="{{ topic.id }}">
-                      {% if topic.lastPost.memberName %}
-                        {% t "index.lastPostBy" date: topic.lastPost.date, member: topic.lastPost.memberName %}
-                      {% else %}
-                        {% t "index.lastPost" date: topic.lastPost.date %}
-                      {% endif %}
-                    </span>
+                    <span class="bl-forum__last-date">{{ topic.lastPost.date }}</span>
+                    {% if topic.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: topic.lastPost.memberName %}</span>{% endif %}
                   {% endif %}
-                  <span class="bl-overlay-slot" data-overlay-unread data-overlay-context="topic:{{ topic.id }}">—</span>
-                  <a class="bl-muted" data-overlay-first-unread data-overlay-context="topic:{{ topic.id }}" href="{{ topic.href }}" hidden>{% t "topic.firstUnread" %}</a>
                 </div>
               </li>
             {% endfor %}
           </ol>
+          </section>
           {% if pagination.pageCount > 1 %}
             <nav class="bl-pagination" data-topic-pagination aria-label="{% t "topic.pagination" %}">
               {% if pagination.previousHref %}
@@ -209,13 +269,20 @@
 
       {% unless isCategory %}
         {% if children.size > 0 %}
-          <section class="bl-card" data-subforums-block>
-            <h2 class="bl-card__title">{% t "index.subforums" %}</h2>
+          <section class="bl-board-category" data-subforums-block>
+            <header class="bl-board-category__header">
+              <h2 class="bl-board-category__title">{% t "index.subforums" %}</h2>
+            </header>
             <ul class="bl-forum-list" data-forum-children>
               {% for child in children %}
-                <li class="bl-forum-list__item" data-overlay-forum="{{ child.id }}">
-                  <a class="bl-forum-list__link" href="{{ child.href }}" data-forum-child="{{ child.id }}">{{ child.title }}</a>
-                  <span class="bl-overlay-slot" data-overlay-forum-unread data-overlay-forum-id="{{ child.id }}">—</span>
+                <li class="bl-forum" data-overlay-forum="{{ child.id }}">
+                  <span class="bl-forum__icon" aria-hidden="true">
+                    <svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h9A1.5 1.5 0 0 1 16 5.5v6a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3h0A1.5 1.5 0 0 1 4 11.5Z" /></svg>
+                    <span class="bl-forum__unread" data-overlay-forum-unread data-overlay-forum-id="{{ child.id }}"></span>
+                  </span>
+                  <div class="bl-forum__main">
+                    <h3 class="bl-forum__title"><a href="{{ child.href }}" data-forum-child="{{ child.id }}">{{ child.title }}</a></h3>
+                  </div>
                 </li>
               {% endfor %}
             </ul>
@@ -224,8 +291,8 @@
       {% endunless %}
 
       {% if moderators.size > 0 %}
-        <section class="bl-card" data-moderators aria-label="{% t "forum.moderators" %}">
-          <h2 class="bl-card__title">{% t "forum.moderators" %}</h2>
+        <section class="bl-forum-moderators" data-moderators aria-label="{% t "forum.moderators" %}">
+          <h2 class="bl-forum-moderators__title">{% t "forum.moderatedBy" %}</h2>
           <ul class="bl-moderator-list">
             {% for moderator in moderators %}
               <li data-moderator-kind="{{ moderator.kind }}" data-moderator="{{ moderator.id }}">{{ moderator.name }}</li>

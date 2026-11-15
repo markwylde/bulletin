@@ -26,6 +26,7 @@ const result = await renderForumRoute({
   session,
   ref: Astro.params.ref ?? "",
   prefix: Astro.url.searchParams.get("prefix"),
+  sort: Astro.url.searchParams.get("sort"),
   ...(() => {
     const page = Astro.url.searchParams.get("page");
 

@@ -16,34 +16,36 @@
   data-label-report-failed="{% t "report.dialog.failed" %}"
   data-label-report-already="{% t "report.dialog.already" %}">
   {{ breadcrumbs }}
-  <header class="bl-page__header">
-    <p class="bl-muted">
-      <a href="/forum/{{ forumId }}" data-topic-forum-link>{% t "topic.backToForum" %}</a>
-    </p>
-    <h1 class="bl-page__title" data-topic-title>
-      {% if prefix %}<span class="bl-prefix-tag" style="--bl-prefix: {{ prefix.colour }}">{{ prefix.label }}</span>{% endif %}
-      {{ title }}
-    </h1>
-    <p class="bl-topic__meta">
-      {% if pinned %}<span class="bl-badge" data-topic-pinned>{% t "topic.pinned" %}</span>{% endif %}
-      {% if locked %}<span class="bl-badge" data-topic-locked>{% t "topic.locked" %}</span>{% endif %}
-      <span data-topic-replies="{{ topicId }}">{{ replyCount }}</span>
-      {{ viewsSlot }}
-    </p>
-    {% if isModerator %}
-      <p class="bl-note" data-topic-mod-note>{% t "topic.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a> · <a href="/moderation/reports" data-reports-link>{% t "moderation.reports.open" %}</a></p>
-    {% endif %}
-    {% if flags.follows %}
-    <span class="bl-follow" data-overlay-member-only hidden data-follow-context="topic:{{ topicId }}">
-      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-action="follow">{% t "follow.followTopic" %}</button>
-      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-follow-action="unfollow" hidden>{% t "follow.unfollowTopic" %}</button>
-      <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
-    </span>
-    {% endif %}
-    {% if canHardDeleteTopic %}
-      <button class="bl-button bl-button--quiet bl-button--small" type="button" data-topic-action="hard" data-topic-id="{{ topicId }}" data-confirm="{% t "topic.confirmDelete" %}">{% t "topic.delete" %}</button>
-    {% endif %}
+  <header class="bl-page-header bl-topic-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page__title" data-topic-title>
+        {% if prefix %}<span class="bl-prefix-tag" style="--bl-prefix: {{ prefix.colour }}">{{ prefix.label }}</span>{% endif %}
+        {{ title }}
+      </h1>
+      <p class="bl-topic__meta">
+        {% if pinned %}<span class="bl-badge" data-topic-pinned>{% t "topic.pinned" %}</span>{% endif %}
+        {% if locked %}<span class="bl-badge bl-badge--warning" data-topic-locked>{% t "topic.locked" %}</span>{% endif %}
+        <span data-topic-replies="{{ topicId }}">{{ replyCount }}</span>
+        {{ viewsSlot }}
+      </p>
+      <a class="bl-sr-only" href="/forum/{{ forumId }}" data-topic-forum-link>{% t "topic.backToForum" %}</a>
+    </div>
+    <div class="bl-page-header__actions">
+      {% if flags.follows %}
+      <span class="bl-follow" data-overlay-member-only hidden data-follow-context="topic:{{ topicId }}">
+        <button class="bl-button bl-button--secondary bl-button--small" type="button" data-follow-action="follow">{% t "follow.followTopic" %}</button>
+        <button class="bl-button bl-button--secondary bl-button--small" type="button" data-follow-action="unfollow" hidden>{% t "follow.unfollowTopic" %}</button>
+        <span class="bl-error-text" data-follow-error hidden>{% t "follow.failed" %}</span>
+      </span>
+      {% endif %}
+      {% if canHardDeleteTopic %}
+        <button class="bl-button bl-button--danger bl-button--small" type="button" data-topic-action="hard" data-topic-id="{{ topicId }}" data-confirm="{% t "topic.confirmDelete" %}">{% t "topic.delete" %}</button>
+      {% endif %}
+    </div>
   </header>
+  {% if isModerator %}
+    <p class="bl-notice bl-topic__mod-note" data-topic-mod-note>{% t "topic.modNote" %} <a href="/moderation/queue" data-mod-queue-link>{% t "moderation.queue.open" %}</a> · <a href="/moderation/reports" data-reports-link>{% t "moderation.reports.open" %}</a></p>
+  {% endif %}
 
   {% if topicTools.pin or topicTools.unpin or topicTools.lock or topicTools.unlock or topicTools.move or topicTools.merge or topicTools.split or topicTools.multimod and flags.multimod %}
     <details class="bl-card" data-topic-tools
@@ -138,11 +140,11 @@
       </nav>
     {% endif %}
   {% if topicTools.deletePosts or topicTools.restorePosts or topicTools.approvePosts %}
-    <div class="bl-card" data-bulk-posts data-topic-id="{{ topicId }}"
+    <div class="bl-card bl-bulk-bar" data-bulk-posts data-topic-id="{{ topicId }}"
       data-label-failed="{% t "moderation.bulk.failed" %}"
       data-label-saved="{% t "moderation.bulk.saved" %}"
       data-label-nothing-selected="{% t "moderation.bulk.nothingSelected" %}">
-      <h2 class="bl-card__title">{% t "moderation.bulk.postsTitle" %}</h2>
+      <h2 class="bl-bulk-bar__title">{% t "moderation.bulk.postsTitle" %}</h2>
       <div class="bl-actions">
         {% if topicTools.deletePosts %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-post-action="soft_delete">{% t "moderation.bulk.softDelete" %}</button>{% endif %}
         {% if topicTools.restorePosts %}<button class="bl-button bl-button--quiet bl-button--small" type="button" data-bulk-post-action="restore">{% t "moderation.bulk.restore" %}</button>{% endif %}
@@ -157,16 +159,22 @@
   {% endif %}
 
   {% if canReply and editor %}
-    <section class="bl-card" data-reply-section>
-      <button class="bl-button" type="button" data-reply-toggle>{% t "post.reply" %}</button>
-      <form class="bl-topic-form" data-reply-form data-topic-id="{{ topicId }}" hidden
+    <section class="bl-reply" data-reply-section aria-label="{% t "post.reply" %}">
+      <button class="bl-reply__prompt" type="button" data-reply-toggle>
+        <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M8 5 3.5 9.5 8 14M4 9.5h7a5 5 0 0 1 5 5v1" /></svg>
+        <span>{% t "post.reply" %}</span>
+      </button>
+      <form class="bl-topic-form bl-reply__form" data-reply-form data-topic-id="{{ topicId }}" hidden
         data-label-blocked-word="{% t "topic.blockedWord" %}"
         data-label-too-many-links="{% t "topic.tooManyLinks" %}"
         data-label-acknowledgement-required="{% t "topic.acknowledgementRequired" %}"
         data-label-posting-suspended="{% t "topic.postingSuspendedUntil" date: "__DATE__" %}"
         data-label-review-warnings="{% t "warnings.title" %}">
+        <h2 class="bl-reply__title">{% t "post.reply" %}</h2>
         {% island "Editor" editor %}
-        <button class="bl-button" type="submit" data-reply-submit>{% t "post.submitReply" %}</button>
+        <div class="bl-reply__actions">
+          <button class="bl-button" type="submit" data-reply-submit>{% t "post.submitReply" %}</button>
+        </div>
         <p class="bl-error-text" data-form-error hidden>{% t "topic.postFailed" %}</p>
       </form>
     </section>
