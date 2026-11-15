@@ -579,11 +579,7 @@
    backgrounds run the full height of long pages (and of full-page captures). */
 @media (min-width: 768px) {
   .shell {
-    background: linear-gradient(
-      to right,
-      var(--rail-bg) 0 var(--rail-w),
-      var(--bg) var(--rail-w)
-    );
+    background: linear-gradient(to right, var(--rail-bg) 0 var(--rail-w), var(--bg) var(--rail-w));
   }
 }
 
