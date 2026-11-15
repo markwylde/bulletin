@@ -5,7 +5,7 @@ import { type FormDefinition, FormRenderer, type FormValues } from "@bulletin/ui
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiGet, apiPost } from "../api.ts";
-import { Page, QueryState } from "../ui/index.ts";
+import { Button, Page, QueryState, SaveBar } from "../ui/index.ts";
 
 interface BoardSettings {
   readonly boardName: string;
@@ -347,8 +347,8 @@ export function BoardSettingsPage() {
       description={t("staff.settings.board.intro")}
     >
       <QueryState query={query} errorLabel={t("staff.settings.board.loadError")}>
-        {() => (
-          <div className="settings-form" data-dirty={dirty}>
+        {(data) => (
+          <div className="settings-form stack">
             <FormRenderer
               definition={BOARD_FORM}
               values={values}
@@ -356,6 +356,23 @@ export function BoardSettingsPage() {
               onSubmit={(next) => mutation.mutate(toPayload(next))}
               submitting={mutation.isPending}
             />
+            <SaveBar dirty={dirty} message={t("staff.unsavedChanges")}>
+              <Button variant="ghost" onClick={() => setValues(toValues(data))}>
+                {t("staff.discard")}
+              </Button>
+              <Button
+                variant="primary"
+                data-board-save
+                disabled={mutation.isPending}
+                onClick={() =>
+                  document
+                    .querySelector<HTMLFormElement>(`form[data-form="${BOARD_FORM.id}"]`)
+                    ?.requestSubmit()
+                }
+              >
+                {t("staff.settings.board.save")}
+              </Button>
+            </SaveBar>
           </div>
         )}
       </QueryState>

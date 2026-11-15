@@ -1396,16 +1396,16 @@ a.btn:hover {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-top: calc(var(--space-1) * -1);
-  padding: var(--space-3) 0;
-  border-top: 1px solid transparent;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
   background: var(--bg);
+  box-shadow: 0 -6px 16px rgb(0 0 0 / 0.08);
 }
 
-.save-bar[data-dirty="true"] {
-  margin-inline: calc(var(--gutter) * -1);
-  padding-inline: var(--gutter);
-  border-top-color: var(--border);
+/* Only a form with unsaved changes shows its save bar. */
+.save-bar[data-dirty="false"] {
+  display: none;
 }
 
 .save-bar-message {
@@ -1604,6 +1604,37 @@ a.btn:hover {
   display: block;
 }
 
+/* Headers wrap to a short measure so many columns stay readable. */
+.matrix thead th.matrix-col {
+  min-width: 5.5rem;
+  max-width: 8rem;
+  white-space: normal;
+  line-height: 1.25;
+  vertical-align: bottom;
+}
+
+.matrix-col-plugin {
+  display: block;
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+/* The forum column stays put while the actions scroll. */
+.matrix tr > :first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg);
+  box-shadow: inset -1px 0 0 var(--border);
+}
+
+.matrix thead tr > :first-child {
+  z-index: 2;
+  background: var(--bg-subtle);
+}
+
 .matrix-forum {
   min-width: 12rem;
   font-weight: 450;
@@ -1656,6 +1687,11 @@ a.btn:hover {
 
 /* ADR 0014: matrices become stacked rows on phones, never a horizontal scroll. */
 @media (max-width: 767px) {
+  .matrix tr > :first-child {
+    position: static;
+    box-shadow: none;
+  }
+
   .matrix-scroll {
     overflow: visible;
   }
@@ -2184,20 +2220,9 @@ li + li > .list-row-button {
   background: var(--warning);
 }
 
-/* Page-level FormRenderer settings: the submit row is a sticky save bar. */
+/* Page-level FormRenderer settings save through the page's save bar. */
 .settings-form > .form > .form-actions {
-  position: sticky;
-  bottom: 0;
-  z-index: 20;
-  margin-inline: calc(var(--gutter) * -1);
-  padding: var(--space-3) var(--gutter);
-  border-top: 1px solid transparent;
-  background: var(--bg);
-}
-
-.settings-form[data-dirty="true"] > .form > .form-actions {
-  border-top-color: var(--border);
-  box-shadow: 0 -4px 12px rgb(0 0 0 / 0.06);
+  display: none;
 }
 
 /* Development-only tools under the dashboard */

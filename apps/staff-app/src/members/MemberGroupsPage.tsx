@@ -55,12 +55,15 @@ export function MemberGroupsPage() {
           .sort()
           .join());
 
-  useEffect(() => {
-    if (query.data !== undefined) {
-      setPrimary(query.data.primaryGroupId ?? "");
-      setSecondary(query.data.groups.filter((group) => !group.isPrimary).map((group) => group.id));
+  const reset = (data: MemberGroups | undefined): void => {
+    if (data !== undefined) {
+      setPrimary(data.primaryGroupId ?? "");
+      setSecondary(data.groups.filter((group) => !group.isPrimary).map((group) => group.id));
     }
-  }, [query.data]);
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the loaded data changes
+  useEffect(() => reset(query.data), [query.data]);
 
   return (
     <Page
@@ -148,6 +151,9 @@ export function MemberGroupsPage() {
                 </div>
               </SettingsSection>
               <SaveBar dirty={dirty} message={t("staff.unsavedChanges")}>
+                <Button variant="ghost" onClick={() => reset(query.data)}>
+                  {t("staff.discard")}
+                </Button>
                 <Button
                   variant="primary"
                   data-member-save

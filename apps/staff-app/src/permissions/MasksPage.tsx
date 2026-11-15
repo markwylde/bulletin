@@ -97,6 +97,29 @@ export function actionLabel(t: Translator, action: string): string {
   });
 }
 
+/** A column header: the action on one line and, for plugin actions, the plugin beneath it. */
+function ActionHeader({ t, action }: { readonly t: Translator; readonly action: string }) {
+  const full = actionLabel(t, action);
+  const plugin = /^plugin\.([^.]+)\.(.+)$/.exec(action);
+  const translated = t(`staff.pluginForumAction.${action.replace(/^plugin\./, "")}`);
+
+  if (plugin === null || !translated.startsWith("staff.")) {
+    return <span title={full}>{full}</span>;
+  }
+
+  const words = (plugin[2] ?? "").replace(/[_-]+/g, " ").trim();
+
+  return (
+    <span className="matrix-col-label" title={full}>
+      <span className="sr-only">{full}</span>
+      <span aria-hidden="true">{words.charAt(0).toUpperCase() + words.slice(1)}</span>
+      <span className="matrix-col-plugin" aria-hidden="true">
+        {plugin[1]}
+      </span>
+    </span>
+  );
+}
+
 function maskDraft(mask: MaskView): MaskDraft {
   return {
     key: mask.key,
@@ -477,7 +500,7 @@ export function MasksPage() {
                         <th scope="col">{t("staff.masks.forum")}</th>
                         {view.actions.map((action) => (
                           <th key={action} scope="col" className="matrix-col">
-                            {actionLabel(t, action)}
+                            <ActionHeader t={t} action={action} />
                           </th>
                         ))}
                       </tr>
