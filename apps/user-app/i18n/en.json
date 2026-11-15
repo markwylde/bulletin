@@ -242,6 +242,7 @@
   "index.column.stats": "Activity",
   "index.lastPost": "Last post {date}",
   "index.lastPost.by": "by {member}",
+  "index.lastPost.none": "No posts yet",
   "index.lastPostBy": "Last post {date} by {member}",
   "index.online.fullList": "See the full list",
   "index.online.guests": "{count, plural, =0 {No guests} =1 {1 guest} other {# guests}}",

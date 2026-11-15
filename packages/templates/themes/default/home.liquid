@@ -70,7 +70,7 @@
                 <span class="bl-forum__last-date" data-last-post="{{ forum.id }}">{{ forum.lastPost.date }}</span>
                 {% if forum.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: forum.lastPost.memberName %}</span>{% endif %}
               {% else %}
-                <span class="bl-forum__last-none" aria-hidden="true">—</span>
+                <span class="bl-forum__last-none">{% t "index.lastPost.none" %}</span>
               {% endif %}
             </div>
             {% endunless %}
@@ -133,7 +133,7 @@
                 <span class="bl-forum__last-date" data-last-post="{{ forum.id }}">{{ forum.lastPost.date }}</span>
                 {% if forum.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: forum.lastPost.memberName %}</span>{% endif %}
               {% else %}
-                <span class="bl-forum__last-none" aria-hidden="true">—</span>
+                <span class="bl-forum__last-none">{% t "index.lastPost.none" %}</span>
               {% endif %}
             </div>
             {% endunless %}

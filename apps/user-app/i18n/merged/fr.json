@@ -280,6 +280,7 @@
   "index.column.stats": "Activité",
   "index.lastPost": "Dernier message {date}",
   "index.lastPost.by": "par {member}",
+  "index.lastPost.none": "Aucun message pour l’instant",
   "index.lastPostBy": "Dernier message {date} par {member}",
   "index.online.fullList": "Voir la liste complète",
   "index.online.guests": "{count, plural, =0 {Aucun invité} =1 {1 invité} other {# invités}}",

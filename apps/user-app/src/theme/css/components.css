@@ -860,6 +860,7 @@ dialog .bl-actions {
 .bl-language__select,
 .bl-appearance .bl-input {
   min-width: 9rem;
+  max-width: 14rem;
   min-height: var(--bl-control-height-small);
   padding: 0 2rem 0 var(--bl-s3);
   border: 1px solid var(--bl-border-strong);

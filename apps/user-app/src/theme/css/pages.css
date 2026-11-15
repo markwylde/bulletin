@@ -218,7 +218,8 @@
 }
 
 .bl-forum__last-none {
-  color: var(--bl-border-strong);
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-sm);
 }
 
 @media (max-width: 47.99rem) {
