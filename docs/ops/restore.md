@@ -142,7 +142,7 @@ If no version is left (deleted more than 35 days ago), tell the member that the 
 
 ## 5. The restore drill
 
-Run the drill **nightly in CI** against a disposable compose stack (`.github/workflows/nightly.yml`, job `restore-drill`), and **at least quarterly in staging** by an operator.
+Run the drill against a disposable compose stack before each release, and **at least quarterly in staging** by an operator.
 
 Local or CI:
 

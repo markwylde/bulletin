@@ -26,9 +26,9 @@ Staff with `acp.system` SHALL see a health panel with service readiness, queue l
 - **WHEN** a queue's lag exceeds 30 seconds
 - **THEN** the panel highlights that queue
 
-### Requirement: Capacity verified continuously
-A nightly load test on the large seeded dataset SHALL verify the capacity targets (2,000 concurrent members, 20,000 concurrent guests, 50 writes per second), the page latency targets, queue lag under 5 seconds, and variant cardinality within budget.
+### Requirement: Capacity verified before release
+A load test, run before each release, on the large seeded dataset SHALL verify the capacity targets (2,000 concurrent members, 20,000 concurrent guests, 50 writes per second), the page latency targets, queue lag under 5 seconds, and variant cardinality within budget.
 
 #### Scenario: Regression detected
 - **WHEN** a change makes cached guest pages exceed 30 ms p95
-- **THEN** the nightly load test fails and reports the route
+- **THEN** the load test fails and reports the route

@@ -159,7 +159,7 @@ The local stack has no metrics or tracing backend (ADR 0020). Production wires t
 
 ## 7. Capacity verification
 
-A nightly CI job (`.github/workflows/nightly.yml`) runs on a dedicated self-hosted runner labelled `bulletin-load`. It:
+Run the capacity load test by hand on dedicated hardware before a release (shared CI runners are too noisy for p95 thresholds). Start the stack with `SEED_SIZE=large docker compose -f compose.yaml -f compose.loadtest.yaml up -d --build --wait`. The run:
 
 1. seeds `SEED_SIZE=large` (1M posts);
 2. runs `bun scripts/load-test.ts` with:
@@ -172,10 +172,10 @@ A nightly CI job (`.github/workflows/nightly.yml`) runs on a dedicated self-host
    - the error budget
    - the per-route variant budget
 
-The JSON and text reports are uploaded as artifacts. Run the same command against staging before a launch, scaled to its size.
+Pass `--report=load-report.json` to keep a JSON report. Run the same command against staging before a launch, scaled to its size.
 
 ## 8. Release checklist
 
 - Migrations are expand/contract. A release must run against schema N and N−1, so roll the application before running a contracting migration.
-- Run `bun run check` and the nightly load test, and confirm the latest restore drill passed.
+- Run `bun run check` and the load test, and confirm the latest restore drill passed.
 - Purge the CDN only for tags the release changes. Theme and template releases bump their own tags.

@@ -54,7 +54,7 @@ replicas exceeds `max_connections` minus a reserve.
 - 2,000 concurrent members, 20,000 concurrent guests, 50 writes/s sustained, and 1M posts in
   the DB, on 2× user-api, 1× staff-api, 2× workers and a single Postgres (8 vCPU/32 GB).
 - A load test (`bun` script plus the seeded large dataset profile `SEED_SIZE=large`) runs
-  nightly in CI. It asserts the ADR 0006 latency targets, queue lag < 5 s, and variant
+  before each release (it needs dedicated hardware, so it is not scheduled in CI). It asserts the ADR 0006 latency targets, queue lag < 5 s, and variant
   cardinality within budget.
 
 ## Consequences

@@ -82,12 +82,13 @@ jobs:
       - name: Install Podman and the Compose v2 provider
         if: matrix.engine == 'podman'
         run: |
-          apt-get update
-          apt-get install -y podman
-          curl -fsSL \
+          SUDO=$([ "$(id -u)" = 0 ] || echo sudo)
+          $SUDO apt-get update
+          $SUDO apt-get install -y podman
+          $SUDO curl -fsSL \
             https://github.com/docker/compose/releases/download/v2.30.3/docker-compose-linux-x86_64 \
             -o /usr/local/bin/docker-compose
-          chmod +x /usr/local/bin/docker-compose
+          $SUDO chmod +x /usr/local/bin/docker-compose
           podman info
 
       - name: Install pinned Chrome for E2E
@@ -122,7 +123,7 @@ jobs:
         # glibc does not resolve *.localhost subdomains, but Bun's fetch in the suites needs them.
         run: |
           echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
-            | tee -a /etc/hosts
+            | $([ "$(id -u)" = 0 ] || echo sudo) tee -a /etc/hosts
 
       - name: Check the proxy is reachable
         run: |
@@ -213,7 +214,7 @@ jobs:
       - name: Resolve the local origins
         run: |
           echo "127.0.0.1 bulletin.localhost staff.bulletin.localhost files.bulletin.localhost plugins.bulletin.localhost auth.bulletin.localhost" \
-            | tee -a /etc/hosts
+            | $([ "$(id -u)" = 0 ] || echo sudo) tee -a /etc/hosts
 
       - name: Latency benchmark
         run: bun run benchmark --samples=100 --warmup=10
