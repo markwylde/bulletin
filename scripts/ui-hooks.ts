@@ -61,6 +61,51 @@ function hooksIn(source: string, into: Set<string>): void {
   }
 }
 
+/** Kit props that render a hook: `<Page id="x">` renders `data-page="x"`. */
+const PROP_HOOKS: ReadonlyArray<{ readonly pattern: RegExp; readonly hook: string }> = [
+  { pattern: /<Page\b[^>]*?\bid="([\w.:-]+)"/g, hook: "data-page" },
+  // Toasts render `data-toast-tone` from the tone pushed.
+  { pattern: /pushToast\(\{[^}]*?\btone:\s*"([\w-]+)"/g, hook: "data-toast-tone" },
+];
+
+/**
+ * Hooks spread from computed keys, e.g. `{...{ [hook]: true }}` with `hook = "data-x"`, or a
+ * field helper given `"label-en"` for `data-prefix-field={hook}`. Any string literal naming a
+ * hook, and a template literal's static `data-x-` prefix followed by known locales, count.
+ */
+const STRING_HOOK = /["'`](data-[a-z][a-z0-9-]*)["'`]/g;
+const TEMPLATE_HOOK = /`(data-[a-z][a-z0-9-]*-)\$\{(?:locale|entryLocale)\}`/g;
+const LOCALES = ["en", "es", "fr"] as const;
+
+/** `{...{ [hook]: "value" }}` with `hook` one of the file's string-literal hook names. */
+const COMPUTED_VALUE = /\[\w+\]:\s*"([\w.:-]+)"/g;
+/** `data-x={param}` where the helper is called with the value as its last argument. */
+const PARAM_ATTRIBUTE = /\b(data-[a-z][a-z0-9-]*)=\{[a-z]\w*\}/g;
+const LAST_STRING_ARGUMENT = /,\s*"([\w.:-]+)"\)/g;
+
+function propHooksIn(source: string, into: Set<string>): void {
+  const literalNames = [...source.matchAll(STRING_HOOK)].map((match) => match[1] as string);
+  for (const match of source.matchAll(COMPUTED_VALUE)) {
+    for (const name of literalNames) into.add(`${name}="${match[1]}"`);
+  }
+  const lastArguments = [...source.matchAll(LAST_STRING_ARGUMENT)].map((match) => match[1]);
+  for (const match of source.matchAll(PARAM_ATTRIBUTE)) {
+    for (const value of lastArguments) into.add(`${match[1]}="${value}"`);
+  }
+  for (const { pattern, hook } of PROP_HOOKS) {
+    for (const match of source.matchAll(pattern)) {
+      into.add(hook);
+      into.add(`${hook}="${match[1]}"`);
+    }
+  }
+  for (const match of source.matchAll(STRING_HOOK)) {
+    into.add(match[1] as string);
+  }
+  for (const match of source.matchAll(TEMPLATE_HOOK)) {
+    for (const locale of LOCALES) into.add(`${match[1]}${locale}`);
+  }
+}
+
 function isTest(path: string): boolean {
   return /\.test\.tsx?$/.test(path);
 }
@@ -84,7 +129,9 @@ async function baseFiles(patterns: readonly string[]): Promise<string[]> {
 async function hooksAtBase(patterns: readonly string[]): Promise<Set<string>> {
   const hooks = new Set<string>();
   for (const file of await baseFiles(patterns)) {
-    hooksIn(await $`git show ${`${BASE}:${file}`}`.quiet().text(), hooks);
+    const source = await $`git show ${`${BASE}:${file}`}`.quiet().text();
+    hooksIn(source, hooks);
+    propHooksIn(source, hooks);
   }
   return hooks;
 }
@@ -92,7 +139,9 @@ async function hooksAtBase(patterns: readonly string[]): Promise<Set<string>> {
 async function hooksNow(patterns: readonly string[]): Promise<Set<string>> {
   const hooks = new Set<string>();
   for (const file of await currentFiles(patterns)) {
-    hooksIn(await Bun.file(file).text(), hooks);
+    const source = await Bun.file(file).text();
+    hooksIn(source, hooks);
+    propHooksIn(source, hooks);
   }
   return hooks;
 }
@@ -125,10 +174,16 @@ for (const pattern of CONSUMERS) {
   }
 }
 
+const everywhere = new Set<string>();
+for (const area of AREAS) {
+  for (const hook of await hooksNow(area.markup)) everywhere.add(hook);
+}
+
 for (const area of AREAS) {
   const before = await hooksAtBase(area.markup);
   const after = await hooksNow(area.markup);
-  const removed = [...before].filter((hook) => !after.has(hook)).sort();
+  // A hook another area still renders (e.g. a shared name) is not gone for its consumers.
+  const removed = [...before].filter((hook) => !after.has(hook) && !everywhere.has(hook)).sort();
   const added = [...after].filter((hook) => !before.has(hook)).length;
 
   console.log(

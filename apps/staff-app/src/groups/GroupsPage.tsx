@@ -319,7 +319,7 @@ export function GroupsPage() {
             </Panel>
 
             {selected === null ? (
-              <Panel title={t("staff.groups.create.title")} data-group-create>
+              <Panel title={t("staff.groups.create.title")} data-group-create data-group-editor="none">
                 <div className="stack">
                   {draftFields(createDraft, setCreateDraft, "data-group-field", true)}
                   <FormActions>
