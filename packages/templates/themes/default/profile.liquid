@@ -17,7 +17,7 @@
   data-label-report-already="{% t "report.dialog.already" %}">
   {{ breadcrumbs }}
 
-  <section class="bl-card bl-profile" data-profile-summary>
+  <section class="bl-profile" data-profile-summary>
     <header class="bl-profile__header">
       <div class="bl-profile__avatar">
         {% if profile.avatarUrl %}
@@ -27,20 +27,22 @@
         {% endif %}
       </div>
       <div class="bl-profile__identity">
-        <h1 class="bl-page__title" data-profile-name>{{ profile.name }}</h1>
+        <h1 class="bl-profile__name" data-profile-name>{{ profile.name }}</h1>
         {% if profile.groupTitle %}
           <p class="bl-profile__group" data-profile-group{% if profile.groupColour %} style="color: {{ profile.groupColour }}"{% endif %}>{{ profile.groupTitle }}</p>
         {% endif %}
         {% if profile.customTitle %}
-          <p class="bl-profile__title" data-profile-custom-title>{{ profile.customTitle }}</p>
+          <p class="bl-profile__rank" data-profile-custom-title>{{ profile.customTitle }}</p>
         {% elsif profile.rankTitle %}
-          <p class="bl-profile__title" data-profile-rank-title>{{ profile.rankTitle }}</p>
+          <p class="bl-profile__rank" data-profile-rank-title>{{ profile.rankTitle }}</p>
         {% endif %}
         {% if profile.rankImageKey %}
           <p data-profile-rank-image><img src="{{ profile.rankImageKey }}" alt="" width="24" height="24" loading="lazy"></p>
         {% elsif profile.rankPips > 0 %}
           <p class="bl-profile__pips" data-profile-rank-pips="{{ profile.rankPips }}" aria-hidden="true">{% for i in (1..profile.rankPips) %}●{% endfor %}</p>
         {% endif %}
+      </div>
+      <div class="bl-profile__actions">
         <button type="button" class="bl-button bl-button--quiet bl-button--small" data-report-member="{{ profile.id }}" data-overlay-member-only hidden>{% t "report.reportMember" %}</button>
         <div class="bl-actions" data-member-actions data-member-id="{{ profile.id }}" hidden>
           {% if flags.friends %}<button type="button" class="bl-button bl-button--small" data-friend-request hidden>{% t "profile.friends.add" %}</button>
@@ -52,29 +54,32 @@
           {% if flags.ignore_list %}<button type="button" class="bl-button bl-button--quiet bl-button--small" data-ignore-toggle hidden>{% t "profile.ignore.add" %}</button>{% endif %}
         </div>
         <p class="bl-error-text" data-member-action-error hidden></p>
-        <dl class="bl-profile__stats">
-          <div>
-            <dt>{% t "profile.stats.joined" %}</dt>
-            <dd data-profile-joined>{{ profile.joinedLabel }}</dd>
-          </div>
-          <div>
-            <dt>{% t "profile.stats.posts" %}</dt>
-            <dd data-profile-posts>{{ profile.postCountLabel }}</dd>
-          </div>
-          <div>
-            <dt>{% t "profile.stats.reputation" %}</dt>
-            <dd data-profile-reputation>{{ profile.reputationLabel }}</dd>
-          </div>
-          {% if profile.lastActiveLabel %}
-            <div>
-              <dt>{% t "profile.stats.lastActive" %}</dt>
-              <dd data-profile-last-active>{{ profile.lastActiveLabel }}</dd>
-            </div>
-          {% endif %}
-        </dl>
       </div>
     </header>
+    <dl class="bl-profile__stats">
+      <div>
+        <dt>{% t "profile.stats.joined" %}</dt>
+        <dd data-profile-joined>{{ profile.joinedLabel }}</dd>
+      </div>
+      <div>
+        <dt>{% t "profile.stats.posts" %}</dt>
+        <dd data-profile-posts>{{ profile.postCountLabel }}</dd>
+      </div>
+      <div>
+        <dt>{% t "profile.stats.reputation" %}</dt>
+        <dd data-profile-reputation>{{ profile.reputationLabel }}</dd>
+      </div>
+      {% if profile.lastActiveLabel %}
+        <div>
+          <dt>{% t "profile.stats.lastActive" %}</dt>
+          <dd data-profile-last-active>{{ profile.lastActiveLabel }}</dd>
+        </div>
+      {% endif %}
+    </dl>
   </section>
+
+  <div class="bl-profile__layout">
+  <div class="bl-profile__primary">
 
   <section class="bl-card" data-profile-about>
     <h2 class="bl-card__title">{% t "profile.about.title" %}</h2>
@@ -85,6 +90,26 @@
     {% endif %}
   </section>
 
+  <section class="bl-card" data-profile-posts>
+    <div class="bl-card__header">
+      <h2 class="bl-card__title">{% t "profile.posts.title" %}</h2>
+      {% if flags.search %}<a class="bl-card__link" href="/search/member/{{ profile.id }}" data-profile-content-link>{% t "search.member.profileLink" name: profile.name %}</a>{% endif %}
+    </div>
+    {% if profile.posts.size > 0 %}
+      <ol class="bl-profile__posts">
+        {% for post in profile.posts %}
+          <li class="bl-profile__post" data-profile-post="{{ post.id }}">
+            <a class="bl-profile__post-title" href="{{ post.href }}">{{ post.title }}</a>
+            <span class="bl-profile__post-meta">{{ post.forumTitle }} · <time datetime="{{ post.iso }}">{{ post.dateLabel }}</time></span>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="bl-muted" data-profile-posts-empty>{% t "profile.posts.empty" %}</p>
+    {% endif %}
+  </section>
+  </div>
+  <aside class="bl-profile__side">
   {% if flags.custom_profile_fields and profile.fields.size > 0 %}
     <section class="bl-card" data-profile-fields>
       <h2 class="bl-card__title">{% t "profile.fields.title" %}</h2>
@@ -137,21 +162,7 @@
     </section>
   {% endif %}
 
-  <section class="bl-card" data-profile-posts>
-    <h2 class="bl-card__title">{% t "profile.posts.title" %}</h2>
-    {% if flags.search %}<a class="bl-button bl-button--quiet bl-button--small" href="/search/member/{{ profile.id }}" data-profile-content-link>{% t "search.member.profileLink" name: profile.name %}</a>{% endif %}
-    {% if profile.posts.size > 0 %}
-      <ol class="bl-profile__posts">
-        {% for post in profile.posts %}
-          <li class="bl-profile__post" data-profile-post="{{ post.id }}">
-            <a href="{{ post.href }}">{{ post.title }}</a>
-            <span class="bl-muted">{{ post.forumTitle }} · <time datetime="{{ post.iso }}">{{ post.dateLabel }}</time></span>
-          </li>
-        {% endfor %}
-      </ol>
-    {% else %}
-      <p class="bl-muted" data-profile-posts-empty>{% t "profile.posts.empty" %}</p>
-    {% endif %}
-  </section>
+  </aside>
+  </div>
 </main>
 {{ footer }}

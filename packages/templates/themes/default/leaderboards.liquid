@@ -1,9 +1,14 @@
 {{ header }}
 <main id="main" class="bl-main" data-leaderboards-page data-overlay-ctx="board">
   {{ breadcrumbs }}
-  <h1 class="bl-page__title">{% t "leaderboards.title" %}</h1>
-  <p class="bl-muted">{% t "leaderboards.intro" %}</p>
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page__title">{% t "leaderboards.title" %}</h1>
+      <p class="bl-page-header__meta">{% t "leaderboards.intro" %}</p>
+    </div>
+  </header>
 
+  <div class="bl-leaderboards">
   {% for board in boards %}
     <section class="bl-card" data-leaderboard="{{ board.period }}-{{ board.metric }}">
       <h2 class="bl-card__title">{{ board.title }}</h2>
@@ -13,7 +18,7 @@
             <li class="bl-leaderboard__row" data-leaderboard-entry="{{ entry.memberId }}">
               <span class="bl-leaderboard__rank">{{ entry.rank }}</span>
               <a href="{{ entry.href }}"{% if entry.groupColour %} style="color: {{ entry.groupColour }}"{% endif %}>{{ entry.name }}</a>
-              <span class="bl-muted">{{ entry.value }}</span>
+              <span class="bl-leaderboard__value">{{ entry.value }}</span>
             </li>
           {% endfor %}
         </ol>
@@ -22,5 +27,6 @@
       {% endif %}
     </section>
   {% endfor %}
+  </div>
 </main>
 {{ footer }}

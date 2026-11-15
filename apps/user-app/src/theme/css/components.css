@@ -199,6 +199,14 @@
     box-shadow 120ms var(--bl-ease);
 }
 
+input.bl-input[type="date"],
+input.bl-input[type="datetime-local"],
+.bl-form input[type="date"],
+.bl-form input[type="datetime-local"] {
+  height: var(--bl-control-height);
+  padding-block: 0;
+}
+
 textarea.bl-input,
 .bl-textarea,
 .bl-form textarea {

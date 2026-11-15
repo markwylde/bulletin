@@ -1,45 +1,57 @@
 {{ header }}
 <main id="main" class="bl-main" data-member-list data-overlay-ctx="board">
   {{ breadcrumbs }}
-  <h1 class="bl-page__title">{% t "members.title" %}</h1>
+  <header class="bl-page-header">
+    <div class="bl-page-header__text">
+      <h1 class="bl-page__title">{% t "members.title" %}</h1>
+    </div>
+  </header>
 
-  <form class="bl-form bl-filters" method="get" action="/members" data-member-filters>
-    <label class="bl-label" for="member-search">{% t "members.search" %}</label>
-    <input class="bl-input" id="member-search" type="search" name="q" value="{{ filters.query }}" maxlength="80" data-member-search>
-
-    <label class="bl-label" for="member-group">{% t "members.group" %}</label>
-    <select class="bl-input" id="member-group" name="group" data-member-group>
-      <option value="">{% t "members.allGroups" %}</option>
-      {% for group in groups %}
-        <option value="{{ group.id }}"{% if group.selected %} selected{% endif %}>{{ group.title }}</option>
-      {% endfor %}
-    </select>
-
-    <label class="bl-label" for="member-joined-from">{% t "members.joinedFrom" %}</label>
-    <input class="bl-input" id="member-joined-from" type="date" name="joinedFrom" value="{{ filters.joinedFrom }}" data-member-joined-from>
-    <label class="bl-label" for="member-joined-to">{% t "members.joinedTo" %}</label>
-    <input class="bl-input" id="member-joined-to" type="date" name="joinedTo" value="{{ filters.joinedTo }}" data-member-joined-to>
-
-    <label class="bl-label" for="member-sort">{% t "members.sort" %}</label>
-    <select class="bl-input" id="member-sort" name="sort" data-member-sort>
-      {% for option in sorts %}
-        <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-      {% endfor %}
-    </select>
-
-    <button class="bl-button" type="submit" data-member-filter-submit>{% t "members.apply" %}</button>
+  <form class="bl-panel bl-filter-bar" method="get" action="/members" data-member-filters>
+    <div class="bl-field bl-filter-bar__search">
+      <label class="bl-label" for="member-search">{% t "members.search" %}</label>
+      <input class="bl-input" id="member-search" type="search" name="q" value="{{ filters.query }}" maxlength="80" data-member-search>
+    </div>
+    <div class="bl-field">
+      <label class="bl-label" for="member-group">{% t "members.group" %}</label>
+      <select class="bl-input" id="member-group" name="group" data-member-group>
+        <option value="">{% t "members.allGroups" %}</option>
+        {% for group in groups %}
+          <option value="{{ group.id }}"{% if group.selected %} selected{% endif %}>{{ group.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="bl-field">
+      <label class="bl-label" for="member-joined-from">{% t "members.joinedFrom" %}</label>
+      <input class="bl-input" id="member-joined-from" type="date" name="joinedFrom" value="{{ filters.joinedFrom }}" data-member-joined-from>
+    </div>
+    <div class="bl-field">
+      <label class="bl-label" for="member-joined-to">{% t "members.joinedTo" %}</label>
+      <input class="bl-input" id="member-joined-to" type="date" name="joinedTo" value="{{ filters.joinedTo }}" data-member-joined-to>
+    </div>
+    <div class="bl-field">
+      <label class="bl-label" for="member-sort">{% t "members.sort" %}</label>
+      <select class="bl-input" id="member-sort" name="sort" data-member-sort>
+        {% for option in sorts %}
+          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="bl-filter-bar__actions">
+      <button class="bl-button" type="submit" data-member-filter-submit>{% t "members.apply" %}</button>
+    </div>
   </form>
 
   {% if members.size > 0 %}
     <ul class="bl-member-list" data-member-cards>
       {% for member in members %}
-        <li class="bl-member-card" data-member-card="{{ member.id }}">
-          <a class="bl-member-card__link" href="{{ member.href }}">
-            {{ member.avatarHtml }}
-            <span class="bl-member-card__name"{% if member.groupColour %} style="color: {{ member.groupColour }}"{% endif %}>{{ member.name }}</span>
-            {% if member.groupTitle %}<span class="bl-muted">{{ member.groupTitle }}</span>{% endif %}
-            <span class="bl-muted">{% t "members.cardStats" joined: member.joinedLabel, posts: member.postCountLabel, reputation: member.reputationLabel %}</span>
-          </a>
+        <li class="bl-member-row" data-member-card="{{ member.id }}">
+          {{ member.avatarHtml }}
+          <div class="bl-member-row__main">
+            <a class="bl-member-row__name" href="{{ member.href }}"{% if member.groupColour %} style="color: {{ member.groupColour }}"{% endif %}>{{ member.name }}</a>
+            {% if member.groupTitle %}<span class="bl-member-row__group">{{ member.groupTitle }}</span>{% endif %}
+          </div>
+          <p class="bl-member-row__stats">{% t "members.cardStats" joined: member.joinedLabel, posts: member.postCountLabel, reputation: member.reputationLabel %}</p>
         </li>
       {% endfor %}
     </ul>
@@ -47,11 +59,11 @@
     {% if pagination.pageCount > 1 %}
       <nav class="bl-pagination" aria-label="{% t "members.pagination" %}" data-member-pagination>
         {% if pagination.previousHref %}
-          <a class="bl-button bl-button--quiet" href="{{ pagination.previousHref }}" data-member-previous>{% t "members.previous" %}</a>
+          <a class="bl-pagination__link" href="{{ pagination.previousHref }}" data-member-previous>{% t "members.previous" %}</a>
         {% endif %}
-        <span class="bl-muted">{% t "members.pageOf" page: pagination.page, pages: pagination.pageCount %}</span>
+        <span class="bl-muted" data-page-status>{% t "members.pageOf" page: pagination.page, pages: pagination.pageCount %}</span>
         {% if pagination.nextHref %}
-          <a class="bl-button bl-button--quiet" href="{{ pagination.nextHref }}" data-member-next>{% t "members.next" %}</a>
+          <a class="bl-pagination__link" href="{{ pagination.nextHref }}" data-member-next>{% t "members.next" %}</a>
         {% endif %}
       </nav>
     {% endif %}

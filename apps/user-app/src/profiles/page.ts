@@ -71,7 +71,7 @@ export interface ProfileView {
   readonly id: string;
   readonly name: string;
   readonly avatarUrl: string | null;
-  readonly initialsHtml: string;
+  readonly initialsHtml: SafeHtml;
   readonly groupTitle: string | null;
   readonly groupColour: string | null;
   readonly customTitle: string | null;
@@ -271,7 +271,7 @@ export async function buildProfilePage(input: ProfilePageInput): Promise<Profile
         name,
         avatarUrl:
           profile.avatarHash === null ? null : avatarUrl(profile.id, profile.avatarHash, "lg"),
-        initialsHtml: initialsSvg(profile.id, name),
+        initialsHtml: safeHtml(initialsSvg(profile.id, name)),
         groupTitle: profile.groupTitle,
         groupColour: profile.groupColour,
         customTitle:
