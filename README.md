@@ -2,6 +2,20 @@
 
 A community forum built as a Bun monorepo.
 
+## Screenshots
+
+The board index:
+
+![The board index, with forums grouped into categories](docs/screenshots/board-index.png)
+
+The members list:
+
+![The members list, with search and filters](docs/screenshots/members.png)
+
+The staff console dashboard:
+
+![The staff console dashboard](docs/screenshots/staff-dashboard.png)
+
 ## Run it
 
 You need Docker with Compose v2.24 or newer.
