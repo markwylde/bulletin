@@ -1778,8 +1778,6 @@ a.btn:hover {
 /* ---------- Tree (forums) ---------- */
 
 .tree {
-  --tree-indent: 1.25rem;
-
   display: flex;
   flex-direction: column;
 }
@@ -1848,10 +1846,6 @@ a.btn:hover {
 }
 
 @media (max-width: 767px) {
-  .tree {
-    --tree-indent: 0.75rem;
-  }
-
   .tree-handle {
     display: none;
   }
@@ -2214,4 +2208,26 @@ li + li > .list-row-button {
   gap: var(--space-3);
   padding-top: var(--space-5);
   border-top: 1px dashed var(--border);
+}
+
+/* Nothing in a panel may widen the page on phones. */
+.panel,
+.panel-body,
+.tab-panel,
+.disclosure {
+  min-width: 0;
+}
+
+.panel-head {
+  flex-wrap: wrap;
+}
+
+.panel-head-actions,
+.panel-head-actions > .cluster {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.code-block {
+  max-width: 100%;
 }

@@ -274,7 +274,7 @@ export function GroupsPage() {
     >
       <QueryState query={groupsQuery} errorLabel={t("staff.groups.loadError")}>
         {() => (
-          <div className="page-split">
+          <div className="stack">
             <Panel title={t("staff.groups.list.title")} flush>
               <DataTable
                 rows={groups}
@@ -319,7 +319,11 @@ export function GroupsPage() {
             </Panel>
 
             {selected === null ? (
-              <Panel title={t("staff.groups.create.title")} data-group-create data-group-editor="none">
+              <Panel
+                title={t("staff.groups.create.title")}
+                data-group-create
+                data-group-editor="none"
+              >
                 <div className="stack">
                   {draftFields(createDraft, setCreateDraft, "data-group-field", true)}
                   <FormActions>

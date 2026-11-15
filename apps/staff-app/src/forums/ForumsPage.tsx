@@ -656,7 +656,7 @@ export function ForumsPage() {
                       data-forum-title={forum.title}
                       draggable
                       style={{
-                        paddingInlineStart: `calc(${depth} * var(--tree-indent) + var(--space-2))`,
+                        paddingInlineStart: `${depth * 16 + 8}px`,
                       }}
                       onDragStart={() => setDragging(forum.id)}
                       onDragEnd={() => setDragging(null)}
