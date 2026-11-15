@@ -1,0 +1,209 @@
+/* Dashboard (ADR 0021). Layout responds to the content column, not the window. */
+
+.content-inner {
+  container-type: inline-size;
+  container-name: content;
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.dashboard .page-head {
+  margin-bottom: var(--space-2);
+}
+
+.dashboard-kpis,
+.dashboard-activity,
+.dashboard-aside {
+  display: grid;
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.dashboard-kpis {
+  align-items: stretch;
+}
+
+@container content (min-width: 52rem) {
+  .dashboard-kpis {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .dashboard-kpis > [data-widget="moderation"] {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-activity {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+
+@container content (min-width: 68rem) {
+  .dashboard-kpis {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 3fr) minmax(0, 1.4fr);
+  }
+
+  .dashboard-kpis > [data-widget="moderation"] {
+    grid-column: auto;
+  }
+
+  .dashboard-activity {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+
+.widget-pad {
+  padding: var(--space-4);
+}
+
+.widget-empty {
+  color: var(--text-muted);
+}
+
+.panel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.panel-link:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* Activity */
+.activity-list {
+  list-style: none;
+}
+
+.activity-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.activity-item + .activity-item {
+  border-top: 1px solid var(--border);
+}
+
+.activity-avatar {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.activity-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.activity-action {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-actor {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.activity-time {
+  color: var(--text-subtle);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .activity-item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .activity-time {
+    grid-column: 2;
+    margin-top: calc(var(--space-2) * -1);
+  }
+}
+
+/* Health */
+.health-summary {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.check-rows {
+  list-style: none;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.check-row:last-child {
+  padding-bottom: var(--space-3);
+}
+
+/* Shortcuts */
+.shortcut-list {
+  list-style: none;
+}
+
+.shortcut-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.shortcut {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 2.75rem;
+  padding: 0 var(--space-4);
+  color: var(--text);
+  font-weight: 450;
+}
+
+.shortcut:hover {
+  background: var(--bg-subtle);
+  text-decoration: none;
+}
+
+.shortcut-icon {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+
+.shortcut-go {
+  margin-left: auto;
+  color: var(--text-subtle);
+}
+
+.shortcut-list li:last-child .shortcut {
+  border-radius: 0 0 var(--radius) var(--radius);
+}

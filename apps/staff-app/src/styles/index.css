@@ -1,0 +1,7 @@
+/* Staff app styles (ADR 0021). Order matters: tokens, element defaults, shell, kit, interim page rules. */
+@import "./tokens.css";
+@import "./base.css";
+@import "./shell.css";
+@import "./kit.css";
+@import "./dashboard.css";
+@import "./pages.css";

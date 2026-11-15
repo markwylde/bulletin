@@ -1,0 +1,365 @@
+/* Reset, type and element defaults. Element rules use :where() so any class overrides them. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading);
+  font-feature-settings: "cv11", "ss03";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+:where(h1, h2, h3, h4, h5, h6) {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+  letter-spacing: -0.011em;
+  line-height: 1.25;
+}
+
+:where(h1) {
+  font-size: var(--text-xl);
+}
+
+:where(h2) {
+  font-size: var(--text-md);
+}
+
+:where(h3) {
+  font-size: var(--text-base);
+}
+
+:where(p) {
+  margin: 0;
+}
+
+:where(ul, ol) {
+  margin: 0;
+  padding: 0;
+}
+
+:where(dl, dd) {
+  margin: 0;
+}
+
+:where(a) {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+
+:where(a:hover) {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+:where(code, kbd, samp, pre) {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+:where(code) {
+  padding: 0.0625rem 0.3125rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+}
+
+:where(pre) {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  line-height: 1.55;
+}
+
+:where(pre code) {
+  padding: 0;
+  background: none;
+}
+
+:where(hr) {
+  height: 1px;
+  margin: var(--space-6) 0;
+  border: 0;
+  background: var(--border);
+}
+
+:where(img, svg) {
+  display: block;
+  max-width: 100%;
+}
+
+:where(svg) {
+  flex-shrink: 0;
+}
+
+:where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+:where(th) {
+  text-align: start;
+  font-weight: 500;
+}
+
+:where(time, dd, td) {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+::selection {
+  background: var(--accent-subtle);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Buttons: classless buttons are secondary; variants add classes. */
+:where(button, .bl-button, .btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-base);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+:where(button, .bl-button, .btn):hover {
+  background: var(--bg-hover);
+  text-decoration: none;
+}
+
+:where(button, .bl-button, .btn):disabled,
+:where(button, .bl-button, .btn)[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+:where(button, .bl-button, .btn):disabled:hover {
+  background: var(--bg);
+}
+
+/* Primary: form submits, `.bl-button`, `.btn-primary`. */
+:where(button[type="submit"], .bl-button, .btn-primary, [data-confirm-action]) {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+:where(button[type="submit"], .bl-button, .btn-primary, [data-confirm-action]):hover,
+:where(button[type="submit"], .bl-button, .btn-primary, [data-confirm-action]):disabled:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+:where(.button-danger, .btn-danger) {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #ffffff;
+}
+
+:where(.button-danger, .btn-danger):hover,
+:where(.button-danger, .btn-danger):disabled:hover {
+  border-color: var(--danger-hover);
+  background: var(--danger-hover);
+}
+
+:where(.button-quiet, .bl-button--quiet, .btn-ghost) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+:where(.button-quiet, .bl-button--quiet, .btn-ghost):hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+:where(.button-quiet.is-active) {
+  background: var(--bg-muted);
+  color: var(--text);
+}
+
+:where(.bl-button--small, .btn-sm) {
+  min-height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+/* Text inputs, selects, textareas */
+:where(
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
+  select,
+  textarea
+) {
+  width: 100%;
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-base);
+  transition: border-color 120ms ease;
+}
+
+:where(textarea) {
+  min-height: 6rem;
+  padding: var(--space-2) var(--space-3);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+:where(select) {
+  appearance: none;
+  padding-inline-end: var(--space-8);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23858d98' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4.5 6.5 3.5 3.5 3.5-3.5'/%3E%3C/svg%3E");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 16px;
+  cursor: pointer;
+}
+
+:where(select[multiple]) {
+  min-height: 7rem;
+  padding: var(--space-1);
+  background-image: none;
+}
+
+:where(input, select, textarea):hover:not(:disabled, :focus) {
+  border-color: var(--text-subtle);
+}
+
+:where(input, select, textarea):focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+:where(input, select, textarea):disabled {
+  background: var(--bg-subtle);
+  color: var(--text-subtle);
+  cursor: not-allowed;
+}
+
+:where(input, textarea)::placeholder {
+  color: var(--text-subtle);
+}
+
+:where(input[aria-invalid="true"], select[aria-invalid="true"], textarea[aria-invalid="true"]) {
+  border-color: var(--danger);
+}
+
+:where(input[type="checkbox"], input[type="radio"]) {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+:where(input[type="color"]) {
+  width: 2.75rem;
+  height: var(--control-h);
+  padding: 0.1875rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+:where(input[type="file"]) {
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+:where(label) {
+  font-weight: 500;
+}
+
+:where(fieldset) {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+:where(legend) {
+  padding: 0;
+}
+
+/* Accessibility helpers */
+.sr-only,
+.bl-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.bl-muted {
+  color: var(--text-muted);
+}
+
+.bl-error-text {
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

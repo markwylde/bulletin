@@ -10,7 +10,7 @@ import { localeFromRequest } from "./locale.ts";
 import { SessionProvider, useSession } from "./session.tsx";
 import { Shell } from "./shell/Shell.tsx";
 import { DeniedPage, ErrorPage, GuestPage, LoadingPage } from "./shell/States.tsx";
-import "./styles.css";
+import "./styles/index.css";
 
 const SCHEME_STORAGE_KEY = "bulletin_staff_scheme";
 
