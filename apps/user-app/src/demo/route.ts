@@ -22,8 +22,6 @@ export interface DemoRouteInput {
   readonly session: UserAppSessionContext | null;
   readonly forumId: string;
   readonly showDeleted: boolean;
-  /** Benchmark-only variant input: a unique value forces a cold render (task 7.1). */
-  readonly bench?: number;
   readonly pluginsGeneration: number;
   readonly colourScheme: ColorScheme;
   readonly cache: RenderCache;
@@ -96,7 +94,6 @@ export async function renderDemoRoute(input: DemoRouteInput): Promise<DemoRouteR
       params: {
         id: input.forumId,
         deleted: data.outcome.showDeleted ? "1" : "0",
-        ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
       },
       visibilityKey,
       theme: data.theme,

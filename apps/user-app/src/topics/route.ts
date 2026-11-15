@@ -52,7 +52,6 @@ export interface TopicRouteInput {
   readonly session: UserAppSessionContext | null;
   /** The route segment after `/topic/`, e.g. `345-welcome/page/2`. */
   readonly ref: string;
-  readonly bench?: number;
   readonly pluginsGeneration: number;
   readonly colourScheme: ColorScheme;
   readonly cache: RenderCache;
@@ -517,7 +516,6 @@ export async function renderTopicRoute(input: TopicRouteInput): Promise<TopicRou
           params: {
             id: topic.id,
             page: pageData?.page ?? page,
-            ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
           },
           visibilityKey: pageData?.visibilityKey ?? `error:${freshView.visibilityKey()}`,
           theme,

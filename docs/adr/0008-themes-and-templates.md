@@ -100,7 +100,7 @@ sequential requests, 30 cold and 200 warm samples, cached variant warmed first):
 
 Against the dev stack through Caddy with a remote database the same script measured cold
 p50 3.13 / p95 6.30 ms and warm p50 2.48 / p95 3.98 ms. The ADR 0006 targets (cold p95 < 200 ms,
-cached guest p95 < 30 ms) hold on this data; task 7.1 adds the seeded, CI-wired benchmark.
+cached guest p95 < 30 ms) hold on this data.
 
 **What the prototype proved.**
 - A template body stored in Postgres renders through LiquidJS with `{% t %}` and autoescaping;

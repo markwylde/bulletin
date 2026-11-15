@@ -791,8 +791,8 @@ export async function createAuthService(options: AuthServiceOptions): Promise<Au
         return Promise.resolve(json({ code: "method_not_allowed" }, 405));
       }
 
-      // Test-only (development): mint a member session over HTTP so the latency benchmark
-      // needs no browser. Identity mapping still goes through pii.resolve_identity.
+      // Test-only (development): mint a member session over HTTP so load tests and
+      // E2E helpers need no browser. Identity mapping still goes through pii.resolve_identity.
       return (async () => {
         const body = await readJsonBody(request);
         const sub = body?.sub;

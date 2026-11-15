@@ -16,7 +16,6 @@ const session = Astro.locals.session ?? null;
 const dev = import.meta.env.DEV;
 const nodeEnv = process.env.NODE_ENV === "production" ? "production" : "development";
 const runtime = await cacheRuntime(sql);
-const bench = Astro.url.searchParams.get("bench");
 const result = await renderTopicRoute({
   sql,
   themeId: Astro.locals.themeId,
@@ -30,7 +29,6 @@ const result = await renderTopicRoute({
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),
   cache: runtime.cache,
   tagVersions: runtime.tags,
-  ...(bench !== null && /^\d{1,10}$/.test(bench) ? { bench: Number(bench) } : {}),
 });
 
 if (result.kind === "redirect") {

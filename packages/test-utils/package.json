@@ -10,8 +10,6 @@
     "./json-schema": "./src/json-schema.ts",
     "./urls": "./src/urls.ts",
     "./cache-variants": "./src/cache-variants.ts",
-    "./benchmark": "./src/benchmark.ts",
-    "./benchmark-routes": "./src/benchmark-routes.ts",
     "./load-test": "./src/load-test.ts"
   },
   "scripts": {

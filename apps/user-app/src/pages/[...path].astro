@@ -79,12 +79,6 @@ if (demoEnabled(process.env.NODE_ENV) && demoMatch !== null) {
     session,
     forumId: demoMatch[1] ?? "",
     showDeleted: Astro.url.searchParams.get("deleted") === "1",
-    // The dev-only benchmark turns this into a fresh variant (task 7.1).
-    ...(() => {
-      const bench = Astro.url.searchParams.get("bench");
-
-      return bench !== null && /^\d{1,10}$/.test(bench) ? { bench: Number(bench) } : {};
-    })(),
     pluginsGeneration: pluginsGeneration,
     colourScheme:
     Astro.locals.colourScheme ?? requestColourScheme(Astro.request.headers.get("cookie")),

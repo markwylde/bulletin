@@ -41,8 +41,6 @@ export interface ForumRouteInput {
   readonly page?: number;
   /** Test seam for announcement transitions. */
   readonly now?: Date;
-  /** Benchmark-only variant input: a unique value forces a cold render. */
-  readonly bench?: number;
   readonly pluginsGeneration: number;
   readonly colourScheme: ColorScheme;
   readonly cache: RenderCache;
@@ -315,7 +313,6 @@ export async function renderForumRoute(input: ForumRouteInput): Promise<ForumRou
             prefix: page?.viewModel.activePrefix ?? "",
             sort: page?.viewModel.sortParam ?? "",
             page: page?.viewModel.pagination.page ?? 1,
-            ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
           },
           visibilityKey: page?.visibilityKey ?? `error:${freshView.visibilityKey()}`,
           theme,

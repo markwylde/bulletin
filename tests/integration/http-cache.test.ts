@@ -269,7 +269,7 @@ stackDescribe("beacon and overlay endpoints", () => {
     await resetRateBuckets();
   }, 30_000);
 
-  test("the benchmark session endpoint issues a working member session", async () => {
+  test("the test session endpoint issues a working member session", async () => {
     const response = await fetch(`${ORIGIN}/api/test/session`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: ORIGIN },

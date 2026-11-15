@@ -25,8 +25,6 @@ export interface HomeRouteInput {
   readonly session?: UserAppSessionContext | null;
   /** Test seam for announcement transitions. */
   readonly now?: Date;
-  /** Benchmark-only variant input: a unique value forces a cold render (task 7.1). */
-  readonly bench?: number;
   readonly pluginsGeneration: number;
   readonly colourScheme: ColorScheme;
   readonly cache: RenderCache;
@@ -102,9 +100,7 @@ export async function renderHomeRoute(input: HomeRouteInput): Promise<HomeRouteR
       return {
         variant: pageVariant({
           route: homeContract.route,
-          params: {
-            ...(input.bench === undefined || input.bench === 0 ? {} : { bench: input.bench }),
-          },
+          params: {},
           visibilityKey: index.visibilityKey,
           theme,
           pluginsGeneration: input.pluginsGeneration,
