@@ -102,13 +102,14 @@ export function ThemeChooser({ labels }: ThemeChooserProps) {
     };
   }, [enabled]);
 
-  const submit = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-
+  /** Each choice applies as soon as it changes; the page reloads into the new appearance. */
+  const apply = async (nextThemeId: string, nextScheme: ColorScheme): Promise<void> => {
     if (options === null || pending) {
       return;
     }
 
+    setThemeId(nextThemeId);
+    setScheme(nextScheme);
     setPending(true);
     setError(null);
 
@@ -121,14 +122,17 @@ export function ThemeChooser({ labels }: ThemeChooserProps) {
             "content-type": "application/json",
             ...(token === null ? {} : { "x-bulletin-csrf": token }),
           },
-          body: JSON.stringify({ themeId: themeId === "" ? null : themeId, scheme }),
+          body: JSON.stringify({
+            themeId: nextThemeId === "" ? null : nextThemeId,
+            scheme: nextScheme,
+          }),
         });
 
         if (!response.ok) {
           throw new Error("save failed");
         }
       } else {
-        writeGuestAppearance(themeId, scheme);
+        writeGuestAppearance(nextThemeId, nextScheme);
       }
 
       window.location.reload();
@@ -143,7 +147,8 @@ export function ThemeChooser({ labels }: ThemeChooserProps) {
       className="bl-appearance"
       data-appearance-chooser
       hidden={!enabled || options === null}
-      onSubmit={(event) => void submit(event)}
+      aria-busy={pending}
+      onSubmit={(event) => event.preventDefault()}
     >
       <label className="bl-appearance__field">
         <span>{labels.theme}</span>
@@ -151,7 +156,8 @@ export function ThemeChooser({ labels }: ThemeChooserProps) {
           className="bl-input"
           data-appearance-theme
           value={themeId}
-          onChange={(event) => setThemeId(event.target.value)}
+          disabled={pending}
+          onChange={(event) => void apply(event.target.value, scheme)}
         >
           {(options?.themes ?? []).map((entry) => (
             <option key={entry.id} value={entry.id}>
@@ -166,21 +172,14 @@ export function ThemeChooser({ labels }: ThemeChooserProps) {
           className="bl-input"
           data-appearance-scheme
           value={scheme}
-          onChange={(event) => setScheme(schemeOf(event.target.value))}
+          disabled={pending}
+          onChange={(event) => void apply(themeId, schemeOf(event.target.value))}
         >
           <option value="system">{labels.system}</option>
           <option value="light">{labels.light}</option>
           <option value="dark">{labels.dark}</option>
         </select>
       </label>
-      <button
-        className="bl-button bl-button--small"
-        type="submit"
-        data-appearance-save
-        disabled={pending}
-      >
-        {labels.save}
-      </button>
       {error === null ? null : (
         <p className="bl-error-text" data-appearance-error>
           {error}

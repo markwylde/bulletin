@@ -292,6 +292,33 @@ export async function waitForExpression(
   throw new Error(`Timed out waiting for expression ${expression}`);
 }
 
+/**
+ * Picks a theme or colour scheme in a ThemeChooser island. Each choice applies on change and
+ * reloads the page, so this waits for the new document to hydrate with the choice selected.
+ */
+export async function chooseAppearance(
+  view: Bun.WebView,
+  scope: string,
+  field: "theme" | "scheme",
+  value: string,
+): Promise<void> {
+  const select = `${scope} [data-appearance-${field}]`.trim();
+
+  await view.evaluate("window.__bulletinBeforeAppearance = true");
+  await setInputValue(view, select, value);
+  await waitForExpression(
+    view,
+    `(() => {
+      if (window.__bulletinBeforeAppearance === true) return false;
+      const select = document.querySelector(${JSON.stringify(select)});
+      return select instanceof HTMLSelectElement && !select.disabled
+        && select.closest("[data-appearance-chooser]")?.hidden === false
+        && select.value === ${JSON.stringify(value)};
+    })()`,
+    30_000,
+  );
+}
+
 export async function screenshot(view: Bun.WebView, path: string): Promise<void> {
   const buffer = await view.screenshot({ encoding: "buffer" });
   await Bun.write(path, buffer);

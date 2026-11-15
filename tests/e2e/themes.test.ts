@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_THEME_NAME } from "@bulletin/templates";
 import {
+  chooseAppearance,
   clickSelector,
   loginAs,
   setInputValue,
@@ -118,15 +119,14 @@ integrationDescribe("theme management", () => {
         20_000,
       );
       await waitForSelector(view, "[data-appearance-chooser]:not([hidden])", 20_000);
-      await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
+      await waitForSelector(view, "[data-appearance-theme]:not([disabled])", 20_000);
       const guestThemes = await view.evaluate<string[]>(
         `[...document.querySelectorAll("[data-appearance-theme] option")].map((option) => option.textContent ?? "")`,
       );
       expect(guestThemes).toContain("sunset");
       expect(guestThemes).not.toContain("vip-gold");
-      await setInputValue(view, "[data-appearance-theme]", chosenTheme);
-      await setInputValue(view, "[data-appearance-scheme]", "dark");
-      await clickSelector(view, "[data-appearance-save]");
+      await chooseAppearance(view, "", "theme", chosenTheme);
+      await chooseAppearance(view, "", "scheme", "dark");
       await waitForSelector(view, 'html[data-scheme="dark"]', 20_000);
       expect(await view.evaluate<string>("document.cookie")).toContain(`.${chosenTheme}.dark`);
       expect(await view.evaluate<string>("getComputedStyle(document.body).backgroundColor")).toBe(
@@ -149,7 +149,7 @@ integrationDescribe("theme management", () => {
       );
       await waitForSelector(
         view,
-        "[data-appearance-settings] [data-appearance-save]:not([disabled])",
+        "[data-appearance-settings] [data-appearance-theme]:not([disabled])",
         20_000,
       );
       const memberThemes = await view.evaluate<string[]>(
@@ -157,9 +157,8 @@ integrationDescribe("theme management", () => {
       );
       expect(memberThemes).toContain("sunset");
       expect(memberThemes).not.toContain("vip-gold");
-      await setInputValue(view, "[data-appearance-settings] [data-appearance-theme]", chosenTheme);
-      await setInputValue(view, "[data-appearance-settings] [data-appearance-scheme]", "dark");
-      await clickSelector(view, "[data-appearance-settings] [data-appearance-save]");
+      await chooseAppearance(view, "[data-appearance-settings]", "theme", chosenTheme);
+      await chooseAppearance(view, "[data-appearance-settings]", "scheme", "dark");
       await waitForSelector(view, 'html[data-scheme="dark"]', 20_000);
       await waitForSelector(
         view,

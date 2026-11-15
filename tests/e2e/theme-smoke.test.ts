@@ -1,9 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_THEME_NAME } from "@bulletin/templates";
 import {
-  clickSelector,
+  chooseAppearance,
   loginAs,
-  setInputValue,
   waitForExpression,
   waitForSelector,
   withPage,
@@ -55,9 +54,7 @@ async function selectTheme(
     throw new Error(`Theme ${name} is not offered in ${scope}`);
   }
 
-  await setInputValue(view, `${scope} [data-appearance-theme]`, value);
-  await waitForSelector(view, `${scope} [data-appearance-save]:not([disabled])`, 20_000);
-  await clickSelector(view, `${scope} [data-appearance-save]`);
+  await chooseAppearance(view, scope, "theme", value);
   // Callers selecting a theme without a variant (the board default) wait for
   // the attribute to disappear themselves.
   if (expectedVariant !== undefined) {

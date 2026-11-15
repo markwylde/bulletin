@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  clickSelector,
+  chooseAppearance,
   loginAs,
-  setInputValue,
   waitForExpression,
   waitForSelector,
   waitForText,
@@ -301,9 +300,7 @@ integrationDescribe("PWA", () => {
         throw new Error("The seeded sunset theme is not offered");
       }
 
-      await setInputValue(view, "[data-appearance-theme]", sunset);
-      await waitForSelector(view, "[data-appearance-save]:not([disabled])", 20_000);
-      await clickSelector(view, "[data-appearance-save]");
+      await chooseAppearance(view, "", "theme", sunset);
       await waitForSelector(view, '[data-theme-footer][data-theme-variant="sunset"]', 20_000);
 
       const sunsetCss = await view.evaluate<string>(
