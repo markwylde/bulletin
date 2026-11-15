@@ -107,14 +107,26 @@ stackDescribe("HTTP cache contract", () => {
   });
 
   test("a matching If-None-Match is a 304 and a different variant is not", async () => {
-    const first = await fetch(`${ORIGIN}/_demo/2`);
-    const etag = first.headers.get("etag");
+    // Background jobs (seeding, counters) can bump a tag between the two requests, which
+    // legitimately changes the ETag; retry until the page holds still for one round trip.
+    let etag: string | null = null;
+    let conditional: Response | undefined;
 
-    expect(etag).not.toBeNull();
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      etag = (await fetch(`${ORIGIN}/_demo/2`)).headers.get("etag");
+      expect(etag).not.toBeNull();
+      conditional = await fetch(`${ORIGIN}/_demo/2`, {
+        headers: { "if-none-match": etag ?? "" },
+      });
+      if (conditional.status === 304 || conditional.headers.get("etag") === etag) {
+        break;
+      }
+      await Bun.sleep(200);
+    }
 
-    const conditional = await fetch(`${ORIGIN}/_demo/2`, {
-      headers: { "if-none-match": etag ?? "" },
-    });
+    if (conditional === undefined) {
+      throw new Error("no conditional request was made");
+    }
 
     expect(conditional.status).toBe(304);
     expect(conditional.headers.get("etag")).toBe(etag);
