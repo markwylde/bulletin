@@ -62,6 +62,8 @@ async function openFirstTopic(view: Bun.WebView): Promise<string> {
   const url = new URL(href, USER_URL).toString();
   await view.navigate(url);
   await waitForSelector(view, "[data-topic-page]", 20_000);
+  // The reply toggle is wired by the topic client; clicking before it runs does nothing.
+  await waitForSelector(view, 'html[data-moderation-tools-ready="true"]', 20_000);
   return url;
 }
 
