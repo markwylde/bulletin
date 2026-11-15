@@ -89,4 +89,6 @@ if (form !== null) {
     event.preventDefault();
     void submitName(form);
   });
+  // Until this runs, a submit would be the browser's own GET back to this page.
+  form.dataset.displayNameReady = "true";
 }

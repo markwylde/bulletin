@@ -55,6 +55,7 @@ integrationDescribe("display-name step", () => {
           ),
         ).toBe("private, no-store");
 
+        await waitForSelector(view, '[data-display-name-form][data-display-name-ready="true"]');
         await setInputValue(view, "[data-display-name-input]", CHOSEN_NAME);
         await clickSelector(view, "[data-display-name-submit]");
 
