@@ -303,6 +303,17 @@ export async function waitForExpression(
 }
 
 /**
+ * Waits for a document's assets and Chrome's background manifest fetch before leaving it.
+ * A DOM selector can appear before load; the manifest is fetched even later and is not
+ * covered by readyState. Cancelling either with another navigation can produce browser
+ * resource/manifest errors despite a successful server response.
+ */
+export async function waitForPageLoad(view: Bun.WebView): Promise<void> {
+  await waitForExpression(view, 'document.readyState === "complete"', 30_000);
+  await view.cdp("Page.getAppManifest");
+}
+
+/**
  * Picks a theme or colour scheme in a ThemeChooser island. Each choice applies on change and
  * reloads the page, so this waits for the new document to hydrate with the choice selected.
  */
@@ -452,10 +463,13 @@ export async function loginAs(
   const timeoutMs = options.timeoutMs ?? 30_000;
   const started = Date.now();
 
+  await waitForPageLoad(view);
+
   while (Date.now() - started < timeoutMs) {
     const state = await authState(view);
 
     if (state === "authenticated") {
+      await waitForPageLoad(view);
       return;
     }
 
@@ -470,6 +484,7 @@ export async function loginAs(
   await view.evaluate('document.querySelector("[data-login]")?.click()');
   await chooseMockProfile(view, profile, timeoutMs);
   await waitForSelector(view, '[data-auth-state="authenticated"]', timeoutMs);
+  await waitForPageLoad(view);
 }
 
 /** Runs the login flow and expects the app to reject the identity (e.g. no ACP access). */
