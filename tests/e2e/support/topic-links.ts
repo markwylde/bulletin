@@ -1,4 +1,4 @@
-import { waitForSelector } from "@bulletin/test-utils/e2e";
+import { waitForPageLoad, waitForSelector } from "@bulletin/test-utils/e2e";
 import { userBaseUrl } from "@bulletin/test-utils/urls";
 
 /**
@@ -14,6 +14,7 @@ export async function findTopicHref(
   maxPages = 20,
 ): Promise<string | null> {
   const userUrl = userBaseUrl();
+  await waitForPageLoad(view);
   await view.navigate(new URL(forumPath, userUrl).toString());
 
   for (let page = 0; page < maxPages; page += 1) {
@@ -37,6 +38,7 @@ export async function findTopicHref(
       return null;
     }
 
+    await waitForPageLoad(view);
     await view.navigate(new URL(next, userUrl).toString());
   }
 

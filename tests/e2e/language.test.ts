@@ -4,6 +4,7 @@ import {
   loginAs,
   VIEWPORTS,
   type ViewportName,
+  waitForPageLoad,
   waitForSelector,
   waitForText,
   withPage,
@@ -26,6 +27,7 @@ const viewportNames = Object.keys(VIEWPORTS) as ViewportName[];
 async function selectLanguage(view: Bun.WebView, locale: string): Promise<void> {
   // The switcher is an island; wait for hydration before dispatching a change.
   await waitForSelector(view, 'bl-island[data-name="LanguageSwitcher"][data-hydrated="true"]');
+  await waitForPageLoad(view);
   await view.evaluate(`(() => {
     const select = document.querySelector("[data-language-switcher] select");
     if (!(select instanceof HTMLSelectElement)) return false;
@@ -33,6 +35,9 @@ async function selectLanguage(view: Bun.WebView, locale: string): Promise<void> 
     select.dispatchEvent(new Event("change", { bubbles: true }));
     return true;
   })()`);
+  await waitForSelector(view, `html[lang="${locale}"]`, 20_000);
+  await waitForPageLoad(view);
+  await waitForSelector(view, 'bl-island[data-name="LanguageSwitcher"][data-hydrated="true"]');
 }
 
 integrationDescribe("language switching", () => {

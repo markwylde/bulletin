@@ -3,6 +3,7 @@ import {
   clickSelector,
   loginAs,
   waitForExpression,
+  waitForPageLoad,
   waitForSelector,
   waitForText,
   withPage,
@@ -36,6 +37,7 @@ async function openProfile(
   }
 
   const topicUrl = new URL(topic, USER_URL).toString();
+  await waitForPageLoad(view);
   await view.navigate(topicUrl);
   await waitForSelector(view, "[data-topic-page]", 20_000);
 
@@ -50,9 +52,11 @@ async function openProfile(
     throw new Error(`Missing profile link for ${memberName}`);
   }
 
+  await waitForPageLoad(view);
   await view.navigate(new URL(path, USER_URL).toString());
   await waitForSelector(view, "[data-profile-page]", 20_000);
   await waitForSelector(view, "[data-member-actions]", 20_000);
+  await waitForPageLoad(view);
 
   const memberId = await view.evaluate<string>(
     'document.querySelector("[data-profile-page]")?.getAttribute("data-profile-member") ?? ""',
@@ -62,8 +66,10 @@ async function openProfile(
 }
 
 async function logout(view: Bun.WebView): Promise<void> {
+  await waitForPageLoad(view);
   await view.navigate(USER_URL);
   await waitForSelector(view, "[data-logout]:not([hidden])", 20_000);
+  await waitForPageLoad(view);
   await clickSelector(view, "[data-logout]");
   await waitForSelector(view, "[data-login]:not([hidden])", 20_000);
 }
