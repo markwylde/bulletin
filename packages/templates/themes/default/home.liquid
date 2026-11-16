@@ -61,17 +61,19 @@
               {% endif %}
             </div>
             {% unless forum.redirect %}
-            <div class="bl-forum__stats">
-              <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
-              <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
-            </div>
-            <div class="bl-forum__last">
-              {% if forum.lastPost %}
-                <span class="bl-forum__last-date" data-last-post="{{ forum.id }}">{{ forum.lastPost.date }}</span>
-                {% if forum.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: forum.lastPost.memberName %}</span>{% endif %}
-              {% else %}
-                <span class="bl-forum__last-none">{% if forum.lastPostHidden %}{% t "index.lastPost.hidden" %}{% else %}{% t "index.lastPost.none" %}{% endif %}</span>
-              {% endif %}
+            <div class="bl-forum__activity">
+              <div class="bl-forum__stats">
+                <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
+                <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
+              </div>
+              <div class="bl-forum__last">
+                {% if forum.lastPost %}
+                  <span class="bl-forum__last-date" data-last-post="{{ forum.id }}">{{ forum.lastPost.date }}</span>
+                  {% if forum.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: forum.lastPost.memberName %}</span>{% endif %}
+                {% else %}
+                  <span class="bl-forum__last-none">{% if forum.lastPostHidden %}<svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="5" y="9" width="10" height="7.5" rx="1.5" /><path d="M7 9V6.75a3 3 0 0 1 6 0V9" /></svg>{% t "index.lastPost.hidden" %}{% else %}{% t "index.lastPost.none" %}{% endif %}</span>
+                {% endif %}
+              </div>
             </div>
             {% endunless %}
           </li>
@@ -124,17 +126,19 @@
               {% endif %}
             </div>
             {% unless forum.redirect %}
-            <div class="bl-forum__stats">
-              <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
-              <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
-            </div>
-            <div class="bl-forum__last">
-              {% if forum.lastPost %}
-                <span class="bl-forum__last-date" data-last-post="{{ forum.id }}">{{ forum.lastPost.date }}</span>
-                {% if forum.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: forum.lastPost.memberName %}</span>{% endif %}
-              {% else %}
-                <span class="bl-forum__last-none">{% if forum.lastPostHidden %}{% t "index.lastPost.hidden" %}{% else %}{% t "index.lastPost.none" %}{% endif %}</span>
-              {% endif %}
+            <div class="bl-forum__activity">
+              <div class="bl-forum__stats">
+                <span data-topic-count="{{ forum.id }}">{{ forum.topicCount }}</span>
+                <span data-post-count="{{ forum.id }}">{{ forum.postCount }}</span>
+              </div>
+              <div class="bl-forum__last">
+                {% if forum.lastPost %}
+                  <span class="bl-forum__last-date" data-last-post="{{ forum.id }}">{{ forum.lastPost.date }}</span>
+                  {% if forum.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: forum.lastPost.memberName %}</span>{% endif %}
+                {% else %}
+                  <span class="bl-forum__last-none">{% if forum.lastPostHidden %}<svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="5" y="9" width="10" height="7.5" rx="1.5" /><path d="M7 9V6.75a3 3 0 0 1 6 0V9" /></svg>{% t "index.lastPost.hidden" %}{% else %}{% t "index.lastPost.none" %}{% endif %}</span>
+                {% endif %}
+              </div>
             </div>
             {% endunless %}
           </li>

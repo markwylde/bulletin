@@ -194,10 +194,20 @@
   color: var(--bl-accent);
 }
 
-/* Phones: counts and the last post fold into one meta line under the title. */
+/* Phones: counts and the last post share one wrapping meta line under the title (ADR 0021). */
+.bl-forum__activity {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--bl-s2);
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 .bl-forum__stats,
 .bl-forum__last {
-  grid-column: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -218,8 +228,16 @@
 }
 
 .bl-forum__last-none {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bl-s1);
   color: var(--bl-subtle);
   font-size: var(--bl-text-sm);
+}
+
+.bl-forum__last-none .bl-icon {
+  width: 0.875rem;
+  height: 0.875rem;
 }
 
 @media (max-width: 47.99rem) {
@@ -227,8 +245,37 @@
     display: none;
   }
 
-  .bl-forum__stats {
+  .bl-forum__activity {
     margin-top: var(--bl-s1);
+  }
+
+  /*
+   * One line on phones: the first count and when the last post landed
+   * ("2 replies · Nov 15, 2026, 2:08 PM"). The second count and the last poster
+   * show from 48rem up, where they have their own columns.
+   */
+  .bl-forum__stats,
+  .bl-forum__last {
+    display: contents;
+  }
+
+  .bl-forum__stats > span + span,
+  .bl-forum__last-by {
+    display: none;
+  }
+
+  .bl-forum__last-date {
+    white-space: nowrap;
+  }
+
+  .bl-forum__last-date::before {
+    content: "·";
+    margin-right: var(--bl-s2);
+    color: var(--bl-border-strong);
+  }
+
+  .bl-forum__last-date {
+    color: var(--bl-subtle);
   }
 }
 
@@ -260,6 +307,10 @@
     height: 2.5rem;
     grid-row: auto;
     align-self: start;
+  }
+
+  .bl-forum__activity {
+    display: contents;
   }
 
   .bl-forum__stats,
@@ -435,11 +486,17 @@
 
 .bl-stat dd {
   margin: 0;
-  font-size: var(--bl-text-md);
-  font-weight: 550;
+  font-size: var(--bl-text-lg);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Names sit at body size so numbers stay the strongest values in the strip. */
+.bl-stat dd > a {
+  font-size: var(--bl-text-md);
+  font-weight: 550;
 }
 
 .bl-stat__note {
@@ -449,26 +506,22 @@
   font-weight: 400;
 }
 
-@media (min-width: 48rem) {
-  .bl-board-stats {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .bl-board-stats__section {
-    padding: var(--bl-s5);
-  }
-
-  .bl-board-stats__section + .bl-board-stats__section {
-    border-top: 0;
-    border-left: 1px solid var(--bl-border);
-  }
-
-  .bl-board-stats__section:only-child {
-    grid-column: 1 / -1;
-  }
-
+/* Sections stack at every width: who's online is a compact row, statistics one strip below. */
+@media (min-width: 40rem) {
   .bl-stat-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 48rem) {
+  .bl-board-stats__section {
+    padding: var(--bl-s4) var(--bl-s5);
+  }
+}
+
+@media (min-width: 64rem) {
+  .bl-stat-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 }
 
@@ -537,6 +590,26 @@
   padding: var(--bl-s3) var(--bl-s4);
 }
 
+/* Rows and messages share the panel inset (16 px phones, 20 px from 768 px), so text in a list
+ * panel lines up with text in the card above or below it. */
+@media (min-width: 48rem) {
+  :is(
+    .bl-forum-list__item,
+    .bl-notification,
+    .bl-conversation,
+    .bl-follow-list__item,
+    .bl-search-result,
+    .bl-report,
+    .bl-warning,
+    .bl-session-list__item,
+    .bl-session-list > li,
+    .bl-device-list__item,
+    .bl-device-list > li
+  ) {
+    padding-inline: var(--bl-s5);
+  }
+}
+
 :is(
     .bl-forum-list__item,
     .bl-notification,
@@ -591,7 +664,9 @@
 
 /* ── Forum page: toolbar, topic table, moderators ───────────────────────── */
 
-.bl-forum-header__counts > span + span::before {
+/* Meta lines in page headers: items separated by a quiet middle dot. */
+.bl-forum-header__counts > span + span::before,
+.bl-meta-line > :not(.bl-badge) + :not(:empty, .bl-badge)::before {
   content: "·";
   margin-right: var(--bl-s3);
   color: var(--bl-border-strong);
@@ -710,7 +785,18 @@
 }
 
 .bl-topic-row__first-unread {
-  font-weight: 550;
+  color: var(--bl-muted);
+  font-weight: 500;
+}
+
+.bl-topic-row__first-unread::after {
+  content: "→";
+  margin-left: var(--bl-s1);
+}
+
+.bl-topic-row__first-unread:hover {
+  color: var(--bl-accent);
+  text-decoration: none;
 }
 
 .bl-topic-row.is-pinned .bl-topic-row__icon {
@@ -744,14 +830,14 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--bl-s1) var(--bl-s2);
+  gap: var(--bl-s1);
   color: var(--bl-subtle);
   font-size: var(--bl-text-sm);
 }
 
 .bl-forum-moderators__title {
   font-size: inherit;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .bl-moderator-list {
@@ -764,8 +850,8 @@
 }
 
 .bl-moderator-list > li {
-  color: var(--bl-text);
-  font-weight: 550;
+  color: var(--bl-muted);
+  font-weight: 500;
 }
 
 .bl-moderator-list a {
@@ -816,9 +902,67 @@ a.bl-notification__text:hover {
   font-size: var(--bl-text-sm);
 }
 
-.bl-session-list {
-  max-height: 22rem;
-  overflow-y: auto;
+/* Long session lists scroll in place from 768 px; phones just let the page scroll. */
+@media (min-width: 48rem) {
+  .bl-session-list {
+    max-height: 22rem;
+    overflow-y: auto;
+  }
+}
+
+/* Account sessions: aligned columns from 48rem; phones stack device over "last active · IP". */
+.bl-session-list > .bl-session-list__item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 0.125rem var(--bl-s3);
+  font-size: var(--bl-text-md);
+}
+
+/* Phones: device, then last active, then IP — the same three lines for every session. */
+.bl-session-list__device,
+.bl-session-list__seen {
+  flex-basis: 100%;
+}
+
+.bl-session-list__ip {
+  white-space: nowrap;
+}
+
+.bl-session-list__device {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bl-s2);
+  font-weight: 550;
+}
+
+.bl-session-list__current {
+  color: var(--bl-text);
+}
+
+.bl-session-list__seen,
+.bl-session-list__ip {
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 48rem) {
+  .bl-session-list > .bl-session-list__item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 15rem 8rem;
+    align-items: center;
+    gap: var(--bl-s4);
+  }
+
+  .bl-session-list__device,
+  .bl-session-list__seen {
+    flex-basis: auto;
+  }
+
+  .bl-session-list__ip {
+    text-align: right;
+  }
 }
 
 .bl-notification.is-unread .bl-notification__text,
@@ -887,16 +1031,33 @@ a.bl-notification__text:hover {
   background: var(--bl-prefix);
 }
 
-.bl-rules {
+/* Forum rules: a slim notice row, not a full card. */
+.bl-card.bl-rules {
+  padding: var(--bl-s3) var(--bl-s4);
   border-color: var(--bl-border);
 }
 
-.bl-rules__summary {
-  font-weight: 600;
+@media (min-width: 48rem) {
+  .bl-card.bl-rules {
+    padding-inline: var(--bl-s5);
+  }
 }
 
-.bl-rules__body {
+.bl-rules__summary {
+  font-size: var(--bl-text-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bl-card.bl-rules > .bl-rules__body {
+  margin-top: var(--bl-s2);
   color: var(--bl-muted);
+  font-size: var(--bl-text-md);
+}
+
+/* The unread state already shows through "Mark forum read"; a bare dot here reads as stray. */
+.bl-forum-header__counts .bl-unread-dot {
+  display: none;
 }
 
 .bl-topic__meta {
@@ -1126,6 +1287,11 @@ html[data-hide-signatures] [data-signature] {
     min-height: 2.75rem;
     justify-content: center;
   }
+
+  /* Hang the 44 px targets so the last icon's glyph sits on the post's right edge. */
+  .bl-post__actions {
+    margin-right: calc((2.75rem - 1rem) / -2);
+  }
 }
 
 .bl-post--ignored .bl-post__meta,
@@ -1236,6 +1402,11 @@ a.bl-author-card__name:hover {
   display: none;
 }
 
+/* Rank title and pips describe one thing, so they share a line. */
+.bl-author-card__rank {
+  display: contents;
+}
+
 .bl-author-card__pips {
   color: var(--bl-accent);
   letter-spacing: 0.15em;
@@ -1279,7 +1450,7 @@ img.bl-author-card__badge {
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
-    padding: var(--bl-s5) var(--bl-s4);
+    padding: var(--bl-s5);
     border-right: 1px solid var(--bl-border);
     border-bottom: 0;
     border-radius: var(--bl-radius-large) 0 0 var(--bl-radius-large);
@@ -1314,8 +1485,16 @@ img.bl-author-card__badge {
     display: block;
   }
 
-  .bl-author-card__pips {
-    margin-block: var(--bl-s1);
+  .bl-author-card__rank {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--bl-s1) var(--bl-s2);
+  }
+
+  .bl-author-card__rank .bl-author-card__pips,
+  .bl-author-card__rank .bl-author-card__rank-image {
+    display: inline-block;
   }
 
   .bl-author-card__posts {
@@ -1449,12 +1628,12 @@ img.bl-author-card__badge {
 .bl-poll__question > legend {
   margin-bottom: var(--bl-s2);
   padding: 0;
+  font-size: var(--bl-text-md);
 }
 
+/* A fieldset draws its legend inside the top border, so separate questions with space only. */
 .bl-poll .bl-poll__question + .bl-poll__question {
-  margin-top: var(--bl-s5);
-  padding-top: var(--bl-s4);
-  border-top: 1px solid var(--bl-border);
+  margin-top: var(--bl-s6);
 }
 
 .bl-poll__choice {
@@ -1607,6 +1786,61 @@ img.bl-author-card__badge {
 .bl-reaction__icon {
   font-size: 0.95rem;
   line-height: 1;
+}
+
+/* The "React" button and its picker: unused reactions wait here instead of in the bar. */
+.bl-reactions__add-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.bl-reactions__add {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  color: var(--bl-subtle);
+}
+
+.bl-reactions__add[aria-expanded="true"] {
+  background: var(--bl-surface-muted);
+  color: var(--bl-text);
+}
+
+.bl-reactions__picker {
+  position: absolute;
+  bottom: calc(100% + var(--bl-s1));
+  left: 0;
+  z-index: 20;
+  display: flex;
+  gap: 0.125rem;
+  padding: var(--bl-s1);
+  border-radius: var(--bl-radius-large);
+  background: var(--bl-surface);
+  box-shadow: var(--bl-elevation);
+  white-space: nowrap;
+}
+
+.bl-reactions__picker[hidden] {
+  display: none;
+}
+
+.bl-reactions__picker .bl-reaction[data-empty="true"] {
+  width: 2.25rem;
+  height: 2.25rem;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--bl-radius);
+  opacity: 1;
+}
+
+.bl-reactions__picker .bl-reaction[data-empty="true"]:hover,
+.bl-reactions__picker .bl-reaction[data-empty="true"]:focus-visible {
+  border-color: transparent;
+  background: var(--bl-surface-hover);
+}
+
+.bl-reactions__picker .bl-reaction__icon {
+  font-size: 1.125rem;
 }
 
 .bl-reactions [data-reaction-who] {
@@ -2015,7 +2249,7 @@ img.bl-author-card__badge {
 .bl-profile__badge {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: var(--bl-s1) var(--bl-s3);
   font-size: var(--bl-text-md);
 }
@@ -2024,8 +2258,10 @@ img.bl-author-card__badge {
   justify-self: start;
 }
 
+/* Badge and its description share a line; it wraps on narrow cards. */
 .bl-profile__badge > .bl-muted {
-  grid-column: 1 / -1;
+  grid-column: 2;
+  font-size: var(--bl-text-sm);
 }
 
 .bl-profile__badge:has(.bl-profile__badge-image) > .bl-muted {
@@ -2049,7 +2285,13 @@ img.bl-author-card__badge {
 }
 
 .bl-profile__post-title {
+  color: var(--bl-text);
   font-weight: 550;
+}
+
+.bl-profile__post-title:hover {
+  color: var(--bl-accent);
+  text-decoration: none;
 }
 
 .bl-profile__post-meta {
@@ -2246,6 +2488,7 @@ img.bl-author-card__badge {
 }
 
 .bl-leaderboard__rank {
+  justify-self: center;
   color: var(--bl-subtle);
   font-weight: 600;
   text-align: center;
@@ -2269,8 +2512,35 @@ img.bl-author-card__badge {
 .bl-leaderboard__row > a {
   min-width: 0;
   overflow: hidden;
+  color: var(--bl-text);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bl-leaderboard__row > a:hover {
+  color: var(--bl-accent);
+  text-decoration: none;
+}
+
+/* The podium: ranks 1–3 sit in a soft accent circle. */
+.bl-leaderboard__row:nth-child(-n + 3) .bl-leaderboard__rank {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--bl-accent-soft);
+  color: var(--bl-accent);
+  font-size: var(--bl-text-sm);
+}
+
+.bl-leaderboard__row:first-child {
+  padding-top: 0;
+}
+
+.bl-leaderboards > .bl-card > .bl-muted {
+  font-size: var(--bl-text-md);
 }
 
 @media (min-width: 48rem) {
@@ -2370,7 +2640,7 @@ img.bl-author-card__badge {
 
 .bl-mailbox__folders {
   display: flex;
-  gap: var(--bl-s1);
+  gap: var(--bl-s5);
   margin-inline: calc(var(--bl-gutter) * -1);
   padding: 0 var(--bl-gutter);
   border-bottom: 1px solid var(--bl-border);
@@ -2382,7 +2652,7 @@ img.bl-author-card__badge {
   display: inline-flex;
   align-items: center;
   gap: var(--bl-s2);
-  padding: var(--bl-s2) var(--bl-s2) calc(var(--bl-s2) + 2px);
+  padding: var(--bl-s2) 0 calc(var(--bl-s2) + 2px);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   color: var(--bl-muted);
@@ -2449,11 +2719,14 @@ img.bl-author-card__badge {
   gap: 0.125rem var(--bl-s3);
 }
 
+/* The subject leads; participants are the meta line under it. */
 .bl-conversation__participants {
+  grid-column: 1;
+  grid-row: 2;
   overflow: hidden;
-  color: var(--bl-text);
-  font-size: var(--bl-text-md);
-  font-weight: 550;
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-sm);
+  font-weight: 400;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2465,21 +2738,26 @@ img.bl-author-card__badge {
 }
 
 .bl-conversation-list .bl-conversation__title {
-  grid-column: 1 / -1;
-  color: var(--bl-muted);
-  font-weight: 450;
+  grid-column: 1;
+  grid-row: 1;
+  color: var(--bl-text);
+  font-size: var(--bl-text-base);
+  font-weight: 550;
   overflow-wrap: anywhere;
 }
 
-.bl-conversation-list .is-unread .bl-conversation__title {
-  grid-column: 1;
+.bl-conversation__time {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .bl-conversation.is-unread .bl-conversation__title {
-  color: var(--bl-text);
+  font-weight: 650;
 }
 
 .bl-conversation__unread {
+  grid-column: 2;
+  grid-row: 2;
   justify-self: end;
 }
 
@@ -2495,7 +2773,7 @@ img.bl-author-card__badge {
     top: calc(var(--bl-header-height) + var(--bl-s4));
     flex-direction: column;
     gap: 2px;
-    margin: 0;
+    margin: 0 0 0 calc(-1 * var(--bl-s3));
     padding: 0;
     border: 0;
     overflow: visible;
@@ -2519,12 +2797,17 @@ img.bl-author-card__badge {
   }
 
   .bl-conversation-list > .bl-conversation {
-    grid-template-columns: 14rem minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) 14rem auto auto;
+  }
+
+  .bl-conversation__participants {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .bl-conversation-list .bl-conversation__title,
   .bl-conversation-list .is-unread .bl-conversation__title {
-    grid-column: 2;
+    grid-column: 1;
     grid-row: 1;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2635,6 +2918,18 @@ img.bl-author-card__badge {
   padding: 0;
 }
 
+/* Same inset as cards from 768 px, so messages line up with the reply card below. */
+@media (min-width: 48rem) {
+  .bl-message__header,
+  .bl-message__body {
+    padding-inline: var(--bl-s5);
+  }
+
+  .bl-message > .bl-attachment-list {
+    margin-inline: var(--bl-s5);
+  }
+}
+
 .bl-participant-list {
   display: grid;
   gap: var(--bl-s1);
@@ -2702,9 +2997,45 @@ img.bl-author-card__badge {
   border-radius: var(--bl-radius);
 }
 
-.bl-avatar-editor__current .bl-avatar {
+.bl-avatar-editor__current .bl-avatar,
+.bl-avatar-editor__current > svg {
+  display: block;
   width: 4rem;
   height: 4rem;
+  border-radius: 50%;
+  background: var(--bl-surface-muted);
+}
+
+.bl-avatar-editor__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--bl-s4);
+}
+
+/* The native file input stays in the label for keyboard and assistive tech; the button is what shows. */
+.bl-avatar-editor__choose {
+  cursor: pointer;
+}
+
+.bl-avatar-editor__choose:focus-within {
+  outline: 2px solid var(--bl-focus);
+  outline-offset: 2px;
+}
+
+/* Cropping controls appear once a photo is loaded. */
+.bl-avatar-editor__crop {
+  display: grid;
+  gap: var(--bl-s2);
+  justify-items: start;
+}
+
+.bl-avatar-editor__crop:has(canvas[hidden]) {
+  display: none;
+}
+
+.bl-avatar-editor__crop input[type="range"] {
+  width: min(16rem, 100%);
 }
 
 .bl-history__item {
@@ -2716,12 +3047,6 @@ img.bl-author-card__badge {
   border-top: 1px solid var(--bl-border);
 }
 
-.bl-session-list__current {
-  color: var(--bl-success);
-  font-size: var(--bl-text-sm);
-  font-weight: 600;
-}
-
 .bl-device-list__meta {
   color: var(--bl-subtle);
   font-size: var(--bl-text-sm);
@@ -2729,7 +3054,7 @@ img.bl-author-card__badge {
 
 .bl-subnav {
   display: flex;
-  gap: var(--bl-s1);
+  gap: var(--bl-s5);
   margin: var(--bl-s3) calc(var(--bl-gutter) * -1) var(--bl-s4);
   padding: 0 var(--bl-gutter);
   border-bottom: 1px solid var(--bl-border);
@@ -2738,7 +3063,7 @@ img.bl-author-card__badge {
 }
 
 .bl-subnav__link {
-  padding: var(--bl-s2) var(--bl-s2) calc(var(--bl-s2) + 2px);
+  padding: var(--bl-s2) 0 calc(var(--bl-s2) + 2px);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   color: var(--bl-muted);
@@ -3108,7 +3433,7 @@ img.bl-author-card__badge {
 
 .bl-account-nav__list {
   display: flex;
-  gap: var(--bl-s1);
+  gap: var(--bl-s5);
   margin: 0;
   padding: 0 var(--bl-gutter);
   list-style: none;
@@ -3116,7 +3441,7 @@ img.bl-author-card__badge {
 
 .bl-account-nav__link {
   display: block;
-  padding: var(--bl-s2) var(--bl-s2) calc(var(--bl-s2) + 2px);
+  padding: var(--bl-s2) 0 calc(var(--bl-s2) + 2px);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   color: var(--bl-muted);
@@ -3156,6 +3481,7 @@ img.bl-author-card__badge {
   .bl-account-nav__list {
     flex-direction: column;
     gap: 2px;
+    margin-inline-start: calc(-1 * var(--bl-s3));
     padding: 0;
   }
 
@@ -3209,8 +3535,10 @@ img.bl-author-card__badge {
   color: var(--bl-muted);
 }
 
-.bl-digest-field {
-  max-width: 16rem;
+@media (min-width: 48rem) {
+  .bl-digest-field {
+    max-width: 16rem;
+  }
 }
 
 .bl-matrix {
@@ -3229,6 +3557,25 @@ img.bl-author-card__badge {
 .bl-matrix :is(th, td) {
   padding: var(--bl-s2) var(--bl-s3);
   text-align: center;
+}
+
+/* Outer cells take the panel inset, so the first column lines up with the text around it. */
+.bl-matrix tr > :first-child {
+  padding-left: var(--bl-s4);
+}
+
+.bl-matrix tr > :last-child {
+  padding-right: var(--bl-s4);
+}
+
+@media (min-width: 48rem) {
+  .bl-matrix tr > :first-child {
+    padding-left: var(--bl-s5);
+  }
+
+  .bl-matrix tr > :last-child {
+    padding-right: var(--bl-s5);
+  }
 }
 
 .bl-matrix tbody th {
@@ -3433,4 +3780,185 @@ img.bl-author-card__badge {
 
 iframe[data-plugin-frame] {
   background: transparent;
+}
+
+/* ── Account settings: one panel of divided sections (ADR 0021) ─────────────
+ * Consecutive sections join into a single bordered panel. Each section puts its title and
+ * description on the left and its controls on the right from 48rem; phones stack them.
+ */
+.bl-account-layout__main {
+  --bl-stack-gap: var(--bl-s4);
+}
+
+.bl-account-layout__main .bl-form {
+  --bl-stack-gap: var(--bl-s3);
+}
+
+.bl-card.bl-settings__section {
+  display: grid;
+  gap: var(--bl-s3);
+  min-width: 0;
+}
+
+.bl-card.bl-settings__section > * {
+  margin-top: 0;
+}
+
+.bl-settings__section + .bl-settings__section {
+  margin-top: calc(-1 * var(--bl-stack-gap, var(--bl-s4)) - 1px);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.bl-settings__section:has(+ .bl-settings__section) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.bl-settings__intro {
+  display: grid;
+  align-content: start;
+  gap: var(--bl-s1);
+  min-width: 0;
+}
+
+.bl-settings__intro .bl-muted {
+  font-size: var(--bl-text-md);
+}
+
+.bl-settings__controls {
+  display: grid;
+  align-content: start;
+  gap: var(--bl-s3);
+  min-width: 0;
+}
+
+.bl-settings__controls > .bl-button,
+.bl-settings__controls > button,
+.bl-settings__controls > a.bl-button {
+  justify-self: start;
+}
+
+.bl-settings__controls > .bl-muted {
+  font-size: var(--bl-text-sm);
+}
+
+.bl-settings__controls input.bl-input:not([type="checkbox"], [type="radio"]),
+.bl-settings__controls select.bl-input {
+  max-width: 28rem;
+}
+
+.bl-settings__controls .bl-history__item:first-child {
+  padding-top: 0;
+}
+
+@media (min-width: 48rem) {
+  .bl-card.bl-settings__section {
+    grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+    gap: var(--bl-s8);
+  }
+}
+
+/* Pickers fill the column on phones like every other field, and share one width from 768 px. */
+.bl-settings__controls .bl-appearance:not([hidden]) {
+  display: grid;
+  gap: var(--bl-s3);
+}
+
+@media (min-width: 48rem) {
+  .bl-settings__controls .bl-appearance:not([hidden]) {
+    display: flex;
+    gap: var(--bl-s4);
+  }
+}
+
+.bl-settings__controls :is(.bl-appearance .bl-input, .bl-language__select) {
+  width: 100%;
+  max-width: none;
+}
+
+@media (min-width: 48rem) {
+  .bl-settings__controls :is(.bl-appearance .bl-input, .bl-language__select) {
+    width: 12rem;
+    max-width: 100%;
+  }
+}
+
+/* ── Phones: panels run edge to edge (ADR 0021) ─────────────────────────────
+ * Below 768 px the gutter and the panel inset are both 16 px. A bordered panel inside the
+ * gutter would double that space and push its text 16 px in from the page title. Instead,
+ * top-level panels bleed to the screen edge (top and bottom borders only, no radius), so their
+ * own 16 px inset lands on the same line as the title. Panels nested in a panel bleed to the
+ * parent's edge the same way.
+ */
+@media (max-width: 47.99rem) {
+  .bl-main
+    :is(
+      .bl-card,
+      .bl-panel,
+      .bl-list,
+      .bl-empty,
+      .bl-state--panel,
+      .bl-board-category,
+      .bl-board-stats,
+      .bl-announcement,
+      .bl-post,
+      .bl-reply,
+      .bl-poll,
+      .bl-profile,
+      .bl-forum-list,
+      .bl-topic-list,
+      .bl-notification-list,
+      .bl-conversation-list,
+      .bl-follow-list,
+      .bl-member-list,
+      .bl-search-results,
+      .bl-report-list,
+      .bl-warning-list,
+      .bl-session-list,
+      .bl-device-list,
+      .bl-message-list,
+      .bl-moderation-list,
+      .bl-modlog,
+      .bl-matrix,
+      .bl-attachment-table,
+      .bl-mailbox__empty
+    ) {
+    margin-inline: calc(-1 * var(--bl-gutter));
+    border-inline: 0;
+    border-radius: 0;
+  }
+
+  /* Nested panels bleed to their parent panel's edge, not the screen's. */
+  .bl-main
+    :is(.bl-card, .bl-panel, .bl-post, .bl-board-category)
+    :is(
+      .bl-forum-list,
+      .bl-topic-list,
+      .bl-notification-list,
+      .bl-follow-list,
+      .bl-session-list,
+      .bl-device-list,
+      .bl-matrix,
+      .bl-attachment-table,
+      .bl-list
+    ) {
+    margin-inline: calc(-1 * var(--bl-s4));
+  }
+
+  /* Forum and topic lists already sit flush inside their category panel. */
+  .bl-main .bl-board-category :is(.bl-forum-list, .bl-topic-list) {
+    margin-inline: 0;
+    border: 0;
+  }
+
+  /* Stacked full-width panels: the next one's top border is enough of a divider. */
+  .bl-post-list {
+    gap: var(--bl-s3);
+  }
+
+  /* The account tabs belong to the crumb above them; the title starts the page. */
+  .bl-main > .bl-breadcrumbs + .bl-account-layout {
+    margin-top: var(--bl-s1);
+  }
 }

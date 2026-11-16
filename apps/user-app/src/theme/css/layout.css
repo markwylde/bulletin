@@ -424,7 +424,7 @@
   width: 100%;
   max-width: var(--bl-width);
   margin-inline: auto;
-  padding: var(--bl-s5) var(--bl-gutter) var(--bl-s12);
+  padding: var(--bl-s3) var(--bl-gutter) var(--bl-s12);
 }
 
 .bl-main > * + * {
@@ -699,9 +699,10 @@
     gap: var(--bl-s3) var(--bl-s4);
   }
 
+  /* One width for all three pickers, so the row reads as a set. */
   .bl-footer .bl-footer__prefs :is(.bl-language__select, .bl-input) {
-    width: auto;
-    min-width: 9rem;
+    width: 10rem;
+    min-width: 0;
   }
 
   .bl-footer__top {

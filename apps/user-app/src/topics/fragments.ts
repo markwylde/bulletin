@@ -51,13 +51,19 @@ function reputationHtml(
     return "";
   }
 
-  const label = translate(reputationLabelFor(reputation.scale, card.reputation));
+  // Read like "151 posts": the score with its unit, plus the level word only when it says
+  // something beyond the neutral default.
+  const level = reputationLabelFor(reputation.scale, card.reputation);
 
   return [
     '<span class="bl-author-card__reputation">',
-    `<span data-reputation-label="${card.id}">${escapeHtml(label)}</span>`,
-    ' <span aria-hidden="true">·</span> ',
-    `<span data-reputation-count="${card.id}">${card.reputation}</span>`,
+    `<span data-reputation-count="${card.id}">${card.reputation}</span> `,
+    escapeHtml(translate("member.reputationUnit")),
+    level === "reputation.label.neutral"
+      ? ""
+      : ` <span aria-hidden="true">·</span> <span data-reputation-label="${card.id}">${escapeHtml(
+          translate(level),
+        )}</span>`,
     "</span>",
   ].join("");
 }
@@ -111,8 +117,11 @@ function cardHtml(
       ? `<span class="bl-author-card__name">${escapeHtml(name)}</span>`
       : `<a class="bl-author-card__name" href="${escapeHtml(profile)}">${escapeHtml(name)}</a>`,
     `<span class="bl-author-card__group">${escapeHtml(group)}</span>`,
-    title === null ? "" : `<span class="bl-author-card__title">${escapeHtml(title)}</span>`,
-    pips,
+    title === null && pips === ""
+      ? ""
+      : `<span class="bl-author-card__rank">${
+          title === null ? "" : `<span class="bl-author-card__title">${escapeHtml(title)}</span>`
+        }${pips}</span>`,
     `<span class="bl-author-card__posts">${escapeHtml(
       translate("member.postCount", { count: card.postCount }),
     )}</span>`,

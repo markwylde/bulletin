@@ -458,6 +458,9 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     new Intl.DateTimeFormat(input.locale, { dateStyle: "medium", timeStyle: "short" }).format(
       value,
     );
+  // The starter line only needs the day; the last-post column keeps the time.
+  const formatDay = (value: Date): string =>
+    new Intl.DateTimeFormat(input.locale, { dateStyle: "medium" }).format(value);
   const topics: ForumPageTopic[] = topicList.rows.map((topic) => ({
     id: topic.id,
     title: replaceWordsInText(topic.title, input.replaceWords),
@@ -484,10 +487,10 @@ export async function buildForumPage(input: ForumPageInput): Promise<ForumPageDa
     hot: topic.replyCount >= HOT_TOPIC_REPLIES,
     started:
       topic.starterName === null
-        ? formatDate(topic.createdAt)
+        ? formatDay(topic.createdAt)
         : input.translate("forum.topic.startedBy", {
             member: topic.starterName,
-            date: formatDate(topic.createdAt),
+            date: formatDay(topic.createdAt),
           }),
     lastPost:
       topic.movedTo !== null || topic.lastPostAt === null

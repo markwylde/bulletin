@@ -156,24 +156,32 @@ function PostReputationBody(props: PostReputationProps) {
     <span className="bl-post__reputation">
       <button
         type="button"
-        className="bl-button bl-button--quiet bl-button--small"
+        className="bl-post__action"
         data-reputation-vote="1"
         aria-label={labels.giveUp}
+        title={labels.giveUp}
         disabled={saving !== null}
         onClick={() => void give(1)}
       >
-        +1
+        <svg className="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+          <path d="M10 15.5v-11M5.5 9 10 4.5 14.5 9" />
+        </svg>
+        <span>{labels.giveUp}</span>
       </button>
       {canNegative ? (
         <button
           type="button"
-          className="bl-button bl-button--quiet bl-button--small"
+          className="bl-post__action"
           data-reputation-vote="-1"
           aria-label={labels.giveDown}
+          title={labels.giveDown}
           disabled={saving !== null}
           onClick={() => void give(-1)}
         >
-          −1
+          <svg className="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+            <path d="M10 4.5v11M5.5 11 10 15.5l4.5-4.5" />
+          </svg>
+          <span>{labels.giveDown}</span>
         </button>
       ) : null}
       {error === null ? null : (

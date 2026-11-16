@@ -6,100 +6,145 @@
     <div class="bl-account-layout__main">
     <h1 class="bl-page__title">{% t "account.title" %}</h1>
     {% if flags.theme_chooser %}
-      <section class="bl-card" data-appearance-settings>
-        <h2 class="bl-card__title">{% t "theme.chooser.settingsTitle" %}</h2>
-        {% island "ThemeChooser" themeChooser %}
+      <section class="bl-card bl-settings__section" data-appearance-settings>
+        <div class="bl-settings__intro">
+          <h2 class="bl-card__title">{% t "theme.chooser.settingsTitle" %}</h2>
+        </div>
+        <div class="bl-settings__controls">
+          {% island "ThemeChooser" themeChooser %}
+        </div>
       </section>
     {% endif %}
 
-    <section class="bl-card" data-account-profile>
-      <h2 class="bl-card__title">{% t "account.displayName.title" %}</h2>
-      <form class="bl-form" data-account-name-form>
-        <label class="bl-label bl-sr-only" for="account-display-name">{% t "displayName.label" %}</label>
-        <input class="bl-input" id="account-display-name" data-account-name-input value="{{ displayName }}" autocomplete="nickname" minlength="3" maxlength="32" required />
-        <button class="bl-button" type="submit" data-account-name-submit>{% t "displayName.save" %}</button>
-        <p class="bl-error-text" data-account-name-error hidden></p>
-        <p class="bl-muted" data-account-name-saved hidden>{% t "account.displayName.saved" %}</p>
-      </form>
-    </section>
-
-    <section class="bl-card" data-account-public-profile>
-      <h2 class="bl-card__title">{% t "account.profile.title" %}</h2>
-      <p class="bl-muted">{% t "account.profile.body" %}</p>
-      <div class="bl-actions">
-        <a class="bl-button" href="/account/profile" data-account-profile-edit>{% t "account.profile.edit" %}</a>
-        {% if profileUrl %}<a class="bl-button bl-button--quiet" href="{{ profileUrl }}" data-account-profile-view>{% t "account.profile.view" %}</a>{% endif %}
+    <section class="bl-card bl-settings__section" data-account-profile>
+      <div class="bl-settings__intro">
+        <h2 class="bl-card__title">{% t "account.displayName.title" %}</h2>
+      </div>
+      <div class="bl-settings__controls">
+        <form class="bl-form" data-account-name-form>
+          <label class="bl-label bl-sr-only" for="account-display-name">{% t "displayName.label" %}</label>
+          <input class="bl-input" id="account-display-name" data-account-name-input value="{{ displayName }}" autocomplete="nickname" minlength="3" maxlength="32" required />
+          <button class="bl-button" type="submit" data-account-name-submit>{% t "displayName.save" %}</button>
+          <p class="bl-error-text" data-account-name-error hidden></p>
+          <p class="bl-muted" data-account-name-saved hidden>{% t "account.displayName.saved" %}</p>
+        </form>
       </div>
     </section>
 
-    <section class="bl-card" data-account-export>
-      <h2 class="bl-card__title">{% t "account.export.title" %}</h2>
-      <p class="bl-muted">{% t "account.export.body" %}</p>
-      <button class="bl-button" type="button" data-account-export-request>{% t "account.export.request" %}</button>
-      <p class="bl-muted" data-account-export-status hidden></p>
-      <p class="bl-error-text" data-account-export-error hidden></p>
+    <section class="bl-card bl-settings__section" data-account-public-profile>
+      <div class="bl-settings__intro">
+        <h2 class="bl-card__title">{% t "account.profile.title" %}</h2>
+        <p class="bl-muted">{% t "account.profile.body" %}</p>
+      </div>
+      <div class="bl-settings__controls">
+        <div class="bl-actions">
+          <a class="bl-button bl-button--secondary" href="/account/profile" data-account-profile-edit>{% t "account.profile.edit" %}</a>
+          {% if profileUrl %}<a class="bl-button bl-button--quiet" href="{{ profileUrl }}" data-account-profile-view>{% t "account.profile.view" %}</a>{% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section class="bl-card bl-settings__section" data-account-export>
+      <div class="bl-settings__intro">
+        <h2 class="bl-card__title">{% t "account.export.title" %}</h2>
+        <p class="bl-muted">{% t "account.export.body" %}</p>
+      </div>
+      <div class="bl-settings__controls">
+        <button class="bl-button bl-button--secondary" type="button" data-account-export-request>{% t "account.export.request" %}</button>
+        <p class="bl-muted" data-account-export-status hidden></p>
+        <p class="bl-error-text" data-account-export-error hidden></p>
+      </div>
     </section>
 
     {% if flags.avatar_upload %}
-    <section class="bl-card" data-account-avatar>
-      <h2 class="bl-card__title">{% t "account.avatar.title" %}</h2>
-      <p class="bl-muted">{% t "account.avatar.body" %}</p>
-      <div class="bl-avatar-editor" data-avatar-editor data-avatar-max-width="{{ avatar.maxWidth }}" data-avatar-max-height="{{ avatar.maxHeight }}">
-        <div class="bl-avatar-editor__current" data-avatar-current>
-          {% if avatar.url %}
-            <img class="bl-avatar bl-avatar--image" data-account-avatar-img src="{{ avatar.url }}" alt="" width="64" height="64" loading="lazy">
-          {% else %}
-            {{ avatar.initialsHtml }}
-          {% endif %}
+    <section class="bl-card bl-settings__section" data-account-avatar>
+      <div class="bl-settings__intro">
+        <h2 class="bl-card__title">{% t "account.avatar.title" %}</h2>
+        <p class="bl-muted">{% t "account.avatar.body" %}</p>
+      </div>
+      <div class="bl-settings__controls">
+        <div class="bl-avatar-editor" data-avatar-editor data-avatar-max-width="{{ avatar.maxWidth }}" data-avatar-max-height="{{ avatar.maxHeight }}">
+          <div class="bl-avatar-editor__row">
+            <div class="bl-avatar-editor__current" data-avatar-current>
+              {% if avatar.url %}
+                <img class="bl-avatar bl-avatar--image" data-account-avatar-img src="{{ avatar.url }}" alt="" width="64" height="64">
+              {% else %}
+                {{ avatar.initialsHtml }}
+              {% endif %}
+            </div>
+            <div class="bl-actions">
+              <label class="bl-button bl-button--secondary bl-avatar-editor__choose">
+                <input class="bl-sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" data-avatar-file />
+                {% t "account.avatar.choose" %}
+              </label>
+              <button class="bl-button bl-button--quiet" type="button" data-avatar-remove>{% t "account.avatar.remove" %}</button>
+            </div>
+          </div>
+          <div class="bl-avatar-editor__crop">
+            <canvas class="bl-avatar-editor__canvas" width="256" height="256" data-avatar-canvas hidden></canvas>
+            <label class="bl-label" for="avatar-zoom">{% t "account.avatar.zoom" %}</label>
+            <input id="avatar-zoom" type="range" min="1" max="3" step="0.05" value="1" data-avatar-zoom disabled />
+            <div class="bl-avatar-editor__actions">
+              <button class="bl-button" type="button" data-avatar-save disabled>{% t "account.avatar.save" %}</button>
+            </div>
+          </div>
+          <p class="bl-error-text" data-avatar-error hidden></p>
         </div>
-        <input class="bl-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" data-avatar-file />
-        <canvas class="bl-avatar-editor__canvas" width="256" height="256" data-avatar-canvas hidden></canvas>
-        <label class="bl-label" for="avatar-zoom">{% t "account.avatar.zoom" %}</label>
-        <input id="avatar-zoom" type="range" min="1" max="3" step="0.05" value="1" data-avatar-zoom disabled />
-        <div class="bl-avatar-editor__actions">
-          <button class="bl-button" type="button" data-avatar-save disabled>{% t "account.avatar.save" %}</button>
-          <button class="bl-button bl-button--quiet" type="button" data-avatar-remove>{% t "account.avatar.remove" %}</button>
-        </div>
-        <p class="bl-error-text" data-avatar-error hidden></p>
       </div>
     </section>
     {% endif %}
 
-    <section class="bl-card" data-account-history>
-      <h2 class="bl-card__title">{% t "account.history.title" %}</h2>
-      {% if history.size > 0 %}
-        <ol class="bl-history">
-          {% for entry in history %}
-            <li class="bl-history__item" data-account-history-entry>
-              <span class="bl-history__names">{{ entry.oldName }} → {{ entry.newName }}</span>
-              <time class="bl-muted" datetime="{{ entry.iso }}">{{ entry.label }}</time>
-            </li>
-          {% endfor %}
-        </ol>
-      {% else %}
-        {{ emptyState }}
-      {% endif %}
+    <section class="bl-card bl-settings__section" data-account-history>
+      <div class="bl-settings__intro">
+        <h2 class="bl-card__title">{% t "account.history.title" %}</h2>
+      </div>
+      <div class="bl-settings__controls">
+        {% if history.size > 0 %}
+          <ol class="bl-history">
+            {% for entry in history %}
+              <li class="bl-history__item" data-account-history-entry>
+                <span class="bl-history__names">{{ entry.oldName }} → {{ entry.newName }}</span>
+                <time class="bl-muted" datetime="{{ entry.iso }}">{{ entry.label }}</time>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          {{ emptyState }}
+        {% endif %}
+      </div>
     </section>
 
-    <section class="bl-card" data-account-sessions>
-      <h2 class="bl-card__title">{% t "account.sessions.title" %}</h2>
-      <p class="bl-muted">{% t "account.sessions.body" %}</p>
-      <ul class="bl-session-list" data-account-session-list>
-        <li class="bl-muted" data-account-sessions-loading>{% t "account.sessions.loading" %}</li>
-      </ul>
-      <p class="bl-error-text" data-account-sessions-error hidden>{% t "account.sessions.error" %}</p>
+    <section class="bl-card bl-settings__section" data-account-sessions>
+      <div class="bl-settings__intro">
+        <h2 class="bl-card__title">{% t "account.sessions.title" %}</h2>
+        <p class="bl-muted">{% t "account.sessions.body" %}</p>
+      </div>
+      <div class="bl-settings__controls">
+        <ul class="bl-session-list" data-account-session-list>
+          <li class="bl-muted" data-account-sessions-loading>{% t "account.sessions.loading" %}</li>
+        </ul>
+        <p class="bl-error-text" data-account-sessions-error hidden>{% t "account.sessions.error" %}</p>
+      </div>
     </section>
 
-    <section class="bl-card" data-account-language>
-      <h2 class="bl-card__title">{% t "account.language.title" %}</h2>
-      <p class="bl-muted">{% t "account.language.body" %}</p>
-      {% island "LanguageSwitcher" language %}
+    <section class="bl-card bl-settings__section" data-account-language>
+      <div class="bl-settings__intro">
+        <h2 class="bl-card__title">{% t "account.language.title" %}</h2>
+        <p class="bl-muted">{% t "account.language.body" %}</p>
+      </div>
+      <div class="bl-settings__controls">
+        {% island "LanguageSwitcher" language %}
+      </div>
     </section>
 
-    <section class="bl-card" data-account-attachments>
-      <h2 class="bl-card__title">{% t "account.attachments.title" %}</h2>
-      <p class="bl-muted">{% t "account.attachments.body" %}</p>
-      <a class="bl-button" href="/account/attachments" data-account-attachments-link>{% t "account.attachments.open" %}</a>
+    <section class="bl-card bl-settings__section" data-account-attachments>
+      <div class="bl-settings__intro">
+        <h2 class="bl-card__title">{% t "account.attachments.title" %}</h2>
+        <p class="bl-muted">{% t "account.attachments.body" %}</p>
+      </div>
+      <div class="bl-settings__controls">
+        <a class="bl-button bl-button--secondary" href="/account/attachments" data-account-attachments-link>{% t "account.attachments.open" %}</a>
+      </div>
     </section>
     </div>
   </div>

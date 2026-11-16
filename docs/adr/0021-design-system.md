@@ -18,7 +18,9 @@ It adds to ADR 0008 (themes) and ADR 0014 (mobile-first) and supersedes neither.
   changes colour or background only.
 - **Inter**, self-hosted as a variable woff2 from our own origin (CSP-safe), with a system-font
   fallback. Tabular numerals for counts.
-- Radius **6 px** on controls and panels, 4 px on small badges.
+- Radius **6 px** on controls, 4 px on small badges. In the user app, containers that hold
+  controls (panels, list panels, menus, dialogs, empty states) use **8 px** (`radius-large`) so
+  nested corners stay concentric. The staff app uses 6 px for both.
 - 4 px spacing scale. Body text 14 px on dense lists, 15–16 px for post content.
 - Light, dark and system schemes, all built from the same tokens. Contrast is AA or better and
   is checked by tests (ADR 0008 theme checks).
@@ -28,6 +30,13 @@ It adds to ADR 0008 (themes) and ADR 0014 (mobile-first) and supersedes neither.
   are 16 px on phones, 24 px on tablets and 32 px on desktops.
 - Breakpoints: 360 (base), 640, 768 (tablet), 1024, 1280. Every screen is designed and checked
   at 360, 768 and 1440.
+- **One content edge.** Everything on the page canvas (breadcrumbs, titles, side navigation,
+  tabs, panels) starts on the gutter. Hover and selected highlights hang into the gutter so the
+  labels stay on the edge; tabs have no side padding. Panels share one inner inset: 16 px on
+  phones and 20 px from 768 px, for cards, list rows and messages alike. Below 768 px panels
+  run edge to edge (top and bottom borders, no radius), so their text sits on the same line as
+  the page title instead of a gutter plus a padding in; nested panels bleed to their parent. `bun scripts/ui-shots.ts`
+  reports anything 2–20 px off the edge and panels whose insets differ.
 - **Breadcrumbs on every page** except the board index, driven by the view model. On phones the
   trail collapses to "‹ parent".
 
@@ -40,11 +49,14 @@ It adds to ADR 0008 (themes) and ADR 0014 (mobile-first) and supersedes neither.
 - **Forums are lists, not cards.** The board index groups forums into category sections. Each is
   a bordered panel with a header row and divided forum rows: an unread marker, title,
   description, subforums, counts and the last post. Topic lists use the same row pattern. Below
-  768 px, rows **stay rows**: the count columns fold into a meta line under the title and the
-  last post moves to a second line. This is a deliberate exception to ADR 0014's "tables become
-  cards"; it does not apply to forum and topic lists. A card layout is offered only as an
-  optional seeded theme.
+  768 px, rows **stay rows**: one meta line under the title carries the first count and the
+  time of the last post; the second count and the last poster show only from 768 px up. This
+  is a deliberate exception to ADR 0014's "tables become cards"; it does not apply to forum and
+  topic lists. A card layout is offered only as an optional seeded theme.
 - Posts: author column on the left at ≥ 768 px; author header inline above the post on phones.
+  Post footers show only reactions someone has used, plus one "React" button for the rest.
+- Account settings use the same sections as staff settings: one panel of divided sections,
+  title and description on the left and controls on the right from 768 px, stacked on phones.
 
 ### Staff app (not themeable)
 - Shell: an **icon rail** of top-level areas plus a **grouped sub-navigation panel** for the

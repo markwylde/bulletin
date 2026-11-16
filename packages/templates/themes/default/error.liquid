@@ -2,9 +2,16 @@
 <main id="main" class="bl-main" data-theme-error data-error-code="{{ code }}">
   {{ breadcrumbs }}
   <section class="bl-state">
-    <p class="bl-state__code">{% if code == "not_found" or code == "attachment_missing" %}404{% elsif code == "forbidden" or code == "unauthenticated" %}403{% else %}{% t "theme.error.label" %}{% endif %}</p>
+    {% if code == "not_found" or code == "attachment_missing" %}
+      <svg class="bl-state__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.25" /><path d="m15.25 15.25 5 5" /><path d="m8.25 8.25 4.5 4.5" /><path d="m12.75 8.25-4.5 4.5" /></svg>
+    {% elsif code == "forbidden" or code == "unauthenticated" %}
+      <svg class="bl-state__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="5" y="10.5" width="14" height="9.75" rx="2" /><path d="M8.25 10.5V7.75a3.75 3.75 0 0 1 7.5 0v2.75" /></svg>
+    {% else %}
+      <svg class="bl-state__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.25" /><path d="M12 7.75v5" /><circle cx="12" cy="16" r="0.75" /></svg>
+    {% endif %}
     <h1 class="bl-state__title">{% t "theme.error.title" %}</h1>
     <p class="bl-state__body">{{ message }}</p>
+    <p class="bl-state__code">{% if code == "not_found" or code == "attachment_missing" %}404{% elsif code == "forbidden" or code == "unauthenticated" %}403{% else %}{% t "theme.error.label" %}{% endif %}</p>
     <div class="bl-state__actions">
       <a class="bl-button bl-button--primary" href="/">{% t "theme.error.home" %}</a>
       <a class="bl-button bl-button--secondary" href="/search">{% t "theme.error.search" %}</a>

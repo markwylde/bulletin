@@ -155,7 +155,7 @@ describe("forum-structure strings", () => {
       "forum.prefixFilter",
       "forum.prefixAll",
       "forum.announcements",
-      "forum.moderators",
+      "forum.moderatedBy",
       "forum.locked.title",
       "forum.locked.body",
       "forum.locked.password",
