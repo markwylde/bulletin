@@ -311,10 +311,26 @@ export async function waitForExpression(
  * A DOM selector can appear before load; the manifest is fetched even later and is not
  * covered by readyState. Cancelling either with another navigation can produce browser
  * resource/manifest errors despite a successful server response.
+ * Check parse errors in the command response: console events can arrive after it resolves.
  */
 export async function waitForPageLoad(view: Bun.WebView): Promise<void> {
   await waitForExpression(view, 'document.readyState === "complete"', 30_000);
-  await view.cdp("Page.getAppManifest");
+  const manifest = await view.cdp<{
+    url: string;
+    errors: readonly { message: string; critical: number; line: number; column: number }[];
+  }>("Page.getAppManifest");
+  const errors = manifest.errors.filter((error) => error.critical !== 0);
+
+  if (errors.length > 0) {
+    throw new Error(
+      errors
+        .map(
+          (error) =>
+            `Manifest: Line: ${error.line}, column: ${error.column}, ${error.message} (${manifest.url})`,
+        )
+        .join("\n"),
+    );
+  }
 }
 
 /**

@@ -61,30 +61,43 @@ browserDescribe("document load waits", () => {
     }
   }, 30_000);
 
-  test("still fails on a malformed manifest", async () => {
-    const server = Bun.serve({
-      port: 0,
-      fetch(request) {
-        if (new URL(request.url).pathname === "/manifest.webmanifest") {
-          return new Response("invalid manifest", {
-            headers: { "content-type": "application/manifest+json" },
-          });
-        }
-        return new Response(
-          '<html><head><link rel="manifest" href="/manifest.webmanifest"></head></html>',
-          {
-            headers: { "content-type": "text/html" },
-          },
-        );
-      },
-    });
+  test.each(["invalid manifest", "\n\ninvalid manifest"])(
+    "still fails on a malformed manifest: %j",
+    async (body) => {
+      const server = Bun.serve({
+        port: 0,
+        fetch(request) {
+          if (new URL(request.url).pathname === "/manifest.webmanifest") {
+            return new Response(body, {
+              headers: { "content-type": "application/manifest+json" },
+            });
+          }
+          return new Response(
+            '<html><head><link rel="manifest" href="/manifest.webmanifest"></head></html>',
+            {
+              headers: { "content-type": "text/html" },
+            },
+          );
+        },
+      });
 
-    try {
-      await expect(
-        withPage({ url: server.url.toString(), viewport: "mobile360" }, waitForPageLoad),
-      ).rejects.toThrow("Manifest:");
-    } finally {
-      await server.stop(true);
-    }
-  }, 30_000);
+      try {
+        // Require the helper to reject from the CDP response, independently of when
+        // Chrome delivers its console error (or whether it matches browser noise).
+        await expect(
+          withPage(
+            {
+              url: server.url.toString(),
+              viewport: "mobile360",
+              allowConsoleErrors: [/^Manifest:/],
+            },
+            waitForPageLoad,
+          ),
+        ).rejects.toThrow("Manifest:");
+      } finally {
+        await server.stop(true);
+      }
+    },
+    30_000,
+  );
 });
