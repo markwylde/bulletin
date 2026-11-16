@@ -23,4 +23,18 @@ describe("browser noise", () => {
       ),
     ).toBe(false);
   });
+
+  test("ignores the cancelled empty manifest, but not other manifest errors", () => {
+    expect(
+      isBrowserNoise(
+        "Manifest: Line: 1, column: 1, Syntax error. (http://bulletin.localhost:31742/manifest.webmanifest)",
+      ),
+    ).toBe(true);
+    expect(
+      isBrowserNoise(
+        "Manifest: Line: 3, column: 5, Syntax error. (http://bulletin.localhost:31742/manifest.webmanifest)",
+      ),
+    ).toBe(false);
+    expect(isBrowserNoise("Manifest: property 'start_url' ignored, URL is invalid.")).toBe(false);
+  });
 });

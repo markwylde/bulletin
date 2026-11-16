@@ -18,6 +18,7 @@ async function demoFooter(variant: string): Promise<string> {
  */
 const LOUNGE_CSS = `
 .bl-board-category:not(.bl-topic-table) { border: 0; background: none; overflow: visible; }
+.bl-main .bl-board-category:not(.bl-topic-table) { margin-inline: 0; }
 .bl-board-category:not(.bl-topic-table) .bl-board-category__header { padding-inline: 0; border: 0; background: none; }
 .bl-board-category:not(.bl-topic-table) .bl-forum-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: var(--bl-s4); }
 .bl-board-category:not(.bl-topic-table) .bl-forum { grid-template-columns: 2.25rem minmax(0, 1fr); align-content: start; padding: var(--bl-s4); border: 1px solid var(--bl-border); border-radius: var(--bl-radius-large); background: var(--bl-surface); }

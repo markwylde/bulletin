@@ -14,6 +14,10 @@ const BROWSER_NOISE: readonly RegExp[] = [
   // download is checked against (and reported under) the staff page's CSP, which rightly keeps
   // user-origin images out (ADR 0018). The staff app never references the icon itself.
   /^Refused to load the image 'https?:\/\/[^'/]+\/pwa\/icon-\d+\.png(\?[^']*)?' because it violates the following Content Security Policy directive: "img-src /,
+  // The manifest itself is fetched the same way. When a test navigates on before that fetch
+  // finishes, Chromium parses the cancelled, empty body and logs this. A broken manifest has a
+  // body, so it fails differently, and tests/e2e/pwa.test.ts checks the manifest JSON directly.
+  /^Manifest: Line: 1, column: 1, Syntax error\. \(https?:\/\/[^)]+\/manifest\.webmanifest\)$/,
 ];
 
 /** Console errors the browser raises on its own, never the page under test. */
