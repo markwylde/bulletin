@@ -22,7 +22,7 @@
         {% if prefix %}<span class="bl-prefix-tag" style="--bl-prefix: {{ prefix.colour }}">{{ prefix.label }}</span>{% endif %}
         {{ title }}
       </h1>
-      <p class="bl-topic__meta">
+      <p class="bl-topic__meta bl-meta-line">
         {% if pinned %}<span class="bl-badge" data-topic-pinned>{% t "topic.pinned" %}</span>{% endif %}
         {% if locked %}<span class="bl-badge bl-badge--warning" data-topic-locked>{% t "topic.locked" %}</span>{% endif %}
         <span data-topic-replies="{{ topicId }}">{{ replyCount }}</span>
@@ -31,6 +31,12 @@
       <a class="bl-sr-only" href="/forum/{{ forumId }}" data-topic-forum-link>{% t "topic.backToForum" %}</a>
     </div>
     <div class="bl-page-header__actions">
+      {% if canReply and editor %}
+      <a class="bl-button bl-button--small" href="#reply" data-reply-jump>
+        <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M8 5.5 3.5 10 8 14.5" /><path d="M3.5 10h8a5 5 0 0 1 5 5v.5" /></svg>
+        {% t "post.reply" %}
+      </a>
+      {% endif %}
       {% if flags.follows %}
       <span class="bl-follow" data-overlay-member-only hidden data-follow-context="topic:{{ topicId }}">
         <button class="bl-button bl-button--secondary bl-button--small" type="button" data-follow-action="follow">{% t "follow.followTopic" %}</button>
@@ -159,7 +165,7 @@
   {% endif %}
 
   {% if canReply and editor %}
-    <section class="bl-reply" data-reply-section aria-label="{% t "post.reply" %}">
+    <section class="bl-reply" id="reply" data-reply-section aria-label="{% t "post.reply" %}">
       <button class="bl-reply__prompt" type="button" data-reply-toggle>
         <svg class="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M8 5 3.5 9.5 8 14M4 9.5h7a5 5 0 0 1 5 5v1" /></svg>
         <span>{% t "post.reply" %}</span>

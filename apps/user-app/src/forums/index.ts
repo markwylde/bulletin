@@ -323,9 +323,10 @@ export async function buildBoardIndex(input: BoardIndexInput): Promise<BoardInde
         members: online.members.slice(0, 20).map(onlineMember),
       },
       statistics: {
-        topics: input.translate("index.stats.topics", { count: statistics.topics }),
-        posts: input.translate("index.stats.posts", { count: statistics.posts }),
-        members: input.translate("index.stats.members", { count: statistics.members }),
+        // The <dt> already names each stat, so the value is the bare, localised number.
+        topics: new Intl.NumberFormat(input.locale).format(statistics.topics),
+        posts: new Intl.NumberFormat(input.locale).format(statistics.posts),
+        members: new Intl.NumberFormat(input.locale).format(statistics.members),
         newestMember:
           statistics.newestMember === null
             ? null

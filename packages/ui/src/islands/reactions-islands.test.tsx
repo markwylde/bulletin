@@ -62,4 +62,25 @@ describe("reaction and reputation islands honour their flags", () => {
       renderToStaticMarkup(<PostReputation {...reputationProps} flags={{ reputation: true }} />),
     ).toContain('data-reputation-vote="1"');
   });
+
+  test("only used reactions sit in the bar; the rest wait in the closed picker", () => {
+    const html = renderToStaticMarkup(<Reactions {...reactionProps} flags={{ reactions: true }} />);
+    const picker = html.slice(html.indexOf("data-reaction-picker"));
+
+    expect(html).toContain("data-reaction-add");
+    expect(html.indexOf('data-reaction-pick="1"')).toBeLessThan(html.indexOf("data-reaction-add"));
+    expect(picker).toContain('data-reaction-pick="2"');
+    expect(picker).not.toContain('data-reaction-pick="1"');
+    expect(html).toMatch(/data-reaction-picker="true" hidden=""/);
+  });
+
+  test("viewers who cannot react see used totals only, with no picker", () => {
+    const html = renderToStaticMarkup(
+      <Reactions {...reactionProps} canReact={false} flags={{ reactions: true }} />,
+    );
+
+    expect(html).toContain('data-reaction-total="1"');
+    expect(html).not.toContain('data-reaction-total="2"');
+    expect(html).not.toContain("data-reaction-add");
+  });
 });

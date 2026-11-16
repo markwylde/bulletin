@@ -22,7 +22,7 @@
         align-items: center;
         gap: 6px;
         min-height: 28px;
-        padding: 4px 8px;
+        padding: 4px 0;
         border: 0;
         border-radius: 6px;
         background: transparent;
@@ -31,7 +31,8 @@
         font-weight: 500;
         cursor: pointer;
       }
-      button:hover { background: color-mix(in srgb, CanvasText 7%, transparent); color: CanvasText; }
+      /* No side padding, so the icon lines up with the post text; hover changes colour only. */
+      button:hover { color: CanvasText; }
       button:focus-visible { outline: 2px solid color-mix(in srgb, #2457d6 70%, transparent); outline-offset: 1px; }
       svg { width: 14px; height: 14px; flex: none; }
       output:empty { display: none; }

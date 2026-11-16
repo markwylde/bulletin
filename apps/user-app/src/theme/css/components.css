@@ -815,11 +815,9 @@ dialog .bl-actions {
 }
 
 .bl-state__code {
-  color: var(--bl-accent);
-  font-size: var(--bl-text-md);
-  font-weight: 600;
+  color: var(--bl-subtle);
+  font-size: var(--bl-text-sm);
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.04em;
 }
 
 .bl-state__title {

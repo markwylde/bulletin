@@ -127,28 +127,32 @@ function renderSession(row: SessionRow): HTMLLIElement {
     item.dataset.currentSession = "true";
   }
 
+  // Browser (with a "This device" badge), last active and IP, in fixed columns.
+  const device = document.createElement("span");
+  device.className = "bl-session-list__device";
   const title = document.createElement("span");
   title.className = row.current ? "bl-session-list__current" : "";
   title.textContent = labels?.browsers[row.browser] ?? labels?.unknownBrowser ?? row.browser;
-  item.append(title);
+  device.append(title);
 
   if (row.current && labels !== null) {
     const current = document.createElement("span");
-    current.className = "bl-muted";
+    current.className = "bl-badge bl-badge--success";
     current.textContent = labels.current;
-    item.append(current);
+    device.append(current);
   }
 
+  item.append(device);
+
   const meta = document.createElement("span");
-  meta.className = "bl-muted";
+  meta.className = "bl-session-list__seen";
   meta.textContent = `${labels?.lastSeen ?? ""} ${formatDate(row.lastSeenAt)}`.trim();
   item.append(meta);
 
-  if (row.ip !== null) {
-    const ip = document.createElement("code");
-    ip.textContent = row.ip;
-    item.append(ip);
-  }
+  const ip = document.createElement("span");
+  ip.className = "bl-session-list__ip";
+  ip.textContent = row.ip ?? "";
+  item.append(ip);
 
   return item;
 }

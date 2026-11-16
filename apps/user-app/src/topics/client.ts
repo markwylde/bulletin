@@ -618,6 +618,13 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  // The page header's Reply link: without JavaScript it jumps to the reply section.
+  if (target.closest("[data-reply-jump]") !== null) {
+    event.preventDefault();
+    openReplyForm(topicId());
+    return;
+  }
+
   const history = target.closest<HTMLElement>("[data-post-history]");
 
   if (history !== null) {

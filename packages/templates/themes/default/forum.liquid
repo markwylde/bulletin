@@ -12,6 +12,16 @@
         <span data-post-count="{{ forumId }}">{{ postCount }}</span>
         <span class="bl-unread-dot" data-overlay-forum-unread data-overlay-forum-id="{{ forumId }}"></span>
       </p>
+      {% unless locked %}{% if moderators.size > 0 %}
+      <p class="bl-forum-moderators" data-moderators>
+        <span class="bl-forum-moderators__title">{% t "forum.moderatedBy" %}</span>
+        <span class="bl-moderator-list">
+          {%- for moderator in moderators -%}
+            <span data-moderator-kind="{{ moderator.kind }}" data-moderator="{{ moderator.id }}"><a href="{{ moderator.href }}">{{ moderator.name }}</a>{% unless forloop.last %},{% endunless %}</span>
+          {%- endfor -%}
+        </span>
+      </p>
+      {% endif %}{% endunless %}
     </div>
     <div class="bl-page-header__actions">
       <button class="bl-button bl-button--secondary bl-button--small" type="button" data-mark-forum-read="{{ forumId }}" data-overlay-member-only hidden>
@@ -78,7 +88,7 @@
               {% for child in children %}
                 <li class="bl-forum" data-overlay-forum="{{ child.id }}">
                   <span class="bl-forum__icon" aria-hidden="true">
-                    <svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h9A1.5 1.5 0 0 1 16 5.5v6a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3h0A1.5 1.5 0 0 1 4 11.5Z" /></svg>
+                    <svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M4.25 4.75h11.5a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H9l-3.75 2.75V14.25h-1a1.5 1.5 0 0 1-1.5-1.5v-6.5a1.5 1.5 0 0 1 1.5-1.5Z" /></svg>
                     <span class="bl-forum__unread" data-overlay-forum-unread data-overlay-forum-id="{{ child.id }}"></span>
                   </span>
                   <div class="bl-forum__main">
@@ -237,15 +247,17 @@
                     <a class="bl-topic-row__first-unread" data-overlay-first-unread data-overlay-context="topic:{{ topic.id }}" href="{{ topic.href }}" hidden>{% t "topic.firstUnread" %}</a>
                   </p>
                 </div>
-                <div class="bl-forum__stats">
-                  <span data-topic-replies="{{ topic.id }}">{{ topic.replies }}</span>
-                  <span data-topic-views="{{ topic.id }}">{{ topic.views }}</span>
-                </div>
-                <div class="bl-forum__last" data-topic-last-post="{{ topic.id }}">
-                  {% if topic.lastPost %}
-                    <span class="bl-forum__last-date">{{ topic.lastPost.date }}</span>
-                    {% if topic.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: topic.lastPost.memberName %}</span>{% endif %}
-                  {% endif %}
+                <div class="bl-forum__activity">
+                  <div class="bl-forum__stats">
+                    <span data-topic-replies="{{ topic.id }}">{{ topic.replies }}</span>
+                    <span data-topic-views="{{ topic.id }}">{{ topic.views }}</span>
+                  </div>
+                  <div class="bl-forum__last" data-topic-last-post="{{ topic.id }}">
+                    {% if topic.lastPost %}
+                      <span class="bl-forum__last-date">{{ topic.lastPost.date }}</span>
+                      {% if topic.lastPost.memberName %}<span class="bl-forum__last-by">{% t "index.lastPost.by" member: topic.lastPost.memberName %}</span>{% endif %}
+                    {% endif %}
+                  </div>
                 </div>
               </li>
             {% endfor %}
@@ -277,7 +289,7 @@
               {% for child in children %}
                 <li class="bl-forum" data-overlay-forum="{{ child.id }}">
                   <span class="bl-forum__icon" aria-hidden="true">
-                    <svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h9A1.5 1.5 0 0 1 16 5.5v6a1.5 1.5 0 0 1-1.5 1.5H9l-3.5 3v-3h0A1.5 1.5 0 0 1 4 11.5Z" /></svg>
+                    <svg class="bl-icon" viewBox="0 0 20 20" focusable="false"><path d="M4.25 4.75h11.5a1.5 1.5 0 0 1 1.5 1.5v6.5a1.5 1.5 0 0 1-1.5 1.5H9l-3.75 2.75V14.25h-1a1.5 1.5 0 0 1-1.5-1.5v-6.5a1.5 1.5 0 0 1 1.5-1.5Z" /></svg>
                     <span class="bl-forum__unread" data-overlay-forum-unread data-overlay-forum-id="{{ child.id }}"></span>
                   </span>
                   <div class="bl-forum__main">
@@ -290,16 +302,6 @@
         {% endif %}
       {% endunless %}
 
-      {% if moderators.size > 0 %}
-        <section class="bl-forum-moderators" data-moderators aria-label="{% t "forum.moderators" %}">
-          <h2 class="bl-forum-moderators__title">{% t "forum.moderatedBy" %}</h2>
-          <ul class="bl-moderator-list">
-            {%- for moderator in moderators -%}
-              <li data-moderator-kind="{{ moderator.kind }}" data-moderator="{{ moderator.id }}"><a href="{{ moderator.href }}">{{ moderator.name }}</a>{% unless forloop.last %},{% endunless %}</li>
-            {%- endfor -%}
-          </ul>
-        </section>
-      {% endif %}
     </div>
   {% endif %}
 </main>

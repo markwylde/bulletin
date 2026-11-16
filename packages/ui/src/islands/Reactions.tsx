@@ -89,6 +89,8 @@ function ReactionsBody({ postId, canReact, reactions, labels }: ReactionsProps) 
   const [listOpen, setListOpen] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [listFailed, setListFailed] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
   const visible = useMemo(
     () => reactions.filter((reaction) => reaction.enabled || (counts[reaction.id] ?? 0) > 0),
     [reactions, counts],
@@ -168,6 +170,33 @@ function ReactionsBody({ postId, canReact, reactions, labels }: ReactionsProps) 
     };
   }, [listOpen, postId, tally]);
 
+  useEffect(() => {
+    if (!pickerOpen) {
+      return;
+    }
+
+    const close = (event: Event): void => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") {
+          setPickerOpen(false);
+        }
+        return;
+      }
+
+      if (!(event.target instanceof Node) || !root.current?.contains(event.target)) {
+        setPickerOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [pickerOpen]);
+
   if (!enabled) {
     return null;
   }
@@ -219,61 +248,92 @@ function ReactionsBody({ postId, canReact, reactions, labels }: ReactionsProps) 
     }
   };
 
+  const chip = (reaction: ReactionOption) => {
+    const count = counts[reaction.id] ?? 0;
+    const selected = mine === reaction.id;
+    // A staff-disabled reaction cannot be chosen, but the member must still be able to
+    // take back the reaction they already gave.
+    const interactive = canPick && (reaction.enabled || selected);
+
+    return interactive ? (
+      <button
+        key={reaction.id}
+        type="button"
+        className="bl-reaction"
+        data-reaction-pick={reaction.id}
+        data-selected={selected ? "true" : "false"}
+        data-empty={count === 0 ? "true" : "false"}
+        aria-pressed={selected}
+        aria-label={`${reaction.label}: ${count}`}
+        title={selected ? labels.remove : reaction.label}
+        disabled={saving}
+        onClick={() => {
+          setPickerOpen(false);
+          void pick(reaction.id);
+        }}
+      >
+        <span className="bl-reaction__icon" aria-hidden="true">
+          {reaction.icon}
+        </span>
+        <span className="bl-reaction__count" data-reaction-count={reaction.id}>
+          {count}
+        </span>
+      </button>
+    ) : (
+      <span
+        key={reaction.id}
+        className="bl-reaction bl-reaction--static"
+        data-reaction-total={reaction.id}
+        data-selected={selected ? "true" : "false"}
+        data-empty={count === 0 ? "true" : "false"}
+      >
+        <span className="bl-visually-hidden">{reaction.label}</span>
+        <span className="bl-reaction__icon" aria-hidden="true">
+          {reaction.icon}
+        </span>
+        <span className="bl-reaction__count" data-reaction-count={reaction.id}>
+          {count}
+        </span>
+      </span>
+    );
+  };
+
+  // Only reactions someone has used sit in the bar; the rest wait behind one "React" button.
+  const used = visible.filter((reaction) => (counts[reaction.id] ?? 0) > 0 || mine === reaction.id);
+  const unused = canPick
+    ? visible.filter((reaction) => reaction.enabled && !used.includes(reaction))
+    : [];
+
   return (
-    <div className="bl-reactions" data-reaction-bar={postId}>
-      {visible.length === 0 ? (
-        <p className="bl-muted">{labels.empty}</p>
-      ) : (
+    <div className="bl-reactions" data-reaction-bar={postId} ref={root}>
+      {used.length > 0 || unused.length > 0 ? (
         <fieldset className="bl-reactions__list">
           <legend className="bl-visually-hidden">{labels.bar}</legend>
-          {visible.map((reaction) => {
-            const count = counts[reaction.id] ?? 0;
-            const selected = mine === reaction.id;
-            // A staff-disabled reaction cannot be chosen, but the member must still be able to
-            // take back the reaction they already gave.
-            const interactive = canPick && (reaction.enabled || selected);
-
-            return interactive ? (
+          {used.map(chip)}
+          {unused.length > 0 ? (
+            <span className="bl-reactions__add-wrap">
               <button
-                key={reaction.id}
                 type="button"
-                className="bl-reaction"
-                data-reaction-pick={reaction.id}
-                data-selected={selected ? "true" : "false"}
-                data-empty={count === 0 ? "true" : "false"}
-                aria-pressed={selected}
-                aria-label={`${reaction.label}: ${count}`}
-                title={selected ? labels.remove : labels.pick}
+                className="bl-icon-button bl-icon-button--small bl-reactions__add"
+                data-reaction-add
+                aria-expanded={pickerOpen}
+                aria-label={labels.pick}
+                title={labels.pick}
                 disabled={saving}
-                onClick={() => void pick(reaction.id)}
+                onClick={() => setPickerOpen((open) => !open)}
               >
-                <span className="bl-reaction__icon" aria-hidden="true">
-                  {reaction.icon}
-                </span>
-                <span className="bl-reaction__count" data-reaction-count={reaction.id}>
-                  {count}
-                </span>
+                <svg className="bl-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+                  <path d="M16.25 9.5A6.25 6.25 0 1 1 10.5 3.77" />
+                  <path d="M7.5 11.75s.9 1.5 2.5 1.5 2.5-1.5 2.5-1.5M7.75 8.25h.01M12.25 8.25h.01M15.5 2.75v4.5M13.25 5h4.5" />
+                </svg>
               </button>
-            ) : (
-              <span
-                key={reaction.id}
-                className="bl-reaction bl-reaction--static"
-                data-reaction-total={reaction.id}
-                data-selected={selected ? "true" : "false"}
-                data-empty={count === 0 ? "true" : "false"}
-              >
-                <span className="bl-visually-hidden">{reaction.label}</span>
-                <span className="bl-reaction__icon" aria-hidden="true">
-                  {reaction.icon}
-                </span>
-                <span className="bl-reaction__count" data-reaction-count={reaction.id}>
-                  {count}
-                </span>
+              <span className="bl-reactions__picker" data-reaction-picker hidden={!pickerOpen}>
+                {unused.map(chip)}
               </span>
-            );
-          })}
+            </span>
+          ) : null}
         </fieldset>
-      )}
+      ) : null}
       {visible.some((reaction) => (counts[reaction.id] ?? 0) > 0) ? (
         <button
           type="button"

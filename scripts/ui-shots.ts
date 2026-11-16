@@ -36,6 +36,11 @@ interface Result {
   readonly width: number;
   readonly scheme: Scheme;
   readonly overflow: number;
+  readonly align?: {
+    readonly issues: readonly string[];
+    readonly top: number | null;
+    readonly insets: readonly string[];
+  };
   readonly status: "ok" | "skipped" | "failed";
   readonly note: string;
 }
@@ -164,6 +169,7 @@ function shotList(found: Record<string, string | null>): Shot[] {
 
   const member: Shot[] = [
     { name: "m-index", role: "member", path: "/" },
+    ...optional("m-forum", "member", found.forum ?? null),
     ...optional("m-topic", "member", found.topic ?? null),
     { name: "m-account", role: "member", path: "/account" },
     { name: "m-account-profile", role: "member", path: "/account/profile" },
@@ -282,6 +288,110 @@ function login(view: Bun.WebView, role: Exclude<Role, "guest">): Promise<void> {
   return run;
 }
 
+/**
+ * Alignment probe (user app). Content on the page canvas (not inside a bordered or filled box)
+ * should start exactly on the content edge. Anything 1.5–20 px off that edge reads as an
+ * accidental indent, so it is reported. Boxes may bleed past the edge (hanging highlights) as
+ * long as their text sits on it. Also reports the gap from the top bar to the first text.
+ */
+const ALIGN_PROBE = `(() => {
+  const main = document.querySelector(".bl-main");
+  if (!main) return { issues: [], top: null };
+  const ms = getComputedStyle(main);
+  const mr = main.getBoundingClientRect();
+  const edge = mr.left + parseFloat(ms.paddingLeft);
+  const clear = (c) => c === "rgba(0, 0, 0, 0)" || c === "transparent";
+  const hasBox = (el) => {
+    const s = getComputedStyle(el);
+    return (parseFloat(s.borderLeftWidth) > 0 && s.borderLeftStyle !== "none") ||
+      (parseFloat(s.borderTopWidth) > 0 && s.borderTopStyle !== "none" && parseFloat(s.borderBottomWidth) > 0) ||
+      !clear(s.backgroundColor) || s.boxShadow !== "none";
+  };
+  const boxedAncestor = (el) => {
+    for (let a = el.parentElement; a && a !== main; a = a.parentElement) if (hasBox(a)) return true;
+    return false;
+  };
+  const visible = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return false;
+    const s = getComputedStyle(el);
+    return s.visibility !== "hidden" && s.opacity !== "0";
+  };
+  const label = (el) => {
+    const cls = typeof el.className === "string" ? el.className.trim().split(/\\s+/)[0] : "";
+    const data = [...el.attributes].find((a) => a.name.startsWith("data-"));
+    return el.tagName.toLowerCase() + (cls ? "." + cls : "") + (data ? "[" + data.name + "]" : "");
+  };
+  const firstText = (el) => {
+    const tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = tw.nextNode())) {
+      if (!n.data.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      const r = [...range.getClientRects()].find((x) => x.width > 0);
+      if (r) return { r, el: n.parentElement };
+    }
+    return null;
+  };
+  const issues = new Map();
+  const add = (el, kind, d) => {
+    const key = label(el) + " " + kind + " " + (d > 0 ? "+" : "") + Math.round(d);
+    issues.set(key, (issues.get(key) || 0) + 1);
+  };
+  const off = (d) => Math.abs(d) >= 1.5 && Math.abs(d) <= 20;
+  const mid = mr.left + mr.width / 2;
+  // Centred content and text led by a ::before glyph (the phone "‹ parent" crumb) are fine.
+  const centred = (r) => Math.abs(r.left + r.width / 2 - mid) < 2;
+  const glyphLed = (el) => !["none", "normal", ""].includes(getComputedStyle(el, "::before").content);
+  for (const el of main.querySelectorAll("*")) {
+    if (!visible(el) || boxedAncestor(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (Math.abs(r.top - mr.top) > 100000) continue;
+    if (hasBox(el)) {
+      const d = r.left - edge;
+      if (d < -1.5 && d >= -20) {
+        const t = firstText(el);
+        if (t && off(t.r.left - edge) && t.r.left - r.left < 24) add(el, "bleed-text", t.r.left - edge);
+      } else if (off(d) && !centred(r) && getComputedStyle(el.parentElement).justifyContent !== "center")
+        add(el, "box", d);
+    }
+  }
+  const tw = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = tw.nextNode())) {
+    if (!n.data.trim()) continue;
+    const el = n.parentElement;
+    if (!el || !visible(el) || hasBox(el) || boxedAncestor(el)) continue;
+    const range = document.createRange();
+    range.selectNodeContents(n);
+    const r = [...range.getClientRects()].find((x) => x.width > 0);
+    if (!r) continue;
+    const d = r.left - edge;
+    if (!off(d) || glyphLed(el)) continue;
+    const before = document.elementsFromPoint(edge + 1, r.top + r.height / 2).some((o) => main.contains(o) && o !== main && o.getBoundingClientRect().left <= edge + 1 && o.getBoundingClientRect().right < r.left);
+    if (!before) add(el, "text", d);
+  }
+  // Panel insets: wide boxes on the canvas should share one inner padding.
+  const insets = new Map();
+  for (const el of main.querySelectorAll("*")) {
+    if (!visible(el) || boxedAncestor(el) || !hasBox(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < (mr.width - 2 * parseFloat(ms.paddingLeft)) * 0.4) continue;
+    const t = firstText(el);
+    if (!t) continue;
+    const inset = Math.round(t.r.left - r.left);
+    const list = insets.get(inset) || [];
+    list.push(label(el));
+    insets.set(inset, list);
+  }
+  const header = document.querySelector(".bl-header");
+  const first = firstText(main);
+  const top = header && first ? Math.round(first.r.top - header.getBoundingClientRect().bottom) : null;
+  const insetList = [...insets.entries()].sort((a, b) => b[1].length - a[1].length).map(([i, l]) => i + "px: " + [...new Set(l)].slice(0, 4).join(", "));
+  return { issues: [...issues.entries()].map(([k, c]) => c > 1 ? k + " ×" + c : k).slice(0, 15), top, insets: insetList };
+})()`;
+
 /** One logged-in page per role and viewport; every shot for that pair reuses it. */
 async function runGroup(role: Role, width: number, shots: readonly Shot[]): Promise<Result[]> {
   const results: Result[] = [];
@@ -337,6 +447,12 @@ async function runGroup(role: Role, width: number, shots: readonly Shot[]): Prom
           const overflow = await view.evaluate<number>(
             "Math.max(0, document.documentElement.scrollWidth - window.innerWidth)",
           );
+          const align =
+            role === "staff"
+              ? undefined
+              : await view.evaluate<{ issues: string[]; top: number | null; insets: string[] }>(
+                  ALIGN_PROBE,
+                );
           await capture(view, width, join(OUT, file));
           results.push({
             file,
@@ -345,6 +461,7 @@ async function runGroup(role: Role, width: number, shots: readonly Shot[]): Prom
             width,
             scheme,
             overflow,
+            ...(align === undefined ? {} : { align }),
             status: "ok",
             note: path,
           });
@@ -456,6 +573,17 @@ async function main(): Promise<void> {
       note: r.note,
     })),
   );
+  const aligned = results.filter((r) => r.scheme === SCHEMES[0] && r.align !== undefined);
+  for (const r of aligned) {
+    if (r.align && r.align.issues.length > 0) {
+      console.log(`align ${r.name} @${r.width}: ${r.align.issues.join(" | ")}`);
+    }
+    if (r.align && r.align.insets.length > 1) {
+      console.log(`insets ${r.name} @${r.width}: ${r.align.insets.join(" || ")}`);
+    }
+  }
+  const tops = aligned.map((r) => `${r.name}@${r.width}=${r.align?.top ?? "-"}`);
+  if (tops.length > 0) console.log(`top gap (header → first text): ${tops.join(" ")}`);
   const ok = results.filter((r) => r.status === "ok").length;
   console.log(
     `${ok}/${results.length} shots, ${results.filter((r) => r.overflow > 0).length} with overflow → ${join(OUT, "index.html")}`,
